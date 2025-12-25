@@ -3,172 +3,142 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>متجر السودان الشامل 🇸🇩</title>
+    <title>سوق السودان السحابي 🇸🇩</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    
     <style>
-        :root { --primary: #008000; --secondary: #ff9900; --bg: #f0f2f5; }
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: var(--bg); padding-bottom: 130px; color: #333; }
-        
-        /* الهيدر */
-        header { background: var(--primary); color: white; padding: 15px; text-align: center; position: sticky; top: 0; z-index: 1000; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-        header h2 { margin: 0; font-size: 1.4rem; }
-
-        /* شريط التنقل السريع */
-        .nav-scroll { display: flex; overflow-x: auto; background: white; padding: 10px; gap: 10px; border-bottom: 1px solid #ddd; sticky; top: 55px; z-index: 999; }
-        .nav-btn { background: #f8f9fa; border: 1px solid #ddd; padding: 8px 15px; border-radius: 20px; white-space: nowrap; font-size: 0.85rem; font-weight: bold; cursor: pointer; transition: 0.3s; }
-        .nav-btn:hover { background: var(--primary); color: white; }
-
-        /* عناوين الأقسام */
-        .section-header { padding: 15px 10px 5px; font-weight: bold; color: var(--primary); display: flex; align-items: center; gap: 8px; font-size: 1.1rem; }
-        .section-header span { background: var(--primary); width: 5px; height: 20px; border-radius: 2px; }
-
-        /* شبكة المنتجات */
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 10px; }
-        .product-card { background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05); display: flex; flex-direction: column; transition: transform 0.2s; border: 1px solid #eee; }
-        .product-card img { width: 100%; height: 140px; object-fit: cover; background: #f9f9f9; }
-        .product-info { padding: 10px; text-align: center; flex-grow: 1; }
-        .p-name { font-size: 0.9rem; font-weight: bold; margin-bottom: 5px; display: block; color: #444; }
-        .p-price { color: var(--primary); font-weight: 800; font-size: 0.95rem; }
-        
-        .add-btn { background: var(--secondary); color: white; border: none; padding: 10px; width: 90%; margin: 0 auto 10px; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 0.85rem; }
-        .add-btn:active { transform: scale(0.95); }
-
-        /* شريط الطلب السفلي */
-        .footer-order { position: fixed; bottom: 0; width: 100%; background: white; padding: 15px; box-shadow: 0 -5px 20px rgba(0,0,0,0.15); z-index: 2000; box-sizing: border-box; border-radius: 20px 20px 0 0; }
-        .u-name-input { width: 100%; padding: 12px; margin-bottom: 10px; border: 2px solid #eee; border-radius: 12px; text-align: center; font-size: 1rem; outline: none; }
-        .u-name-input:focus { border-color: var(--primary); }
-        .order-summary { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 0 5px; }
-        .send-whatsapp { background: #25D366; color: white; border: none; padding: 14px; border-radius: 12px; font-weight: bold; width: 100%; font-size: 1.1rem; box-shadow: 0 4px 10px rgba(37,211,102,0.3); }
+        :root { --primary: #008000; --secondary: #ff9900; --bg: #f4f7f6; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: var(--bg); padding-bottom: 60px; }
+        .header-main { position: sticky; top: 0; z-index: 5000; background: var(--primary); padding: 15px 0; text-align: center; color: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .search-box { width: 90%; padding: 12px; border-radius: 25px; border: none; margin-top: 10px; outline: none; }
+        .nav-bar { display: flex; overflow-x: auto; background: white; padding: 10px; gap: 8px; border-bottom: 1px solid #ddd; position: sticky; top: 110px; z-index: 4000; }
+        .nav-btn { background: #eee; border: none; padding: 8px 15px; border-radius: 20px; white-space: nowrap; font-weight: bold; font-size: 12px; cursor: pointer; }
+        .products-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 10px; }
+        .product-card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); text-align: center; padding-bottom: 10px; border: 1px solid #eee; }
+        .product-card img { width: 100%; height: 120px; object-fit: cover; }
+        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg); z-index: 10000; overflow-y: auto; }
+        .overlay-header { background: var(--primary); color: white; padding: 15px; display: flex; align-items: center; }
+        .form-box { background: white; margin: 15px; padding: 15px; border-radius: 12px; }
+        .input-st { width: 100%; padding: 10px; margin-bottom: 8px; border-radius: 5px; border: 1px solid #ddd; box-sizing: border-box; }
+        .approved-card { background: white; margin: 15px; padding: 15px; border-radius: 12px; border-right: 5px solid #25D366; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .buy-now { background: #25D366; color: white; text-decoration: none; display: block; text-align: center; padding: 12px; border-radius: 8px; font-weight: bold; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-<header>
-    <h2>متجر السودان الشامل 🇸🇩</h2>
-</header>
-
-<div class="nav-scroll">
-    <button class="nav-btn" onclick="document.getElementById('mobs').scrollIntoView({behavior:'smooth'})">📱 الموبايلات</button>
-    <button class="nav-btn" onclick="document.getElementById('clth').scrollIntoView({behavior:'smooth'})">👔 الملابس</button>
-    <button class="nav-btn" onclick="document.getElementById('shoes').scrollIntoView({behavior:'smooth'})">👟 الأحذية</button>
-    <button class="nav-btn" onclick="document.getElementById('groc').scrollIntoView({behavior:'smooth'})">🛒 البقالة</button>
-    <button class="nav-btn" onclick="document.getElementById('tools').scrollIntoView({behavior:'smooth'})">🛠️ المغالق</button>
+<div class="header-main">
+    <b>سوق السودان الشامل 🇸🇩</b>
+    <input type="text" id="sInp" class="search-box" placeholder="🔍 ابحث في السحابة..." onkeyup="search()">
 </div>
 
-<div class="section-header" id="mobs"><span></span> الهواتف الذكية</div>
-<div class="grid">
-    <div class="product-card">
-        <img src="https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=400&q=80">
-        <div class="product-info"><span class="p-name">Redmi Note 13</span><span class="p-price">285,000 ج.س</span></div>
-        <button class="add-btn" onclick="add('Redmi Note 13', 285000)">إضافة للطلب</button>
-    </div>
-    <div class="product-card">
-        <img src="https://images.unsplash.com/photo-1616348436168-de43ad0db179?w=400&q=80">
-        <div class="product-info"><span class="p-name">Honor X9b</span><span class="p-price">310,000 ج.س</span></div>
-        <button class="add-btn" onclick="add('Honor X9b', 310000)">إضافة للطلب</button>
-    </div>
+<div class="nav-bar">
+    <div class="nav-btn" onclick="go('mobs')">📱 موبايلات</div>
+    <div class="nav-btn" onclick="go('laps')">💻 لابتوبات</div>
+    <div class="nav-btn" onclick="go('women')">💃 نسائي</div>
+    <div class="nav-btn" onclick="go('kids')">👶 أطفالي</div>
+    <div class="nav-btn" onclick="go('perf')">✨ عطور</div>
+    <div class="nav-btn" onclick="go('food')">🛒 بقالة</div>
+    <div class="nav-btn" onclick="go('tools')">🛠️ مغالق</div>
 </div>
 
-<div class="section-header" id="clth"><span></span> الملابس الرجالية</div>
-<div class="grid">
-    <div class="product-card">
-        <img src="https://images.unsplash.com/photo-15162579848b2-77135042ad1c?w=400&q=80">
-        <div class="product-info"><span class="p-name">قميص كاجوال راقي</span><span class="p-price">18,000 ج.س</span></div>
-        <button class="add-btn" onclick="add('قميص كاجوال', 18000)">إضافة للطلب</button>
-    </div>
-    <div class="product-card">
-        <img src="https://images.unsplash.com/photo-1542272604-787c3835535d?w=400&q=80">
-        <div class="product-info"><span class="p-name">بنطلون جينز أصلي</span><span class="p-price">22,000 ج.س</span></div>
-        <button class="add-btn" onclick="add('بنطلون جينز', 22000)">إضافة للطلب</button>
-    </div>
-</div>
+<div id="main-content"></div>
 
-<div class="section-header" id="shoes"><span></span> الأحذية الرياضية</div>
-<div class="grid">
-    <div class="product-card">
-        <img src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&q=80">
-        <div class="product-info"><span class="p-name">حذاء نايك رياضي</span><span class="p-price">35,000 ج.س</span></div>
-        <button class="add-btn" onclick="add('حذاء نايك', 35000)">إضافة للطلب</button>
+<div id="overlay" class="overlay">
+    <div class="overlay-header">
+        <button onclick="closeLayer()" style="background:white; border:none; padding:5px 10px; border-radius:5px; margin-left:10px; font-weight:bold;">🔙 رجوع</button>
+        <b id="layerTitle">سوق التجار</b>
     </div>
-    <div class="product-card">
-        <img src="https://images.unsplash.com/photo-1560769629-975ec94e6a86?w=400&q=80">
-        <div class="product-info"><span class="p-name">حذاء جلد رسمي</span><span class="p-price">28,000 ج.س</span></div>
-        <button class="add-btn" onclick="add('حذاء جلد', 28000)">إضافة للطلب</button>
+    <div class="form-box">
+        <h4 style="margin:0 0 10px 0; color:var(--primary);">📢 أضف عرضك للسحابة</h4>
+        <input type="text" id="pName" class="input-st" placeholder="اسم المنتج">
+        <textarea id="pDesc" class="input-st" placeholder="السعر والتفاصيل"></textarea>
+        <input type="number" id="pWa" class="input-st" placeholder="رقم واتسابك">
+        <button onclick="saveToCloud()" style="width:100%; padding:12px; background:var(--secondary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">نشر العرض حياً ✅</button>
     </div>
-</div>
-
-<div class="section-header" id="groc"><span></span> ركن البقالة</div>
-<div class="grid">
-    <div class="product-card">
-        <img src="https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&q=80">
-        <div class="product-info"><span class="p-name">كرتونة مواد غذائية</span><span class="p-price">25,000 ج.س</span></div>
-        <button class="add-btn" onclick="add('كرتونة بقالة', 25000)">إضافة للطلب</button>
-    </div>
-    <div class="product-card">
-        <img src="https://images.unsplash.com/photo-1583258292688-d0213dc5a3a8?w=400&q=80">
-        <div class="product-info"><span class="p-name">طرد معلبات مشكل</span><span class="p-price">12,000 ج.س</span></div>
-        <button class="add-btn" onclick="add('طرد معلبات', 12000)">إضافة للطلب</button>
-    </div>
-</div>
-
-<div class="section-header" id="tools"><span></span> أدوات المغالق والكهرباء</div>
-<div class="grid">
-    <div class="product-card">
-        <img src="https://images.unsplash.com/photo-1581244276891-997994b7da42?w=400&q=80">
-        <div class="product-info"><span class="p-name">طقم مفاتيح وعدة</span><span class="p-price">45,000 ج.س</span></div>
-        <button class="add-btn" onclick="add('طقم عدة', 45000)">إضافة للطلب</button>
-    </div>
-    <div class="product-card">
-        <img src="https://images.unsplash.com/photo-1530124560612-3bd9a1a1ef7f?w=400&q=80">
-        <div class="product-info"><span class="p-name">أدوات سباكة وبويات</span><span class="p-price">حسب الطلب</span></div>
-        <button class="add-btn" onclick="add('أدوات سباكة', 0)">طلب تسعيرة</button>
-    </div>
-</div>
-
-<div class="footer-order">
-    <input type="text" id="custName" class="u-name-input" placeholder="اكتب اسمك هنا (ضروري للطلب)">
-    <div class="order-summary">
-        <span>الإجمالي: <b id="totalValue" style="color:var(--primary)">0</b> ج.س</span>
-        <span id="itemsCount">0 منتجات</span>
-    </div>
-    <button class="send-whatsapp" onclick="sendOrder()">إرسال الطلب عبر الواتساب ✅</button>
+    <div id="items-list"></div>
 </div>
 
 <script>
-    let cart = [];
-    let total = 0;
+    // تم جلب هذه البيانات من صورك بنجاح
+    const firebaseConfig = {
+        apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
+        authDomain: "sudan-market-6b122.firebaseapp.com",
+        databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
+        projectId: "sudan-market-6b122",
+        storageBucket: "sudan-market-6b122.firebasestorage.app",
+        messagingSenderId: "66729481566",
+        appId: "1:66729481566:web:93393f28dc22d32cceebcf"
+    };
+    
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    let currentCat = '';
 
-    function add(name, price) {
-        cart.push(name);
-        total += price;
-        document.getElementById('totalValue').innerText = total.toLocaleString();
-        document.getElementById('itemsCount').innerText = cart.length + " منتجات";
-        
-        // تأثير بسيط عند الإضافة
-        const btn = event.target;
-        btn.innerText = "✅ تمت الإضافة";
-        btn.style.background = "#444";
-        setTimeout(() => {
-            btn.innerText = "إضافة للطلب";
-            btn.style.background = "var(--secondary)";
-        }, 1000);
+    const sections = [
+        { id: 'mobs', title: '📱 الموبايلات', items: [{n:'هواتف ذكية', i:'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=300'}, {n:'إكسسوارات', i:'https://images.unsplash.com/photo-1541140532154-b024fd70a0d9?w=300'}] },
+        { id: 'laps', title: '💻 لابتوبات', items: [{n:'أجهزة كمبيوتر', i:'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=300'}, {n:'ملحقات', i:'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=300'}] },
+        { id: 'women', title: '💃 نسائي', items: [{n:'أزياء نسائية', i:'https://images.unsplash.com/photo-1567401893414-76b7b1e5a7a5?w=300'}, {n:'تجميل', i:'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=300'}] },
+        { id: 'kids', title: '👶 أطفالي', items: [{n:'ملابس أطفال', i:'https://images.unsplash.com/photo-1519702777585-07f121d78a23?w=300'}, {n:'ألعاب', i:'https://images.unsplash.com/photo-1537151608828-ea2b11777ee8?w=300'}] },
+        { id: 'perf', title: '✨ عطور', items: [{n:'بخور وعطور', i:'https://images.unsplash.com/photo-1595433707802-6806f3fc4a1c?w=300'}, {n:'ماركات', i:'https://images.unsplash.com/photo-1541643600914-78b084683601?w=300'}] },
+        { id: 'food', title: '🛒 بقالة', items: [{n:'مواد استهلاكية', i:'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300'}, {n:'زيوت وشاي', i:'https://images.unsplash.com/photo-1581448670514-4a4759600021?w=300'}] },
+        { id: 'tools', title: '🛠️ مغالق', items: [{n:'أدوات كهرباء', i:'https://images.unsplash.com/photo-1621905252507-b35482cd84b0?w=300'}, {n:'سباكة وبناء', i:'https://images.unsplash.com/photo-1581244276891-8bb499a0d334?w=300'}] }
+    ];
+
+    const content = document.getElementById('main-content');
+    sections.forEach(s => {
+        let sHtml = `<div id="${s.id}" style="padding:15px 10px 5px; font-weight:bold; color:var(--primary);">${s.title}</div><div class="products-grid">`;
+        s.items.forEach(item => {
+            sHtml += `<div class="product-card" onclick="openLayer('${s.title}', '${s.id}')"><img src="${item.i}"><b>${item.n}</b></div>`;
+        });
+        sHtml += `</div>`;
+        content.innerHTML += sHtml;
+    });
+
+    function openLayer(title, id) {
+        currentCat = id;
+        document.getElementById('layerTitle').innerText = title;
+        document.getElementById('overlay').style.display = 'block';
+        loadCloud(id);
+    }
+    function closeLayer() { document.getElementById('overlay').style.display = 'none'; }
+
+    function saveToCloud() {
+        const n = document.getElementById('pName').value;
+        const d = document.getElementById('pDesc').value;
+        const w = document.getElementById('pWa').value;
+        if(!n || !w) return alert("يرجى كتابة الاسم ورقم الواتساب");
+        db.ref('products/' + currentCat).push({ name: n, desc: d, wa: w });
+        alert("مبروك! بضاعتك الآن منشورة لكل أهل السودان 🇸🇩");
+        document.getElementById('pName').value = ''; document.getElementById('pDesc').value = '';
     }
 
-    function sendOrder() {
-        const name = document.getElementById('custName').value.trim();
-        if (cart.length === 0) {
-            alert("العربة فارغة! أضف بعض المنتجات أولاً.");
-            return;
-        }
-        if (name === "") {
-            alert("من فضلك اكتب اسمك أولاً لنعرف من صاحب الطلب.");
-            return;
-        }
-
-        const message = `طلب جديد من: ${name} 🇸🇩\n📦 المنتجات:\n- ${cart.join("\n- ")}\n💰 الإجمالي: ${total.toLocaleString()} ج.س`;
-        const whatsappLink = `https://wa.me/249903245198?text=${encodeURIComponent(message)}`;
-        window.open(whatsappLink, '_blank');
+    function loadCloud(id) {
+        const list = document.getElementById('items-list');
+        db.ref('products/' + id).on('value', (snap) => {
+            const data = snap.val();
+            if(!data) { list.innerHTML = '<center style="padding:40px; color:#999;">لا توجد عروض من التجار حالياً</center>'; return; }
+            let html = '';
+            for(let key in data) {
+                const item = data[key];
+                html += `<div class="approved-card"><b>📦 ${item.name}</b><p style="font-size:0.9rem; color:#555;">${item.desc}</p><button class="buy-now" onclick="buy('${item.wa}', '${item.name}')">تواصل للشراء (العمولة: محمد عبدالمعطي) ✅</button></div>`;
+            }
+            list.innerHTML = html;
+        });
     }
+
+    function buy(wa, p) {
+        const msg = encodeURIComponent(`مرحباً، أريد شراء [${p}] من سوق السودان السحابي.\n---\n⚠️ إخطار بنكي:\nالاسم: محمد عبد المعطي علي\nالبنك: بنك الخرطوم\nالحساب: 4426148\n(دفع عمولة 1% للمصمم لضمان الحقوق)`);
+        window.location.href = `https://wa.me/${wa}?text=${msg}`;
+    }
+
+    function search() {
+        let v = document.getElementById('sInp').value.toLowerCase();
+        let cards = document.getElementsByClassName('product-card');
+        for(let c of cards) { c.style.display = c.innerText.toLowerCase().includes(v) ? "block" : "none"; }
+    }
+    function go(id) { document.getElementById(id).scrollIntoView({ behavior: 'smooth' }); }
 </script>
-
 </body>
 </html>
+
