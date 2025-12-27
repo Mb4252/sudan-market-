@@ -8,7 +8,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-        :root { --navy: #131921; --orange: #febd69; --bg: #f0f2f5; --blue: #1a73e8; --green: #2ecc71; }
+        :root { --navy: #131921; --orange: #febd69; --bg: #f0f2f5; --blue: #1a73e8; --green: #2ecc71; --red: #e74c3c; }
         body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--bg); padding-bottom: 70px; direction: rtl; }
         .hidden { display: none !important; }
         
@@ -35,6 +35,11 @@
         .post-header { padding: 10px; display: flex; align-items: center; border-bottom: 1px solid #eee; }
         .post-header img { width: 45px; height: 45px; border-radius: 50%; margin-left: 10px; border: 2px solid var(--orange); cursor: pointer; }
         .sold-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-20deg); background: rgba(255,0,0,0.9); color: white; padding: 15px 30px; font-size: 28px; font-weight: bold; border: 4px solid white; z-index: 20; border-radius: 10px; pointer-events: none; }
+
+        /* VIP Badge & Discount */
+        .vip-tag { background: gold; color: black; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; margin-right: 5px; }
+        .discount-badge { position: absolute; top: 10px; right: 10px; background: var(--red); color: white; padding: 5px 10px; border-radius: 50%; font-weight: bold; z-index: 5; }
+        .timer-box { background: #fff3cd; color: #856404; text-align: center; padding: 5px; font-size: 12px; border-top: 1px solid #ffeeba; }
 
         /* Status & Badges */
         .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-left: 5px; }
@@ -65,7 +70,6 @@
         .bottom-tabs { position: fixed; bottom: 0; width: 100%; background: white; display: flex; border-top: 1px solid #ddd; padding: 10px 0; z-index: 1000; }
         .tab-btn { flex: 1; text-align: center; font-size: 12px; cursor: pointer; color: #555; }
         
-        /* Search results styling */
         .search-res-title { padding: 10px; background: var(--orange); color: #000; font-weight: bold; margin: 10px; border-radius: 5px; }
     </style>
 </head>
@@ -130,6 +134,19 @@
             <input type="text" id="p-title" placeholder="عنوان الإعلان">
             <input type="number" id="p-price" placeholder="السعر (ج.س)">
             <textarea id="p-desc" placeholder="وصف المنتج بالتفصيل..."></textarea>
+            
+            <div id="vip-publish-options" class="hidden" style="border: 2px dashed gold; padding: 10px; margin: 10px 0; border-radius: 8px;">
+                <p style="font-size: 12px; color: #856404; font-weight: bold;">🌟 قسم كبار التجار (تخفيضات وعروض)</p>
+                <input type="number" id="p-discount" placeholder="نسبة التخفيض (%)">
+                <select id="p-duration">
+                    <option value="60000">لمدة دقيقة</option>
+                    <option value="3600000">لمدة ساعة</option>
+                    <option value="86400000">لمدة يوم</option>
+                    <option value="604800000">لمدة أسبوع</option>
+                </select>
+                <small>أقل كمية للطلب في هذا القسم هي 10 حبات</small>
+            </div>
+
             <button onclick="document.getElementById('p-file').click()" style="background:#666; color:white; border:none; padding:10px; border-radius:5px; width:100%">📸 إضافة صورة المنتج</button>
             <input type="file" id="p-file" class="hidden" accept="image/*" onchange="handleImg(this, 'post')">
             <button id="pub-btn" class="btn-main" onclick="publish()" style="margin-top:10px; background:var(--orange); color:#000; display:none">نشر الإعلان الآن</button>
@@ -153,6 +170,7 @@
 
     <div class="bottom-tabs">
         <div class="tab-btn" onclick="showTab('home')">🏠<br>الرئيسية</div>
+        <div class="tab-btn" onclick="showTab('vip')">💎<br>كبار التجار</div>
         <div class="tab-btn" onclick="showTab('profile')">👤<br>ملفي</div>
     </div>
 </div>
@@ -162,7 +180,7 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    let me = null, history = ['home'], curC = '', curS = '', userPic = '', postPic = '', activeChat = null;
+    let me = null, history = ['home'], curC = '', curS = '', userPic = '', postPic = '', activeChat = null, isVipMode = false;
 
     const data = {
         "الموبايلات": {i: "📱", s: ["هونر", "سامسونج", "آيفون", "تكنو", "شاومي"]},
@@ -187,16 +205,52 @@
         "أخرى": {i: "📦", s: ["منوعات"]}
     };
 
+    // إدارة زر الرجوع للهاتف
+    window.onpopstate = function() {
+        if (history.length > 1) {
+            goBack();
+        } else {
+            confirmExit();
+        }
+    };
+
+    function confirmExit() {
+        Swal.fire({
+            title: 'هل تريد الخروج؟',
+            text: "يمكنك البقاء لتصفح المزيد من العروض",
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'خروج',
+            cancelButtonText: 'البقاء'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                navigator.app ? navigator.app.exitApp() : window.close();
+            } else {
+                window.history.pushState(null, null, window.location.href);
+            }
+        });
+    }
+
     function initApp() {
+        window.history.pushState(null, null, window.location.href);
         const s = localStorage.getItem('user_sd');
         if(s) { 
             me = JSON.parse(s); 
-            start(); 
-            updateStatus();
-            listenToOrders();
+            // فحص حالة الحظر
+            db.ref('users/'+me.p).once('value', snap => {
+                if(snap.val() && snap.val().banned) {
+                    Swal.fire('حسابك مغلق', 'تم إغلاق حسابك بسبب كثرة البلاغات', 'error');
+                    logout();
+                } else {
+                    start(); 
+                    updateStatus();
+                    listenToOrders();
+                }
+            });
         }
         renderHome();
         runSlider();
+        setInterval(updateTimers, 1000);
     }
 
     function updateStatus() {
@@ -234,14 +288,6 @@
                 else { 
                     postPic = e.target.result; 
                     document.getElementById('pub-btn').style.display = 'block';
-                    Swal.fire({
-                        title: 'تم الإضافة بنجاح',
-                        text: 'يمكنك الآن نشر المنشور أو زيارة ملفك الشخصي',
-                        icon: 'success',
-                        showCancelButton: true,
-                        confirmButtonText: 'زيارة الملف الشخصي',
-                        cancelButtonText: 'إغلاق'
-                    }).then(res => { if(res.isConfirmed) showTab('profile'); });
                 }
             };
             r.readAsDataURL(input.files[0]);
@@ -251,15 +297,18 @@
     function register() {
         const n = document.getElementById('u-name').value, p = document.getElementById('u-phone').value,
               st = document.getElementById('u-state').value, ps = document.getElementById('u-pass').value;
-        if(!n || !p || !ps || !userPic) return Swal.fire('خطأ', 'أكمل بياناتك وصورتك الشخصية', 'error');
+        if(!n || !p || !ps) return Swal.fire('خطأ', 'الرجاء إكمال البيانات (الصورة اختيارية)', 'error');
+
+        // الصورة اختيارية عند التسجيل
+        const finalPic = userPic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
 
         db.ref('users').once('value', snapshot => {
             let exists = false;
-            snapshot.forEach(child => { if(child.key === p || (child.val() && child.val().n === n)) exists = true; });
-            if(exists) return Swal.fire('خطأ', 'الاسم أو الرقم مسجل مسبقاً!', 'error');
+            snapshot.forEach(child => { if(child.key === p) exists = true; });
+            if(exists) return Swal.fire('خطأ', 'هذا الرقم مسجل مسبقاً!', 'error');
 
-            db.ref('users/'+p).set({n, p, st, ps, pic: userPic, ratingCount: 0, lastSeen: Date.now()}).then(() => {
-                Swal.fire('تم بنجاح', 'يمكنك الدخول الآن', 'success'); toggleAuth(true);
+            db.ref('users/'+p).set({n, p, st, ps, pic: finalPic, ratingCount: 0, reports: 0, lastSeen: Date.now()}).then(() => {
+                Swal.fire('تم بنجاح', 'تم إنشاء حسابك بنجاح', 'success'); toggleAuth(true);
             });
         });
     }
@@ -269,6 +318,7 @@
         db.ref('users/'+p).once('value', s => {
             const d = s.val();
             if(d && d.ps === ps) { 
+                if(d.banned) return Swal.fire('موقوف', 'تم حظر حسابك', 'error');
                 me = d; 
                 localStorage.setItem('user_sd', JSON.stringify(d)); 
                 start();
@@ -306,6 +356,7 @@
                 <b>${s}</b>
             </div>`).join('');
         history.push('sub');
+        window.history.pushState(null, null, window.location.href);
     }
 
     function openFeed(c, s) {
@@ -313,19 +364,55 @@
         hide(); 
         document.getElementById('feed-view').classList.remove('hidden');
         document.getElementById('publish-area').classList.remove('hidden');
-        loadPosts(s); history.push('feed');
+        document.getElementById('vip-publish-options').classList.add('hidden');
+        isVipMode = false;
+        loadPosts(s); 
+        history.push('feed');
+        window.history.pushState(null, null, window.location.href);
+    }
+
+    function openVipSection() {
+        Swal.fire({
+            title: 'قسم كبار التجار',
+            text: 'هذا القسم مختص بالتجارة الكبار. إذا وجدنا أنك تنشر بضاعة ليس عندك قد يتم حذف حسابك.',
+            icon: 'warning',
+            confirmButtonText: 'أوكي فهمت'
+        }).then(() => {
+            isVipMode = true;
+            hide();
+            document.getElementById('feed-view').classList.remove('hidden');
+            document.getElementById('publish-area').classList.remove('hidden');
+            document.getElementById('vip-publish-options').classList.remove('hidden');
+            document.getElementById('title-text').innerText = "عروض كبار التجار";
+            loadVipPosts();
+            history.push('vip');
+            window.history.pushState(null, null, window.location.href);
+        });
     }
 
     function publish() {
         const t = document.getElementById('p-title').value, pr = document.getElementById('p-price').value, d = document.getElementById('p-desc').value;
         if(!t || !postPic) return;
-        const key = db.ref('posts').push().key;
-        db.ref('posts/'+key).set({
-            id: key, t, pr, d, img: postPic, uN: me.n, uP: me.p, uPic: me.pic, sub: curS, time: Date.now(), sold: false
-        }).then(() => {
-            Swal.fire('نجاح', 'تم نشر إعلانك بنجاح', 'success');
+
+        let postData = {
+            id: db.ref('posts').push().key, t, pr, d, img: postPic, uN: me.n, uP: me.p, uPic: me.pic, 
+            sub: curS || 'VIP', time: Date.now(), sold: false
+        };
+
+        if(isVipMode) {
+            const disc = document.getElementById('p-discount').value || 10;
+            const dur = document.getElementById('p-duration').value;
+            postData.isVip = true;
+            postData.discount = disc;
+            postData.expiry = Date.now() + parseInt(dur);
+            postData.minQty = 10;
+        }
+
+        db.ref('posts/'+postData.id).set(postData).then(() => {
+            Swal.fire('نجاح', 'تم النشر بنجاح', 'success');
             document.getElementById('p-title').value = ''; document.getElementById('p-price').value = '';
             document.getElementById('p-desc').value = ''; document.getElementById('pub-btn').style.display = 'none'; postPic = '';
+            if(isVipMode) showTab('home');
         });
     }
 
@@ -334,9 +421,21 @@
             const area = document.getElementById(target); if(!area) return; area.innerHTML = '';
             snap.forEach(child => {
                 const i = child.val();
-                if((filterP && i.uP === filterP) || (!filterP && i.sub === sub)) {
-                    renderSinglePost(i, area);
+                if(!i.isVip || target === 'my-posts') {
+                    if((filterP && i.uP === filterP) || (!filterP && i.sub === sub)) {
+                        renderSinglePost(i, area);
+                    }
                 }
+            });
+        });
+    }
+
+    function loadVipPosts() {
+        db.ref('posts').orderByChild('isVip').equalTo(true).on('value', snap => {
+            const area = document.getElementById('posts-area'); area.innerHTML = '';
+            snap.forEach(child => {
+                const i = child.val();
+                if(i.expiry > Date.now()) renderSinglePost(i, area);
             });
         });
     }
@@ -346,11 +445,13 @@
             const uData = uSnap.val() || {};
             const statusLine = formatTime(uData.lastSeen);
             const rCount = uData.ratingCount || 0;
-            let badge = '';
-            if(rCount >= 100) badge = '<span class="badge-trusted">تاجر موثوق</span>';
-            else if(rCount >= 50) badge = '<span class="badge-good">تاجر جيد</span>';
+            
+            let vipUi = i.isVip ? `<div class="discount-badge">-${i.discount}%</div>` : '';
+            let timerUi = i.isVip ? `<div class="timer-box" id="timer-${i.id}">جاري التحميل...</div>` : '';
+            let qtyUi = i.isVip ? `<div style="color:red; font-size:12px; font-weight:bold">أقل كمية للطلب: 10 حبات</div>` : '';
 
-            let btn = i.uP === me.p ? `<b style="float:left; cursor:pointer" onclick="manage('${i.id}',${i.sold})">⋮</b>` : '';
+            let btn = i.uP === me.p ? `<b style="float:left; cursor:pointer" onclick="manage('${i.id}',${i.sold})">⋮</b>` : 
+                                    `<b style="float:left; cursor:pointer; color:red" onclick="reportUser('${i.uP}')">🚩 بلاغ</b>`;
             
             let actions = i.uP !== me.p ? `
             <div class="action-btns">
@@ -361,18 +462,22 @@
             area.insertAdjacentHTML('afterbegin', `
                 <div class="post">
                     ${i.sold ? '<div class="sold-label">تم البيع</div>' : ''}
+                    ${vipUi}
                     <div class="post-header">
-                        <img src="${i.uPic}" onclick="visitUser('${i.uP}')">
+                        <img src="${uData.pic || i.uPic}" onclick="visitUser('${i.uP}')">
                         <div style="flex:1">
-                            <b onclick="visitUser('${i.uP}')" style="cursor:pointer">${i.uN}</b> ${badge} 
+                            <b onclick="visitUser('${i.uP}')" style="cursor:pointer">${i.uN}</b> 
+                            ${i.isVip ? '<span class="vip-tag">تاجر كبير</span>' : ''}
                             <span class="star-rating" onclick="addRating('${i.uP}')">★</span>
                             <div class="status-text">${statusLine}</div>
                         </div>
                         ${btn}
                     </div>
                     <img src="${i.img}" style="width:100%">
+                    ${timerUi}
                     <div style="padding:15px">
                         <b>${i.t}</b> - <span style="color:green; font-weight:bold">${i.pr} ج.س</span>
+                        ${qtyUi}
                         <p>${i.d}</p>
                         ${actions}
                     </div>
@@ -388,49 +493,80 @@
         });
     }
 
-    function runSearch() {
-        const q = document.getElementById('app-search').value.toLowerCase().trim();
-        if(!q) { renderHome(); return; }
-
-        hide();
-        const feedView = document.getElementById('feed-view');
-        feedView.classList.remove('hidden');
-        document.getElementById('publish-area').classList.add('hidden'); // إخفاء منطقة النشر عند البحث
-        const area = document.getElementById('posts-area');
-        area.innerHTML = `<div class="search-res-title">نتائج البحث عن: ${q}</div>`;
-
-        // البحث في الأقسام
-        Object.keys(data).forEach(cat => {
-            if(cat.includes(q)) {
-                area.insertAdjacentHTML('beforeend', `<div class="card" style="margin:10px" onclick="openSub('${cat}')"><span>${data[cat].i}</span> قسم: ${cat} (اضغط للعرض)</div>`);
-            }
-            data[cat].s.forEach(sub => {
-                if(sub.includes(q)) {
-                    area.insertAdjacentHTML('beforeend', `<div class="card" style="margin:10px" onclick="openFeed('${cat}','${sub}')"><span>${data[cat].i}</span> فرع: ${sub} (اضغط للعرض)</div>`);
+    function updateTimers() {
+        document.querySelectorAll('[id^="timer-"]').forEach(el => {
+            const id = el.id.replace('timer-', '');
+            db.ref('posts/'+id).once('value', s => {
+                const data = s.val();
+                if(data && data.expiry) {
+                    const diff = data.expiry - Date.now();
+                    if(diff <= 0) {
+                        el.innerHTML = "انتهى العرض";
+                        el.style.color = "red";
+                    } else {
+                        const h = Math.floor(diff/3600000);
+                        const m = Math.floor((diff%3600000)/60000);
+                        const s = Math.floor((diff%60000)/1000);
+                        el.innerHTML = `العرض ساري لمدة: ${h}س : ${m}د : ${s}ث`;
+                    }
                 }
             });
         });
+    }
 
-        // البحث في المنشورات (الاسم، الوصف، التاجر)
-        db.ref('posts').once('value', s => {
-            let found = false;
-            s.forEach(child => {
-                const p = child.val();
-                if(p.t.toLowerCase().includes(q) || p.d.toLowerCase().includes(q) || p.uN.toLowerCase().includes(q) || (p.sub && p.sub.includes(q))) {
-                    renderSinglePost(p, area);
-                    found = true;
-                }
-            });
-            if(!found && area.innerHTML.includes('نتائج البحث')) {
-                // لم يتم العثور على منشورات، لكن ربما وجدت أقسام فوق
+    function reportUser(phone) {
+        if(phone === me.p) return;
+        Swal.fire({
+            title: 'تبليغ عن مستخدم',
+            text: 'هل أنت متأكد من البلاغ؟ البلاغات الكاذبة تعرضك للحظر',
+            icon: 'warning',
+            showCancelButton: true
+        }).then(r => {
+            if(r.isConfirmed) {
+                db.ref('users/'+phone+'/reports').transaction(c => (c || 0) + 1, (err, comm, snap) => {
+                    const count = snap.val();
+                    if(count >= 10) db.ref('users/'+phone).update({banned: true});
+                    else if(count === 5) {
+                        // إرسال تحذير (يمكن تطويرها كإشعار)
+                        console.log("تحذير للمستخدم");
+                    }
+                    Swal.fire('تم التبليغ', 'شكراً لمساعدتنا في الحفاظ على أمان السوق', 'success');
+                });
             }
         });
     }
 
-    function orderNow(sellerPhone, itemName, sellerName) {
-        db.ref('orders/' + sellerPhone).push({
-            fromName: me.n, fromPhone: me.p, item: itemName, time: Date.now(), read: false
+    function updateProfilePic() {
+        if(userPic) {
+            db.ref('users/'+me.p).update({pic: userPic}).then(() => {
+                me.pic = userPic;
+                localStorage.setItem('user_sd', JSON.stringify(me));
+                Swal.fire('نجاح', 'تم تحديث الصورة الشخصية', 'success');
+                showTab('profile');
+            });
+        }
+    }
+
+    function runSearch() {
+        const q = document.getElementById('app-search').value.toLowerCase().trim();
+        if(!q) { renderHome(); return; }
+        hide();
+        document.getElementById('feed-view').classList.remove('hidden');
+        document.getElementById('publish-area').classList.add('hidden');
+        const area = document.getElementById('posts-area');
+        area.innerHTML = `<div class="search-res-title">نتائج البحث عن: ${q}</div>`;
+        db.ref('posts').once('value', s => {
+            s.forEach(child => {
+                const p = child.val();
+                if(p.t.toLowerCase().includes(q) || p.d.toLowerCase().includes(q) || p.uN.toLowerCase().includes(q)) {
+                    renderSinglePost(p, area);
+                }
+            });
         });
+    }
+
+    function orderNow(sellerPhone, itemName, sellerName) {
+        db.ref('orders/' + sellerPhone).push({ fromName: me.n, fromPhone: me.p, item: itemName, time: Date.now(), read: false });
         openChat(sellerPhone, sellerName);
     }
 
@@ -450,6 +586,7 @@
             area.scrollTop = area.scrollHeight;
         });
         history.push('chat');
+        window.history.pushState(null, null, window.location.href);
     }
 
     function sendMsg() {
@@ -460,7 +597,7 @@
     }
 
     function addRating(targetPhone) {
-        if(targetPhone === me.p) return Swal.fire('تنبيه', 'لا يمكنك تقييم نفسك', 'info');
+        if(targetPhone === me.p) return;
         db.ref('ratings/' + targetPhone + '/' + me.p).once('value', s => {
             if(s.exists()) return Swal.fire('تنبيه', 'لقد قيمت هذا الشخص مسبقاً', 'warning');
             db.ref('ratings/' + targetPhone + '/' + me.p).set(true).then(() => {
@@ -478,9 +615,11 @@
                 <img src="${u.pic}" style="width:80px; height:80px; border-radius:50%"><br>
                 <h3>${u.n}</h3><p>📍 ${u.st}</p>
                 <p>إجمالي التقييمات: ${u.ratingCount || 0}</p>
+                <button onclick="reportUser('${phone}')" style="background:red; color:white; border:none; padding:5px 10px; border-radius:5px">بلغ عن الحساب 🚩</button>
             `;
             loadPosts(null, 'my-posts', phone);
             history.push('profile');
+            window.history.pushState(null, null, window.location.href);
         });
     }
 
@@ -498,19 +637,30 @@
     function getComs(id) { db.ref('comments/'+id).on('value', s => { const b = document.getElementById('coms-'+id); if(!b) return; b.innerHTML=''; s.forEach(c => { b.innerHTML += `<div style="font-size:12px; margin-bottom:5px"><b>${c.val().n}:</b> ${c.val().t}</div>`; }); }); }
 
     function showTab(t) {
+        if(t === 'vip') { openVipSection(); return; }
         hide(); document.getElementById(t+'-view').classList.remove('hidden');
         if(t === 'profile') {
-            document.getElementById('my-info').innerHTML = `<img src="${me.pic}" style="width:80px; height:80px; border-radius:50%"><br><h3>${me.n}</h3><p>📍 ${me.st}</p>`;
+            document.getElementById('my-info').innerHTML = `
+                <label for="p-pic-edit">
+                    <img id="p-preview-edit" src="${me.pic}" style="width:80px; height:80px; border-radius:50%; cursor:pointer; border:2px solid #orange">
+                </label>
+                <input type="file" id="p-pic-edit" class="hidden" accept="image/*" onchange="handleImg(this, 'user'); setTimeout(updateProfilePic, 500);">
+                <br><h3>${me.n}</h3><p>📍 ${me.st}</p>
+                <small>اضغط على الصورة لتغييرها</small>`;
             loadPosts(null, 'my-posts', me.p);
         } else { renderHome(); history=['home']; document.getElementById('title-text').innerText="الرئيسية"; }
     }
 
     function goBack() {
         if(history.length > 1) {
-            history.pop(); const l = history[history.length-1];
-            if(l === 'home') showTab('home'); 
+            history.pop(); 
+            const l = history[history.length-1];
+            if(l === 'home') { hide(); document.getElementById('home-view').classList.remove('hidden'); document.getElementById('title-text').innerText="الرئيسية"; }
             else if(l === 'sub') openSub(curC);
             else if(l === 'feed') openFeed(curC, curS);
+            else if(l === 'vip') openVipSection();
+        } else {
+            confirmExit();
         }
     }
 
