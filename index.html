@@ -50,6 +50,10 @@
         .badge-good { color: #27ae60; font-size: 11px; font-weight: bold; }
         .star-rating { color: #f1c40f; cursor: pointer; font-size: 18px; margin-right: 5px; }
 
+        /* Profile Styles */
+        .profile-container { position: relative; width: 100px; margin: 0 auto; }
+        .edit-pic-btn { position: absolute; bottom: 0; right: 0; background: var(--blue); color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; border: 2px solid white; cursor: pointer; }
+
         /* Action Buttons */
         .action-btns { display: flex; gap: 8px; margin-top: 12px; }
         .btn-buy { background: var(--green); color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold; flex: 1; font-size: 14px; }
@@ -205,7 +209,7 @@
         "أخرى": {i: "📦", s: ["منوعات"]}
     };
 
-    // إدارة زر الرجوع للهاتف
+    // إدارة زر الرجوع للهاتف (التعديل الجديد)
     window.onpopstate = function() {
         if (history.length > 1) {
             goBack();
@@ -224,8 +228,10 @@
             cancelButtonText: 'البقاء'
         }).then((result) => {
             if (result.isConfirmed) {
+                // الخروج الفعلي
                 navigator.app ? navigator.app.exitApp() : window.close();
             } else {
+                // البقاء في الصفحة
                 window.history.pushState(null, null, window.location.href);
             }
         });
@@ -236,7 +242,6 @@
         const s = localStorage.getItem('user_sd');
         if(s) { 
             me = JSON.parse(s); 
-            // فحص حالة الحظر
             db.ref('users/'+me.p).once('value', snap => {
                 if(snap.val() && snap.val().banned) {
                     Swal.fire('حسابك مغلق', 'تم إغلاق حسابك بسبب كثرة البلاغات', 'error');
@@ -245,10 +250,19 @@
                     start(); 
                     updateStatus();
                     listenToOrders();
+                    
+                    // التعديل: عند تحديث الصفحة (Refresh) يتم البقاء في نفس القسم
+                    const lastState = history[history.length - 1];
+                    if(lastState === 'sub') openSub(curC);
+                    else if(lastState === 'feed') openFeed(curC, curS);
+                    else if(lastState === 'profile') showTab('profile');
+                    else if(lastState === 'vip') openVipSection();
+                    else renderHome();
                 }
             });
+        } else {
+            renderHome();
         }
-        renderHome();
         runSlider();
         setInterval(updateTimers, 1000);
     }
@@ -284,7 +298,14 @@
         if(input.files[0]) {
             const r = new FileReader();
             r.onload = e => {
-                if(mode === 'user') { userPic = e.target.result; document.getElementById('u-preview').src = e.target.result; }
+                if(mode === 'user') { 
+                    userPic = e.target.result; 
+                    if(document.getElementById('u-preview')) document.getElementById('u-preview').src = e.target.result;
+                    if(document.getElementById('p-preview-edit')) {
+                        document.getElementById('p-preview-edit').src = e.target.result;
+                        updateProfilePic();
+                    }
+                }
                 else { 
                     postPic = e.target.result; 
                     document.getElementById('pub-btn').style.display = 'block';
@@ -299,7 +320,6 @@
               st = document.getElementById('u-state').value, ps = document.getElementById('u-pass').value;
         if(!n || !p || !ps) return Swal.fire('خطأ', 'الرجاء إكمال البيانات (الصورة اختيارية)', 'error');
 
-        // الصورة اختيارية عند التسجيل
         const finalPic = userPic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
 
         db.ref('users').once('value', snapshot => {
@@ -355,7 +375,7 @@
                 <span>${data[k].i}</span>
                 <b>${s}</b>
             </div>`).join('');
-        history.push('sub');
+        if(history[history.length-1] !== 'sub') history.push('sub');
         window.history.pushState(null, null, window.location.href);
     }
 
@@ -367,14 +387,14 @@
         document.getElementById('vip-publish-options').classList.add('hidden');
         isVipMode = false;
         loadPosts(s); 
-        history.push('feed');
+        if(history[history.length-1] !== 'feed') history.push('feed');
         window.history.pushState(null, null, window.location.href);
     }
 
     function openVipSection() {
         Swal.fire({
             title: 'قسم كبار التجار',
-            text: 'هذا القسم مختص بالتجارة الكبار. إذا وجدنا أنك تنشر بضاعة ليس عندك قد يتم حذف حسابك.',
+            text: 'هذا القسم مختص بالتجارة الكبار.',
             icon: 'warning',
             confirmButtonText: 'أوكي فهمت'
         }).then(() => {
@@ -385,7 +405,7 @@
             document.getElementById('vip-publish-options').classList.remove('hidden');
             document.getElementById('title-text').innerText = "عروض كبار التجار";
             loadVipPosts();
-            history.push('vip');
+            if(history[history.length-1] !== 'vip') history.push('vip');
             window.history.pushState(null, null, window.location.href);
         });
     }
@@ -444,7 +464,6 @@
         db.ref('users/'+i.uP).once('value', uSnap => {
             const uData = uSnap.val() || {};
             const statusLine = formatTime(uData.lastSeen);
-            const rCount = uData.ratingCount || 0;
             
             let vipUi = i.isVip ? `<div class="discount-badge">-${i.discount}%</div>` : '';
             let timerUi = i.isVip ? `<div class="timer-box" id="timer-${i.id}">جاري التحميل...</div>` : '';
@@ -481,15 +500,7 @@
                         <p>${i.d}</p>
                         ${actions}
                     </div>
-                    <div style="padding:10px; background:#f9f9f9">
-                        <div id="coms-${i.id}"></div>
-                        <div style="display:flex; gap:5px; margin-top:10px">
-                            <input id="ci-${i.id}" placeholder="اكتب تعليقك..." style="margin:0">
-                            <button onclick="addCom('${i.id}')" style="width:60px; background:var(--navy); color:white; border:none; border-radius:5px">ارسل</button>
-                        </div>
-                    </div>
                 </div>`);
-            getComs(i.id);
         });
     }
 
@@ -500,10 +511,8 @@
                 const data = s.val();
                 if(data && data.expiry) {
                     const diff = data.expiry - Date.now();
-                    if(diff <= 0) {
-                        el.innerHTML = "انتهى العرض";
-                        el.style.color = "red";
-                    } else {
+                    if(diff <= 0) { el.innerHTML = "انتهى العرض"; el.style.color = "red"; }
+                    else {
                         const h = Math.floor(diff/3600000);
                         const m = Math.floor((diff%3600000)/60000);
                         const s = Math.floor((diff%60000)/1000);
@@ -516,21 +525,12 @@
 
     function reportUser(phone) {
         if(phone === me.p) return;
-        Swal.fire({
-            title: 'تبليغ عن مستخدم',
-            text: 'هل أنت متأكد من البلاغ؟ البلاغات الكاذبة تعرضك للحظر',
-            icon: 'warning',
-            showCancelButton: true
-        }).then(r => {
+        Swal.fire({ title: 'تبليغ عن مستخدم', text: 'هل أنت متأكد من البلاغ؟', icon: 'warning', showCancelButton: true }).then(r => {
             if(r.isConfirmed) {
                 db.ref('users/'+phone+'/reports').transaction(c => (c || 0) + 1, (err, comm, snap) => {
                     const count = snap.val();
                     if(count >= 10) db.ref('users/'+phone).update({banned: true});
-                    else if(count === 5) {
-                        // إرسال تحذير (يمكن تطويرها كإشعار)
-                        console.log("تحذير للمستخدم");
-                    }
-                    Swal.fire('تم التبليغ', 'شكراً لمساعدتنا في الحفاظ على أمان السوق', 'success');
+                    Swal.fire('تم التبليغ', 'شكراً لمساعدتنا', 'success');
                 });
             }
         });
@@ -541,8 +541,7 @@
             db.ref('users/'+me.p).update({pic: userPic}).then(() => {
                 me.pic = userPic;
                 localStorage.setItem('user_sd', JSON.stringify(me));
-                Swal.fire('نجاح', 'تم تحديث الصورة الشخصية', 'success');
-                showTab('profile');
+                Swal.fire('نجاح', 'تم تحديث الصورة الشخصية بنجاح', 'success');
             });
         }
     }
@@ -585,7 +584,7 @@
             });
             area.scrollTop = area.scrollHeight;
         });
-        history.push('chat');
+        if(history[history.length-1] !== 'chat') history.push('chat');
         window.history.pushState(null, null, window.location.href);
     }
 
@@ -618,7 +617,7 @@
                 <button onclick="reportUser('${phone}')" style="background:red; color:white; border:none; padding:5px 10px; border-radius:5px">بلغ عن الحساب 🚩</button>
             `;
             loadPosts(null, 'my-posts', phone);
-            history.push('profile');
+            if(history[history.length-1] !== 'profile') history.push('profile');
             window.history.pushState(null, null, window.location.href);
         });
     }
@@ -633,22 +632,21 @@
         });
     }
 
-    function addCom(id) { const v = document.getElementById('ci-'+id).value; if(v) { db.ref('comments/'+id).push({n: me.n, t: v}); document.getElementById('ci-'+id).value=''; } }
-    function getComs(id) { db.ref('comments/'+id).on('value', s => { const b = document.getElementById('coms-'+id); if(!b) return; b.innerHTML=''; s.forEach(c => { b.innerHTML += `<div style="font-size:12px; margin-bottom:5px"><b>${c.val().n}:</b> ${c.val().t}</div>`; }); }); }
-
     function showTab(t) {
         if(t === 'vip') { openVipSection(); return; }
         hide(); document.getElementById(t+'-view').classList.remove('hidden');
         if(t === 'profile') {
             document.getElementById('my-info').innerHTML = `
-                <label for="p-pic-edit">
-                    <img id="p-preview-edit" src="${me.pic}" style="width:80px; height:80px; border-radius:50%; cursor:pointer; border:2px solid #orange">
-                </label>
-                <input type="file" id="p-pic-edit" class="hidden" accept="image/*" onchange="handleImg(this, 'user'); setTimeout(updateProfilePic, 500);">
-                <br><h3>${me.n}</h3><p>📍 ${me.st}</p>
-                <small>اضغط على الصورة لتغييرها</small>`;
+                <div class="profile-container">
+                    <img id="p-preview-edit" src="${me.pic}" style="width:100px; height:100px; border-radius:50%; border:3px solid var(--orange); object-fit: cover;">
+                    <label for="p-pic-edit" class="edit-pic-btn">📸</label>
+                </div>
+                <input type="file" id="p-pic-edit" class="hidden" accept="image/*" onchange="handleImg(this, 'user')">
+                <br><h3>${me.n}</h3><p>📍 ${me.st}</p>`;
             loadPosts(null, 'my-posts', me.p);
+            if(history[history.length-1] !== 'profile') history.push('profile');
         } else { renderHome(); history=['home']; document.getElementById('title-text').innerText="الرئيسية"; }
+        window.history.pushState(null, null, window.location.href);
     }
 
     function goBack() {
@@ -656,9 +654,10 @@
             history.pop(); 
             const l = history[history.length-1];
             if(l === 'home') { hide(); document.getElementById('home-view').classList.remove('hidden'); document.getElementById('title-text').innerText="الرئيسية"; }
-            else if(l === 'sub') openSub(curC);
-            else if(l === 'feed') openFeed(curC, curS);
-            else if(l === 'vip') openVipSection();
+            else if(l === 'sub') { hide(); document.getElementById('sub-view').classList.remove('hidden'); document.getElementById('title-text').innerText = curC; }
+            else if(l === 'feed') { hide(); document.getElementById('feed-view').classList.remove('hidden'); document.getElementById('title-text').innerText = curS; }
+            else if(l === 'vip') { hide(); document.getElementById('feed-view').classList.remove('hidden'); document.getElementById('title-text').innerText = "عروض كبار التجار"; }
+            else if(l === 'profile') { showTab('profile'); }
         } else {
             confirmExit();
         }
