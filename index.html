@@ -3,24 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>سوق السودان المتكامل 🇸🇩</title>
+    <title>سوق السودان المتكامل 🇸🇩 | SDM Token</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        :root { --navy: #131921; --orange: #febd69; --bg: #f0f2f5; --blue: #1a73e8; --green: #2ecc71; --red: #e74c3c; --gold: #ffd700; }
+        :root { --navy: #131921; --orange: #febd69; --bg: #f0f2f5; --blue: #1a73e8; --green: #2ecc71; --red: #e74c3c; --gold: #ffd700; --crypto: #627eea; }
         body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--bg); padding-bottom: 80px; direction: rtl; }
         .hidden { display: none !important; }
         header { background: var(--navy); padding: 15px; color: white; text-align: center; position: sticky; top: 0; z-index: 1000; display: flex; justify-content: space-between; align-items: center; }
         .nav-bar { background: #232f3e; color: white; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
         
+        /* شريط العملة الجديد */
+        .sdm-bar { background: linear-gradient(90deg, #131921, #1e3a8a); color: white; padding: 8px; text-align: center; font-size: 13px; border-bottom: 2px solid var(--gold); }
+        .sdm-link { color: var(--gold); text-decoration: none; font-weight: bold; border: 1px solid var(--gold); padding: 2px 8px; border-radius: 4px; margin-right: 5px; }
+
         .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px; }
         .card { background: white; border-radius: 12px; padding: 15px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; border: 1px solid #ddd; }
         .post { background: white; margin: 15px; border-radius: 15px; overflow: hidden; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         .sold-tag { position: absolute; top: 40%; left: 10%; transform: rotate(-15deg); background: var(--red); color: white; padding: 5px 15px; font-weight: bold; border-radius: 5px; z-index: 5; }
         input, select, textarea { width: 90%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 8px; }
         .btn-main { background: var(--blue); color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-crypto { background: var(--crypto); color: white; text-decoration: none; display: block; text-align: center; padding: 10px; border-radius: 8px; margin-top: 10px; font-weight: bold; }
         .btn-wa { background: var(--green); color: white; text-decoration: none; display: block; text-align: center; padding: 10px; border-radius: 8px; margin-top: 5px; font-weight: bold; }
         .vip-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px; background: #fffdeb; }
         .vip-card { background: white; border: 2px solid var(--gold); border-radius: 10px; padding: 8px; position: relative; }
@@ -29,10 +34,7 @@
         .bottom-tabs { position: fixed; bottom: 0; width: 100%; background: white; display: flex; border-top: 1px solid #ddd; padding: 10px 0; z-index: 1000; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); }
         .tab-btn { flex: 1; text-align: center; font-size: 14px; cursor: pointer; color: #555; font-weight: bold; transition: 0.3s; }
         .tab-btn i { font-size: 20px; display: block; margin-bottom: 2px; color: var(--navy); }
-        .tab-btn:hover { color: var(--blue); }
         .profile-pic { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid var(--blue); margin-bottom: 10px; }
-        .badge-good { background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
-        .badge-pro { background: #fff3cd; color: #856404; padding: 2px 8px; border-radius: 10px; font-size: 12px; border: 1px solid gold; }
     </style>
 </head>
 <body onload="checkAuth()">
@@ -66,6 +68,11 @@
         <span id="my-stars" class="stars"></span>
     </header>
 
+    <div class="sdm-bar">
+        💰 عملة السودان ماركت (SDM) حية الآن! 
+        <a href="https://pump.fun/BWK9RnTo4XWvM66pQ61nNUnCid7tL6R65UvLhM1Bv7sN" target="_blank" class="sdm-link">شراء العملة 🚀</a>
+    </div>
+
     <div id="admin-panel" class="hidden" style="background:#ffebee; padding:15px; border:2px solid red; margin:10px; border-radius:10px;">
         <h4 style="margin:0; color:red;">إدارة محمد عبدالمعطي</h4>
         <div id="admin-list"></div>
@@ -87,6 +94,11 @@
 </div>
 
 <script>
+    // الرابط الجديد الخاص بعملتك على Pump.fun
+    const SDM_URL = "https://pump.fun/BWK9RnTo4XWvM66pQ61nNUnCid7tL6R65UvLhM1Bv7sN";
+    // عنوان العقد (CA) الخاص بك
+    const SDM_CA = "BWK9RnTo4XWvM66pQ61nNUnCid7tL6R65UvLhM1Bv7sN";
+
     const firebaseConfig = { databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com" };
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
@@ -323,145 +335,4 @@
         db.ref('users/'+phone).once('value', snap => {
             const u = snap.val();
             const area = document.getElementById('main-view');
-            let statusLabel = u.rating >= 100 ? ' <span class="badge-pro">مميز</span>' : (u.rating >= 50 ? ' <span class="badge-good">جيد</span>' : '');
-            const stars = '⭐'.repeat(Math.min(5, Math.floor(u.rating/10) || 1));
-            
-            let actionBtn = u.p === me.p ? 
-                `<input type="file" id="change-pic" style="display:none" onchange="updateProfilePic(this)">
-                 <button onclick="document.getElementById('change-pic').click()" class="btn-main" style="background:var(--orange)">تغيير صورة الملف الشخصي</button>` : 
-                `<a href="https://wa.me/249${u.p}" class="btn-wa">مراسلة فورية</a>`;
-
-            area.innerHTML = `<div style="text-align:center; padding:20px; background:white; border-bottom:2px solid var(--blue);">
-                <img src="${u.pic || 'https://via.placeholder.com/150'}" class="profile-pic" id="p-img"><br>
-                <div class="${u.online?'online-dot':''}"></div> <h3>${u.n}</h3>
-                <p class="stars">${stars} (${u.rating} تقييم) ${statusLabel}</p>
-                ${actionBtn}
-            </div><div id="u-posts"></div>`;
-            db.ref('posts').once('value', ps => {
-                const list = document.getElementById('u-posts');
-                ps.forEach(c => { if(c.val().uP === phone) renderCard(c.val(), list, c.key, false); });
-            });
-        });
-    }
-
-    function updateProfilePic(input) {
-        const r = new FileReader();
-        r.readAsDataURL(input.files[0]);
-        r.onload = e => {
-            const newImg = e.target.result;
-            db.ref('users/'+me.p).update({ pic: newImg }).then(() => {
-                document.getElementById('p-img').src = newImg;
-                Swal.fire('تم', 'تم تحديث الصورة الشخصية بنجاح', 'success');
-            });
-        };
-    }
-
-    function loadAdmin() {
-        db.ref('vip_reqs').on('value', s => {
-            const l = document.getElementById('admin-list'); if(!l) return; l.innerHTML = "";
-            s.forEach(c => {
-                const r = c.val();
-                l.innerHTML += `<div style="background:white; margin:5px; padding:10px; border-radius:10px;">
-                    <b>${r.uN}</b> (باقة: ${r.plan} يوم)<br><img src="${r.img}" width="150"><br>
-                    <button class="btn-main" style="background:var(--green); width:45%" onclick="approve('${r.uP}',${r.plan})">موافق</button>
-                    <button class="btn-main" style="background:var(--red); width:45%" onclick="reject('${r.uP}')">رفض</button>
-                </div>`;
-            });
-        });
-    }
-
-    function approve(p, d) { 
-        db.ref('users/'+p).update({ vipStatus:'active', vipExp:Date.now()+(d*86400000) }); 
-        db.ref('vip_reqs/'+p).remove();
-        Swal.fire('الإدارة', 'تمت الموافقة يمكنك النشر في الvip', 'success');
-    }
-    function reject(p) { 
-        db.ref('vip_reqs/'+p).remove(); 
-        db.ref('users/'+p).update({ vipStatus:'none' }); 
-        Swal.fire('الإدارة', 'لم يتم الموافقة', 'error');
-    }
-
-    function manage(k, s, v) { 
-        Swal.fire({title:'إدارة الإعلان', showDenyButton:true, confirmButtonText:s?'إلغاء البيع':'تم البيع', denyButtonText:'حذف'}).then(r => {
-            const p = v ? 'vip_posts/' : 'posts/';
-            if(r.isConfirmed) db.ref(p+k).update({sold:!s}); else if(r.isDenied) db.ref(p+k).remove();
-        });
-    }
-
-    function rate(p) { 
-        if(p===me.p) return;
-        db.ref('ratings/'+p+'/'+me.p).once('value', snap => {
-            if(snap.exists()) {
-                Swal.fire('تنبيه','لقد قمت بتقييم هذا الشخص مسبقاً','info');
-            } else {
-                db.ref('users/'+p+'/rating').transaction(c => (c||0)+1);
-                db.ref('ratings/'+p+'/'+me.p).set(true);
-                Swal.fire('شكراً','تم تقييم التاجر بنجاح','success');
-            }
-        });
-    }
-
-    function reportPost(targetPhone, postKey) {
-        Swal.fire({
-            title: 'هل تريد الإبلاغ عن هذا المنشور؟',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'نعم، بلاغ'
-        }).then(res => {
-            if(res.isConfirmed) {
-                db.ref('users/'+targetPhone+'/reports').transaction(c => {
-                    let newCount = (c || 0) + 1;
-                    if(newCount >= 20) {
-                        db.ref('users/'+targetPhone).update({ status: 'banned', banUntil: Date.now() + (7 * 24 * 60 * 60 * 1000) });
-                    }
-                    return newCount;
-                });
-                Swal.fire('تم','تم تسجيل البلاغ وسوف يتم مراجعته','success');
-            }
-        });
-    }
-
-    function addCom(k) { 
-        const i=document.getElementById('i-'+k); if(!i.value) return;
-        db.ref('posts/'+k+'/comments').push({uN:me.n, txt:i.value}); i.value=""; 
-    }
-
-    function encode(i) { const r=new FileReader(); r.readAsDataURL(i.files[0]); r.onload=e=>tempImg=e.target.result; }
-    
-    function encodeProfile(i) { 
-        const r=new FileReader(); 
-        r.readAsDataURL(i.files[0]); 
-        r.onload=e=>{
-            profileImg=e.target.result;
-            document.getElementById('pic-preview').innerHTML = `<img src="${profileImg}" style="width:80px; height:80px; border-radius:50%; margin-bottom:10px;">`;
-        }; 
-    }
-
-    function vipReq() { 
-        const plan = document.getElementById('v-plan').value;
-        const f=document.getElementById('vrec').files[0]; 
-        if(!plan) return Swal.fire('تنبيه','الرجاء اختيار باقة أولاً','warning');
-        if(!f) return Swal.fire('تنبيه','الرجاء إرفاق صورة الإيصال','warning');
-        
-        Swal.fire({
-            title: 'تأكيد الطلب',
-            text: 'هل قمت بالدفع للتاجر وتريد إرسال الطلب؟',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'موافق'
-        }).then(res => {
-            if(res.isConfirmed) {
-                const r=new FileReader(); r.readAsDataURL(f); 
-                r.onload=()=> {
-                    db.ref('vip_reqs/'+me.p).set({uN:me.n, uP:me.p, img:r.result, plan: plan});
-                    db.ref('users/'+me.p).update({ vipStatus: 'pending' });
-                    Swal.fire('تم','تم إرسال الإيصال للإدارة، انتظر الموافقة','success');
-                }
-            }
-        });
-    }
-
-    function toggleAuth(l) { document.getElementById('log-box').classList.toggle('hidden',!l); document.getElementById('reg-box').classList.toggle('hidden',l); }
-</script>
-</body>
-</html>
+         
