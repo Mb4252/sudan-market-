@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -335,4 +336,151 @@
         db.ref('users/'+phone).once('value', snap => {
             const u = snap.val();
             const area = document.getElementById('main-view');
-         
+            let statusLabel = u.rating >= 100 ? ' <span class="badge-pro">مميز</span>' : (u.rating >= 50 ? ' <span class="badge-good">جيد</span>' : '');
+            const stars = '⭐'.repeat(Math.min(5, Math.floor(u.rating/10) || 1));
+            
+            area.innerHTML = `<div style="text-align:center; padding:20px; background:white; border-bottom:2px solid var(--blue);">
+                <img src="${u.pic || 'https://via.placeholder.com/150'}" class="profile-pic" id="p-img"><br>
+                <div class="${u.online?'online-dot':''}"></div> <h3>${u.n}</h3>
+                <p class="stars">${stars} (${u.rating} تقييم) ${statusLabel}</p>
+                
+                <div style="background:#f9f9f9; padding:10px; border-radius:10px; border:1px dashed #627eea; margin:10px;">
+                    <small style="color:#666">العملة الرقمية الرسمية للمتجر (SDM)</small><br>
+                    <a href="${SDM_URL}" target="_blank" class="btn-crypto">شراء SDM الآن 🚀</a>
+                    <p style="font-size:10px; color:#999; word-break:break-all; margin-top:5px;">CA: ${SDM_CA}</p>
+                </div>
+
+                ${u.p === me.p ? 
+                    `<input type="file" id="change-pic" style="display:none" onchange="updateProfilePic(this)">
+                     <button onclick="document.getElementById('change-pic').click()" class="btn-main" style="background:var(--orange)">تغيير صورة الملف الشخصي</button>` : 
+                    `<a href="https://wa.me/249${u.p}" class="btn-wa">مراسلة فورية</a>`
+                }
+            </div><div id="u-posts"></div>`;
+            db.ref('posts').once('value', ps => {
+                const list = document.getElementById('u-posts');
+                ps.forEach(c => { if(c.val().uP === phone) renderCard(c.val(), list, c.key, false); });
+            });
+        });
+    }
+
+    function updateProfilePic(input) {
+        const r = new FileReader();
+        r.readAsDataURL(input.files[0]);
+        r.onload = e => {
+            const newImg = e.target.result;
+            db.ref('users/'+me.p).update({ pic: newImg }).then(() => {
+                document.getElementById('p-img').src = newImg;
+                Swal.fire('تم', 'تم تحديث الصورة الشخصية بنجاح', 'success');
+            });
+        };
+    }
+
+    function loadAdmin() {
+        db.ref('vip_reqs').on('value', s => {
+            const l = document.getElementById('admin-list'); if(!l) return; l.innerHTML = "";
+            s.forEach(c => {
+                const r = c.val();
+                l.innerHTML += `<div style="background:white; margin:5px; padding:10px; border-radius:10px;">
+                    <b>${r.uN}</b> (باقة: ${r.plan} يوم)<br><img src="${r.img}" width="150"><br>
+                    <button class="btn-main" style="background:var(--green); width:45%" onclick="approve('${r.uP}',${r.plan})">موافق</button>
+                    <button class="btn-main" style="background:var(--red); width:45%" onclick="reject('${r.uP}')">رفض</button>
+                </div>`;
+            });
+        });
+    }
+
+    function approve(p, d) { 
+        db.ref('users/'+p).update({ vipStatus:'active', vipExp:Date.now()+(d*86400000) }); 
+        db.ref('vip_reqs/'+p).remove();
+        Swal.fire('الإدارة', 'تمت الموافقة يمكنك النشر في الvip', 'success');
+    }
+    function reject(p) { 
+        db.ref('vip_reqs/'+p).remove(); 
+        db.ref('users/'+p).update({ vipStatus:'none' }); 
+        Swal.fire('الإدارة', 'لم يتم الموافقة', 'error');
+    }
+
+    function manage(k, s, v) { 
+        Swal.fire({title:'إدارة الإعلان', showDenyButton:true, confirmButtonText:s?'إلغاء البيع':'تم البيع', denyButtonText:'حذف'}).then(r => {
+            const p = v ? 'vip_posts/' : 'posts/';
+            if(r.isConfirmed) db.ref(p+k).update({sold:!s}); else if(r.isDenied) db.ref(p+k).remove();
+        });
+    }
+
+    function rate(p) { 
+        if(p===me.p) return;
+        db.ref('ratings/'+p+'/'+me.p).once('value', snap => {
+            if(snap.exists()) {
+                Swal.fire('تنبيه','لقد قمت بتقييم هذا الشخص مسبقاً','info');
+            } else {
+                db.ref('users/'+p+'/rating').transaction(c => (c||0)+1);
+                db.ref('ratings/'+p+'/'+me.p).set(true);
+                Swal.fire('شكراً','تم تقييم التاجر بنجاح','success');
+            }
+        });
+    }
+
+    function reportPost(targetPhone, postKey) {
+        Swal.fire({
+            title: 'هل تريد الإبلاغ عن هذا المنشور؟',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، بلاغ'
+        }).then(res => {
+            if(res.isConfirmed) {
+                db.ref('users/'+targetPhone+'/reports').transaction(c => {
+                    let newCount = (c || 0) + 1;
+                    if(newCount >= 20) {
+                        db.ref('users/'+targetPhone).update({ status: 'banned', banUntil: Date.now() + (7 * 24 * 60 * 60 * 1000) });
+                    }
+                    return newCount;
+                });
+                Swal.fire('تم','تم تسجيل البلاغ وسوف يتم مراجعته','success');
+            }
+        });
+    }
+
+    function addCom(k) { 
+        const i=document.getElementById('i-'+k); if(!i.value) return;
+        db.ref('posts/'+k+'/comments').push({uN:me.n, txt:i.value}); i.value=""; 
+    }
+
+    function encode(i) { const r=new FileReader(); r.readAsDataURL(i.files[0]); r.onload=e=>tempImg=e.target.result; }
+    
+    function encodeProfile(i) { 
+        const r=new FileReader(); 
+        r.readAsDataURL(i.files[0]); 
+        r.onload=e=>{
+            profileImg=e.target.result;
+            document.getElementById('pic-preview').innerHTML = `<img src="${profileImg}" style="width:80px; height:80px; border-radius:50%; margin-bottom:10px;">`;
+        }; 
+    }
+
+    function vipReq() { 
+        const plan = document.getElementById('v-plan').value;
+        const f=document.getElementById('vrec').files[0]; 
+        if(!plan) return Swal.fire('تنبيه','الرجاء اختيار باقة أولاً','warning');
+        if(!f) return Swal.fire('تنبيه','الرجاء إرفاق صورة الإيصال','warning');
+        
+        Swal.fire({
+            title: 'تأكيد الطلب',
+            text: 'هل قمت بالدفع للتاجر وتريد إرسال الطلب؟',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'موافق'
+        }).then(res => {
+            if(res.isConfirmed) {
+                const r=new FileReader(); r.readAsDataURL(f); 
+                r.onload=()=> {
+                    db.ref('vip_reqs/'+me.p).set({uN:me.n, uP:me.p, img:r.result, plan: plan});
+                    db.ref('users/'+me.p).update({ vipStatus: 'pending' });
+                    Swal.fire('تم','تم إرسال الإيصال للإدارة، انتظر الموافقة','success');
+                }
+            }
+        });
+    }
+
+    function toggleAuth(l) { document.getElementById('log-box').classList.toggle('hidden',!l); document.getElementById('reg-box').classList.toggle('hidden',l); }
+</script>
+</body>
+</html>
