@@ -743,45 +743,48 @@ function renderGames(area) {
         "تكنولوجيا SDM": {i:"microchip", s:["تعدين","استشارات تقنية"]},
         "منوعات": {i:"box-open", s:["اغراض اخرى"]}
     };
-function calculateItems() {
-    const sdmInput = document.getElementById('sdm-input');
-    const display = document.getElementById('items-count');
-    const gameSelect = document.getElementById('game-selection');
-    
-    if (!sdmInput || !display || !gameSelect) return;
-
-    const sdm = parseFloat(sdmInput.value) || 0;
-    const type = gameSelect.value;
-    let res = 0;
-
-    if (type === "ff") {
-        // حساب فري فاير (18 حبة = 530 جوهرة)
-        res = Math.floor(sdm * 29.45); 
-        display.innerText = res + " جوهرة فري فاير";
-    } else {
-        // حساب ببجي (18 حبة = 325 شدة UC)
-        res = Math.floor(sdm * 18.06); 
-        display.innerText = res + " شدة ببجي (UC)";
-    }
-}
-
 function sendOrderToOwner() {
-    const sdm = document.getElementById('sdm-input').value;
+    const sdmInput = document.getElementById('sdm-input');
     const id = document.getElementById('player-id').value;
     const resultText = document.getElementById('items-count').innerText;
     const game = document.getElementById('game-selection').value === "ff" ? "فري فاير" : "ببجي";
+    
+    const sdmAmount = parseFloat(sdmInput.value) || 0;
 
-    if(sdm < 18) {
-        return Swal.fire('تنبيه', 'أقل كمية للشحن هي 18 حبة SDM لضمان أفضل سعر للدولار', 'info');
+    // 1. التحقق من الحد الأدنى (18 حبة)
+    if(sdmAmount < 18) {
+        return Swal.fire('تنبيه', 'أقل كمية للشحن هي 18 حبة SDM', 'info');
     }
+
+    // 2. التحقق من وجود رصيد كافٍ في المحفظة (me.b هو الرصيد في كودك)
+    if (!me || me.b < sdmAmount) {
+        return Swal.fire({
+            icon: 'error',
+            title: 'عذراً.. رصيدك غير كافٍ',
+            text: `رصيدك الحالي هو ${me ? me.b : 0} SDM، أنت تحتاج إلى ${sdmAmount} حبة لإتمام العملية.`,
+            confirmButtonColor: '#d33'
+        });
+    }
+
     if(!id) {
         return Swal.fire('خطأ', 'يرجى إدخال معرف اللاعب (ID)', 'error');
     }
 
-    const msg = `طلب شحن جديد (عبر بينانس):\n🎮 اللعبة: ${game}\n🆔 الـ ID: ${id}\n💰 الكمية: ${sdm} SDM\n💎 المستحق: ${resultText}`;
-    
-    // رابط الواتساب المباشر لرقمك
-    window.location.href = "https://wa.me/249903245198?text=" + encodeURIComponent(msg);
+    // 3. خصم مبدئي من الواجهة لتعزيز المصداقية أمام المستخدم
+    // ملاحظة: هذا خصم ظاهري، يجب عليك خصمه فعلياً من لوحة الإدارة عند استلام الطلب
+    Swal.fire({
+        title: 'تأكيد الطلب',
+        text: `سيتم خصم ${sdmAmount} حبة من رصيدك، هل أنت متأكد؟`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، اشحن الآن',
+        cancelButtonText: ' إلغاء'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const msg = `طلب شحن جديد (تم التحقق من الرصيد):\n🎮 اللعبة: ${game}\n🆔 الـ ID: ${id}\n💰 الكمية الخصومة: ${sdmAmount} SDM\n💎 المستحق: ${resultText}`;
+            window.location.href = "https://wa.me/249903245198?text=" + encodeURIComponent(msg);
+        }
+    });
 }
 </script>
 </body>
