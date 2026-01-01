@@ -813,25 +813,36 @@ function sendOrderToOwner() {
         }
     });
 }
-
 function processOrder(key, action, phone, amount) {
     const userRef = db.ref('users/' + phone);
     userRef.once('value').then(snap => {
         const d = snap.val() || {};
+        const currentFrozen = Number(d.frozenSDM || 0);
+        const currentBalance = Number(d.sdmBalance || 0);
+        const orderAmount = Number(amount);
+
         if (action === 'approve') {
-            userRef.update({ frozenSDM: Math.max(0, (d.frozenSDM || 0) - amount) });
-            db.ref('game_orders/' + key).update({ status: 'completed' });
-            Swal.fire('تم التأكيد بنجاح', '', 'success');
-        } else {
+            // خصم من الرصيد المجمد عند النجاح
             userRef.update({ 
-                sdmBalance: (d.sdmBalance || 0) + amount,
-                frozenSDM: Math.max(0, (d.frozenSDM || 0) - amount)
+                frozenSDM: Math.max(0, currentFrozen - orderAmount) 
+            }).then(() => {
+                db.ref('game_orders/' + key).update({ status: 'completed' });
+                Swal.fire('تم التأكيد ✅', 'تم تنفيذ الطلب بنجاح', 'success');
             });
-            db.ref('game_orders/' + key).remove();
-            Swal.fire('تم الرفض وإرجاع الرصيد', '', 'info');
+        } else {
+            // إعادة الرصيد للمحفظة وتصفير المجمد عند الرفض
+            userRef.update({
+                sdmBalance: currentBalance + orderAmount,
+                frozenSDM: Math.max(0, currentFrozen - orderAmount)
+            }).then(() => {
+                db.ref('game_orders/' + key).remove();
+                Swal.fire('تم الرفض ❌', 'أعيد رصيد SDM للمستخدم', 'info');
+            });
         }
     });
 }
-</script> 
+
+</script>
 </body>
 </html>
+
