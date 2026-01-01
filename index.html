@@ -585,49 +585,49 @@ function renderGames(area) {
 html += '</div>';
 area.innerHTML = html;                     
 function gameCharge(game) {
- القوس الأهم: إغلاق دالة renderGames               
-        Swal.fire({
-            title: `شحن ${game}`,
-            html: `<input id="g-id" class="swal2-input" placeholder="ID اللاعب"><input id="g-qty" type="number" class="swal2-input" placeholder="الكمية">`,
-            showCancelButton: true,
-            confirmButtonText: 'إرسال طلب'
-        }).then(res => {
-            if(!res.isConfirmed) return;
-            const id = document.getElementById('g-id').value, q = document.getElementById('g-qty').value;
-            const cost = Math.ceil(q / 10); 
-            if(me.sdmBalance < cost) return Swal.fire('الرصيد غير كافٍ','','error');
-            
-            db.ref('users/'+me.p).update({ sdmBalance: me.sdmBalance - cost });
-            db.ref('game_orders').push({ uN: me.n, uP: me.p, game, gameID: id, qty: q, cost, date: Date.now() });
-            Swal.fire('تم استلام الطلب','سيتم التنفيذ قريباً','success');
-        });
-    }
+    Swal.fire({
+        title: `شحن ${game}`,
+        html: `<input id="g-id" class="swal2-input" placeholder="ID اللاعب"><input id="g-qty" type="number" class="swal2-input" placeholder="الكمية">`,
+        showCancelButton: true,
+        confirmButtonText: 'إرسال الطلب'
+    }).then(res => {
+        if (!res.isConfirmed) return;
+        const id = document.getElementById('g-id').value, q = document.getElementById('g-qty').value;
+        const cost = Math.ceil(q / 10);
+        if (me.sdmBalance < cost) return Swal.fire('الرصيد غير كافٍ', '', 'error');
 
-    function renderVip(area) {
-        if(me.vipStatus === 'active') {
-            area.innerHTML = `
-                <div class="publish-container">
-                    <h4 style="color:var(--gold)">💎 نشر عرض VIP</h4>
-                    <input id="v-t" placeholder="عنوان العرض">
-                    <input id="v-pr" type="number" placeholder="السعر">
-                    <input id="v-wa" type="number" placeholder="واتساب">
-                    <textarea id="v-d" placeholder="تفاصيل العرض..."></textarea>
-                    <input type="file" onchange="encode(this, 'post')">
-                    <button class="btn-main" style="background:var(--gold); color:black" onclick="publish('vip_posts')">نشر الآن</button>
-                </div>`;
-        } else {
-            area.innerHTML = `
-                <div style="padding:20px; text-align:center;">
-                    <i class="fas fa-crown" style="font-size:50px; color:var(--gold)"></i>
-                    <h3>VIP</h3>
-                    <p>رصيدك: ${me.sdmBalance} SDM</p>
-                    <div class="grid">
-                        <div class="card" onclick="subVip(1, 1)">يوم (1 SDM)</div>
-                        <div class="card" onclick="subVip(7, 7)">أسبوع (7 SDM)</div>
-                    </div>
-                </div>`;
-        }
+        db.ref('users/' + me.p).update({ sdmBalance: me.sdmBalance - cost });
+        db.ref('game_orders').push({ uN: me.n, uP: me.p, game, gameID: id, qty: q, cost, date: Date.now() });
+        Swal.fire('تم استلام الطلب، سيتم التنفيذ قريباً', '', 'success');
+    });
+}
+
+function renderVipArea(area) {
+    if (me.vipStatus === 'active') {
+        area.innerHTML = `
+            <div class="publish-container">
+                <h4 style="color:var(--gold);">💎 نشر عرض VIP</h4>
+                <input id="v-t" placeholder="عنوان العرض">
+                <input id="v-pr" type="number" placeholder="السعر">
+                <input id="v-wa" type="number" placeholder="واتساب">
+                <textarea id="v-d" placeholder="تفاصيل العرض"></textarea>
+                <input type="file" onchange="encode(this, 'post')">
+                <button class="btn-main" style="background:var(--gold); color:black;" onclick="publish('vip_posts')">نشر الآن في الـ VIP</button>
+            </div>`;
+    } else {
+        area.innerHTML = `
+            <div style="padding:20px; text-align:center;">
+                <i class="fas fa-crown" style="font-size:50px; color:var(--gold);"></i>
+                <h3>اشتراك VIP</h3>
+                <p>رصيدك الحالي: ${me.sdmBalance} SDM</p>
+                <div class="grid">
+                    <div class="card" onclick="subVip(1, 1)">يوم (1 SDM)</div>
+                    <div class="card" onclick="subVip(7, 7)">أسبوع (7 SDM)</div>
+                </div>
+            </div>`;
     }
+}
+
 
     async function subVip(d, c) {
         if(me.sdmBalance < c) return Swal.fire('عذراً','رصيدك لا يكفي','error');
