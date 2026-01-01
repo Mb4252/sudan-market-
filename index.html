@@ -555,15 +555,13 @@ function renderGames(area) {
                 <a href="https://www.midasbuy.com" target="_blank" style="font-size:12px; color:blue; text-decoration:underline;">موقع ببجي الرسمي</a>
             </div>
         `;
-    }    // إضافة لوحة عرض الطلبات للمطور - سطر 558
-    html += `
+       html += `
         <div style="margin-top:20px; border-top:2px solid #eee; padding-top:10px;">
             <h4 style="color:red; font-size:14px;">🛠 طلبات الشحن المعلقة:</h4>
             <div id="admin-orders-list"></div>
         </div>
     `;
 
-    // كود جلب الطلبات من قاعدة البيانات
     db.ref('game_orders').orderByChild('status').equalTo('pending').on('value', snap => {
         let h = '';
         snap.forEach(c => {
@@ -573,16 +571,17 @@ function renderGames(area) {
                     <p style="font-size:12px;">👤 <b>اللاعب:</b> ${o.uN} (${o.uP})</p>
                     <p style="font-size:12px;">🎮 <b>الطلب:</b> ${o.reward} (ID: ${o.playerID})</p>
                     <div style="display:flex; gap:10px; margin-top:10px;">
-                        <button onclick="processOrder('${c.key}', 'approve', '${o.uP}', ${o.amount})" style="background:green; color:white; border:none; padding:8px; border-radius:8px; flex:1; font-weight:bold;">موافق ✅</button>
-                        <button onclick="processOrder('${c.key}', 'reject', '${o.uP}', ${o.amount})" style="background:red; color:white; border:none; padding:8px; border-radius:8px; flex:1; font-weight:bold;">رفض ❌</button>
+                        <button onclick="processOrder('${c.key}', 'approve', '${o.uP}', ${o.amount})" style="background:green; color:white; border:none; padding:8px; border-radius:8px; flex:1; font-weight:bold; cursor:pointer;">موافق ✅</button>
+                        <button onclick="processOrder('${c.key}', 'reject', '${o.uP}', ${o.amount})" style="background:red; color:white; border:none; padding:8px; border-radius:8px; flex:1; font-weight:bold; cursor:pointer;">رفض ❌</button>
                     </div>
                 </div>
             `;
         });
         const listDiv = document.getElementById('admin-orders-list');
-        if(listDiv) listDiv.innerHTML = h || '<p style="text-align:center; color:#999; font-size:12px;">لا توجد طلبات معلقة حالياً</p>';
-    });
-
+        if(listDiv) listDiv.innerHTML = h || '<p style="text-align:center; color:#999; font-size:12px;">لا توجد طلبات</p>';
+    }); }    // إضافة لوحة عرض الطلبات للمطور - سطر 558
+    html += `
+    
     html += `</div>`; // إغلاق الحاوية الأساسية
     area.innerHTML = html;
 }
