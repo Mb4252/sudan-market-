@@ -821,18 +821,15 @@ function gameCharge(game) {
                 uN: me.n, uP: me.p, game: game, playerID: id,
                 amount: sdmAmount, reward: resText, status: 'pending'
             });
-            Swal.fire('تم الإرسال', 'بانتظار موافقة المطور..', 'success');
-                        }); // إغلاق d.ref.push
-    }); // إغلاق Swal.then
-} // إغلاق دالة sendOrderToOwner
+                    });
+    });
+}
 
-// دالة معالجة الطلبات - تضمن شفافية وأمان عملة SDM في السودان
 function processOrder(key, action, phone, amount) {
     const userRef = db.ref('users/' + phone);
     userRef.once('value').then(snap => {
         const d = snap.val() || {};
         if (action === 'approve') {
-            // تأكيد الشحن وسحب الرصيد من المجمد
             userRef.update({ 
                 frozenSDM: Math.max(0, (d.frozenSDM || 0) - amount) 
             }).then(() => {
@@ -840,7 +837,6 @@ function processOrder(key, action, phone, amount) {
                 Swal.fire('تم بنجاح ✅', 'تم تأكيد الشحن وسحب الرصيد.', 'success');
             });
         } else {
-            // رفض الطلب وإعادة الرصيد للمستخدم فوراً
             userRef.update({ 
                 sdmBalance: (d.sdmBalance || 0) + amount, 
                 frozenSDM: Math.max(0, (d.frozenSDM || 0) - amount) 
@@ -852,6 +848,6 @@ function processOrder(key, action, phone, amount) {
     });
 }
 </script>
-
 </body>
 </html>
+
