@@ -821,15 +821,13 @@ area.innerHTML = html; // السطر المنقذ الذي سيعرض الصفح
                 amount: sdmAmount, reward: resText, status: 'pending'
             });
             Swal.fire('تم الإرسال', 'بانتظار موافقة المطور..', 'success');
-        }
-    });
-}// دالة معالجة الطلبات - تضمن أمان ومصداقية مشروع SDM
+        }); // إغلاق دالة sendOrderToOwner (السطر 825)
+
 function processOrder(key, action, phone, amount) {
     const userRef = db.ref('users/' + phone);
     userRef.once('value').then(snap => {
-        const d = snap.val();
+        const d = snap.val() || {};
         if (action === 'approve') {
-            // سحب الرصيد من المجمد نهائياً بعد تأكدك من الشحن اليدوي
             userRef.update({ 
                 frozenSDM: Math.max(0, (d.frozenSDM || 0) - amount) 
             }).then(() => {
@@ -837,17 +835,17 @@ function processOrder(key, action, phone, amount) {
                 Swal.fire('تم بنجاح ✅', 'تم تأكيد الشحن وسحب الرصيد.', 'success');
             });
         } else {
-            // إعادة الرصيد لمحفظة المستخدم في حال رفض الطلب
             userRef.update({ 
                 sdmBalance: (d.sdmBalance || 0) + amount, 
                 frozenSDM: Math.max(0, (d.frozenSDM || 0) - amount) 
             }).then(() => {
                 db.ref('game_orders/' + key).remove();
-                Swal.fire('تم الرفض ❌', 'أُعيد الرصيد لمحفظة المستخدم فوراً.', 'info');
+                Swal.fire('تم الرفض ❌', 'أُعيد الرصيد لمحفظة المستخدم.', 'info');
             });
         }
     });
-}
+}}
+
 </script>
 </body>
 </html>
