@@ -520,19 +520,48 @@
             document.getElementById('rec-name').innerText = s.exists() ? "✅ مستخدم موثوق: " + s.val().n : "❌ الهاتف غير مسجل";
         } else { document.getElementById('rec-name').innerText = ""; }
     }
+function renderGames(area) {
+    // الكود الأساسي للمتجر لجميع المستخدمين
+    let html = `
+        <div class="publish-container" style="text-align:center;">
+            <h4 style="color: var(--navy);">🎮 متجر SDM للشحن الذكي</h4>
+            <p style="font-size: 11px; color: #666;">سعر الحبة = 1000 ج.س</p>
+            
+            <select id="game-selection" onchange="calculateItems()" style="width:100%; padding:12px; margin-bottom:10px; border-radius:10px;">
+                <option value="ff">جواهر فري فاير (1 حبة = 100)</option>
+                <option value="pubg">شدات ببجي (1.5 حبة = 60)</option>
+            </select>
 
-    function renderGames(area) {
-        area.innerHTML = `
-            <div style="padding:15px; text-align:center;">
-                <h2 style="color:var(--navy); margin-bottom:20px;">شحن جواهر الألعاب 💎</h2>
-                <div class="card" onclick="gameCharge('Free Fire')" style="margin-bottom:15px; padding:25px;">
-                    <i class="fas fa-fire" style="color:#ff4b2b; font-size:30px;"></i> <b>فري فاير</b>
-                </div>
-                <div class="card" onclick="gameCharge('PUBG')" style="padding:25px;">
-                    <i class="fas fa-crosshairs" style="color:#fbc02d; font-size:30px;"></i> <b>ببجي</b>
-                </div>
-            </div>`;
+            <input type="number" id="sdm-input" oninput="calculateItems()" placeholder="كم حبة SDM ستدفع؟" style="width:100%; padding:12px; margin-bottom:10px; border-radius:10px;">
+
+            <div id="result-display" style="background:#f0f7ff; padding:15px; border-radius:12px; margin-bottom:10px; font-weight:bold; color:var(--navy);">
+                ستحصل تلقائياً على: <span id="items-count">0</span>
+            </div>
+
+            <input type="text" id="player-id" placeholder="أدخل ID اللاعب" style="width:100%; padding:12px; margin-bottom:15px; border-radius:10px;">
+
+            <button onclick="sendOrderToOwner()" class="btn-main" style="background:#25d366; color:white; border:none; width:100%;">
+                إرسال طلب الشحن (0903245198)
+            </button>
+    `;
+
+    // إضافة روابط المطور: تظهر فقط إذا كان المستخدم هو الأدمن
+    // نستخدم ADMIN_PH الموجود في السطر 122 من كودك
+    if (me && me.p === ADMIN_PH) { 
+        html += `
+            <div style="margin-top:20px; padding:10px; border:1px dashed red; border-radius:10px; background:#fff5f5;">
+                <p style="font-size:11px; color:red; font-weight:bold;">🛠 لوحة شحن المطور:</p>
+                <a href="https://shop2game.com" target="_blank" style="font-size:12px; color:blue; text-decoration:underline;">موقع فري فاير الرسمي</a> | 
+                <a href="https://www.midasbuy.com" target="_blank" style="font-size:12px; color:blue; text-decoration:underline;">موقع ببجي الرسمي</a>
+            </div>
+        `;
     }
+
+    html += `</div>`; // إغلاق الحاوية الأساسية
+    area.innerHTML = html;
+}
+  
+    
 
     function gameCharge(game) {
         Swal.fire({
