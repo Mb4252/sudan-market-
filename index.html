@@ -475,45 +475,35 @@
         });
     }
 
-    function showTransfer() {
-        Swal.fire({
-            title: 'تحويل سريع وآمن',
-            html: `<input id="tr-p" class="swal2-input" placeholder="رقم هاتف المستلم" oninput="checkRecipient(this.value)"><div id="rec-name" style="color:var(--green); font-weight:bold; margin-top:-5px; font-size:14px;"></div><input id="tr-a" type="number" class="swal2-input" placeholder="الكمية المراد تحويلها">`,
-            showCancelButton: true,
-            confirmButtonText: 'تأكيد التحويل الآن',
-            preConfirm: () => {
-                const p = document.getElementById('tr-p').value, a = document.getElementById('tr-a').value;
-                if(!p || !a) { Swal.showValidationMessage('يرجى إدخال البيانات'); return false; }
-                if(p === me.p) { Swal.showValidationMessage('لا يمكنك التحويل لنفسك'); return false; }
-                return { p, a };
-            }
-        }).then(async res => {
-            if(!res.isConfirmed) return;
-            const {p, a} = res.value;
-            if(me.sdmBalance < a) return Swal.fire('فشل العملية','رصيدك غير كافٍ','error');
-            const s = await db.ref('users/'+p).once('value');
-            if(!s.exists()) return Swal.fire('خطأ','المستلم غير مسجل لدينا','error');
-            
-            const opId = "SDM-" + Math.random().toString(36).substr(2, 9).toUpperCase();
-            db.ref('users/'+me.p).update({ sdmBalance: me.sdmBalance - Number(a) });
-            db.ref('users/'+p).update({ sdmBalance: (s.val().sdmBalance || 0) + Number(a) });
+    
+function showTransfer() {
+    Swal.fire({
+        title: 'تحويل سريع وآمن',
+        html: `<input id="tr-p" class="swal2-input" placeholder="رقم هاتف المستلم" oninput="checkRecipient(this.value)"><div id="rec-name" style="font-size:12px; color:blue;"></div><input id="tr-a" type="number" class="swal2-input" placeholder="الكمية المراد تحويلها">`,
+        showCancelButton: true,
+        confirmButtonText: 'تأكيد التحويل الآن',
+        preConfirm: () => {
+            const p = document.getElementById('tr-p').value, a = document.getElementById('tr-a').value;
+            if (!p || !a) { Swal.showValidationMessage('يرجى إدخال البيانات'); return false; }
+            if (p === me.p) { Swal.showValidationMessage('لا يمكنك التحويل لنفسك'); return false; }
+            return { p, a };
+        }
+    }).then(async res => {
+        if (!res.isConfirmed) return;
+        const { p, a } = res.value;
+        const amount = Number(a);
+        if (me.sdmBalance < amount) return Swal.fire('رصيدك غير كافٍ', '', 'error');
+        
+        const s = await db.ref('users/' + p).once('value');
+        if (!s.exists()) return Swal.fire('المستلم غير مسجل لدينا', '', 'error');
 
-            Swal.fire({
-                title: 'تم التحويل بنجاح',
-                html: `<div class="receipt-design">
-                    <div class="receipt-header">إيصال تحويل رقمي</div>
-                    <div style="font-size:12px; border-bottom:1px solid #eee; padding-bottom:5px; margin-bottom:10px;">ID: ${opId}</div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span>من:</span> <b>${me.n}</b></div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span>إلى:</span> <b>${s.val().n}</b></div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:5px; color:var(--green); font-size:18px;"><span>المبلغ:</span> <b>${a} SDM</b></div>
-                    <div style="margin-top:10px; font-size:10px; color:#666;">بتاريخ: ${new Date().toLocaleString('ar-EG')}</div>
-                    <div class="stamp">SDM OFFICIAL</div>
-                </div>`,
-                icon: 'success'
-            });
-        });
-    }
+        const opId = "SDM-" + Math.random().toString(36).substr(2, 9).toUpperCase();
+        await db.ref('users/' + me.p).update({ sdmBalance: me.sdmBalance - amount });
+        await db.ref('users/' + p).update({ sdmBalance: (s.val().sdmBalance || 0) + amount });
 
+        Swal.fire('تم التحويل بنجاح', `رقم العملية: ${opId}`, 'success');
+    });
+}
     async function checkRecipient(ph) {
         if(ph.length >= 10) {
             const s = await db.ref('users/'+ph).once('value');
