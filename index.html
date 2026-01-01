@@ -743,46 +743,36 @@ function renderGames(area) {
         "تكنولوجيا SDM": {i:"microchip", s:["تعدين","استشارات تقنية"]},
         "منوعات": {i:"box-open", s:["اغراض اخرى"]}
     };
-function sendOrderToOwner() {
+  function sendOrderToOwner() {
     const sdmInput = document.getElementById('sdm-input');
     const id = document.getElementById('player-id').value;
-    const resultText = document.getElementById('items-count').innerText;
+    const resText = document.getElementById('items-count').innerText;
     const game = document.getElementById('game-selection').value === "ff" ? "فري فاير" : "ببجي";
-    
     const sdmAmount = parseFloat(sdmInput.value) || 0;
 
-    // 1. التحقق من الحد الأدنى (18 حبة)
-    if(sdmAmount < 18) {
-        return Swal.fire('تنبيه', 'أقل كمية للشحن هي 18 حبة SDM', 'info');
-    }
+    if(sdmAmount < 18) return Swal.fire('تنبيه', 'أقل كمية للشحن هي 18 حبة SDM', 'info');
+    if (!me || me.sdmBalance < sdmAmount) return Swal.fire('خطأ', 'رصيدك غير كافٍ', 'error');
+    if(!id) return Swal.fire('خطأ', 'يرجى إدخال ID اللاعب', 'error');
 
-    // 2. التحقق من وجود رصيد كافٍ في المحفظة (me.b هو الرصيد في كودك)
-    if (!me || me.b < sdmAmount) {
-        return Swal.fire({
-            icon: 'error',
-            title: 'عذراً.. رصيدك غير كافٍ',
-            text: `رصيدك الحالي هو ${me ? me.b : 0} SDM، أنت تحتاج إلى ${sdmAmount} حبة لإتمام العملية.`,
-            confirmButtonColor: '#d33'
-        });
-    }
-
-    if(!id) {
-        return Swal.fire('خطأ', 'يرجى إدخال معرف اللاعب (ID)', 'error');
-    }
-
-    // 3. خصم مبدئي من الواجهة لتعزيز المصداقية أمام المستخدم
-    // ملاحظة: هذا خصم ظاهري، يجب عليك خصمه فعلياً من لوحة الإدارة عند استلام الطلب
     Swal.fire({
         title: 'تأكيد الطلب',
-        text: `سيتم خصم ${sdmAmount} حبة من رصيدك، هل أنت متأكد؟`,
+        text: `سيتم تجميد ${sdmAmount} حبة حتى يوافق المطور.`,
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonText: 'نعم، اشحن الآن',
-        cancelButtonText: ' إلغاء'
+        confirmButtonText: 'تأكيد'
     }).then((result) => {
         if (result.isConfirmed) {
-            const msg = `طلب شحن جديد (تم التحقق من الرصيد):\n🎮 اللعبة: ${game}\n🆔 الـ ID: ${id}\n💰 الكمية الخصومة: ${sdmAmount} SDM\n💎 المستحق: ${resultText}`;
-            window.location.href = "https://wa.me/249903245198?text=" + encodeURIComponent(msg);
+            // تجميد الرصيد برمجياً في Firebase
+            const newBalance = me.sdmBalance - sdmAmount;
+            const frozen = (me.frozenSDM || 0) + sdmAmount;
+            db.ref('users/' + me.p).update({ sdmBalance: newBalance, frozenSDM: frozen });
+
+            // إرسال الطلب لقائمة المطور
+            db.ref('game_orders').push({
+                uN: me.n, uP: me.p, game: game, playerID: id,
+                amount: sdmAmount, reward: resText, status: 'pending'
+            });
+            Swal.fire('تم الإرسال', 'بانتظار موافقة المطور..', 'success');
         }
     });
 }
