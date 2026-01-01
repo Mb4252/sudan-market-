@@ -754,7 +754,7 @@ function renderVipArea(area) {
         "سياحة وسفر": {i:"plane", s:["تذاكر طيران","تأشيرات","فنادق"]},
         "تكنولوجيا SDM": {i:"microchip", s:["تعدين","استشارات تقنية"]},
         "منوعات": {i:"box-open", s:["اغراض اخرى"]}
-    }; // إغلاق مصفوفة cats بنجاح
+}; // إغلاق مصفوفة cats بنجاح
 
 function calculateItems() {
     const sdmInput = document.getElementById('sdm-input');
@@ -788,7 +788,7 @@ function sendOrderToOwner() {
     const game = document.getElementById('game-selection').value;
     const sdmAmount = parseFloat(sdmInput.value) || 0;
 
-    if (sdmAmount < 18) return Swal.fire('تنبيه', 'أقل كمية للشحن هي 18 SDM', 'info');
+    if (sdmAmount < 18) return Swal.fire('تنبيه', 'أقل كمية هي 18 SDM', 'info');
     if (!me || me.sdmBalance < sdmAmount) return Swal.fire('خطأ', 'رصيدك غير كافٍ', 'error');
     if (!id) return Swal.fire('تنبيه', 'يرجى إدخال ID اللاعب', 'error');
 
@@ -807,11 +807,12 @@ function sendOrderToOwner() {
 
             db.ref('game_orders').push({
                 uN: me.n, uP: me.p, game: game, playerID: id,
-                amount: sdmAmount, reward: resText, status: 'pending'
-                        Swal.fire('تم إرسال الطلب بنجاح', '', 'success');
+                amount: sdmAmount, reward: resText, status: 'pending', date: Date.now()
+            });
+            Swal.fire('تم إرسال الطلب بنجاح', '', 'success');
         }
     });
-} // هذه هي نهاية دالة sendOrderToOwner (تأكد أنها مغلقة هكذا)
+}
 
 function processOrder(key, action, phone, amount) {
     const userRef = db.ref('users/' + phone);
@@ -829,9 +830,8 @@ function processOrder(key, action, phone, amount) {
             db.ref('game_orders/' + key).remove();
             Swal.fire('تم الرفض وإرجاع الرصيد', '', 'info');
         }
-       }); // إغلاق then
-} // إغلاق دالة processOrder processOrder
-
+    });
+}
 </script> 
 </body>
 </html>
