@@ -743,24 +743,45 @@ function renderGames(area) {
         "تكنولوجيا SDM": {i:"microchip", s:["تعدين","استشارات تقنية"]},
         "منوعات": {i:"box-open", s:["اغراض اخرى"]}
     };
-  // دالة الحساب التلقائي
 function calculateItems() {
-    const sdm = parseFloat(document.getElementById('sdm-input').value) || 0;
-    const type = document.getElementById('game-selection').value;
+    const sdmInput = document.getElementById('sdm-input');
     const display = document.getElementById('items-count');
-    let res = (type === "ff") ? sdm * 100 : Math.floor(sdm * 40);
-    display.innerText = res + (type === "ff" ? " جوهرة" : " شدة");
+    const gameSelect = document.getElementById('game-selection');
+    
+    if (!sdmInput || !display || !gameSelect) return;
+
+    const sdm = parseFloat(sdmInput.value) || 0;
+    const type = gameSelect.value;
+    let res = 0;
+
+    if (type === "ff") {
+        // حساب فري فاير (18 حبة = 530 جوهرة)
+        res = Math.floor(sdm * 29.45); 
+        display.innerText = res + " جوهرة فري فاير";
+    } else {
+        // حساب ببجي (18 حبة = 325 شدة UC)
+        res = Math.floor(sdm * 18.06); 
+        display.innerText = res + " شدة ببجي (UC)";
+    }
 }
 
-// دالة الإرسال للواتساب
 function sendOrderToOwner() {
     const sdm = document.getElementById('sdm-input').value;
     const id = document.getElementById('player-id').value;
-    const res = document.getElementById('items-count').innerText;
+    const resultText = document.getElementById('items-count').innerText;
     const game = document.getElementById('game-selection').value === "ff" ? "فري فاير" : "ببجي";
-    if(!sdm || !id) return Swal.fire('خطأ', 'يرجى إكمال البيانات', 'error');
-    const msg = `طلب شحن جديد:\nاللعبة: ${game}\nID: ${id}\nالكمية: ${sdm} SDM\nالمستحق: ${res}`;
-    window.location.href = `https://wa.me/249903245198?text=${encodeURIComponent(msg)}`;
+
+    if(sdm < 18) {
+        return Swal.fire('تنبيه', 'أقل كمية للشحن هي 18 حبة SDM لضمان أفضل سعر للدولار', 'info');
+    }
+    if(!id) {
+        return Swal.fire('خطأ', 'يرجى إدخال معرف اللاعب (ID)', 'error');
+    }
+
+    const msg = `طلب شحن جديد (عبر بينانس):\n🎮 اللعبة: ${game}\n🆔 الـ ID: ${id}\n💰 الكمية: ${sdm} SDM\n💎 المستحق: ${resultText}`;
+    
+    // رابط الواتساب المباشر لرقمك
+    window.location.href = "https://wa.me/249903245198?text=" + encodeURIComponent(msg);
 }
 </script>
 </body>
