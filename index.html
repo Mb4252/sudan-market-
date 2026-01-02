@@ -46,6 +46,7 @@
         .post-img-container { position: relative; width: 100%; height: 220px; }
         .sold-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(220, 53, 69, 0.8); color: white; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: bold; z-index: 5; }
         .price-tag { color: var(--green); font-weight: 800; font-size: 18px; }
+        .old-price { text-decoration: line-through; color: var(--red); font-size: 14px; margin-left: 10px; }
         .post-options { position: absolute; top: 12px; left: 12px; color: white; background: rgba(0,0,0,0.6); width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10; }
         .post-time { font-size: 11px; color: #999; }
         .seller-info { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; border-bottom: 1px solid #f9f9f9; padding-bottom: 8px; cursor: pointer; }
@@ -83,7 +84,11 @@
             <input type="file" onchange="encode(this, 'user')">
             <button class="btn-main" style="background:var(--green)" onclick="generateNewPhrase()">توليد الكلمات</button>
             <div id="phrase-result" class="hidden">
-                <div id="p-text" style="background:#fff3cd; padding:15px; margin:10px; font-family:monospace; word-break: break-all;"></div>
+                <div style="background:#fff3cd; padding:15px; margin:10px; border-radius:10px;">
+                    <div id="p-text" style="font-family:monospace; word-break: break-all; margin-bottom:10px;"></div>
+                    <button class="btn-main" style="margin:5px 0; background:var(--blue);" onclick="copyPhrase()">نسخ الكلمات</button>
+                    <p style="color:red; font-weight:bold; font-size:13px;">⚠️ إذا ضاعت الكلمات ضاع الحساب، احتفظ به جيداً!</p>
+                </div>
                 <button class="btn-main" onclick="finalizeReg()">إتمام التسجيل</button>
             </div>
             <p onclick="showLog()" style="color:var(--blue); cursor:pointer; margin-top:15px;">العودة للدخول</p>
@@ -239,6 +244,13 @@
         window.tempPhrase = regPhrase;
     }
 
+    function copyPhrase() {
+        const pText = document.getElementById('p-text').innerText;
+        navigator.clipboard.writeText(pText).then(() => {
+            Swal.fire('تم النسخ', 'تم نسخ الكلمات بنجاح', 'success');
+        });
+    }
+
     function finalizeReg() {
         const n = document.getElementById('rn').value, p = document.getElementById('rp').value;
         db.ref('users/'+p).set({ n, p, phrase: window.tempPhrase, sdmBalance: 0, rating: 0, vipStatus: 'none', pic: userPic, ratedBy: [] });
@@ -322,8 +334,12 @@
                             <span class="seller-name">${p.uN} <span style="color:var(--gold); font-size:10px;">⭐${p.uStars || 0}</span></span>
                         </div>
                         <h2 style="margin:5px 0; font-size:20px; color:var(--navy)">${p.t}</h2>
-                        <span class="price-tag">${p.pr} SDM</span>
+                        <div style="margin-bottom:5px;">
+                            ${p.oldPr ? `<span class="old-price">${p.oldPr} SDM</span>` : ''}
+                            <span class="price-tag">${p.pr} SDM</span>
+                        </div>
                         <p style="font-size:14px; color:#444; line-height:1.5">${p.d}</p>
+                        ${p.vExpiry ? `<div style="font-size:12px; color:var(--red); margin-bottom:5px;">🕒 ينتهي النشر: ${new Date(p.vExpiry).toLocaleDateString()}</div>` : ''}
                         <div class="post-time">${timeSince(p.date)}</div>
                         
                         <div style="display:flex; gap:10px; margin-top:10px;">
@@ -572,7 +588,10 @@
                 <div class="publish-container">
                     <h4 style="color:var(--gold);">💎 نشر عرض VIP</h4>
                     <input id="v-t" placeholder="عنوان العرض">
-                    <input id="v-pr" type="number" placeholder="السعر">
+                    <div style="display:flex; gap:10px;">
+                        <input id="v-old-pr" type="number" placeholder="السعر القديم">
+                        <input id="v-pr" type="number" placeholder="السعر بعد التخفيض">
+                    </div>
                     <input id="v-wa" type="number" placeholder="واتساب">
                     <textarea id="v-d" placeholder="تفاصيل العرض"></textarea>
                     <input type="file" onchange="encode(this, 'post')">
@@ -612,19 +631,24 @@
         const isVip = path === 'vip_posts';
         const t = (isVip ? document.getElementById('v-t') : document.getElementById('pt')).value;
         const pr = (isVip ? document.getElementById('v-pr') : document.getElementById('pp')).value;
+        const oldPr = (isVip ? document.getElementById('v-old-pr').value : null);
         const d = (isVip ? document.getElementById('v-d') : document.getElementById('pd')).value;
         const wa = (isVip ? document.getElementById('v-wa') : document.getElementById('p-whatsapp')).value;
         
         if(!t || !pr || !tempImg) return Swal.fire('بيانات ناقصة','يرجى إكمال الحقول والصورة','warning');
         
         const data = { 
-            t, pr, d, wa, img: tempImg, 
+            t, pr, oldPr, d, wa, img: tempImg, 
             uP: me.p, uN: me.n, 
             uPic: me.pic || 'https://via.placeholder.com/150',
             uStars: me.rating || 0,
             date: Date.now(), status: 'active' 
         };
-        if(!isVip) data.sub = curS;
+        if(isVip) {
+            data.vExpiry = me.vipExpiry;
+        } else {
+            data.sub = curS;
+        }
         
         db.ref(path).push(data);
         Swal.fire('تم النشر','','success');
