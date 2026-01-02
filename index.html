@@ -35,7 +35,7 @@
         
         .btn-main { background: var(--blue); color: white; border: none; padding: 14px; width: 100%; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 10px; font-size: 16px; transition: 0.3s; }
         .btn-main:active { transform: scale(0.98); }
-        .btn-whatsapp { background: #25d366; color: white; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; border-radius: 8px; margin-top: 10px; font-weight: bold; }
+        .btn-whatsapp { background: #25d366; color: white; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; border-radius: 10px; margin-top: 10px; font-weight: bold; width: 100%; box-sizing: border-box; }
 
         .bottom-tabs { position: fixed; bottom: 0; width: 100%; background: white; display: flex; border-top: 1px solid #ddd; padding: 10px 0; z-index: 1000; }
         .tab-btn { flex: 1; text-align: center; color: #555; cursor: pointer; font-size: 11px; }
@@ -56,14 +56,26 @@
         .wallet-card { background: linear-gradient(135deg, #0d1117, #1e3a8a); color: white; padding: 25px; margin: 15px; border-radius: 20px; text-align: center; position: relative; overflow: hidden; }
         .sdm-logo { width: 70px; height: 70px; border-radius: 50%; border: 2px solid var(--gold); margin-bottom: 10px; object-fit: cover; }
         
-        .receipt-design { background: #fff; border: 2px solid #333; border-radius: 15px; padding: 20px; position: relative; font-family: 'Courier New', monospace; text-align: right; }
-        .receipt-header { background: var(--navy); color: var(--gold); margin: -20px -20px 15px -20px; padding: 10px; text-align: center; font-weight: bold; }
-        .stamp { position: absolute; bottom: 10px; left: 10px; width: 80px; height: 80px; border: 3px double #d32f2f; border-radius: 50%; color: #d32f2f; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; transform: rotate(-20deg); opacity: 0.6; border-style: dashed; pointer-events: none; }
+        /* تصميم الإشعار المطور */
+        .receipt-container { background: #fff; border: 1px solid #eee; border-radius: 15px; padding: 20px; font-family: 'Segoe UI', sans-serif; text-align: right; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.1); overflow: hidden; }
+        .receipt-header-new { border-bottom: 2px dashed #ddd; padding-bottom: 10px; margin-bottom: 15px; text-align: center; }
+        .receipt-row { display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid #f9f9f9; padding-bottom: 4px; }
+        .receipt-label { color: #777; font-size: 13px; }
+        .receipt-value { font-weight: bold; color: var(--navy); font-size: 14px; }
+        .receipt-stamp-pro { position: absolute; bottom: 15px; left: 15px; width: 90px; height: 90px; border: 4px double rgba(0, 123, 255, 0.4); border-radius: 50%; display: flex; align-items: center; justify-content: center; transform: rotate(-15deg); color: var(--blue); font-weight: 900; font-size: 10px; text-align: center; text-transform: uppercase; pointer-events: none; }
+        .receipt-stamp-pro::after { content: "ORIGINAL \A SUDAN MARKET \A SECURE"; white-space: pre; }
 
         .comment-box { border-top: 1px solid #eee; padding: 10px; background: #fafafa; font-size: 13px; }
         .comment-item { margin-bottom: 5px; padding: 5px; border-bottom: 1px dashed #ddd; }
         .admin-panel { background: #fff; margin: 15px; padding: 15px; border-radius: 15px; border: 2px solid var(--red); }
         .admin-notify-bar { background: #fff3cd; border: 2px solid var(--gold); margin: 15px; padding: 15px; border-radius: 15px; }
+
+        /* واجهة التحويل الأجمل */
+        .transfer-box { padding: 10px; border-radius: 15px; }
+        .input-group-custom { position: relative; margin-bottom: 15px; }
+        .input-group-custom i { position: absolute; right: 12px; top: 15px; color: var(--blue); }
+        .input-group-custom input { padding-right: 40px !important; border: 2px solid #f0f0f0; }
+        .input-group-custom input:focus { border-color: var(--blue); }
     </style>
 </head>
 <body>
@@ -195,8 +207,34 @@
     function listenForUserAlerts() {
         db.ref('alerts/'+me.p).on('child_added', snap => {
             const data = snap.val();
-            Swal.fire('تنبيه', data.msg, data.type);
+            if(data.isReceipt) {
+                showReceiptModal(data);
+            } else {
+                Swal.fire('تنبيه', data.msg, data.type);
+            }
             snap.ref.remove();
+        });
+    }
+
+    function showReceiptModal(data) {
+        Swal.fire({
+            html: `
+            <div class="receipt-container">
+                <div class="receipt-header-new">
+                    <h3 style="margin:0; color:var(--blue);">سوق السودان | SDM</h3>
+                    <small style="color:#888">إشعار تحويل رسمي</small>
+                </div>
+                <div class="receipt-row"><span class="receipt-label">رقم العملية:</span> <span class="receipt-value">${data.opId}</span></div>
+                <div class="receipt-row"><span class="receipt-label">المرسل:</span> <span class="receipt-value">${data.senderName}</span></div>
+                <div class="receipt-row"><span class="receipt-label">المستلم:</span> <span class="receipt-value">${data.receiverName}</span></div>
+                <div class="receipt-row"><span class="receipt-label">المبلغ:</span> <span class="receipt-value" style="color:var(--green)">${data.amount} SDM</span></div>
+                <div class="receipt-row"><span class="receipt-label">التاريخ:</span> <span class="receipt-value">${data.time}</span></div>
+                <div style="margin-top:20px; text-align:center; color:#999; font-size:10px;">شكراً لاستخدامك شبكة SDM الموثوقة</div>
+                <div class="receipt-stamp-pro"></div>
+            </div>`,
+            showConfirmButton: true,
+            confirmButtonText: 'إغلاق',
+            background: 'transparent'
         });
     }
 
@@ -343,9 +381,8 @@
                         <div class="post-time">${timeSince(p.date)}</div>
                         
                         <div style="display:flex; gap:10px; margin-top:10px;">
-                            <button class="btn-main" style="flex:1" onclick="buyItem('${c.key}', ${p.pr}, '${p.uP}', '${p.t}')">شراء</button>
-                            <a href="https://wa.me/249${p.wa || p.uP}" target="_blank" class="btn-whatsapp" style="flex:1">
-                                <i class="fab fa-whatsapp"></i> واتساب
+                            <a href="https://wa.me/249${p.wa || p.uP}" target="_blank" class="btn-whatsapp">
+                                <i class="fab fa-whatsapp"></i> تواصل عبر واتساب
                             </a>
                         </div>
                         <button class="btn-main" style="background:var(--red); font-size:12px; padding:5px;" onclick="reportItem('${c.key}', '${p.t}')">إبلاغ</button>
@@ -363,27 +400,6 @@
                 loadComments(path, c.key);
             });
         });
-    }
-
-    async function buyItem(postId, price, sellerPhone, title) {
-        if(me.p === sellerPhone) return Swal.fire('تنبيه','لا يمكنك شراء منتجك الخاص','info');
-        if(me.sdmBalance < price) return Swal.fire('فشل','رصيدك لا يكفي لإتمام عملية الشراء','error');
-
-        const result = await Swal.fire({
-            title: 'تأكيد الشراء',
-            text: `هل تريد شراء "${title}" مقابل ${price} SDM؟`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'نعم، شراء'
-        });
-
-        if(result.isConfirmed) {
-            const sellerSnap = await db.ref('users/'+sellerPhone).once('value');
-            const sellerData = sellerSnap.val();
-            db.ref('users/'+me.p).update({ sdmBalance: me.sdmBalance - Number(price) });
-            db.ref('users/'+sellerPhone).update({ sdmBalance: (sellerData.sdmBalance || 0) + Number(price) });
-            Swal.fire('تمت العملية','تم تحويل المبلغ للبائع بنجاح','success');
-        }
     }
 
     function showPostMenu(path, id, t, pr, d) {
@@ -454,7 +470,14 @@
                     <p style="font-size:14px; color:var(--gold)">1 SDM ≈ ${SDM_PRICE} ج.س</p>
                     <button class="btn-main" style="background:var(--green); border:2px solid #fff;" onclick="showTransfer()">💸 تحويل داخلي سريع</button>
                 </div>
+                
+                <div id="transactions-history" style="padding:15px; background:#fff; margin:15px; border-radius:15px; box-shadow:0 5px 15px rgba(0,0,0,0.05);">
+                    <h4 style="margin-top:0;"><i class="fas fa-history"></i> المعاملات السابقة</h4>
+                    <div id="trans-list" style="max-height:200px; overflow-y:auto; font-size:12px;"></div>
+                </div>
+
                 ${me.p === ADMIN_PH ? `<div class="admin-panel" id="admin-reqs"><h4>طلبات الشحن المعلقة</h4></div>` : ''}
+                
                 <div style="padding:15px; background:#fff; margin:15px; border-radius:15px;">
                     <h3>شراء رصيد SDM</h3>
                     <p style="font-size:13px; color:#666;">قم بالتحويل لبنك الخرطوم وأرفق الإشعار:</p>
@@ -467,6 +490,26 @@
                     <button class="btn-main" onclick="requestCoins()">إرسال طلب الشراء للمطور</button>
                 </div>`;
             if(me.p === ADMIN_PH) loadAdminRequests();
+            loadTransactions();
+        });
+    }
+
+    function loadTransactions() {
+        db.ref('transactions').orderByChild('involves').equalTo(me.p).limitToLast(10).on('value', snap => {
+            const list = document.getElementById('trans-list');
+            if(!list) return;
+            list.innerHTML = "";
+            let items = [];
+            snap.forEach(c => { items.unshift(c.val()); });
+            if(items.length === 0) list.innerHTML = "<p style='color:#ccc; text-align:center;'>لا توجد معاملات بعد</p>";
+            items.forEach(t => {
+                const isSent = t.sender === me.p;
+                list.innerHTML += `
+                    <div style="padding:8px; border-bottom:1px solid #f5f5f5; display:flex; justify-content:space-between;">
+                        <span>${isSent ? '📤 إلى: '+t.receiverName : '📥 من: '+t.senderName}</span>
+                        <b style="color:${isSent ? 'red':'green'}">${isSent ? '-':'+'}${t.amount} SDM</b>
+                    </div>`;
+            });
         });
     }
 
@@ -492,12 +535,23 @@
     function showTransfer() {
         Swal.fire({
             title: 'تحويل سريع وآمن',
-            html: `<input id="tr-p" class="swal2-input" placeholder="رقم هاتف المستلم" oninput="checkRecipient(this.value)"><div id="rec-name" style="font-size:12px; color:blue;"></div><input id="tr-a" type="number" class="swal2-input" placeholder="الكمية المراد تحويلها">`,
+            html: `
+            <div class="transfer-box">
+                <div class="input-group-custom">
+                    <i class="fas fa-phone"></i>
+                    <input id="tr-p" type="number" class="swal2-input" placeholder="رقم هاتف المستلم" oninput="checkRecipient(this.value)">
+                </div>
+                <div id="rec-name" style="font-size:14px; margin-bottom:10px; font-weight:bold;"></div>
+                <div class="input-group-custom">
+                    <i class="fas fa-coins"></i>
+                    <input id="tr-a" type="number" class="swal2-input" placeholder="الكمية المراد تحويلها">
+                </div>
+            </div>`,
             showCancelButton: true,
-            confirmButtonText: 'تأكيد التحويل الآن',
+            confirmButtonText: 'إرسال الآن 🚀',
             preConfirm: () => {
                 const p = document.getElementById('tr-p').value, a = document.getElementById('tr-a').value;
-                if (!p || !a) { Swal.showValidationMessage('يرجى إدخال البيانات'); return false; }
+                if (!p || !a) { Swal.showValidationMessage('يرجى إدخال البيانات كاملة'); return false; }
                 if (p === me.p) { Swal.showValidationMessage('لا يمكنك التحويل لنفسك'); return false; }
                 return { p, a };
             }
@@ -509,19 +563,47 @@
             
             const s = await db.ref('users/' + p).once('value');
             if (!s.exists()) return Swal.fire('المستلم غير مسجل لدينا', '', 'error');
+            const receiverData = s.val();
 
             const opId = "SDM-" + Math.random().toString(36).substr(2, 9).toUpperCase();
-            await db.ref('users/' + me.p).update({ sdmBalance: me.sdmBalance - amount });
-            await db.ref('users/' + p).update({ sdmBalance: (s.val().sdmBalance || 0) + amount });
+            const timeNow = new Date().toLocaleString('ar-EG');
 
-            Swal.fire('تم التحويل بنجاح', `رقم العملية: ${opId}`, 'success');
+            // تنفيذ العملية
+            await db.ref('users/' + me.p).update({ sdmBalance: me.sdmBalance - amount });
+            await db.ref('users/' + p).update({ sdmBalance: (receiverData.sdmBalance || 0) + amount });
+
+            const receiptData = {
+                isReceipt: true,
+                opId: opId,
+                senderName: me.n,
+                receiverName: receiverData.n,
+                amount: amount,
+                time: timeNow,
+                type: 'success'
+            };
+
+            // حفظ المعاملة في السجل
+            db.ref('transactions').push({
+                opId, amount, sender: me.p, senderName: me.n, receiver: p, receiverName: receiverData.n, date: Date.now(), involves: [me.p, p]
+            });
+
+            // إشعار المستلم
+            await db.ref('alerts/' + p).push(receiptData);
+            
+            // إظهار الإشعار للمرسل فوراً
+            showReceiptModal(receiptData);
         });
     }
 
     async function checkRecipient(ph) {
         if(ph.length >= 10) {
             const s = await db.ref('users/'+ph).once('value');
-            document.getElementById('rec-name').innerText = s.exists() ? "✅ مستخدم موثوق: " + s.val().n : "❌ الهاتف غير مسجل";
+            const el = document.getElementById('rec-name');
+            if(s.exists()){
+                el.innerHTML = `<span style="color:green"><i class="fas fa-check-circle"></i> مستخدم موثوق: ${s.val().n}</span>`;
+            } else {
+                el.innerHTML = `<span style="color:red"><i class="fas fa-times-circle"></i> رقم غير مسجل</span>`;
+            }
         } else { document.getElementById('rec-name').innerText = ""; }
     }
 
@@ -592,7 +674,7 @@
                         <input id="v-old-pr" type="number" placeholder="السعر القديم">
                         <input id="v-pr" type="number" placeholder="السعر بعد التخفيض">
                     </div>
-                    <input id="v-wa" type="number" placeholder="واتساب">
+                    <input id="v-wa" type="number" placeholder="رقم الواتساب للتواصل">
                     <textarea id="v-d" placeholder="تفاصيل العرض"></textarea>
                     <input type="file" onchange="encode(this, 'post')">
                     <button class="btn-main" style="background:var(--gold); color:black;" onclick="publish('vip_posts')">نشر الآن في الـ VIP</button>
