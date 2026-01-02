@@ -1,20 +1,33 @@
-from flask import Flask, jsonify, request
-import telebot
+Import telebot
 import requests
 import time
 import hashlib
 import hmac
 
-app = Flask(__name__)
-
-# --- بيانات الـ API الخاصة بك (أمان عالي) ---
+# --- بيانات الـ API الخاصة بك ---
 API_KEY = 'ITPifXfdCKwktQ9Gqqc2UEt0rxJpoKP1EHaKrY1JQjkbAsfPU5kVgFC10ftBdTDg'
 SECRET_KEY = 'dNVtHcSCp3nOhVAb17iASkaGNI3iPR2coyWXF0OIT8wVZSTEu4LwmzhEgv0cnAEW'
-BOT_TOKEN = '7611593539:AAHeq2IitqIun35e98x-w49HqE3u-NfJvO8' 
+BOT_TOKEN = 'ضع_توكن_بوت_التلجرام_هنا'
 
 bot = telebot.TeleBot(BOT_TOKEN)
 BASE_URL = "https://api.binance.com"
-SDM_RATE = 4  # 1 دولار = 4 SDM
+SDM_RATE = 4 
+
+# --- القائمة الكاملة للباقات (محدثة) ---
+PACKAGES = {
+    # باقات ببجي موبايل (UC)
+    "1": {"name": "60 UC PUBG", "usd": 1.0},
+    "2": {"name": "325 UC PUBG", "usd": 5.0},
+    "3": {"name": "660 UC PUBG", "usd": 10.0},
+    "4": {"name": "1800 UC PUBG", "usd": 25.0},
+    "5": {"name": "3850 UC PUBG", "usd": 50.0},
+    # باقات فري فاير (Diamonds)
+    "6": {"name": "110 Diamonds FF", "usd": 1.0},
+    "7": {"name": "231 Diamonds FF", "usd": 2.2},
+    "8": {"name": "583 Diamonds FF", "usd": 5.0},
+    "9": {"name": "1188 Diamonds FF", "usd": 10.0},
+    "10": {"name": "2420 Diamonds FF", "usd": 20.0}
+}
 
 def get_binance_balance():
     timestamp = int(time.time() * 1000)
@@ -31,30 +44,43 @@ def get_binance_balance():
         return 0.0
     return 0.0
 
-# --- هذا هو مفتاح الربط مع الـ HTML (هام جداً) ---
-@app.route('/api/verify-charge', methods=['POST'])
-def verify_charge():
-    data = request.json
-    sdm_amount = float(data.get('amount', 0))
-    usd_needed = sdm_amount / SDM_RATE
-    
-    # التأكد من رصيد باينانس (المصداقية)
-    binance_usdt = get_binance_balance()
-    
-    if binance_usdt < usd_needed:
-        return jsonify({
-            "status": "error",
-            "message": "⚠️ رصيد محفظة الشحن العالمية حالياً غير كافٍ. لم يتم خصم أي شيء من رصيدك."
-        })
-    
-    # إرسال إشعار فوري لمجموعة الإدارة عند كل عملية شحن ناجحة
-    bot.send_message("-1002360252569", f"💎 طلب شحن جديد عبر SDM\nاللاعب: {data.get('playerID')}\nالكمية: {sdm_amount} SDM")
-    
-    return jsonify({"status": "success", "message": "تم التحقق من الأمان بنجاح"})
+@bot.message_handler(commands=['start', 'recharge'])
+def show_menu(message):
+    text = "💎 نظام شحن SDM الآلي - جوهرة سولانا المخفية 💎\n\n"
+    text += "اختر رقم الباقة ثم أرسل: [الرقم] [الآيدي]\n\n"
+    for id, pkg in PACKAGES.items():
+        cost_sdm = pkg['usd'] * SDM_RATE
+        text += f" {id} - {pkg['name']} ➔ {cost_sdm} SDM\n"
+    bot.send_message(message.chat.id, text)
 
-@app.route('/')
-def home():
-    return "SDM Backend is Live"
+@bot.message_handler(func=lambda m: True)
+def process_order(message):
+    try:
+        args = message.text.split()
+        pkg_id, game_id = args[0], args[1]
+        
+        if pkg_id in PACKAGES:
+            pkg = PACKAGES[pkg_id]
+            cost_sdm = pkg['usd'] * SDM_RATE
+            
+            # (خطوة وهمية) التحقق من رصيد المستخدم في البوت
+            user_sdm_balance = 100 # يجب ربطه بقاعدة بياناتك
+            
+            if user_sdm_balance < cost_sdm:
+                bot.reply_to(message, f"❌ رصيدك غير كافٍ. تحتاج {cost_sdm} SDM.")
+                return
 
-def handler(event, context):
-    return app(event, context)
+            # التحقق من رصيد باينانس (المخزن)
+            binance_usdt = get_binance_balance()
+            
+            if binance_usdt < pkg['usd']:
+                # إلغاء العملية فوراً وإبلاغ المستخدم
+                bot.reply_to(message, "⚠️ عذراً، محفظة الشحن فارغة حالياً.\nتم إلغاء العملية وإبقاء رصيدك كما هو. حاول لاحقاً.")
+            else:
+                # تنفيذ الشحن الفوري (خصم SDM + تنفيذ Binance API)
+                # [هنا تضع كود الخصم النهائي وكود الـ Pay]
+                bot.reply_to(message, f"✅ تم الشحن فوراً للأيدي: {game_id}\nشكراً لاستخدامك تقنية SDM الآمنة.")
+    except:
+        bot.reply_to(message, "يرجى الإرسال بصيغة: [رقم الباقة] [الآيدي]")
+
+bot.polling()
