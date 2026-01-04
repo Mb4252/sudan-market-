@@ -56,7 +56,6 @@
         .wallet-card { background: linear-gradient(135deg, #0d1117, #1e3a8a); color: white; padding: 25px; margin: 15px; border-radius: 20px; text-align: center; position: relative; overflow: hidden; }
         .sdm-logo { width: 70px; height: 70px; border-radius: 50%; border: 2px solid var(--gold); margin-bottom: 10px; object-fit: cover; }
         
-        /* تصميم الإشعار المطور */
         .receipt-container { background: #fff; border: 1px solid #eee; border-radius: 15px; padding: 20px; font-family: 'Segoe UI', sans-serif; text-align: right; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.1); overflow: hidden; }
         .receipt-header-new { border-bottom: 2px dashed #ddd; padding-bottom: 10px; margin-bottom: 15px; text-align: center; }
         .receipt-row { display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid #f9f9f9; padding-bottom: 4px; }
@@ -70,12 +69,21 @@
         .admin-panel { background: #fff; margin: 15px; padding: 15px; border-radius: 15px; border: 2px solid var(--red); }
         .admin-notify-bar { background: #fff3cd; border: 2px solid var(--gold); margin: 15px; padding: 15px; border-radius: 15px; }
 
-        /* واجهة التحويل الأجمل */
         .transfer-box { padding: 10px; border-radius: 15px; }
         .input-group-custom { position: relative; margin-bottom: 15px; }
         .input-group-custom i { position: absolute; right: 12px; top: 15px; color: var(--blue); }
         .input-group-custom input { padding-right: 40px !important; border: 2px solid #f0f0f0; }
         .input-group-custom input:focus { border-color: var(--blue); }
+
+        /* ستايل نظام الألعاب الجديد المدمج */
+        .game-panel { background: #ffffff; border-radius: 20px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); margin: 15px; border: 2px solid #2563eb; }
+        .game-header { text-align: center; color: #1e3a8a; margin-bottom: 20px; }
+        .admin-orders { background: #fff3cd; border: 2px solid #f59e0b; border-radius: 20px; padding: 20px; margin: 15px; }
+        .order-card { background: white; border-radius: 12px; padding: 15px; margin-bottom: 15px; border-right: 6px solid #2563eb; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .id-highlight { background: #fee2e2; color: #dc2626; padding: 2px 8px; border-radius: 5px; font-family: monospace; font-size: 1.2em; font-weight: bold; }
+        .admin-btns { display: flex; gap: 10px; margin-top: 10px; }
+        .btn-confirm { flex: 1; background: #16a34a; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; }
+        .btn-reject { flex: 1; background: #dc2626; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -124,8 +132,8 @@
 
     <div class="bottom-tabs">
         <div class="tab-btn" onclick="nav('home')"><i class="fas fa-home"></i>الرئيسية</div>
-        <div class="tab-btn" onclick="nav('games')"><i class="fas fa-gamepad" style="color:red"></i>الألعاب</div>
         <div class="tab-btn" onclick="nav('wallet')"><i class="fas fa-wallet" style="color:blue"></i>SDM</div>
+        <div class="tab-btn" onclick="nav('games')"><i class="fas fa-gamepad" style="color:purple"></i>الألعاب</div>
         <div class="tab-btn" onclick="nav('vip')"><i class="fas fa-gem" style="color:gold"></i>VIP</div>
         <div class="tab-btn" onclick="nav('profile')"><i class="fas fa-user-circle"></i>ملفي</div>
     </div>
@@ -135,8 +143,24 @@
     const firebaseConfig = { databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com" };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-const ADMIN_PH = null, ADMIN_SECRET = null;
+
+const ADMIN_PH = "NONE", ADMIN_NAME = "محمد عبدالمعطي", SDM_PRICE = 1000, ADMIN_SECRET = "NONE";
+
     let me = null, hStack = ['home'], curC = '', curS = '', tempImg = '', userPic = 'https://via.placeholder.com/150';
+
+    // أسعار الألعاب الرسمية
+    const officialRates = {
+        pubg: [
+            { name: "60 UC", sdm: 4 },
+            { name: "325 UC", sdm: 20 },
+            { name: "660 UC", sdm: 40 }
+        ],
+        ff: [
+            { name: "100 جوهرة", sdm: 4 },
+            { name: "530 جوهرة", sdm: 20 },
+            { name: "1080 جوهرة", sdm: 40 }
+        ]
+    };
 
     (function checkAuth() {
         const saved = localStorage.getItem('sdm_active');
@@ -161,7 +185,11 @@ const ADMIN_PH = null, ADMIN_SECRET = null;
             document.getElementById('app-screen').classList.remove('hidden');
             checkVipExpiry();
             listenForUserAlerts();
-            if(me.p === ADMIN_PH) listenForAdminTasks();
+            if(me.p === ADMIN_PH) {
+                listenForAdminTasks();
+                // تهيئة منطق المطور للألعاب إذا كان المستخدم هو المطور
+                setTimeout(initDeveloperLogic, 1000);
+            }
             render(hStack[hStack.length-1]);
         });
         db.ref('users/' + phone).update({ lastSeen: Date.now() });
@@ -317,8 +345,14 @@ const ADMIN_PH = null, ADMIN_SECRET = null;
         if(view !== 'home') adminArea.innerHTML = "";
         
         showWelcome();
-        document.getElementById('u-stars').innerText = `⭐${me ? (me.rating || 0) : 0}`;
-        document.getElementById('head-title').innerText = view === 'home' ? 'سوق SDM الرئيسي' : (view === 'wallet' ? 'محفظة SDM' : 'سوق السودان');
+        if(me) document.getElementById('u-stars').innerText = `⭐${me.rating || 0}`;
+        
+        let title = "الرئيسية";
+        if(view === 'wallet') title = "محفظة SDM";
+        if(view === 'games') title = "شحن الألعاب";
+        if(view === 'vip') title = "عروض VIP";
+        if(view === 'profile') title = "الملف الشخصي";
+        document.getElementById('head-title').innerText = title;
 
         if(view === 'home') {
             area.innerHTML = `<div id="vip-slider"></div><div class="grid">${Object.keys(cats).map(k=>`<div class="card" onclick="nav('sub','${k}')"><i class="fas fa-${cats[k].i}" style="font-size:24px; color:var(--blue); margin-bottom:10px;"></i><br><b>${k}</b></div>`).join('')}</div>`;
@@ -341,10 +375,133 @@ const ADMIN_PH = null, ADMIN_SECRET = null;
                 </div><div id="posts-list"></div>`;
             loadPosts('posts', curS);
         } else if(view === 'wallet') renderWallet(area);
-        else if(view === 'games') renderGames(area);
         else if(view === 'vip') renderVip(area);
         else if(view === 'profile') renderProfile(area, extra || me.p);
+        else if(view === 'games') renderGames(area);
     }
+
+    // --- نظام الألعاب المدمج ---
+    function renderGames(area) {
+        area.innerHTML = `
+            <div class="game-panel">
+                <div class="game-header">
+                    <i class="fas fa-gamepad" style="font-size:40px; color:#2563eb;"></i>
+                    <h2>شحن الألعاب بـ SDM</h2>
+                    <p>سرعة، أمان، ومصداقية</p>
+                </div>
+
+                <div class="input-group">
+                    <label>اختر اللعبة</label>
+                    <select id="active-game" onchange="loadCorrectPacks()">
+                        <option value="pubg">ببجي موبايل (UC)</option>
+                        <option value="ff">فري فاير (Gems)</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label>آيدي اللاعب (Player ID)</label>
+                    <input type="text" id="p-id-input" placeholder="مثال: 512345678">
+                </div>
+
+                <div class="input-group">
+                    <label>اختر الباقة</label>
+                    <select id="p-pack-input"></select>
+                </div>
+
+                <button class="btn-main" style="background:#2563eb" onclick="sendOrderToDeveloper()">إرسال طلب الشحن</button>
+            </div>
+
+            <div id="developer-area" class="hidden">
+                <div class="admin-orders">
+                    <h3><i class="fas fa-user-shield"></i> بريد طلبات المطور (خاص بك)</h3>
+                    <div id="orders-list-container"></div>
+                </div>
+            </div>`;
+        
+        loadCorrectPacks();
+        if(me.p === ADMIN_PH) {
+            document.getElementById('developer-area').classList.remove('hidden');
+            initDeveloperLogic();
+        }
+    }
+
+    function loadCorrectPacks() {
+        const gameSelect = document.getElementById('active-game');
+        if(!gameSelect) return;
+        const game = gameSelect.value;
+        const packSelect = document.getElementById('p-pack-input');
+        packSelect.innerHTML = "";
+        officialRates[game].forEach(p => {
+            packSelect.innerHTML += `<option value="${p.sdm}">${p.name} - السعر: ${p.sdm} SDM</option>`;
+        });
+    }
+
+    async function sendOrderToDeveloper() {
+        const game = document.getElementById('active-game').value;
+        const pid = document.getElementById('p-id-input').value;
+        const packEl = document.getElementById('p-pack-input');
+        const cost = parseInt(packEl.value);
+        const packName = packEl.options[packEl.selectedIndex].text;
+
+        if (!pid) return Swal.fire("تنبيه", "أدخل الآيدي أولاً", "warning");
+        if (me.sdmBalance < cost) return Swal.fire("فشل", "رصيدك لا يكفي", "error");
+
+        // خصم فوري من المستخدم
+        await db.ref('users/' + me.p).update({ sdmBalance: me.sdmBalance - cost });
+
+        // إرسال للمطور
+        await db.ref('game_orders').push({
+            uP: me.p,
+            uN: me.n,
+            gameType: game,
+            playerId: pid,
+            package: packName,
+            cost: cost,
+            status: 'pending',
+            date: Date.now()
+        });
+
+        Swal.fire("تم الإرسال", "تم إرسال طلبك للمطور بنجاح!", "success");
+    }
+
+    function initDeveloperLogic() {
+        if (me.p !== ADMIN_PH) return;
+        
+        db.ref('game_orders').orderByChild('status').equalTo('pending').on('value', snap => {
+            const container = document.getElementById('orders-list-container');
+            if(!container) return;
+            container.innerHTML = "";
+            snap.forEach(child => {
+                const o = child.val();
+                container.innerHTML += `
+                    <div class="order-card">
+                        <b>العميل:</b> ${o.uN} (${o.uP})<br>
+                        <b>اللعبة:</b> ${o.gameType} | <b>الباقة:</b> ${o.package}<br>
+                        <b>ID اللاعب:</b> <span class="id-highlight">${o.playerId}</span><br>
+                        <div class="admin-btns">
+                            <button class="btn-confirm" onclick="confirmSuccess('${child.key}', '${o.uP}')">تم الشحن ✅</button>
+                            <button class="btn-reject" onclick="cancelAndRefund('${child.key}', '${o.uP}', ${o.cost})">رفض ❌</button>
+                        </div>
+                    </div>`;
+            });
+        });
+    }
+
+    async function confirmSuccess(key, phone) {
+        await db.ref('game_orders/' + key).update({ status: 'done' });
+        db.ref('alerts/' + phone).push({ msg: "✅ تم شحن طلبك بنجاح! شكراً لثقتك في Sudan Market", type: "success" });
+        Swal.fire("نجاح", "تم تأكيد الشحن بنجاح", "success");
+    }
+
+    async function cancelAndRefund(key, phone, amount) {
+        const snap = await db.ref('users/' + phone).once('value');
+        const current = snap.val().sdmBalance || 0;
+        await db.ref('users/' + phone).update({ sdmBalance: current + amount });
+        await db.ref('game_orders/' + key).remove();
+        db.ref('alerts/' + phone).push({ msg: "❌ نعتذر، تم رفض طلبك وإرجاع الرصيد لمحفظتك", type: "error" });
+        Swal.fire("تم الرفض", "تم إرجاع الرصيد للمستخدم", "info");
+    }
+    // --- نهاية نظام الألعاب ---
 
     function loadPosts(path, subFilter) {
         db.ref(path).on('value', snap => {
@@ -567,7 +724,6 @@ const ADMIN_PH = null, ADMIN_SECRET = null;
             const opId = "SDM-" + Math.random().toString(36).substr(2, 9).toUpperCase();
             const timeNow = new Date().toLocaleString('ar-EG');
 
-            // تنفيذ العملية
             await db.ref('users/' + me.p).update({ sdmBalance: me.sdmBalance - amount });
             await db.ref('users/' + p).update({ sdmBalance: (receiverData.sdmBalance || 0) + amount });
 
@@ -581,15 +737,11 @@ const ADMIN_PH = null, ADMIN_SECRET = null;
                 type: 'success'
             };
 
-            // حفظ المعاملة في السجل
             db.ref('transactions').push({
                 opId, amount, sender: me.p, senderName: me.n, receiver: p, receiverName: receiverData.n, date: Date.now(), involves: [me.p, p]
             });
 
-            // إشعار المستلم
             await db.ref('alerts/' + p).push(receiptData);
-            
-            // إظهار الإشعار للمرسل فوراً
             showReceiptModal(receiptData);
         });
     }
@@ -604,63 +756,6 @@ const ADMIN_PH = null, ADMIN_SECRET = null;
                 el.innerHTML = `<span style="color:red"><i class="fas fa-times-circle"></i> رقم غير مسجل</span>`;
             }
         } else { document.getElementById('rec-name').innerText = ""; }
-    }
-
-    function renderGames(area) {
-        let html = `
-            <div class="publish-container" style="text-align:center;">
-                <h4 style="color: var(--navy);">🎮 متجر SDM للشحن الذكي</h4>
-                <p style="font-size: 11px; color: #666;">سعر الحبة = 1000 ج.س</p>
-                
-                <select id="game-selection" onchange="calculateItems()" style="width:100%; padding:12px; margin-bottom:10px; border-radius:10px;">
-                    <option value="ff">جواهر فري فاير (1 حبة = 100)</option>
-                    <option value="pubg">شدات ببجي (1.5 حبة = 60)</option>
-                </select>
-
-                <input type="number" id="sdm-input" oninput="calculateItems()" placeholder="كم حبة SDM ستدفع؟" style="width:100%; padding:12px; margin-bottom:10px; border-radius:10px;">
-
-                <div id="result-display" style="background:#f0f7ff; padding:15px; border-radius:12px; margin-bottom:10px; font-weight:bold; color:var(--navy);">
-                    ستحصل تلقائياً على: <span id="items-count">0</span>
-                </div>
-
-                <input type="text" id="player-id" placeholder="أدخل ID اللاعب" style="width:100%; padding:12px; margin-bottom:15px; border-radius:10px;">
-
-                <button onclick="sendOrderToOwner()" class="btn-main" style="background:#F25d36; color:white; border:none; width:100%; padding:12px; border-radius:15px; font-weight:bold;">
-                    تأكيد الطلب وتجميد الرصيد 💎
-                </button>`;
-
-        if (me && me.p === ADMIN_PH) { 
-            html += `
-                <div style="margin-top:20px; padding:10px; border:1px dashed red; border-radius:10px; background:#fff5f5;">
-                    <p style="font-size:11px; color:red; font-weight:bold;">🛠 لوحة شحن المطور:</p>
-                    <a href="https://shop2game.com" target="_blank" style="font-size:12px; color:blue; text-decoration:underline;">موقع فري فاير الرسمي</a> | 
-                    <a href="https://www.midasbuy.com" target="_blank" style="font-size:12px; color:blue; text-decoration:underline;">موقع ببجي الرسمي</a>
-                </div>
-                <div style="margin-top:20px; border-top:2px solid #eee; padding-top:10px;">
-                    <h4 style="color:red; font-size:14px;">🛠 طلبات الشحن المعلقة:</h4>
-                    <div id="admin-orders-list"></div>
-                </div>`;
-
-            db.ref('game_orders').orderByChild('status').equalTo('pending').on('value', snap => {
-                let h = '';
-                snap.forEach(c => {
-                    const o = c.val();
-                    h += `
-                        <div style="background:#f9f9f9; padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid #ddd; color:#333;">
-                            <p style="font-size:12px;">👤 <b>اللاعب:</b> ${o.uN} (${o.uP})</p>
-                            <p style="font-size:12px;">🎮 <b>الطلب:</b> ${o.reward} (ID: ${o.playerID})</p>
-                            <div style="display:flex; gap:10px; margin-top:10px;">
-                                <button onclick="processOrder('${c.key}', 'approve', '${o.uP}', ${o.amount})" style="background:green; color:white; border:none; padding:8px; border-radius:8px; flex:1; font-weight:bold; cursor:pointer;">موافق ✅</button>
-                                <button onclick="processOrder('${c.key}', 'reject', '${o.uP}', ${o.amount})" style="background:red; color:white; border:none; padding:8px; border-radius:8px; flex:1; font-weight:bold; cursor:pointer;">رفض ❌</button>
-                            </div>
-                        </div>`;
-                });
-                const listDiv = document.getElementById('admin-orders-list');
-                if(listDiv) listDiv.innerHTML = h || '<p>لا توجد طلبات</p>';
-            });
-        }
-        html += '</div>';
-        area.innerHTML = html;                     
     }
 
     function renderVip(area) {
@@ -725,11 +820,8 @@ const ADMIN_PH = null, ADMIN_SECRET = null;
             uStars: me.rating || 0,
             date: Date.now(), status: 'active' 
         };
-        if(isVip) {
-            data.vExpiry = me.vipExpiry;
-        } else {
-            data.sub = curS;
-        }
+        if(isVip) data.vExpiry = me.vipExpiry;
+        else data.sub = curS;
         
         db.ref(path).push(data);
         Swal.fire('تم النشر','','success');
@@ -753,9 +845,7 @@ const ADMIN_PH = null, ADMIN_SECRET = null;
                     ${isMe ? '<input type="file" onchange="updateProfilePic(this)" style="font-size:10px;">' : ''}
                     <h2 style="margin:0">${u.n}</h2>
                     <p style="color:var(--gold); font-size:18px;">⭐ ${u.rating || 0} تقييم التاجر</p>
-                    
                     ${!isMe ? `<button class="btn-main" style="background:var(--gold); color:black" onclick="rateUser('${ph}')">تقييم هذا التاجر</button>` : ''}
-                    
                     <div style="background:#fff; padding:20px; border-radius:15px; margin-top:20px;">
                         <p style="margin:5px 0; color:#666">الرصيد</p>
                         <h3 style="margin:0; color:var(--blue)">${u.sdmBalance} SDM</h3>
@@ -833,91 +923,6 @@ const ADMIN_PH = null, ADMIN_SECRET = null;
         "تكنولوجيا SDM": {i:"microchip", s:["تعدين","استشارات تقنية"]},
         "منوعات": {i:"box-open", s:["اغراض اخرى"]}
     };
-
-    function calculateItems() {
-        const sdmInput = document.getElementById('sdm-input');
-        const display = document.getElementById('items-count');
-        const gameSelect = document.getElementById('game-selection');
-
-        if (!sdmInput || !display || !gameSelect) return;
-
-        const sdm = parseFloat(sdmInput.value) || 0;
-        const type = gameSelect.value;
-        let res = 0;
-
-        if (sdm < 18) {
-            display.innerText = "أقل كمية 18 SDM";
-            return;
-        }
-
-        if (type === "ff") {
-            res = Math.floor(sdm * 29.45);
-            display.innerText = res + " جوهرة";
-        } else {
-            res = Math.floor(sdm * 18.06);
-            display.innerText = res + " شدة UC";
-        }
-    }
-
-    function sendOrderToOwner() {
-        const sdmInput = document.getElementById('sdm-input');
-        const id = document.getElementById('player-id').value;
-        const resText = document.getElementById('items-count').innerText;
-        const game = document.getElementById('game-selection').value;
-        const sdmAmount = parseFloat(sdmInput.value) || 0;
-
-        if (sdmAmount < 18) return Swal.fire('تنبيه', 'أقل كمية هي 18 SDM', 'info');
-        if (!me || me.sdmBalance < sdmAmount) return Swal.fire('خطأ', 'رصيدك غير كافٍ', 'error');
-        if (!id) return Swal.fire('تنبيه', 'يرجى إدخال ID اللاعب', 'error');
-
-        Swal.fire({
-            title: 'تأكيد الطلب',
-            text: `سيتم تجميد ${sdmAmount} SDM لحين التنفيذ`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'تأكيد'
-        }).then(result => {
-            if (result.isConfirmed) {
-                db.ref('users/' + me.p).update({ 
-                    sdmBalance: me.sdmBalance - sdmAmount, 
-                    frozenSDM: (me.frozenSDM || 0) + sdmAmount 
-                });
-
-                db.ref('game_orders').push({
-                    uN: me.n, uP: me.p, game: game, playerID: id,
-                    amount: sdmAmount, reward: resText, status: 'pending', date: Date.now()
-                });
-                Swal.fire('تم إرسال الطلب بنجاح', '', 'success');
-            }
-        });
-    }
-
-    function processOrder(key, action, phone, amount) {
-        const userRef = db.ref('users/' + phone);
-        userRef.once('value').then(snap => {
-            const d = snap.val() || {};
-            const currentFrozen = Number(d.frozenSDM || 0);
-            const currentBalance = Number(d.sdmBalance || 0);
-            const orderAmount = Number(amount);
-
-            if (action === 'approve') {
-                userRef.update({ 
-                    frozenSDM: Math.max(0, currentFrozen - orderAmount) 
-                }).then(() => {
-                    db.ref('game_orders/' + key).update({ status: 'completed' });
-                    Swal.fire('تم التأكيد ✅', 'تم تنفيذ الطلب بنجاح', 'success');
-                });
-            } else {
-                userRef.update({
-                    sdmBalance: currentBalance + orderAmount,
-                    frozenSDM: Math.max(0, currentFrozen - orderAmount)
-                }).then(() => {
-                    db.ref('game_orders/' + key).remove();
-                    Swal.fire('تم الرفض ❌', 'أعيد رصيد SDM للمستخدم', 'info');
-                });
-            }
-        });
-    }
 </script>
 </body>
 </html>
