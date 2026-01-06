@@ -40,10 +40,25 @@
         #dev-alert-bar { background: linear-gradient(90deg, #c0392b, #e74c3c); color: white; padding: 8px; text-align: center; font-size: 13px; font-weight: bold; display: none; box-shadow: 0 2px 5px rgba(0,0,0,0.2); animation: pulse 2s infinite; }
         @keyframes pulse { 0% { opacity: 0.95; } 50% { opacity: 1; } 100% { opacity: 0.95; } }
 
-        .slider-container { position: relative; width: 100%; height: 180px; overflow: hidden; margin-bottom: 15px; border-radius: 0 0 15px 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        /* تعديلات السلايدر الجديدة */
+        .slider-container { position: relative; width: 100%; height: 200px; overflow: hidden; margin-bottom: 15px; border-radius: 0 0 15px 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); background: #000; }
         #slider-img { width: 100%; height: 100%; object-fit: cover; transition: opacity 0.5s; cursor: pointer; }
         .slider-overlay { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.5); color: #fff; padding: 5px; text-align: center; font-size: 12px; }
-        .edit-slider-btn { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: var(--gold); padding: 6px 12px; border-radius: 20px; cursor: pointer; z-index: 100; font-size: 12px; border: 1px solid var(--gold); display: flex; align-items: center; gap: 5px; }
+        
+        /* زر تعديل السلايدر الخاص بالآدمن */
+        .edit-slider-btn { 
+            position: absolute; top: 15px; left: 15px; 
+            background: rgba(0, 0, 0, 0.7); color: var(--gold); 
+            padding: 8px 15px; border-radius: 20px; cursor: pointer; 
+            z-index: 100; font-size: 14px; border: 1px solid var(--gold); 
+            display: flex; align-items: center; gap: 5px; font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+        .slider-dots {
+            position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 5px; z-index: 10;
+        }
+        .dot { width: 8px; height: 8px; background: rgba(255,255,255,0.5); border-radius: 50%; }
+        .dot.active { background: var(--gold); }
 
         .publish-container { background: var(--white); margin: 15px; padding: 20px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #eef; }
         .publish-container h4 { font-size: 22px; color: var(--navy); margin-bottom: 15px; border-right: 4px solid var(--blue); padding-right: 10px; }
@@ -165,7 +180,8 @@
     let isGuest = false; 
     let sliderInterval;
     const sdmCoinImage = "https://i.ibb.co/3ykXvBv/SDM-Coin.jpg"; 
-    let sliderImages = [sdmCoinImage]; 
+    // مصفوفة تحتوي على 3 صور كحد أدنى (سيتم جلبها من قاعدة البيانات)
+    let sliderImages = [sdmCoinImage, sdmCoinImage, sdmCoinImage]; 
     let currentSliderIndex = 0;
 
     const cats = {
@@ -642,12 +658,19 @@
         if(view === 'home') {
             db.ref('settings').on('value', snap => {
                 const s = snap.val() || {};
-                sliderImages = (s.sliderImages && s.sliderImages.length > 0) ? s.sliderImages : [sdmCoinImage];
+                // التأكد من وجود 3 صور في السلايدر
+                sliderImages = (s.sliderImages && s.sliderImages.length >= 3) ? s.sliderImages : [sdmCoinImage, sdmCoinImage, sdmCoinImage];
+                
                 area.innerHTML = `
                     <div class="slider-container" onclick="handleSliderClick()">
                         <img id="slider-img" src="${sliderImages[0]}">
                         <div class="slider-overlay">المحفظة</div>
-                        ${(!isGuest && me.role === 'admin') ? `<div class="edit-slider-btn" onclick="updateSliderImgs()">✏️</div>` : ''}
+                        <div class="slider-dots">
+                            <div class="dot active" id="dot-0"></div>
+                            <div class="dot" id="dot-1"></div>
+                            <div class="dot" id="dot-2"></div>
+                        </div>
+                        ${(!isGuest && me.role === 'admin') ? `<div class="edit-slider-btn" onclick="updateCurrentSliderImg()">✏️ تعديل الصورة الحالية</div>` : ''}
                     </div>
                     ${(!isGuest && me.role === 'admin') ? `<button class="btn-main" style="background:#6f42c1; margin:10px;" onclick="sendBroadcastMessage()">📢 نشر رسالة</button>` : ''}
                     <div id="vip-slider"></div>
@@ -677,28 +700,70 @@
     function startSlider() {
         const imgEl = document.getElementById('slider-img');
         if(!imgEl) return;
+        
         currentSliderIndex = 0;
         imgEl.src = sliderImages[0];
+        updateDots(0);
+
+        // التغيير كل 5 ثواني
         sliderInterval = setInterval(() => {
             const el = document.getElementById('slider-img');
             if(!el) return;
-            currentSliderIndex = (currentSliderIndex + 1) % sliderImages.length;
+            currentSliderIndex = (currentSliderIndex + 1) % 3; // تدوير بين 0، 1، 2
+            
             el.style.opacity = 0;
-            setTimeout(() => { el.src = sliderImages[currentSliderIndex]; el.style.opacity = 1; }, 300);
-        }, 3000);
+            setTimeout(() => { 
+                el.src = sliderImages[currentSliderIndex]; 
+                el.style.opacity = 1; 
+                updateDots(currentSliderIndex);
+            }, 300);
+        }, 5000);
     }
 
-    function handleSliderClick() { if (sliderImages[currentSliderIndex] === sdmCoinImage) checkGuestAccess('wallet'); }
+    function updateDots(idx) {
+        document.querySelectorAll('.dot').forEach(d => d.classList.remove('active'));
+        const activeDot = document.getElementById(`dot-${idx}`);
+        if(activeDot) activeDot.classList.add('active');
+    }
+
+    function handleSliderClick() { 
+        if (me && me.role === 'admin') return; // الآدمن لا يضغط للتوجيه لتسهيل التعديل
+        if (sliderImages[currentSliderIndex] === sdmCoinImage) checkGuestAccess('wallet'); 
+    }
     
-    async function updateSliderImgs() {
+    // دالة تعديل الصورة الحالية بشكل فردي
+    async function updateCurrentSliderImg() {
         if (me.role !== 'admin') return;
         event.stopPropagation();
-        Swal.fire({ title: 'تعديل الصور', html: '<input type="file" id="slider-files-input" class="swal2-file" multiple accept="image/*">', showCancelButton: true, preConfirm: () => {
-            const files = document.getElementById('slider-files-input').files;
-            if (!files || files.length === 0) return null;
-            return Promise.all(Array.from(files).map(f => compressImage(f)));
-        }}).then((res) => {
-            if (res.value) db.ref('settings/sliderImages').set([sdmCoinImage, ...res.value]);
+        
+        // إيقاف السلايدر مؤقتاً أثناء التعديل
+        clearInterval(sliderInterval);
+
+        Swal.fire({ 
+            title: `تعديل الصورة رقم ${currentSliderIndex + 1}`, 
+            html: '<input type="file" id="single-slider-input" class="swal2-file" accept="image/*">', 
+            showCancelButton: true, 
+            confirmButtonText: 'حفظ التغيير',
+            preConfirm: () => {
+                const f = document.getElementById('single-slider-input').files[0];
+                if (!f) return null;
+                return compressImage(f);
+            }
+        }).then((res) => {
+            if (res.value) {
+                // تحديث مصفوفة الصور في الموقع المحدد فقط
+                let newImages = [...sliderImages];
+                // التأكد من أن المصفوفة بحجم 3
+                while(newImages.length < 3) newImages.push(sdmCoinImage);
+                
+                newImages[currentSliderIndex] = res.value;
+                
+                db.ref('settings/sliderImages').set(newImages).then(() => {
+                    Swal.fire('تم التحديث', 'تم تغيير الصورة بنجاح', 'success');
+                });
+            }
+            // إعادة تشغيل السلايدر
+            startSlider();
         });
     }
 
