@@ -6,9 +6,6 @@
     <title>SDM Market | جوهرة سولانا 🇸🇩</title>
     
     <!-- مكتبات خارجية -->
-    <!-- إضافة كود ReCaptcha (تم تعطيله لحل مشكلة الدخول) -->
-    <!-- <script src="https://www.google.com/recaptcha/api.js?render=6Lcd0UAsAAAAAsgLIU9rpyti0xHtrgwC2dvklv_"></script> -->
-    
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -19,21 +16,19 @@
       });
     </script>
     
-    <!-- مكتبات فايربيس (v8.10.1) -->
+    <!-- مكتبات فايربيس (v8.10.1 - Compat) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <!-- تم تعطيل مكتبة App Check مؤقتاً -->
-    <!-- <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app-check.js"></script> -->
     
+    <!-- مكتبة التنبيهات والأيقونات -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
         :root { --navy: #0d1117; --gold: #ffc107; --blue: #007bff; --bg: #f4f6f9; --green: #28a745; --red: #dc3545; --white: #ffffff; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: var(--bg); padding-bottom: 75px; direction: rtl; user-select: none; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: var(--bg); padding-bottom: 75px; direction: rtl; user-select: none; -webkit-tap-highlight-color: transparent; }
         .hidden { display: none !important; }
-        .show-error { display: block !important; color: var(--red); font-size: 12px; margin-top: -5px; margin-bottom: 10px; font-weight: bold; }
         
         /* الهيدر وشريط البحث */
         header { background: var(--navy); color: white; padding: 10px 15px; display: flex; flex-direction: column; gap: 10px; position: sticky; top: 0; z-index: 1000; border-bottom: 2px solid var(--gold); }
@@ -103,7 +98,7 @@
 </head>
 <body>
 
-<!-- شاشة الدخول (المعدلة) -->
+<!-- شاشة الدخول -->
 <div id="auth-screen" class="hidden">
     <div style="padding:40px; text-align:center; height:100vh; display:flex; flex-direction:column; justify-content:center; align-items:center; background: #f0f2f5;">
         <img src="https://i.ibb.co/3ykXvBv/SDM-Coin.jpg" style="width:100px; height:100px; border-radius:50%; margin-bottom:20px; border:3px solid var(--gold);">
@@ -132,19 +127,16 @@
                 <span id="u-stars" style="color:var(--gold)">⭐0</span>
             </div>
         </div>
-        <!-- شريط البحث المطور -->
         <div class="search-container">
             <i class="fas fa-search"></i>
             <input type="text" id="store-search" placeholder="ابحث عن منتج، لعبة، خدمة..." oninput="filterContent(this.value)">
         </div>
     </header>
 
-    <!-- شريط تنبيهات المطور -->
     <div id="dev-alert-bar"></div>
     <div id="admin-notifications-area"></div>
     <div id="welcome-container"></div>
     
-    <!-- منطقة المحتوى الرئيسية -->
     <div id="content-area"></div>
 
     <div class="bottom-tabs">
@@ -157,7 +149,7 @@
 </div>
 
 <script>
-    // --- إعدادات الفايربيس الجديدة ---
+    // --- إعدادات الفايربيس ---
     const firebaseConfig = {
       apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
       authDomain: "sudan-market-6b122.firebaseapp.com",
@@ -170,22 +162,17 @@
     };
     
     // تهيئة التطبيق
-    const app = firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    
-    // --- إضافة وتفعيل App Check (ReCaptcha V3) ---
-    // تم تعطيل App Check لحل مشكلة الدخول
-    /* 
-    if (firebase.appCheck) {
-        const appCheck = firebase.appCheck();
-        appCheck.activate('6Lcd0UAsAAAAAsgLIU9rpyti0xHtrgwC2dvklv_', true);
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
     }
-    */
-
+    const auth = firebase.auth();
     const db = firebase.database();
 
     const SDM_PRICE = 1000;
-    let me = null, hStack = ['home'], curC = '', curS = '', tempImg = '', userPic = 'https://via.placeholder.com/150';
+    let me = null;
+    let hStack = ['home'];
+    let curC = '', curS = '';
+    let tempImg = '', tempBuyImg = '', userPic = 'https://via.placeholder.com/150';
     let isGuest = false; 
 
     // إعدادات الشريط المنزلق
@@ -220,13 +207,12 @@
         ff: [ { name: "100 جوهرة", sdm: 4 }, { name: "530 جوهرة", sdm: 20 }, { name: "1080 جوهرة", sdm: 40 } ]
     };
 
-    // --- 1. نظام الدخول الجديد (Google) ---
+    // --- 1. نظام الدخول ---
     auth.onAuthStateChanged(user => {
         if (user) {
             const uid = user.uid;
             db.ref('users/' + uid).once('value', snap => {
                 if(snap.exists()) {
-                    // مستخدم موجود
                     const u = snap.val();
                     if (u.bannedUntil && u.bannedUntil > Date.now()) {
                         Swal.fire('محظور', 'تم حظر حسابك مؤقتاً.', 'error').then(() => {
@@ -237,10 +223,9 @@
                     me = u;
                     startApp(uid);
                 } else {
-                    // تسجيل مستخدم جديد تلقائياً باستخدام بيانات جوجل
                     const newUser = {
                         n: user.displayName || 'مستخدم جديد',
-                        p: uid, // نستخدم UID كمعرف
+                        p: uid,
                         email: user.email,
                         pic: user.photoURL,
                         sdmBalance: 0,
@@ -248,7 +233,7 @@
                         vipStatus: 'none',
                         role: 'user',
                         reportCount: 0,
-                        wa: '' // سيتم الطلب لاحقاً
+                        wa: ''
                     };
                     db.ref('users/' + uid).set(newUser).then(() => {
                         me = newUser;
@@ -268,7 +253,14 @@
         const provider = new firebase.auth.GoogleAuthProvider();
         auth.signInWithPopup(provider).catch(error => {
             console.error(error);
-            Swal.fire('خطأ في تسجيل الدخول', error.message, 'error');
+            // عرض رسالة خطأ واضحة
+            let errorMsg = "حدث خطأ غير متوقع: " + error.message;
+            if (error.code === 'auth/unauthorized-domain') {
+                errorMsg = "النطاق (Domain) غير مصرح له. يرجى إضافة رابط الموقع في Firebase Authentication Settings.";
+            } else if (error.code === 'auth/popup-closed-by-user') {
+                errorMsg = "تم إغلاق نافذة تسجيل الدخول قبل الاكتمال.";
+            }
+            Swal.fire('خطأ في تسجيل الدخول', errorMsg, 'error');
         });
     }
 
@@ -286,8 +278,8 @@
         render('home');
     }
 
-    // --- 2. نظام ضغط الصور (Image Compression) ---
-    async function compressImage(file) {
+    // --- 2. معالجة الصور ---
+    function compressImage(file) {
         return new Promise((resolve) => {
             const reader = new FileReader();
             reader.readAsDataURL(file);
@@ -296,10 +288,9 @@
                 img.src = event.target.result;
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 800; // عرض مناسب للجودة
+                    const MAX_WIDTH = 800;
                     const scaleSize = MAX_WIDTH / img.width;
                     
-                    // إذا الصورة صغيرة لا تضغطها
                     if (scaleSize >= 1) {
                         resolve(event.target.result);
                         return;
@@ -311,30 +302,35 @@
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     
-                    // تحويل إلى JPEG بجودة 70%
                     resolve(canvas.toDataURL('image/jpeg', 0.7));
                 }
             };
         });
     }
 
-    // تعديل دالة encode لاستخدام الضغط
     async function encode(i, t) {
         if(!i.files[0]) return;
         try {
             Swal.fire({ title: 'جاري معالجة الصورة...', didOpen: () => Swal.showLoading(), allowOutsideClick: false, showConfirmButton: false, timer: 1000 });
             const compressed = await compressImage(i.files[0]);
             
-            if(t==='user') {
+            if(t === 'user') {
                 userPic = compressed;
-                // إذا كان المستخدم مسجلاً، حدث الصورة فوراً
                 if(me && !isGuest) {
                      db.ref('users/'+me.p).update({ pic: userPic });
-                     document.getElementById('profile-img-view').src = userPic;
+                     const view = document.getElementById('profile-img-view');
+                     if(view) view.src = userPic;
                 }
             }
-            else if(t==='buy') window.tempBuyImg = compressed;
-            else tempImg = compressed;
+            else if(t === 'buy') {
+                tempBuyImg = compressed;
+            }
+            else if(t === 'coin-setting') {
+                tempImg = compressed; 
+            }
+            else {
+                tempImg = compressed;
+            }
 
         } catch(e) {
             console.error(e);
@@ -342,8 +338,7 @@
         }
     }
 
-    // --- بقية وظائف التطبيق ---
-
+    // --- وظائف التطبيق ---
     function checkGuestAccess(view, extra) {
         if (isGuest) {
             Swal.fire({
@@ -374,11 +369,10 @@
             }
 
             me = val;
-            me.p = uid; // تأكيد الـ UID
+            me.p = uid;
             document.getElementById('auth-screen').classList.add('hidden');
             document.getElementById('app-screen').classList.remove('hidden');
             
-            // تحقق من وجود رقم واتساب للمستخدم الجديد
             if (!me.wa) {
                promptWhatsApp();
             }
@@ -1256,8 +1250,6 @@
     }
 
     function showTransfer() {
-        // التحويل يعتمد الآن على كود المستخدم (UID) 
-        // أو يمكننا البحث عن المستخدم عبر رقم الواتساب إذا أردت
         Swal.fire({
             title: 'تحويل سريع وآمن',
             html: `
@@ -1457,16 +1449,21 @@
     function updateCoinImg(input) {
         if (me.role !== 'admin') return;
         if(!input.files[0]) return;
-        encode({files:[input.files[0]]}, 'coin-setting').then(() => {
-            db.ref('settings/coinImg').set(tempImg); 
-            Swal.fire('تم', 'تم تحديث صورة العملة', 'success');
+        encode(input, 'coin-setting').then(() => {
+            // ننتظر قليلاً للتأكد من أن tempImg تم تعيينه
+            setTimeout(() => {
+                if(tempImg) {
+                    db.ref('settings/coinImg').set(tempImg); 
+                    Swal.fire('تم', 'تم تحديث صورة العملة', 'success');
+                }
+            }, 500);
         });
     }
 
     function requestCoins() {
         const qty = document.getElementById('buy-qty').value;
-        if(!qty || !window.tempBuyImg) return Swal.fire('تنبيه','يرجى إدخال الكمية وصورة الإشعار','warning');
-        db.ref('coin_requests').push({ uP: me.p, uN: me.n, qty, img: window.tempBuyImg, status: 'pending', date: Date.now() });
+        if(!qty || !tempBuyImg) return Swal.fire('تنبيه','يرجى إدخال الكمية وصورة الإشعار','warning');
+        db.ref('coin_requests').push({ uP: me.p, uN: me.n, qty, img: tempBuyImg, status: 'pending', date: Date.now() });
         Swal.fire('تم الإرسال','سيتم مراجعة طلبك من قبل الإدارة','success');
     }
 
