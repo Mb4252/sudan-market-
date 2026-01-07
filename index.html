@@ -338,13 +338,10 @@
             listenForDevAlerts();
             checkForBroadcastMessage();
             
-            // تفعيل المعالج الآلي للآدمن فقط
+            // تفعيل التنبيهات للآدمن (لكن بدون تنفيذ العمليات الحسابية آلياً لأن البوت يقوم بها)
             if(me.role === "admin" && me.email === ADMIN_EMAIL_ADDRESS) {
                 listenForAdminTasks();
                 listenForReportNotifications();
-                listenForTransferQueue(); 
-                listenForRatingQueue(); 
-                cleanOldData(); 
             }
             if(me.role === "admin") setTimeout(initDeveloperLogic, 1000);
             render('home');
@@ -352,74 +349,11 @@
         db.ref('users/' + uid).update({ lastSeen: Date.now() });
     }
 
-    // --- 🔥 المعالجات الآلية للآدمن (ROBOT) 🔥 ---
-    
-    // 1. معالج التحويلات (Transfer Robot)
-    function listenForTransferQueue() {
-        console.log("Transfer Robot Active...");
-        db.ref('transfer_queue').on('child_added', async (snap) => {
-            const req = snap.val(); const reqKey = snap.key;
-            if(!req || !req.sender || !req.receiver || !req.amount) { db.ref('transfer_queue/'+reqKey).remove(); return; }
-            try {
-                const senderSnap = await db.ref('users/' + req.sender).once('value');
-                const receiverSnap = await db.ref('users/' + req.receiver).once('value');
-                
-                if(!senderSnap.exists() || !receiverSnap.exists()) { await db.ref('transfer_queue/'+reqKey).remove(); return; }
-
-                const senderData = senderSnap.val(); const receiverData = receiverSnap.val();
-                const amount = Number(req.amount);
-
-                if(senderData.sdmBalance >= amount) {
-                    await db.ref('users/' + req.sender).update({ sdmBalance: (senderData.sdmBalance || 0) - amount });
-                    await db.ref('users/' + req.receiver).update({ sdmBalance: (receiverData.sdmBalance || 0) + amount });
-
-                    const opId = "SDM-" + Math.random().toString(36).substr(2, 9).toUpperCase();
-                    const txData = { opId, amount, sender: req.sender, senderName: senderData.n, receiver: req.receiver, receiverName: receiverData.n, date: Date.now(), involves: [req.sender, req.receiver], type: 'transfer' };
-                    await db.ref('transactions').push(txData);
-                    await db.ref('alerts/' + req.receiver).push({ isReceipt: true, ...txData, time: new Date().toLocaleString('ar-EG') });
-                    await db.ref('alerts/' + req.sender).push({ msg: `✅ تم تحويل ${amount} SDM بنجاح إلى ${receiverData.n}`, type: 'success' });
-                } else {
-                    await db.ref('alerts/' + req.sender).push({ msg: `❌ فشل التحويل: رصيدك غير كافٍ`, type: 'error' });
-                }
-            } catch (err) { console.error(err); } 
-            finally { await db.ref('transfer_queue/' + reqKey).remove(); }
-        });
-    }
-
-    // 2. معالج التقييمات (Rating Robot)
-    function listenForRatingQueue() {
-        console.log("Rating Robot Active...");
-        db.ref('rating_queue').on('child_added', async (snap) => {
-            const req = snap.val(); const reqKey = snap.key;
-            if (!req) return;
-            try {
-                const uSnap = await db.ref('users/'+req.target).once('value');
-                if(uSnap.exists()) {
-                    let u = uSnap.val();
-                    let ratedBy = u.ratedBy || [];
-                    if(!ratedBy.includes(req.rater)) {
-                        ratedBy.push(req.rater);
-                        let newRating = (u.rating || 0) + req.stars;
-                        await db.ref('users/'+req.target).update({ rating: newRating, ratedBy: ratedBy });
-                        await db.ref('alerts/'+req.rater).push({ msg: `✅ تم احتساب تقييمك للمستخدم ${u.n}`, type: 'success' });
-                    }
-                }
-            } catch(e) { console.error(e); }
-            finally { await db.ref('rating_queue/'+reqKey).remove(); }
-        });
-    }
+    // --- تم حذف الروبوتات الآلية (Transfer Robot & Rating Robot) لترك المجال لبوت بايثون ---
 
     async function promptWhatsApp() {
         const { value: wa } = await Swal.fire({ title: 'رقم الواتساب', input: 'tel', inputPlaceholder: '0xxxxxxxxx', allowOutsideClick: false });
         if (wa) db.ref('users/'+me.p).update({ wa: wa });
-    }
-
-    function cleanOldData() {
-        if (me.role !== 'admin') return;
-        const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000); 
-        db.ref('transactions').orderByChild('date').endAt(threeDaysAgo).once('value', s => s.forEach(c => c.ref.remove()));
-        db.ref('game_orders').orderByChild('date').endAt(threeDaysAgo).once('value', s => s.forEach(c => c.ref.remove()));
-        db.ref('posts').orderByChild('date').endAt(Date.now() - 86400000).once('value', s => s.forEach(c => c.ref.remove()));
     }
 
     function checkForBroadcastMessage() {
