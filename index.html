@@ -180,29 +180,38 @@
     let isGuest = false; 
     let sliderInterval;
     const sdmCoinImage = "https://i.ibb.co/3ykXvBv/SDM-Coin.jpg"; 
-    // مصفوفة تحتوي على 3 صور كحد أدنى (سيتم جلبها من قاعدة البيانات)
-    let sliderImages = [sdmCoinImage, sdmCoinImage, sdmCoinImage]; 
+
+    // --- تعديل صور الشريط المنزلق (سلايدر) ---
+    // الصورة 1: شعار العملة
+    // الصورة 2: صورة تعبر عن التسوق الحديث
+    // الصورة 3: صورة تعبر عن الألعاب والتكنولوجيا
+    let sliderImages = [
+        sdmCoinImage, 
+        "https://images.unsplash.com/photo-1556742049-0cfed4f7a07d?auto=format&fit=crop&w=800&q=80", 
+        "https://images.unsplash.com/photo-1534423861386-85a16f5d13fd?auto=format&fit=crop&w=800&q=80"
+    ]; 
     let currentSliderIndex = 0;
 
+    // --- تعديل صور الأقسام الحديثة والمضغوطة ---
     const cats = {
-        "الموبايلات": {i:"mobile-alt", s:["آيفون","سامسونج","شاومي","بكسل","هواوي"]},
-        "السيارات": {i:"car", s:["تويوتا","هيونداي","BYD","أكسنت","ركشات"]},
-        "العقارات": {i:"home", s:["شقق للايجار","بيوت للبيع","مزارع","اراضي"]},
-        "أجهزة منزلية": {i:"tv", s:["شاشات","ثلاجات","مكيفات","غسالات"]},
-        "التعدين": {i:"hammer", s:[]}, 
-        "الكمبيوتر": {i:"laptop", s:["لابتوبات","طابعات","اكسسوارات"]},
-        "أثاث منزل": {i:"chair", s:["غرف نوم","سراير","كراسي","طاولات"]},
-        "ملابس رجالية": {i:"tshirt", s:["قمصان","بناطيل","احذية","جلابيب"]},
-        "ملابس نسائية": {i:"female", s:["تياب","فساتين","شنط","مكياج"]},
-        "مستلزمات أطفال": {i:"baby", s:["ملابس اطفال","العاب","عربات اطفال"]},
-        "الذهب والمجوهرات": {i:"gem", s:["خواتم","سلاسل","اطقم ذهب"]},
-        "حيوانات": {i:"paw", s:["اغنام","طيور","قطط","خيول"]},
-        "خدمات مهنية": {i:"tools", s:["كهرباء","سباكة","حدادة","نقاشة"]},
-        "مطاعم": {i:"utensils", s:["وجبات سريعة","حلويات","عصائر"]},
-        "الصحة والجمال": {i:"heartbeat", s:["عطور","كريمات","معدات طبية"]},
-        "كتب وأدوات": {i:"book", s:["روايات","كتب علمية","قرطاسية"]},
-        "سياحة وسفر": {i:"plane", s:["تذاكر طيران","تأشيرات","فنادق"]},
-        "منوعات": {i:"box-open", s:["اغراض اخرى"]}
+        "الموبايلات": {i:"mobile-alt", defImg: "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=200&q=60", s:["آيفون","سامسونج","شاومي","بكسل","هواوي"]},
+        "السيارات": {i:"car", defImg: "https://images.unsplash.com/photo-1503376763036-066120622c74?auto=format&fit=crop&w=200&q=60", s:["تويوتا","هيونداي","BYD","أكسنت","ركشات"]},
+        "العقارات": {i:"home", defImg: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=200&q=60", s:["شقق للايجار","بيوت للبيع","مزارع","اراضي"]},
+        "أجهزة منزلية": {i:"tv", defImg: "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=200&q=60", s:["شاشات","ثلاجات","مكيفات","غسالات"]},
+        "التعدين": {i:"hammer", defImg: "https://images.unsplash.com/photo-1516245834210-c4c14278733f?auto=format&fit=crop&w=200&q=60", s:[]}, 
+        "الكمبيوتر": {i:"laptop", defImg: "https://images.unsplash.com/photo-1593642702821-c8da6771f0c6?auto=format&fit=crop&w=200&q=60", s:["لابتوبات","طابعات","اكسسوارات"]},
+        "أثاث منزل": {i:"chair", defImg: "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=200&q=60", s:["غرف نوم","سراير","كراسي","طاولات"]},
+        "ملابس رجالية": {i:"tshirt", defImg: "https://images.unsplash.com/photo-1617137968427-85924c800a22?auto=format&fit=crop&w=200&q=60", s:["قمصان","بناطيل","احذية","جلابيب"]},
+        "ملابس نسائية": {i:"female", defImg: "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=200&q=60", s:["تياب","فساتين","شنط","مكياج"]},
+        "مستلزمات أطفال": {i:"baby", defImg: "https://images.unsplash.com/photo-1515488042361-25f4682f0865?auto=format&fit=crop&w=200&q=60", s:["ملابس اطفال","العاب","عربات اطفال"]},
+        "الذهب والمجوهرات": {i:"gem", defImg: "https://images.unsplash.com/photo-1573408301185-9146fe634ad0?auto=format&fit=crop&w=200&q=60", s:["خواتم","سلاسل","اطقم ذهب"]},
+        "حيوانات": {i:"paw", defImg: "https://images.unsplash.com/photo-1537151608828-ea2b11777ee8?auto=format&fit=crop&w=200&q=60", s:["اغنام","طيور","قطط","خيول"]},
+        "خدمات مهنية": {i:"tools", defImg: "https://images.unsplash.com/photo-1581244277943-fe4a9c777189?auto=format&fit=crop&w=200&q=60", s:["كهرباء","سباكة","حدادة","نقاشة"]},
+        "مطاعم": {i:"utensils", defImg: "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=200&q=60", s:["وجبات سريعة","حلويات","عصائر"]},
+        "الصحة والجمال": {i:"heartbeat", defImg: "https://images.unsplash.com/photo-1596462502278-27bfdd403348?auto=format&fit=crop&w=200&q=60", s:["عطور","كريمات","معدات طبية"]},
+        "كتب وأدوات": {i:"book", defImg: "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=200&q=60", s:["روايات","كتب علمية","قرطاسية"]},
+        "سياحة وسفر": {i:"plane", defImg: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=200&q=60", s:["تذاكر طيران","تأشيرات","فنادق"]},
+        "منوعات": {i:"box-open", defImg: "https://images.unsplash.com/photo-1513885535751-8b9238bd345a?auto=format&fit=crop&w=200&q=60", s:["اغراض اخرى"]}
     };
 
     const officialRates = {
@@ -592,12 +601,12 @@
         if(view === 'home') {
             db.ref('settings').on('value', snap => {
                 const s = snap.val() || {};
-                // التأكد من وجود 3 صور في السلايدر
-                sliderImages = (s.sliderImages && s.sliderImages.length >= 3) ? s.sliderImages : [sdmCoinImage, sdmCoinImage, sdmCoinImage];
+                // استخدام الصور من الفايربيس إذا وجدت، وإلا استخدام المصفوفة المحدثة لدينا
+                const finalSliderImages = (s.sliderImages && s.sliderImages.length >= 3) ? s.sliderImages : sliderImages;
                 
                 area.innerHTML = `
                     <div class="slider-container" onclick="handleSliderClick()">
-                        <img id="slider-img" src="${sliderImages[0]}">
+                        <img id="slider-img" src="${finalSliderImages[0]}">
                         <div class="slider-overlay">المحفظة</div>
                         <div class="slider-dots">
                             <div class="dot active" id="dot-0"></div>
@@ -610,11 +619,14 @@
                     <div id="vip-slider"></div>
                     <div class="grid">
                         ${Object.keys(cats).map(k=> {
-                            const ci = (s.categories && s.categories[k]) ? s.categories[k].img : null;
+                            // الأولوية للصورة من الفايربيس، ثم الصورة الافتراضية الحديثة، ثم الأيقونة كاحتياط
+                            const ci = (s.categories && s.categories[k]) ? s.categories[k].img : cats[k].defImg;
                             const eb = (!isGuest && me.role === 'admin') ? `<div class="edit-cat-btn" onclick="event.stopPropagation(); updateCategoryImg('${k}')"><i class="fas fa-edit"></i></div>` : '';
                             return `<div class="card" onclick="nav('sub','${k}')">${eb} ${ci ? `<img src="${ci}" class="cat-custom-img">` : `<i class="fas fa-${cats[k].i}" style="font-size:24px; color:var(--blue); margin-bottom:10px;"></i>`} <br><b>${k}</b></div>`;
                         }).join('')}
                     </div>`;
+                // تحديث مصفوفة السلايدر المستخدمة فعلياً لضمان تناسق العرض
+                if(s.sliderImages && s.sliderImages.length >= 3) sliderImages = s.sliderImages;
                 startSlider();
             });
             loadVipHome();
