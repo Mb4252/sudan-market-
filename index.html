@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SDM Market 2050 | تداول MRK الحقيقي</title>
+    <title>SDM Market 2050 | النظام الآمن</title>
     
     <!-- خطوط عربية حديثة -->
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;500;800&display=swap" rel="stylesheet">
     
-    <!-- مكتبات خارجية -->
+    <!-- مكتبات خارجية (إشعارات) -->
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -17,10 +17,12 @@
       });
     </script>
     
+    <!-- مكتبات Firebase -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     
+    <!-- أدوات الواجهة -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -28,7 +30,7 @@
     <style>
         :root {
             --bg-dark: #0f172a;
-            --bg-card: rgba(30, 41, 59, 0.7);
+            --bg-card: rgba(30, 41, 59, 0.85);
             --primary: #3b82f6;
             --accent: #f59e0b;
             --neon-blue: #00f3ff;
@@ -36,14 +38,8 @@
             --text-sec: #94a3b8;
             --glass: rgba(255, 255, 255, 0.05);
             --border: rgba(255, 255, 255, 0.1);
-            
-            --navy: #0f172a; 
-            --gold: #f59e0b; 
-            --blue: #3b82f6; 
-            --green: #10b981; 
             --red: #ef4444; 
-            
-            /* ألوان التداول */
+            --green: #10b981; 
             --up-color: #0ecb81;
             --down-color: #f6465d;
         }
@@ -58,6 +54,7 @@
             padding-bottom: 90px;
             min-height: 100vh;
             user-select: none;
+            overflow-x: hidden;
         }
 
         /* Scrollbar */
@@ -66,10 +63,23 @@
 
         .hidden { display: none !important; }
         .search-hidden { display: none !important; }
+
+        /* --- شاشة الحماية (Offline Guard) --- */
+        #offline-guard {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.98);
+            z-index: 99999; /* أعلى طبقة */
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            text-align: center;
+            backdrop-filter: blur(15px);
+        }
+        .pulse-icon { animation: pulse 2s infinite; color: var(--red); font-size: 80px; margin-bottom: 25px; }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
         
         /* Header */
         header {
-            background: rgba(15, 23, 42, 0.85);
+            background: rgba(15, 23, 42, 0.95);
             backdrop-filter: blur(12px);
             padding: 15px 20px;
             position: sticky; top: 0; z-index: 1000;
@@ -177,7 +187,7 @@
         }
         @keyframes float { 0% {transform: translateY(0px);} 50% {transform: translateY(-10px);} 100% {transform: translateY(0px);} }
 
-        /* --- AMM TRADING STYLES (NEW) --- */
+        /* --- AMM TRADING STYLES --- */
         .swap-card {
             background: var(--bg-card); border: 1px solid var(--border);
             border-radius: 20px; padding: 20px; margin: 15px;
@@ -209,7 +219,6 @@
             border-radius: 10px; font-size: 12px; color: var(--text-sec);
         }
         .stat-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
-        /* ---------------------------------- */
 
         /* Admin & Game Panels */
         .admin-panel, .game-panel { background: var(--bg-card); border: 1px solid var(--border); padding: 15px; margin: 15px; border-radius: 15px; color: white; }
@@ -249,10 +258,21 @@
 </head>
 <body>
 
+<!-- شاشة الحماية (Dead Man's Switch UI) -->
+<div id="offline-guard" class="hidden">
+    <i class="fas fa-shield-alt pulse-icon"></i>
+    <h2 style="color:white; margin:10px;">النظام في وضع الحماية</h2>
+    <p style="color:#94a3b8; padding:0 20px; line-height: 1.6;">
+        تعذر الاتصال بخادم الأمان (Security Bot).<br>
+        تم تجميد جميع العمليات المالية تلقائياً لحماية الأرصدة.<br>
+        <span style="font-size:12px; margin-top:15px; display:block; color:#ef4444; border:1px solid #ef4444; padding:5px; border-radius:5px; width:fit-content; margin:15px auto;">System Auto-Locked 🔒</span>
+    </p>
+</div>
+
 <!-- شاشة الدخول -->
 <div id="auth-screen" class="hidden">
     <div style="padding:40px; text-align:center; height:100vh; display:flex; flex-direction:column; justify-content:center; align-items:center;">
-        <img src="https://cdn-icons-png.flaticon.com/512/5501/5501360.png" class="sdm-logo" style="margin-bottom:30px; animation: float 3s infinite ease-in-out;">
+        <img src="https://cdn-icons-png.flaticon.com/512/5501/5501360.png" class="sdm-logo" style="margin-bottom:30px; width:100px; height:100px;">
         <h2 style="font-size: 32px; margin-bottom:5px; background: linear-gradient(45deg, var(--neon-blue), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">SDM MARKET</h2>
         <p style="color:var(--text-sec); margin-bottom:40px;">بوابة المستقبل وتداول MRK</p>
         
@@ -318,6 +338,7 @@
     const auth = firebase.auth();
     const db = firebase.database();
 
+    // --- متغيرات النظام ---
     const ADMIN_EMAIL_ADDRESS = "mb425262@gmail.com";
     const SDM_RATE = 1000; 
     let me = null;
@@ -329,12 +350,12 @@
     const sdmCoinImage = "https://cdn-icons-png.flaticon.com/512/5501/5501360.png"; 
 
     // متغيرات التداول الفوري (AMM Pool)
-    // تم زيادة السيولة الأولية لزيادة الاستقرار: 1000 SDM / 15000 MRK
-    let poolSDM = 1000;
-    let poolMRK = 15000;
+    let poolSDM = 10;
+    let poolMRK = 150;
     let chartInstance = null;
-    let openingPrice = 1000/15000; // السعر المرجعي لحساب النسبة
+    let swapDir = 'buy'; // 'buy' (SDM -> MRK) | 'sell' (MRK -> SDM)
 
+    // بيانات افتراضية
     let sliderImages = [
         "https://images.unsplash.com/photo-1556742049-0cfed4f7a07d?w=800",
         "https://images.unsplash.com/photo-1534423861386-85a16f5d13fd?w=800",
@@ -371,6 +392,22 @@
         ff: [ { name: "100 جوهرة", sdm: 4 }, { name: "530 جوهرة", sdm: 20 }, { name: "1080 جوهرة", sdm: 40 } ]
     };
 
+    // ==========================================
+    // 🔥 مراقبة حالة البوت (Dead Man's Switch) 🔥
+    // ==========================================
+    // إذا لم يرسل البوت إشارة خلال 7 دقائق (420000 مللي ثانية)، يتم قفل النظام
+    db.ref('system/status/last_online').on('value', snap => {
+        const lastOnline = snap.val() || 0;
+        const now = Date.now();
+        // المهلة: 7 دقائق
+        if (now - lastOnline > 420000) {
+            document.getElementById('offline-guard').classList.remove('hidden');
+        } else {
+            document.getElementById('offline-guard').classList.add('hidden');
+        }
+    });
+
+    // --- الدوال الأساسية ---
     function escapeHtml(text) {
         if (!text) return text;
         return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
@@ -380,19 +417,29 @@
     auth.onAuthStateChanged(user => {
         if (user) {
             const uid = user.uid;
-            db.ref('users/' + uid).once('value', snap => {
+            db.ref('users/' + uid).on('value', snap => {
                 if(snap.exists()) {
                     let u = snap.val();
+                    // ترقية المطور تلقائياً
                     if (user.email === ADMIN_EMAIL_ADDRESS && u.role !== 'admin') {
                         u.role = 'admin'; db.ref('users/' + uid).update({ role: 'admin' });
                     }
+                    // التحقق من الحظر
                     if (u.bannedUntil && u.bannedUntil > Date.now()) {
-                        Swal.fire('محظور', 'تم حظر حسابك مؤقتاً.', 'error').then(() => auth.signOut());
+                        Swal.fire('محظور', 'تم حظر حسابك مؤقتاً لمخالفة القوانين.', 'error').then(() => auth.signOut());
                         return;
                     }
-                    me = u; startApp(uid);
+                    // التحقق من الغشاشين
+                    if (u.role === 'banned_cheater') {
+                        Swal.fire('حظر نهائي', 'تم حظر الحساب بسبب محاولة التلاعب بالأرصدة.', 'error').then(() => auth.signOut());
+                        return;
+                    }
+
+                    me = u; me.p = uid;
+                    startApp(uid);
                 } else {
-                    const newUser = { n: user.displayName || 'مستخدم جديد', p: uid, email: user.email, pic: user.photoURL, sdmBalance: 0, mrkBalance: 0, rating: 5.0, role: (user.email === ADMIN_EMAIL_ADDRESS ? 'admin' : 'user'), wa: '', vipStatus: 'none', reportCount: 0 };
+                    // مستخدم جديد: نعطيه verified: true
+                    const newUser = { n: user.displayName || 'مستخدم جديد', p: uid, email: user.email, pic: user.photoURL, sdmBalance: 0, mrkBalance: 0, rating: 5.0, role: (user.email === ADMIN_EMAIL_ADDRESS ? 'admin' : 'user'), wa: '', vipStatus: 'none', reportCount: 0, verified: true };
                     db.ref('users/' + uid).set(newUser).then(() => { me = newUser; startApp(uid); });
                 }
             });
@@ -417,7 +464,6 @@
         document.getElementById('auth-screen').classList.add('hidden');
         document.getElementById('app-screen').classList.remove('hidden');
         document.getElementById('u-stars').innerText = "زائر";
-        listenForDevAlerts();
         render('home');
     }
 
@@ -463,39 +509,38 @@
 
     function startApp(uid) {
         isGuest = false; hStack = ['home'];
-        db.ref('users/' + uid).on('value', snap => {
-            const val = snap.val(); if (!val) return; 
-            if (val.bannedUntil && val.bannedUntil > Date.now()) { Swal.fire('تنبيه', 'حسابك محظور', 'error').then(() => doLogout()); return; }
-            me = val; me.p = uid;
-            checkVipExpiry(); listenForUserAlerts(); listenForDevAlerts(); checkForBroadcastMessage();
-            document.getElementById('auth-screen').classList.add('hidden');
-            document.getElementById('app-screen').classList.remove('hidden');
-            if (!me.wa) Swal.fire({title:'رقم الواتساب', input:'tel', background:'#1e293b', color:'#fff'}).then(r => {if(r.value) db.ref('users/'+me.p).update({wa:r.value})});
-            if(me.role === "admin") setTimeout(initDeveloperLogic, 1000);
-            render('home');
-        });
+        
+        // التحقق من انتهاء VIP
+        if (me.vipStatus === 'active' && me.vipExpiry && Date.now() > me.vipExpiry) {
+            db.ref('users/' + me.p).update({ vipStatus: 'expired', vipExpiry: null });
+        }
+        
+        listenForUserAlerts();
+        listenForDevAlerts();
+        checkForBroadcastMessage();
+        
+        document.getElementById('auth-screen').classList.add('hidden');
+        document.getElementById('app-screen').classList.remove('hidden');
+        
+        if (!me.wa) Swal.fire({title:'رقم الواتساب', input:'tel', background:'#1e293b', color:'#fff'}).then(r => {if(r.value) db.ref('users/'+me.p).update({wa:r.value})});
+        if(me.role === "admin") setTimeout(initDeveloperLogic, 1000);
+        
+        render('home');
 
-        // --- مراقبة السيولة (Pool Listener) ---
+        // مراقبة السيولة (Pool Listener)
         db.ref('market/pool').on('value', snap => {
             const p = snap.val();
             if(p) {
                 poolSDM = Number(p.sdm);
                 poolMRK = Number(p.mrk);
             } else {
-                // إنشاء السيولة الأولية المرتفعة إذا لم توجد
-                if(me && me.role==='admin') db.ref('market/pool').set({sdm: 1000, mrk: 15000});
+                if(me && me.role==='admin') db.ref('market/pool').set({sdm: 10, mrk: 150});
             }
             if(document.getElementById('swap-ui')) updateSwapUI();
         });
 
+        // تسجيل الحضور
         db.ref('users/' + uid).update({ lastSeen: Date.now() });
-    }
-
-    function checkVipExpiry() {
-        if (me.vipStatus === 'active' && me.vipExpiry && Date.now() > me.vipExpiry) {
-            db.ref('users/' + me.p).update({ vipStatus: 'expired', vipExpiry: null });
-            Swal.fire('تنبيه', 'انتهت فترة اشتراك VIP الخاصة بك', 'info');
-        }
     }
 
     function checkForBroadcastMessage() {
@@ -585,12 +630,10 @@
             });
 
         } else if (view === 'trade') {
-            // --- واجهة AMM الكاملة ---
+            // --- واجهة AMM TRADING ---
             area.innerHTML = `
                 <div style="padding:15px;">
-                    <!-- رسم بياني للسعر (MRK Chart) -->
-                    <div style="margin-bottom:5px; font-size:12px; color:var(--text-sec); text-align:center;">حركة سعر MRK مقابل SDM</div>
-                    <div id="chart-container" style="height:250px; width:100%; margin-bottom:15px; border:1px solid var(--border); border-radius:15px; background:rgba(0,0,0,0.3);"></div>
+                    <div id="chart-container" style="height:250px; width:100%; margin-bottom:15px;"></div>
 
                     <div class="swap-card" id="swap-ui">
                         <div class="stat-row">
@@ -607,7 +650,7 @@
                         </div>
 
                         <div class="stat-row">
-                            <span>تستلم (دقيق)</span>
+                            <span>تستلم (تقريباً)</span>
                             <span style="color:var(--text-sec)">الرصيد: <span id="bal-get">0</span></span>
                         </div>
                         <div class="swap-input-container">
@@ -618,10 +661,7 @@
                         <div class="pool-stats">
                             <div class="stat-row">
                                 <span>سعر الصرف الحالي</span>
-                                <span style="font-weight:bold; color:white;">
-                                    1 MRK ≈ <span id="display-price">0.00</span> SDM
-                                    <small id="price-change-badge" class="badge" style="margin-right:5px; font-size:10px; display:inline-block;">0.00%</small>
-                                </span>
+                                <span style="font-weight:bold; color:white;">1 MRK ≈ <span id="display-price">0.00</span> SDM</span>
                             </div>
                             <div class="stat-row">
                                 <span>السيولة في المسبح</span>
@@ -636,7 +676,7 @@
                         <button id="swap-btn" class="btn-main" onclick="executeSwap()" disabled style="background:gray">أدخل الكمية</button>
                     </div>
 
-                    ${(me.role === 'admin') ? `<div class="admin-panel"><h3>تحكم السيولة (للطوارئ)</h3><button class="btn-main" onclick="resetPool()">إعادة تعيين السيولة (1000/15000)</button></div>` : ''}
+                    ${(me.role === 'admin') ? `<div class="admin-panel"><h3>تحكم السيولة (للطوارئ)</h3><button class="btn-main" onclick="resetPool()">إعادة تعيين السيولة (10/150)</button></div>` : ''}
                 </div>
             `;
             initChart();
@@ -671,17 +711,8 @@
                         <div class="calc-box"><label style="color:var(--text-sec); font-size:12px;">حاسبة العملة</label><input type="number" id="calc-input" placeholder="ادخل المبلغ بـ SDM" oninput="calculateSDG(this.value, 'calc-res-wallet')"><span id="calc-res-wallet" class="calc-result">0 SDG</span></div>
                         <h3>سجل المعاملات</h3>
                         <div id="transactions-history" style="background:var(--bg-card); padding:10px; border-radius:15px; max-height:200px; overflow-y:auto;">جاري التحميل...</div>
-                        
-                        <h3 style="margin-top:20px;">شحن الرصيد (شراء من المطور)</h3>
-                        <div class="post" style="padding:20px;">
-                            <p style="color:var(--text-sec)">بنك الخرطوم: <b style="color:white; font-size:18px;">4426148</b> (محمد)</p>
-                            <!-- حاسبة الشراء التلقائية -->
-                            <input id="buy-qty" type="number" placeholder="الكمية المطلوبة (SDM)" oninput="calculateBuyCost(this.value)">
-                            <p style="color:var(--accent); font-weight:bold; margin:5px 0;">السعر المطلوب: <span id="buy-calc-display">0</span> SDG</p>
-                            
-                            <label class="btn-main" style="background:#334155; display:block; text-align:center;"><i class="fas fa-receipt"></i> إرفاق الإشعار<input type="file" hidden onchange="encode(this, 'buy')"></label>
-                            <button class="btn-main" onclick="requestCoins()">إرسال الطلب</button>
-                        </div>
+                        <h3 style="margin-top:20px;">شحن الرصيد</h3>
+                        <div class="post" style="padding:20px;"><p style="color:var(--text-sec)">بنك الخرطوم: <b style="color:white; font-size:18px;">4426148</b> (محمد)</p><input id="buy-qty" type="number" placeholder="الكمية المطلوبة (SDM)"><label class="btn-main" style="background:#334155; display:block; text-align:center;"><i class="fas fa-receipt"></i> إرفاق الإشعار<input type="file" hidden onchange="encode(this, 'buy')"></label><button class="btn-main" onclick="requestCoins()">إرسال الطلب</button></div>
                     </div>`;
                 loadTransactions();
             });
@@ -704,23 +735,7 @@
         }
     }
 
-    // --- منطق حساب سعر الشراء من المطور (Wallet) ---
-    function calculateBuyCost(val) {
-        const qty = parseFloat(val);
-        const display = document.getElementById('buy-calc-display');
-        if (isNaN(qty) || qty <= 0) {
-            display.innerText = '0';
-        } else {
-            // 1 SDM = 1000 SDG
-            const price = qty * 1000;
-            display.innerText = price.toLocaleString();
-        }
-    }
-
-    // --- منطق التداول الحقيقي (AMM Logic) ---
-    // AMM Formula: Pool_SDM * Pool_MRK = K
-    let swapDir = 'buy'; // 'buy' (SDM -> MRK) | 'sell' (MRK -> SDM)
-
+    // --- منطق التداول الحقيقي (Secure AMM + Self Lock) ---
     function toggleSwapDir() {
         swapDir = (swapDir === 'buy') ? 'sell' : 'buy';
         document.getElementById('pay-amt').value = '';
@@ -738,9 +753,7 @@
         const btn = document.getElementById('swap-btn');
         const priceEl = document.getElementById('display-price');
         
-        // حساب السعر الحالي بناءً على نسبة المسبح
-        // السعر = كمية SDM / كمية MRK
-        const currentPrice = poolSDM / poolMRK; 
+        const currentPrice = poolMRK === 0 ? 0 : (poolSDM / poolMRK);
         priceEl.innerText = currentPrice.toFixed(4);
 
         if(swapDir === 'buy') {
@@ -753,6 +766,10 @@
             balPay.innerText = (me.mrkBalance||0).toFixed(4);
             balGet.innerText = me.sdmBalance.toFixed(2);
             btn.innerText = "بيع MRK";
+        }
+        
+        if(chartInstance) {
+            chartInstance.updateSeries([{ data: [{ x: Date.now(), y: currentPrice }] }]);
         }
     }
 
@@ -768,38 +785,28 @@
             return;
         }
         
-        // معادلة AMM
-        // x * y = k
         const k = poolSDM * poolMRK;
         let amountOut = 0;
         let newPrice = 0;
-        const oldPrice = poolSDM / poolMRK;
+        const oldPrice = poolMRK === 0 ? 0 : (poolSDM / poolMRK);
 
         if (swapDir === 'buy') {
-            // إضافة SDM وسحب MRK
-            // التحقق من الرصيد محلياً
             if(inp > me.sdmBalance) { btn.innerText = "رصيد غير كاف"; btn.disabled = true; btn.style.background = 'var(--red)'; return; }
-            
             const newPoolSDM = poolSDM + inp;
             const newPoolMRK = k / newPoolSDM;
             amountOut = poolMRK - newPoolMRK;
-            
             newPrice = newPoolSDM / newPoolMRK;
         } else {
-            // إضافة MRK وسحب SDM
             if(inp > (me.mrkBalance||0)) { btn.innerText = "رصيد غير كاف"; btn.disabled = true; btn.style.background = 'var(--red)'; return; }
-            
             const newPoolMRK = poolMRK + inp;
             const newPoolSDM = k / newPoolMRK;
             amountOut = poolSDM - newPoolSDM;
-            
             newPrice = newPoolSDM / newPoolMRK;
         }
 
         outEl.value = amountOut.toFixed(4);
         btn.disabled = false; btn.style.background = 'var(--primary)'; btn.innerText = "تنفيذ العملية";
 
-        // حساب تأثير السعر (Slippage)
         const impact = Math.abs((newPrice - oldPrice) / oldPrice) * 100;
         impactEl.innerText = impact.toFixed(2) + '%';
         impactEl.style.color = impact > 5 ? 'var(--red)' : 'var(--up-color)';
@@ -807,156 +814,84 @@
 
     function executeSwap() {
         const inp = parseFloat(document.getElementById('pay-amt').value);
+        const outCalculated = parseFloat(document.getElementById('get-amt').value);
+        
         if(!inp || inp <= 0) return;
         
-        // استخدام Transaction لضمان سلامة العملية وعدم تضارب البيانات
-        db.ref('market/pool').transaction((current) => {
-            if(!current) return {sdm: 1000, mrk: 15000}; // fallback
-            
-            let pS = Number(current.sdm);
-            let pM = Number(current.mrk);
-            let k = pS * pM;
-            
-            // حسابات دقيقة جداً داخل الترانزاكشن
-            if(swapDir === 'buy') {
-                // Buy MRK: Pool gets SDM, gives MRK
-                let newS = pS + inp;
-                let newM = k / newS;
-                pS = newS; pM = newM;
-            } else {
-                // Sell MRK: Pool gets MRK, gives SDM
-                let newM = pM + inp;
-                let newS = k / newM;
-                pS = newS; pM = newM;
-            }
-            
-            return { sdm: pS, mrk: pM };
-            
-        }, (error, committed, snapshot) => {
-            if(error) {
-                Swal.fire('خطأ', 'فشلت العملية', 'error');
-            } else if(committed) {
-                // تم تحديث المسبح بنجاح، الآن نخصم ونضيف للمستخدم
-                calculateSwap(); 
-                const calculatedOut = parseFloat(document.getElementById('get-amt').value);
-                const finalNewPool = snapshot.val();
-                const newExecutionPrice = finalNewPool.sdm / finalNewPool.mrk;
+        let updates = {};
+        let newSdmBal, newMrkBal;
 
-                if(swapDir === 'buy') {
-                    db.ref('users/'+me.p).update({
-                        sdmBalance: me.sdmBalance - inp,
-                        mrkBalance: (me.mrkBalance||0) + calculatedOut
-                    });
-                } else {
-                    db.ref('users/'+me.p).update({
-                        sdmBalance: me.sdmBalance + calculatedOut,
-                        mrkBalance: (me.mrkBalance||0) - inp
-                    });
-                }
+        if(swapDir === 'buy') {
+            newSdmBal = me.sdmBalance - inp;
+            newMrkBal = (me.mrkBalance||0) + outCalculated;
+        } else {
+            newSdmBal = me.sdmBalance + outCalculated;
+            newMrkBal = (me.mrkBalance||0) - inp;
+        }
 
-                // تسجيل العملية
-                db.ref('transactions').push({
-                    type: swapDir,
-                    uP: me.p,
-                    inp: inp,
-                    date: Date.now()
-                });
-                
-                // تحديث بيانات الرسم البياني (يتحرك الشارت الآن فقط)
-                db.ref('market/chart_data').push({
-                    time: Date.now(),
-                    price: newExecutionPrice
-                });
+        // تحديث أرصدة المستخدم
+        updates[`users/${me.p}/sdmBalance`] = newSdmBal;
+        updates[`users/${me.p}/mrkBalance`] = newMrkBal;
+        
+        // 🔥 القفل الذاتي: إجبار الحساب على القفل حتى يفحصه البوت 🔥
+        updates[`users/${me.p}/verified`] = false;
 
-                Swal.fire('تم بنجاح', `تم ${swapDir==='buy'?'الشراء':'البيع'} بنجاح`, 'success');
-                document.getElementById('pay-amt').value = '';
-                document.getElementById('get-amt').value = '';
-            }
+        // إضافة سجل المعاملة (مهم للبوت للموافقة)
+        const txnId = db.ref('transactions').push().key;
+        updates[`transactions/${txnId}`] = {
+            uP: me.p,
+            type: swapDir, // 'buy' or 'sell'
+            inp: inp,
+            out: outCalculated,
+            date: firebase.database.ServerValue.TIMESTAMP
+        };
+
+        // تحديث المسبح محلياً (البوت سيؤكد)
+        if(swapDir === 'buy') {
+            updates['market/pool/sdm'] = poolSDM + inp;
+            updates['market/pool/mrk'] = poolMRK - outCalculated;
+        } else {
+            updates['market/pool/mrk'] = poolMRK + inp;
+            updates['market/pool/sdm'] = poolSDM - outCalculated;
+        }
+
+        db.ref().update(updates).then(() => {
+            Swal.fire('تم بنجاح', 'تمت العملية بنجاح، رصيدك قيد المراجعة الآلية.', 'success');
+            document.getElementById('pay-amt').value = '';
+            document.getElementById('get-amt').value = '';
+        }).catch(err => {
+            console.error(err);
+            Swal.fire({
+                title: 'فشل العملية',
+                text: 'قد يكون النظام في وضع الحماية أو أن حسابك قيد المراجعة.',
+                icon: 'error'
+            });
         });
     }
 
     function resetPool() {
         if(me.role !== 'admin') return;
-        // إعادة تعيين السيولة إلى الوضع المرتفع المستقر
-        db.ref('market/pool').set({sdm: 1000, mrk: 15000});
-        // تصفير الشارت عند إعادة التعيين
-        db.ref('market/chart_data').remove();
-        db.ref('market/chart_data').push({time: Date.now(), price: 1000/15000});
-        Swal.fire('تم إعادة التعيين', '1000 SDM / 15000 MRK', 'success');
+        db.ref('market/pool').set({sdm: 10, mrk: 150});
+        Swal.fire('تم إعادة التعيين', '10 SDM / 150 MRK', 'success');
     }
 
-    // --- إعداد الرسم البياني (ApexCharts) ---
     function initChart() {
         var options = {
             series: [{ name: 'Price', data: [] }],
-            chart: { 
-                type: 'area', 
-                height: 250, 
-                background: 'transparent', 
-                toolbar: {show:false}, 
-                animations: {
-                    enabled: true,
-                    easing: 'linear',
-                    dynamicAnimation: { speed: 500 }
-                } 
-            },
+            chart: { type: 'area', height: 250, background: 'transparent', toolbar: {show:false}, animations: {enabled: true} },
             theme: { mode: 'dark' },
-            stroke: { curve: 'step', width: 2 }, // Step curve
+            stroke: { curve: 'smooth', width: 2 },
             fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.7, opacityTo: 0.1 } },
-            xaxis: { 
-                type: 'datetime', 
-                labels:{show:false}, 
-                axisBorder:{show:false},
-                tooltip: { enabled: false }
-            },
-            yaxis: { 
-                opposite: true, 
-                labels:{ 
-                    style:{colors:'#94a3b8'},
-                    formatter: function (value) { return value.toFixed(4); }
-                } 
-            },
+            xaxis: { type: 'datetime', labels:{show:false}, axisBorder:{show:false} },
+            yaxis: { opposite: true, labels:{style:{colors:'#94a3b8'}} },
             grid: { show: false },
-            colors: ['#00f3ff'],
-            tooltip: { theme: 'dark' }
+            colors: ['#00f3ff']
         };
-        
         chartInstance = new ApexCharts(document.querySelector("#chart-container"), options);
         chartInstance.render();
-
-        // تحميل البيانات التاريخية ومراقبة التغييرات
-        db.ref('market/chart_data').limitToLast(50).on('value', snap => {
-            if(!chartInstance) return;
-            let dataPoints = [];
-            snap.forEach(child => {
-                const pt = child.val();
-                dataPoints.push({ x: pt.time, y: pt.price });
-            });
-            
-            // تحديد سعر الافتتاح (أول نقطة في التاريخ)
-            if(dataPoints.length > 0) {
-                openingPrice = dataPoints[0].y;
-            } else {
-                openingPrice = 1000/15000;
-                dataPoints.push({ x: Date.now(), y: openingPrice });
-            }
-
-            // حساب النسبة المئوية
-            const currentP = poolSDM / poolMRK;
-            const pctChange = ((currentP - openingPrice) / openingPrice) * 100;
-            const badge = document.getElementById('price-change-badge');
-            if(badge) {
-                badge.innerText = (pctChange >= 0 ? '+' : '') + pctChange.toFixed(2) + '%';
-                badge.style.color = pctChange >= 0 ? 'var(--up-color)' : 'var(--down-color)';
-                badge.style.background = pctChange >= 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)';
-            }
-
-            // تحديث الشارت
-            chartInstance.updateSeries([{ data: dataPoints }]);
-        });
     }
 
-    // --- بقية وظائف الكود الأصلي ---
+    // --- وظائف Slider ---
     function startSlider() {
         const imgEl = document.getElementById('slider-img'); if(!imgEl) return;
         currentSliderIndex = 0; imgEl.src = sliderImages[0]; updateDots(0);
@@ -982,6 +917,7 @@
     function calculateSDG(sdmVal, resultId) { const val = parseFloat(sdmVal); const resElement = document.getElementById(resultId); if (isNaN(val) || val < 0) { resElement.innerText = "0 SDG"; } else { const sdg = val * SDM_RATE; resElement.innerText = sdg.toLocaleString() + " SDG"; } }
     function calculateGameCost(selectElement) { calculateSDG(parseInt(selectElement.value), 'game-cost-res'); }
 
+    // --- وظائف المنشورات ---
     function loadPosts(path, subFilter, containerId) {
         db.ref(path).limitToLast(30).on('value', snap => {
             const list = document.getElementById(containerId); if(!list) return; list.innerHTML = "";
@@ -1006,6 +942,7 @@
         db.ref(path).push(data).then(() => { Swal.fire('تم النشر', 'إعلانك أصبح متاحاً الآن', 'success'); tempImg = ""; if(path==='vip_posts') nav('home'); else render('feed', curS); });
     }
 
+    // --- وظائف المحفظة ---
     function showTransfer() {
         Swal.fire({ title: 'تحويل رصيد 💸', html: '<input id="tr-id" placeholder="ID المستلم" style="background:#0f172a; color:white"><input id="tr-amount" type="number" placeholder="المبلغ" style="background:#0f172a; color:white">', background: '#1e293b', color: '#fff', showCancelButton: true, confirmButtonText: 'إرسال', preConfirm: () => { return { id: document.getElementById('tr-id').value.trim(), amount: document.getElementById('tr-amount').value }; } }).then(async res => {
             if(res.isConfirmed) {
@@ -1042,6 +979,7 @@
         });
     }
 
+    // --- وظائف الألعاب ---
     function loadCorrectPacks() {
         const g = document.getElementById('active-game').value;
         const p = document.getElementById('p-pack-input');
@@ -1073,7 +1011,7 @@
         Swal.fire('تم الطلب', 'انتظر تفعيل الأدمن', 'success');
     }
 
-    // --- أدوات الآدمن ---
+    // --- وظائف الأدمن ---
     function listenForAdminTasks() {
         if (me.role !== "admin") return;
         db.ref('coin_requests').orderByChild('status').equalTo('pending').on('value', snap => {
