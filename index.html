@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SDM Market 2050 | تداول MRK الحقيقي</title>
+    <title>SDM Market 2050 | تداول MRK الاحترافي</title>
     
     <!-- خطوط عربية حديثة -->
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;500;800&display=swap" rel="stylesheet">
     
     <!-- مكتبات خارجية -->
+    <!-- OneSignal -->
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -17,10 +18,12 @@
       });
     </script>
     
+    <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     
+    <!-- UI & Charts -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -28,7 +31,7 @@
     <style>
         :root {
             --bg-dark: #0f172a;
-            --bg-card: rgba(30, 41, 59, 0.7);
+            --bg-card: rgba(30, 41, 59, 0.85);
             --primary: #3b82f6;
             --accent: #f59e0b;
             --neon-blue: #00f3ff;
@@ -43,9 +46,9 @@
             --green: #10b981; 
             --red: #ef4444; 
             
-            /* ألوان التداول */
-            --up-color: #0ecb81;
-            --down-color: #f6465d;
+            /* ألوان التداول والشموع */
+            --candle-up: #0ecb81;
+            --candle-down: #f6465d;
         }
 
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline:none; }
@@ -69,7 +72,7 @@
         
         /* Header */
         header {
-            background: rgba(15, 23, 42, 0.85);
+            background: rgba(15, 23, 42, 0.95);
             backdrop-filter: blur(12px);
             padding: 15px 20px;
             position: sticky; top: 0; z-index: 1000;
@@ -134,13 +137,34 @@
         }
         .post-img-container { height: 220px; position: relative; }
         .sold-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(220, 53, 69, 0.8); color: white; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: bold; z-index: 5; }
+        .discount-badge {
+            position: absolute; top: 10px; right: 10px;
+            background: var(--red); color: white;
+            padding: 5px 10px; border-radius: 8px;
+            font-weight: bold; font-size: 14px;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+            z-index: 4; transform: rotate(-5deg);
+        }
         
+        /* Online Status */
+        .online-dot {
+            width: 10px; height: 10px; background: var(--candle-up);
+            border-radius: 50%; display: inline-block;
+            box-shadow: 0 0 5px var(--candle-up);
+            margin-right: 5px;
+        }
+
         /* Calculator Box */
         .calc-box {
-            background: rgba(0, 243, 255, 0.1); border: 1px solid var(--neon-blue);
+            background: rgba(0, 243, 255, 0.05); border: 1px solid var(--border);
             padding: 15px; border-radius: 15px; margin: 10px 0; text-align: center;
         }
-        .calc-result { font-size: 20px; font-weight: bold; color: var(--accent); margin-top: 5px; display: block; }
+        .calc-row {
+            display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed var(--border);
+        }
+        .calc-row:last-child { border-bottom: none; }
+        .calc-label { color: var(--text-sec); font-size: 13px; }
+        .calc-val { color: var(--accent); font-weight: bold; }
 
         /* Buttons & Inputs */
         button { font-family: 'Tajawal'; }
@@ -155,10 +179,10 @@
         
         input, textarea, select {
             width: 100%; padding: 15px; margin: 8px 0;
-            background: rgba(0,0,0,0.2); border: 1px solid var(--border);
+            background: rgba(0,0,0,0.3); border: 1px solid var(--border);
             border-radius: 12px; color: white; font-family: 'Tajawal'; box-sizing: border-box;
         }
-        input:focus, textarea:focus, select:focus { border-color: var(--accent); outline: none; background: rgba(0,0,0,0.4); }
+        input:focus, textarea:focus, select:focus { border-color: var(--accent); outline: none; background: rgba(0,0,0,0.5); }
 
         /* Wallet */
         .wallet-card {
@@ -177,7 +201,17 @@
         }
         @keyframes float { 0% {transform: translateY(0px);} 50% {transform: translateY(-10px);} 100% {transform: translateY(0px);} }
 
-        /* --- AMM TRADING STYLES (NEW) --- */
+        /* --- AMM TRADING STYLES (UPDATED) --- */
+        .chart-controls {
+            display: flex; gap: 5px; overflow-x: auto; margin-bottom: 10px;
+        }
+        .time-btn {
+            background: rgba(255,255,255,0.1); color: var(--text-sec);
+            border: none; padding: 5px 10px; border-radius: 5px;
+            font-size: 12px; cursor: pointer; flex: 1; min-width: 40px;
+        }
+        .time-btn.active { background: var(--bg-card); color: var(--neon-blue); border: 1px solid var(--neon-blue); }
+
         .swap-card {
             background: var(--bg-card); border: 1px solid var(--border);
             border-radius: 20px; padding: 20px; margin: 15px;
@@ -257,8 +291,9 @@
         <p style="color:var(--text-sec); margin-bottom:40px;">بوابة المستقبل وتداول MRK</p>
         
         <div id="login-box" style="width:100%; max-width:350px;">
+            <!-- تم إصلاح أيقونة جوجل -->
             <button class="btn-main" onclick="loginWithGoogle()" style="background: white; color: black; display:flex; align-items:center; justify-content:center; gap:10px;">
-                <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" width="20"> دخول بواسطة Google
+                <img src="https://www.svgrepo.com/show/475656/google-color.svg" width="24"> دخول بواسطة Google
             </button>
             <button class="btn-guest" onclick="enterGuestMode()">تصفح كزائر 👀</button>
         </div>
@@ -293,7 +328,7 @@
 
     <div class="bottom-tabs">
         <div class="tab-btn active" onclick="nav('home'); highlightTab(this)"><i class="fas fa-home"></i>الرئيسية</div>
-        <div class="tab-btn" onclick="checkGuestAccess('trade'); highlightTab(this)"><i class="fas fa-sync-alt" style="color:var(--neon-blue);"></i>تداول</div>
+        <div class="tab-btn" onclick="checkGuestAccess('trade'); highlightTab(this)"><i class="fas fa-chart-bar" style="color:var(--neon-blue);"></i>تداول</div>
         <div class="tab-btn" onclick="checkGuestAccess('wallet'); highlightTab(this)"><i class="fas fa-wallet"></i>المحفظة</div>
         <div class="tab-btn" onclick="checkGuestAccess('games'); highlightTab(this)"><i class="fas fa-gamepad"></i>الألعاب</div>
         <div class="tab-btn" onclick="checkGuestAccess('vip'); highlightTab(this)"><i class="fas fa-crown" style="color:var(--accent)"></i>VIP</div>
@@ -319,7 +354,7 @@
     const db = firebase.database();
 
     const ADMIN_EMAIL_ADDRESS = "mb425262@gmail.com";
-    const SDM_RATE = 1000; 
+    const SDM_RATE = 1000; // سعر SDM الواحد بالجنيه
     let me = null;
     let hStack = ['home'];
     let curC = '', curS = '';
@@ -328,10 +363,12 @@
     let sliderInterval;
     const sdmCoinImage = "https://cdn-icons-png.flaticon.com/512/5501/5501360.png"; 
 
-    // متغيرات التداول الفوري (AMM Pool)
+    // متغيرات التداول الفوري (AMM Pool & Candles)
     let poolSDM = 10;
     let poolMRK = 150;
     let chartInstance = null;
+    let activeTimeframe = '1H'; // الافتراضي
+    let candleInterval = null;
 
     let sliderImages = [
         "https://images.unsplash.com/photo-1556742049-0cfed4f7a07d?w=800",
@@ -390,7 +427,7 @@
                     }
                     me = u; startApp(uid);
                 } else {
-                    const newUser = { n: user.displayName || 'مستخدم جديد', p: uid, email: user.email, pic: user.photoURL, sdmBalance: 0, mrkBalance: 0, rating: 5.0, role: (user.email === ADMIN_EMAIL_ADDRESS ? 'admin' : 'user'), wa: '', vipStatus: 'none', reportCount: 0 };
+                    const newUser = { n: user.displayName || 'مستخدم جديد', p: uid, email: user.email, pic: user.photoURL, sdmBalance: 0, mrkBalance: 0, rating: 5.0, role: (user.email === ADMIN_EMAIL_ADDRESS ? 'admin' : 'user'), wa: '', vipStatus: 'none', reportCount: 0, lastSeen: Date.now() };
                     db.ref('users/' + uid).set(newUser).then(() => { me = newUser; startApp(uid); });
                 }
             });
@@ -473,6 +510,11 @@
             render('home');
         });
 
+        // --- تحديث حالة الاتصال "متصل الآن" ---
+        setInterval(() => {
+            if(me && !isGuest) db.ref('users/' + me.p).update({ lastSeen: Date.now() });
+        }, 60000); // تحديث كل دقيقة
+
         // --- مراقبة السيولة (Pool Listener) ---
         db.ref('market/pool').on('value', snap => {
             const p = snap.val();
@@ -480,13 +522,10 @@
                 poolSDM = Number(p.sdm);
                 poolMRK = Number(p.mrk);
             } else {
-                // إنشاء السيولة الأولية إذا لم توجد: 10 SDM = 150 MRK
                 if(me && me.role==='admin') db.ref('market/pool').set({sdm: 10, mrk: 150});
             }
             if(document.getElementById('swap-ui')) updateSwapUI();
         });
-
-        db.ref('users/' + uid).update({ lastSeen: Date.now() });
     }
 
     function checkVipExpiry() {
@@ -544,6 +583,7 @@
         const searchEl = document.getElementById('main-search');
         
         if (sliderInterval) clearInterval(sliderInterval);
+        if (candleInterval) clearInterval(candleInterval);
         if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
 
         if(view !== 'home') adminArea.innerHTML = "";
@@ -583,11 +623,20 @@
             });
 
         } else if (view === 'trade') {
-            // --- واجهة AMM الكاملة ---
+            // --- واجهة AMM + Candles ---
             area.innerHTML = `
                 <div style="padding:15px;">
-                    <!-- رسم بياني للسعر -->
-                    <div id="chart-container" style="height:250px; width:100%; margin-bottom:15px;"></div>
+                    <!-- أزرار الفواصل الزمنية -->
+                    <div class="chart-controls">
+                        <button class="time-btn" onclick="setChartTimeframe('15m')">15m</button>
+                        <button class="time-btn active" onclick="setChartTimeframe('1H')">1H</button>
+                        <button class="time-btn" onclick="setChartTimeframe('1D')">1D</button>
+                        <button class="time-btn" onclick="setChartTimeframe('1W')">1W</button>
+                        <button class="time-btn" onclick="setChartTimeframe('1M')">1M</button>
+                    </div>
+
+                    <!-- رسم الشموع -->
+                    <div id="chart-container" style="height:300px; width:100%; margin-bottom:15px;"></div>
 
                     <div class="swap-card" id="swap-ui">
                         <div class="stat-row">
@@ -633,7 +682,7 @@
                     ${(me.role === 'admin') ? `<div class="admin-panel"><h3>تحكم السيولة (للطوارئ)</h3><button class="btn-main" onclick="resetPool()">إعادة تعيين السيولة (10/150)</button></div>` : ''}
                 </div>
             `;
-            initChart();
+            initCandleChart('1H');
             updateSwapUI();
         
         } else if(view === 'sub') {
@@ -662,9 +711,24 @@
                         </div>
                     </div>
                     <div style="padding:20px;">
-                        <div class="calc-box"><label style="color:var(--text-sec); font-size:12px;">حاسبة العملة</label><input type="number" id="calc-input" placeholder="ادخل المبلغ بـ SDM" oninput="calculateSDG(this.value, 'calc-res-wallet')"><span id="calc-res-wallet" class="calc-result">0 SDG</span></div>
+                        <!-- حاسبة شراء SDM المضافة -->
+                        <div class="calc-box">
+                            <label style="color:var(--text-sec); font-size:14px; display:block; margin-bottom:10px;">💵 حاسبة شراء SDM</label>
+                            <input type="number" id="buy-calc-input" placeholder="المبلغ المراد شراؤه بـ SDM" oninput="calculatePurchase(this.value)">
+                            
+                            <div class="calc-row">
+                                <span class="calc-label">دفع فوري (كاش):</span>
+                                <span id="res-cash" class="calc-val">0 SDG</span>
+                            </div>
+                            <div class="calc-row">
+                                <span class="calc-label">تحويل بنكي:</span>
+                                <span id="res-bank" class="calc-val">0 SDG</span>
+                            </div>
+                        </div>
+
                         <h3>سجل المعاملات</h3>
                         <div id="transactions-history" style="background:var(--bg-card); padding:10px; border-radius:15px; max-height:200px; overflow-y:auto;">جاري التحميل...</div>
+                        
                         <h3 style="margin-top:20px;">شحن الرصيد</h3>
                         <div class="post" style="padding:20px;"><p style="color:var(--text-sec)">بنك الخرطوم: <b style="color:white; font-size:18px;">4426148</b> (محمد)</p><input id="buy-qty" type="number" placeholder="الكمية المطلوبة (SDM)"><label class="btn-main" style="background:#334155; display:block; text-align:center;"><i class="fas fa-receipt"></i> إرفاق الإشعار<input type="file" hidden onchange="encode(this, 'buy')"></label><button class="btn-main" onclick="requestCoins()">إرسال الطلب</button></div>
                     </div>`;
@@ -677,16 +741,157 @@
 
         } else if(view === 'vip') {
             const isVip = me.vipStatus === 'active';
-            area.innerHTML = `<div style="text-align:center; padding:30px;"><i class="fas fa-crown" style="font-size:60px; color:var(--accent); margin-bottom:20px;"></i><h2>اشتراك VIP</h2><p style="color:var(--text-sec)">${isVip ? 'أنت مشترك حتى: ' + new Date(me.vipExpiry).toLocaleDateString() : 'تميز واحصل على علامة التاج ونشر غير محدود'}</p>${!isVip ? `<div class="grid"><div class="card" onclick="buyVip(1, 1)" style="border-color:var(--text-sec)"><h1 style="color:white">1</h1><p>يوم</p><b>1 SDM</b></div><div class="card" onclick="buyVip(7, 7)" style="border-color:var(--neon-blue)"><h1 style="color:var(--neon-blue)">7</h1><p>أيام</p><b>7 SDM</b></div><div class="card" onclick="buyVip(30, 30)" style="border-color:var(--accent)"><h1 style="color:var(--accent)">30</h1><p>يوم</p><b>30 SDM</b></div></div>` : '<div class="card" style="border-color:var(--accent); color:var(--accent)"><h3>الاشتراك نشط ✅</h3></div>'}</div>${isVip ? `<div class="post" style="padding:20px;"><h4>نشر VIP مميز</h4><input id="v-t" placeholder="العنوان"><input id="v-pr" placeholder="السعر"><textarea id="v-d" placeholder="الوصف"></textarea><input type="file" onchange="encode(this,'post')"><button class="btn-main" onclick="publish('vip_posts')">نشر VIP</button></div>` : ''}`;
+            area.innerHTML = `<div style="text-align:center; padding:30px;"><i class="fas fa-crown" style="font-size:60px; color:var(--accent); margin-bottom:20px;"></i><h2>اشتراك VIP</h2><p style="color:var(--text-sec)">${isVip ? 'أنت مشترك حتى: ' + new Date(me.vipExpiry).toLocaleDateString() : 'تميز واحصل على علامة التاج ونشر غير محدود'}</p>${!isVip ? `<div class="grid"><div class="card" onclick="buyVip(1, 1)" style="border-color:var(--text-sec)"><h1 style="color:white">1</h1><p>يوم</p><b>1 SDM</b></div><div class="card" onclick="buyVip(7, 7)" style="border-color:var(--neon-blue)"><h1 style="color:var(--neon-blue)">7</h1><p>أيام</p><b>7 SDM</b></div><div class="card" onclick="buyVip(30, 30)" style="border-color:var(--accent)"><h1 style="color:var(--accent)">30</h1><p>يوم</p><b>30 SDM</b></div></div>` : '<div class="card" style="border-color:var(--accent); color:var(--accent)"><h3>الاشتراك نشط ✅</h3></div>'}</div>${isVip ? `<div class="post" style="padding:20px;"><h4>نشر VIP مميز</h4><input id="v-t" placeholder="العنوان"><input id="v-pr" placeholder="السعر"><div style="margin:5px 0"><input id="v-discount" type="number" placeholder="نسبة التخفيض (اختياري %)" style="border-color:var(--red)"></div><textarea id="v-d" placeholder="الوصف"></textarea><input type="file" onchange="encode(this,'post')"><button class="btn-main" onclick="publish('vip_posts')">نشر VIP</button></div>` : ''}`;
         
         } else if(view === 'profile') {
             const uid = extra || me.p;
             db.ref('users/'+uid).once('value', snap => {
                 const u = snap.val();
                 const isMe = (me.p === uid);
-                area.innerHTML = `<div style="text-align:center; padding:40px 20px;"><img src="${u.pic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" id="profile-img-view" style="width:120px; height:120px; border-radius:50%; border:3px solid var(--neon-blue); padding:3px; object-fit:cover;">${isMe ? '<br><label style="color:var(--accent); cursor:pointer; font-size:12px;">تغيير الصورة <input type="file" onchange="encode(this, \'user\')" style="display:none"></label>' : ''}<h2 style="margin:10px 0;">${escapeHtml(u.n)} ${u.vipStatus==='active'?'<i class="fas fa-crown" style="color:var(--accent)"></i>':''}</h2><div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;"><span class="badge badge-gold">⭐ ${(u.rating||5).toFixed(1)}</span>${u.role==='admin'?'<span class="badge badge-admin">Admin</span>':''}</div>${isMe ? `<div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; margin-bottom:20px;"><p style="margin:0; font-size:12px; color:var(--text-sec)">ID المستخدم</p><code style="font-size:16px; display:block; margin:5px 0;">${u.p}</code><button onclick="navigator.clipboard.writeText('${u.p}'); Swal.fire('تم النسخ','','success')" style="background:transparent; border:1px solid var(--border); color:white; border-radius:5px; padding:5px 10px;">نسخ</button></div><button class="btn-main" style="background:rgba(239, 68, 68, 0.2); color:#ef4444; border:1px solid #ef4444;" onclick="doLogout()">تسجيل خروج</button>` : `<button class="btn-main" style="background:var(--accent); color:black;" onclick="rateUser('${uid}')">⭐ تقييم البائع</button><button class="btn-main" style="background:var(--red); color:white; margin-top:5px;" onclick="reportUser('${uid}')">🚩 إبلاغ</button>`}</div>`;
+                // التحقق من حالة الاتصال
+                const isOnline = (Date.now() - (u.lastSeen || 0)) < 5 * 60 * 1000; // 5 دقائق
+
+                area.innerHTML = `<div style="text-align:center; padding:40px 20px;"><img src="${u.pic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" id="profile-img-view" style="width:120px; height:120px; border-radius:50%; border:3px solid var(--neon-blue); padding:3px; object-fit:cover;">${isMe ? '<br><label style="color:var(--accent); cursor:pointer; font-size:12px;">تغيير الصورة <input type="file" onchange="encode(this, \'user\')" style="display:none"></label>' : ''}<h2 style="margin:10px 0;">${escapeHtml(u.n)} ${u.vipStatus==='active'?'<i class="fas fa-crown" style="color:var(--accent)"></i>':''}</h2>
+                
+                ${isOnline ? '<div style="color:var(--candle-up); font-size:14px; margin-bottom:10px;"><div class="online-dot"></div> متصل الآن</div>' : '<div style="color:gray; font-size:12px; margin-bottom:10px;">غير متصل</div>'}
+
+                <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;"><span class="badge badge-gold">⭐ ${(u.rating||5).toFixed(1)}</span>${u.role==='admin'?'<span class="badge badge-admin">Admin</span>':''}</div>${isMe ? `<div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; margin-bottom:20px;"><p style="margin:0; font-size:12px; color:var(--text-sec)">ID المستخدم</p><code style="font-size:16px; display:block; margin:5px 0;">${u.p}</code><button onclick="navigator.clipboard.writeText('${u.p}'); Swal.fire('تم النسخ','','success')" style="background:transparent; border:1px solid var(--border); color:white; border-radius:5px; padding:5px 10px;">نسخ</button></div><button class="btn-main" style="background:rgba(239, 68, 68, 0.2); color:#ef4444; border:1px solid #ef4444;" onclick="doLogout()">تسجيل خروج</button>` : `<button class="btn-main" style="background:var(--accent); color:black;" onclick="rateUser('${uid}')">⭐ تقييم البائع</button><button class="btn-main" style="background:var(--red); color:white; margin-top:5px;" onclick="reportUser('${uid}')">🚩 إبلاغ</button>`}</div>`;
             });
         }
+    }
+
+    // --- حسابات شراء SDM ---
+    function calculatePurchase(val) {
+        const amount = parseFloat(val);
+        if(!amount || amount <= 0) {
+            document.getElementById('res-cash').innerText = "0 SDG";
+            document.getElementById('res-bank').innerText = "0 SDG";
+            return;
+        }
+        // السعر الفوري (الكاش)
+        const cashPrice = amount * SDM_RATE;
+        // سعر التحويل (افتراضاً زيادة 5% كرسوم خدمة أو فرق سوق)
+        const bankPrice = cashPrice * 1.05;
+
+        document.getElementById('res-cash').innerText = cashPrice.toLocaleString() + " SDG";
+        document.getElementById('res-bank').innerText = bankPrice.toLocaleString() + " SDG";
+    }
+
+    // --- منطق التداول المتقدم (Candles) ---
+    function setChartTimeframe(tf) {
+        activeTimeframe = tf;
+        document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+        initCandleChart(tf);
+    }
+
+    function generateCandles(count, tf) {
+        let data = [];
+        let time = Date.now();
+        // سعر تقريبي بناءً على المسبح الحالي
+        let basePrice = poolSDM / poolMRK; 
+        
+        // تحديد الفاصل الزمني بالمللي ثانية
+        let interval = 3600000; // 1H default
+        if(tf==='15m') interval = 15*60000;
+        else if(tf==='1D') interval = 24*3600000;
+        else if(tf==='1W') interval = 7*24*3600000;
+        else if(tf==='1M') interval = 30*24*3600000;
+
+        // توليد بيانات تاريخية وهمية تعتمد على السعر الحالي كنقطة نهاية
+        for (let i = 0; i < count; i++) {
+            const open = basePrice + (Math.random() - 0.5) * (basePrice * 0.05);
+            const close = basePrice + (Math.random() - 0.5) * (basePrice * 0.05);
+            const high = Math.max(open, close) + Math.random() * (basePrice * 0.02);
+            const low = Math.min(open, close) - Math.random() * (basePrice * 0.02);
+            
+            // نجعل النقطة الحالية قريبة من السعر الفعلي
+            if (i === 0) { 
+                basePrice = poolSDM / poolMRK; 
+            } else {
+                basePrice = open; // تواصل عكسي
+            }
+
+            data.unshift({
+                x: time - (i * interval),
+                y: [open.toFixed(4), high.toFixed(4), low.toFixed(4), close.toFixed(4)]
+            });
+        }
+        return data;
+    }
+
+    function initCandleChart(tf) {
+        if(chartInstance) chartInstance.destroy();
+
+        const data = generateCandles(30, tf);
+
+        var options = {
+            series: [{
+                data: data
+            }],
+            chart: {
+                type: 'candlestick',
+                height: 300,
+                background: 'transparent',
+                toolbar: { show: false },
+                animations: { enabled: true }
+            },
+            theme: { mode: 'dark' },
+            xaxis: {
+                type: 'datetime',
+                labels: { style: { colors: '#94a3b8' } },
+                axisBorder: { show: false },
+                axisTicks: { show: false }
+            },
+            yaxis: {
+                tooltip: { enabled: true },
+                opposite: true,
+                labels: { 
+                    formatter: function (val) { return val.toFixed(4); },
+                    style: { colors: '#94a3b8' }
+                }
+            },
+            grid: {
+                borderColor: 'rgba(255,255,255,0.05)',
+                strokeDashArray: 3
+            },
+            plotOptions: {
+                candlestick: {
+                    colors: {
+                        upward: '#0ecb81',
+                        downward: '#f6465d'
+                    },
+                    wick: { useFillColor: true }
+                }
+            },
+            tooltip: {
+                theme: 'dark',
+                x: { format: 'dd MMM HH:mm' },
+                // إظهار الارتفاع والانخفاض عند الضغط
+                custom: function({seriesIndex, dataPointIndex, w}) {
+                    const o = w.globals.seriesCandleO[seriesIndex][dataPointIndex];
+                    const h = w.globals.seriesCandleH[seriesIndex][dataPointIndex];
+                    const l = w.globals.seriesCandleL[seriesIndex][dataPointIndex];
+                    const c = w.globals.seriesCandleC[seriesIndex][dataPointIndex];
+                    const diff = c - o;
+                    const color = diff >= 0 ? '#0ecb81' : '#f6465d';
+                    return `
+                        <div style="padding:10px; background:#0f172a; border:1px solid ${color}; border-radius:5px;">
+                            <div>Open: ${o}</div>
+                            <div>High: ${h}</div>
+                            <div>Low: ${l}</div>
+                            <div>Close: ${c}</div>
+                            <div style="color:${color}; font-weight:bold;">
+                                ${diff >= 0 ? '▲' : '▼'} ${(Math.abs(diff)).toFixed(4)}
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+        };
+
+        chartInstance = new ApexCharts(document.querySelector("#chart-container"), options);
+        chartInstance.render();
     }
 
     // --- منطق التداول الحقيقي (AMM Logic) ---
@@ -710,8 +915,6 @@
         const btn = document.getElementById('swap-btn');
         const priceEl = document.getElementById('display-price');
         
-        // حساب السعر الحالي بناءً على نسبة المسبح
-        // السعر = كمية SDM / كمية MRK
         const currentPrice = poolSDM / poolMRK; 
         priceEl.innerText = currentPrice.toFixed(4);
 
@@ -725,11 +928,6 @@
             balPay.innerText = (me.mrkBalance||0).toFixed(4);
             balGet.innerText = me.sdmBalance.toFixed(2);
             btn.innerText = "بيع MRK";
-        }
-        
-        // تحديث الرسم البياني بالسعر الحالي
-        if(chartInstance) {
-            chartInstance.updateSeries([{ data: [{ x: Date.now(), y: currentPrice }] }]);
         }
     }
 
@@ -745,127 +943,75 @@
             return;
         }
         
-        // معادلة AMM
-        // x * y = k
         const k = poolSDM * poolMRK;
         let amountOut = 0;
         let newPrice = 0;
         const oldPrice = poolSDM / poolMRK;
 
         if (swapDir === 'buy') {
-            // إضافة SDM وسحب MRK
-            // التحقق من الرصيد محلياً
             if(inp > me.sdmBalance) { btn.innerText = "رصيد غير كاف"; btn.disabled = true; btn.style.background = 'var(--red)'; return; }
-            
             const newPoolSDM = poolSDM + inp;
             const newPoolMRK = k / newPoolSDM;
             amountOut = poolMRK - newPoolMRK;
-            
             newPrice = newPoolSDM / newPoolMRK;
         } else {
-            // إضافة MRK وسحب SDM
             if(inp > (me.mrkBalance||0)) { btn.innerText = "رصيد غير كاف"; btn.disabled = true; btn.style.background = 'var(--red)'; return; }
-            
             const newPoolMRK = poolMRK + inp;
             const newPoolSDM = k / newPoolMRK;
             amountOut = poolSDM - newPoolSDM;
-            
             newPrice = newPoolSDM / newPoolMRK;
         }
 
         outEl.value = amountOut.toFixed(4);
         btn.disabled = false; btn.style.background = 'var(--primary)'; btn.innerText = "تنفيذ العملية";
 
-        // حساب تأثير السعر (Slippage)
         const impact = Math.abs((newPrice - oldPrice) / oldPrice) * 100;
         impactEl.innerText = impact.toFixed(2) + '%';
-        impactEl.style.color = impact > 5 ? 'var(--red)' : 'var(--up-color)';
+        impactEl.style.color = impact > 5 ? 'var(--red)' : 'var(--candle-up)';
     }
 
     function executeSwap() {
         const inp = parseFloat(document.getElementById('pay-amt').value);
         if(!inp || inp <= 0) return;
         
-        // استخدام Transaction لضمان سلامة العملية وعدم تضارب البيانات
         db.ref('market/pool').transaction((current) => {
-            if(!current) return {sdm: 10, mrk: 150}; // fallback
+            if(!current) return {sdm: 10, mrk: 150};
             
             let pS = Number(current.sdm);
             let pM = Number(current.mrk);
             let k = pS * pM;
-            let finalOut = 0;
             
             if(swapDir === 'buy') {
-                // Buy MRK: Pool gets SDM, gives MRK
                 let newS = pS + inp;
                 let newM = k / newS;
-                finalOut = pM - newM;
                 pS = newS; pM = newM;
             } else {
-                // Sell MRK: Pool gets MRK, gives SDM
                 let newM = pM + inp;
                 let newS = k / newM;
-                finalOut = pS - newS;
                 pS = newS; pM = newM;
             }
-            
             return { sdm: pS, mrk: pM };
             
         }, (error, committed, snapshot) => {
             if(error) {
                 Swal.fire('خطأ', 'فشلت العملية', 'error');
             } else if(committed) {
-                // تم تحديث المسبح بنجاح، الآن نخصم ونضيف للمستخدم
                 const newPool = snapshot.val();
-                
-                // حساب القيمة التي خرجت فعلياً بناءً على حالة المسبح الجديدة
-                // (نقوم بالحساب هنا تقريبياً للتحديث السريع، القيمة الدقيقة تم التعامل معها داخل الترانزاكشن للمسبح)
-                // الأفضل حسابها بناءً على الفرق بين الحالة القديمة (المحلية) والجديدة للمستخدم
-                // ولكن للتبسيط سنقوم بالحساب العكسي من المسبح الجديد
-                
-                let outAmount = 0;
+                calculateSwap();
+                const calculatedOut = parseFloat(document.getElementById('get-amt').value);
                 
                 if(swapDir === 'buy') {
-                     // اشترينا MRK: رصيدنا MRK يزيد، رصيدنا SDM ينقص
-                     // الكمية التي خرجت من المسبح = MRK القديم - MRK الجديد
-                     outAmount = poolMRK - newPool.mrk; // poolMRK هنا قد تكون قديمة، لذا الأفضل الاعتماد على الحساب
-                     // لإصلاح ذلك سنعتمد المعادلة مرة أخرى محلياً لليقين
-                     const k = poolSDM * poolMRK; // هذا خطأ بسيط لأن poolSDM قد تغيرت، لكن بما أننا في callback committed فالقيمة آمنة
-                     // الطريقة الأضمن:
-                     if(swapDir === 'buy') {
-                        outAmount = (me.mrkBalance||0) + (poolMRK - newPool.mrk); // تقريب
-                        // دعنا نحسبها بناء على المدخلات، لأن المسبح تحدث بالفعل
-                        // سنقوم فقط بتحديث أرصدة المستخدم
-                        // بما أننا لا نملك القيمة الدقيقة `out` من داخل الترانزاكشن هنا بسهولة، سنعتمد على الحساب المحلي الدقيق
-                        // ونثق بأن الفارق ضئيل جدا
-                        const kLocal = (newPool.sdm - inp) * (newPool.mrk); // استرجاع k
-                        // لكن للسهولة:
-                        calculateSwap(); // تحديث الحسابات
-                        const calculatedOut = parseFloat(document.getElementById('get-amt').value);
-                        
-                        db.ref('users/'+me.p).update({
-                            sdmBalance: me.sdmBalance - inp,
-                            mrkBalance: (me.mrkBalance||0) + calculatedOut
-                        });
-                     } else {
-                        calculateSwap();
-                        const calculatedOut = parseFloat(document.getElementById('get-amt').value);
-                        db.ref('users/'+me.p).update({
-                            sdmBalance: me.sdmBalance + calculatedOut,
-                            mrkBalance: (me.mrkBalance||0) - inp
-                        });
-                     }
+                    db.ref('users/'+me.p).update({
+                        sdmBalance: me.sdmBalance - inp,
+                        mrkBalance: (me.mrkBalance||0) + calculatedOut
+                    });
                 } else {
-                     // Sell logic mirror
-                     calculateSwap();
-                     const calculatedOut = parseFloat(document.getElementById('get-amt').value);
-                     db.ref('users/'+me.p).update({
-                         sdmBalance: me.sdmBalance + calculatedOut,
-                         mrkBalance: (me.mrkBalance||0) - inp
-                     });
+                    db.ref('users/'+me.p).update({
+                        sdmBalance: me.sdmBalance + calculatedOut,
+                        mrkBalance: (me.mrkBalance||0) - inp
+                    });
                 }
 
-                // تسجيل العملية
                 db.ref('transactions').push({
                     type: swapDir,
                     uP: me.p,
@@ -876,6 +1022,9 @@
                 Swal.fire('تم بنجاح', `تم ${swapDir==='buy'?'الشراء':'البيع'} بنجاح`, 'success');
                 document.getElementById('pay-amt').value = '';
                 document.getElementById('get-amt').value = '';
+                
+                // تحديث الرسم البياني
+                initCandleChart(activeTimeframe);
             }
         });
     }
@@ -886,23 +1035,7 @@
         Swal.fire('تم إعادة التعيين', '10 SDM / 150 MRK', 'success');
     }
 
-    function initChart() {
-        var options = {
-            series: [{ name: 'Price', data: [] }],
-            chart: { type: 'area', height: 250, background: 'transparent', toolbar: {show:false}, animations: {enabled: true} },
-            theme: { mode: 'dark' },
-            stroke: { curve: 'smooth', width: 2 },
-            fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.7, opacityTo: 0.1 } },
-            xaxis: { type: 'datetime', labels:{show:false}, axisBorder:{show:false} },
-            yaxis: { opposite: true, labels:{style:{colors:'#94a3b8'}} },
-            grid: { show: false },
-            colors: ['#00f3ff']
-        };
-        chartInstance = new ApexCharts(document.querySelector("#chart-container"), options);
-        chartInstance.render();
-    }
-
-    // --- بقية وظائف الكود الأصلي ---
+    // --- بقية وظائف الكود ---
     function startSlider() {
         const imgEl = document.getElementById('slider-img'); if(!imgEl) return;
         currentSliderIndex = 0; imgEl.src = sliderImages[0]; updateDots(0);
@@ -935,7 +1068,35 @@
             posts.forEach(p => {
                 if(subFilter && p.sub !== subFilter) return;
                 const isMy = (me && (p.uP === me.p || me.role === "admin"));
-                list.innerHTML += `<div class="post">${p.status === 'sold' ? '<div class="sold-overlay">تم البيع</div>' : ''}<div class="post-img-container"><img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">${isMy ? `<div style="position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.6); color:white; padding:5px; border-radius:50%; cursor:pointer;" onclick="showPostMenu('${path}', '${p.k}', '${p.t}', '${p.pr}', '${p.d}')"><i class="fas fa-ellipsis-v"></i></div>` : ''}<div style="position:absolute; bottom:10px; left:10px; background:rgba(0,0,0,0.7); color:white; padding:5px 10px; border-radius:10px; font-weight:bold;">${p.pr} SDM</div></div><div style="padding:15px;"><h3 style="margin:5px 0;">${escapeHtml(p.t)}</h3><p style="font-size:13px; color:var(--text-sec);">${escapeHtml(p.d)}</p>${p.vExpiry ? `<div style="font-size:12px; color:var(--red);">🕒 ينتهي: ${new Date(p.vExpiry).toLocaleDateString()}</div>` : ''}<div style="display:flex; align-items:center; gap:10px; margin-top:10px; border-top:1px solid var(--border); padding-top:10px;"><img src="${p.uPic||userPic}" style="width:30px; height:30px; border-radius:50%;" onclick="nav('profile','${p.uP}')"><span onclick="nav('profile','${p.uP}')" style="font-size:12px; cursor:pointer;">${escapeHtml(p.uN)} <span style="color:var(--accent)">⭐${p.uStars||0}</span></span><div style="flex:1"></div><a href="https://wa.me/${p.wa}" target="_blank" style="color:#25d366; font-size:20px;"><i class="fab fa-whatsapp"></i></a></div>${(!isGuest && p.uP !== me.p) ? `<button class="btn-main" style="background:var(--red); font-size:10px; padding:5px; margin-top:5px; width:auto;" onclick="reportItem('${p.uP}', '${p.k}', '${p.t}')">🚩 إبلاغ</button>` : ''}</div></div>`;
+                // التحقق من حالة الاتصال للمعلن
+                const isOwnerOnline = p.uLastSeen && (Date.now() - p.uLastSeen < 5 * 60 * 1000);
+                
+                list.innerHTML += `
+                <div class="post">
+                    ${p.status === 'sold' ? '<div class="sold-overlay">تم البيع</div>' : ''}
+                    ${p.discount ? `<div class="discount-badge">خصم ${p.discount}%</div>` : ''}
+                    <div class="post-img-container">
+                        <img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">
+                        ${isMy ? `<div style="position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.6); color:white; padding:5px; border-radius:50%; cursor:pointer;" onclick="showPostMenu('${path}', '${p.k}', '${p.t}', '${p.pr}', '${p.d}')"><i class="fas fa-ellipsis-v"></i></div>` : ''}
+                        <div style="position:absolute; bottom:10px; left:10px; background:rgba(0,0,0,0.7); color:white; padding:5px 10px; border-radius:10px; font-weight:bold;">${p.pr} SDM</div>
+                    </div>
+                    <div style="padding:15px;">
+                        <h3 style="margin:5px 0;">${escapeHtml(p.t)}</h3>
+                        <p style="font-size:13px; color:var(--text-sec);">${escapeHtml(p.d)}</p>
+                        ${p.vExpiry ? `<div style="font-size:12px; color:var(--red);">🕒 ينتهي: ${new Date(p.vExpiry).toLocaleDateString()}</div>` : ''}
+                        
+                        <div style="display:flex; align-items:center; gap:10px; margin-top:10px; border-top:1px solid var(--border); padding-top:10px;">
+                            <img src="${p.uPic||userPic}" style="width:30px; height:30px; border-radius:50%;" onclick="nav('profile','${p.uP}')">
+                            <span onclick="nav('profile','${p.uP}')" style="font-size:12px; cursor:pointer;">
+                                ${escapeHtml(p.uN)} <span style="color:var(--accent)">⭐${p.uStars||0}</span>
+                                ${isOwnerOnline ? '<span class="online-dot" style="margin-left:5px;"></span>' : ''}
+                            </span>
+                            <div style="flex:1"></div>
+                            <a href="https://wa.me/${p.wa}" target="_blank" style="color:#25d366; font-size:20px;"><i class="fab fa-whatsapp"></i></a>
+                        </div>
+                        ${(!isGuest && p.uP !== me.p) ? `<button class="btn-main" style="background:var(--red); font-size:10px; padding:5px; margin-top:5px; width:auto;" onclick="reportItem('${p.uP}', '${p.k}', '${p.t}')">🚩 إبلاغ</button>` : ''}
+                    </div>
+                </div>`;
             });
             if(list.innerHTML === "") list.innerHTML = "<div style='text-align:center; padding:20px; color:gray;'>لا توجد بيانات</div>";
         });
@@ -946,22 +1107,72 @@
         const t = document.getElementById(path==='vip_posts'?'v-t':'pt').value;
         const pr = document.getElementById(path==='vip_posts'?'v-pr':'pp').value;
         const d = document.getElementById(path==='vip_posts'?'v-d':'pd').value;
+        // إضافة التخفيض لل VIP
+        let discount = null;
+        if(path==='vip_posts') {
+            const discVal = document.getElementById('v-discount').value;
+            if(discVal) discount = discVal;
+        }
+
         if(!t || !pr || !tempImg) return Swal.fire('تنبيه', 'يرجى تعبئة البيانات والصورة', 'warning');
-        const data = { t, pr, d, img: tempImg, uP: me.p, uN: me.n, uPic: me.pic || userPic, wa: me.wa, uStars: me.rating || 0, date: Date.now(), status: 'active' };
+        const data = { t, pr, d, img: tempImg, uP: me.p, uN: me.n, uPic: me.pic || userPic, wa: me.wa, uStars: me.rating || 0, date: Date.now(), status: 'active', uLastSeen: Date.now() };
+        
+        if(discount) data.discount = discount;
         if(path==='posts') data.sub = curS; else data.vExpiry = me.vipExpiry;
+        
         db.ref(path).push(data).then(() => { Swal.fire('تم النشر', 'إعلانك أصبح متاحاً الآن', 'success'); tempImg = ""; if(path==='vip_posts') nav('home'); else render('feed', curS); });
     }
 
+    // --- وظيفة التحويل مع التأكد من الاسم فوري ---
+    // تعريف الدالة عالمياً لتستخدم داخل ال SweetAlert
+    window.checkTransferUser = async function(id) {
+        const checkDiv = document.getElementById('name-check-res');
+        if(!id || id.length < 5) { checkDiv.innerHTML = ''; return; }
+        
+        checkDiv.innerHTML = '<span style="color:yellow; font-size:12px;">جاري البحث...</span>';
+        try {
+            const snap = await db.ref('users/' + id).once('value');
+            if(snap.exists()) {
+                const name = snap.val().n;
+                checkDiv.innerHTML = `<span style="color:var(--candle-up); font-weight:bold;">✅ المستلم: ${name}</span>`;
+            } else {
+                checkDiv.innerHTML = `<span style="color:var(--red);">❌ المستخدم غير موجود</span>`;
+            }
+        } catch(e) { checkDiv.innerHTML = ''; }
+    }
+
     function showTransfer() {
-        Swal.fire({ title: 'تحويل رصيد 💸', html: '<input id="tr-id" placeholder="ID المستلم" style="background:#0f172a; color:white"><input id="tr-amount" type="number" placeholder="المبلغ" style="background:#0f172a; color:white">', background: '#1e293b', color: '#fff', showCancelButton: true, confirmButtonText: 'إرسال', preConfirm: () => { return { id: document.getElementById('tr-id').value.trim(), amount: document.getElementById('tr-amount').value }; } }).then(async res => {
+        Swal.fire({ 
+            title: 'تحويل رصيد 💸', 
+            html: `
+                <input id="tr-id" placeholder="ID المستلم (انسخ الكود)" class="swal2-input" style="background:#0f172a; color:white; margin-bottom:5px;" oninput="window.checkTransferUser(this.value)">
+                <div id="name-check-res" style="height:20px; margin-bottom:10px;"></div>
+                <input id="tr-amount" type="number" placeholder="المبلغ" class="swal2-input" style="background:#0f172a; color:white">
+            `, 
+            background: '#1e293b', 
+            color: '#fff', 
+            showCancelButton: true, 
+            confirmButtonText: 'إرسال', 
+            preConfirm: () => { 
+                return { 
+                    id: document.getElementById('tr-id').value.trim(), 
+                    amount: document.getElementById('tr-amount').value 
+                }; 
+            } 
+        }).then(async res => {
             if(res.isConfirmed) {
                 const {id, amount} = res.value;
                 if (id === me.p) return Swal.fire('خطأ', 'لا يمكن التحويل لنفسك', 'error');
                 if(Number(amount) > me.sdmBalance) return Swal.fire('خطأ', 'رصيدك غير كاف', 'error');
+                
                 const uSnap = await db.ref('users/'+id).once('value');
                 if(!uSnap.exists()) return Swal.fire('خطأ', 'كود المستخدم غير صحيح', 'error');
-                db.ref('transfer_queue').push({ sender: me.p, receiver: id, amount: Number(amount), timestamp: Date.now() });
-                Swal.fire('تم الإرسال', 'جاري المعالجة...', 'success');
+                
+                // خصم فوري وإضافة للعمليات
+                await db.ref('users/'+me.p).update({ sdmBalance: me.sdmBalance - Number(amount) });
+                await db.ref('transfer_queue').push({ sender: me.p, receiver: id, amount: Number(amount), timestamp: Date.now() });
+                
+                Swal.fire('تم الإرسال', 'تم تحويل المبلغ بنجاح', 'success');
             }
         });
     }
@@ -979,7 +1190,7 @@
             let items = []; snap.forEach(c => items.unshift(c.val()));
             items.forEach(t => {
                 if(t.type === 'buy' || t.type === 'sell') {
-                     l.innerHTML += `<div style="padding:10px; border-bottom:1px solid var(--border); font-size:12px;"><b style="color:${t.type==='buy'?'var(--up-color)':'var(--down-color)'}">${t.type==='buy'?'شراء MRK':'بيع MRK'}</b><br>القيمة المدخلة: ${t.inp}</div>`;
+                     l.innerHTML += `<div style="padding:10px; border-bottom:1px solid var(--border); font-size:12px;"><b style="color:${t.type==='buy'?'var(--candle-up)':'var(--candle-down)'}">${t.type==='buy'?'شراء MRK':'بيع MRK'}</b><br>القيمة المدخلة: ${t.inp}</div>`;
                 } else {
                      l.innerHTML += `<div style="padding:10px; border-bottom:1px solid var(--border); font-size:12px;">عملية: ${t.type || 'تحويل'} - ${t.amount || t.totalSDM}</div>`;
                 }
