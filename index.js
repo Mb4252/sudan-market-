@@ -4,21 +4,18 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ============================================================
-// 1. الاتصال الآمن بقاعدة البيانات (Secure Connection)
+// 1. الاتصال الآمن (Secure Connection)
 // ============================================================
 let serviceAccount;
 try {
-    // نقرأ المفاتيح من متغيرات البيئة في Render للحماية
     const envKey = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (envKey) {
         serviceAccount = JSON.parse(envKey);
-        console.log("✅ Credentials loaded successfully from Environment.");
+        console.log("✅ Credentials loaded.");
     } else {
         console.error("❌ CRITICAL: FIREBASE_SERVICE_ACCOUNT is missing.");
     }
-} catch (error) { 
-    console.error("❌ Error parsing credentials:", error); 
-}
+} catch (error) { console.error("❌ Error parsing credentials:", error); }
 
 if (serviceAccount) {
     admin.initializeApp({
@@ -27,189 +24,193 @@ if (serviceAccount) {
     });
 }
 
-// التأكد من تهيئة التطبيق
 const db = admin.apps.length ? admin.database() : null;
 
 // ============================================================
-// 2. ذاكرة الحماية (Anti-Replay Memory)
+// 2. تشغيل السيرفر ونبض القلب
 // ============================================================
-// هذه الذاكرة تمنع الهكر من استخدام نفس المعاملة مرتين
-// الصيغة: Map<UserID, TransactionID>
-const processedTransactions = new Map();
-
-// ============================================================
-// 3. تشغيل السيرفر (Express Server)
-// ============================================================
-app.get('/', (req, res) => { 
-    res.send('🛡️ SDM Security Guardian is RUNNING (v3.0 Secure).'); 
-});
+app.get('/', (req, res) => { res.send('🛡️ SDM CORE ENGINE (SECURE BANK) IS RUNNING.'); });
 
 app.listen(PORT, () => { 
     console.log(`🚀 Server running on port ${PORT}`); 
 });
 
-// ============================================================
-// 4. نبض القلب (Heartbeat System)
-// ============================================================
-// يرسل إشارة للقاعدة كل دقيقة ليخبر التطبيق أنه حي
 if (db) {
-    console.log("💓 Heartbeat system started...");
+    console.log("💓 System Heartbeat started...");
     setInterval(() => {
+        // تحديث حالة النظام كل دقيقة للسماح للموقع بالعمل
         db.ref('system/status').update({ 
             last_online: admin.database.ServerValue.TIMESTAMP 
         }).catch(err => console.error('Heartbeat Error:', err));
-    }, 60000); // تحديث كل 60 ثانية
+    }, 60000);
 }
 
 // ============================================================
-// 5. الحارس الذكي (The Watchdog Logic)
+// 3. المحرك المالي (Financial Engine) - أهم جزء
 // ============================================================
 if (db) {
-    console.log("👁️ Security Watchdog is monitoring users...");
+    console.log("💰 Financial Engine is listening for requests...");
 
-    // الاستماع لكل مستخدم جديد ينضم أو موجود بالفعل
-    db.ref('users').on('child_added', (userSnap) => {
-        const uid = userSnap.key;
+    // أ) معالجة طلبات التحويل (Transfers)
+    db.ref('requests/transfers').on('child_added', async (snap) => {
+        const req = snap.val();
+        const reqId = snap.key;
         
-        // تهيئة الرصيد المحلي المبدئي لتجنب الإنذارات الكاذبة عند التشغيل
-        let localSDM = parseFloat(userSnap.val().sdmBalance || 0);
+        // التحقق من صحة البيانات
+        if (!req.from || !req.to || !req.amount || req.amount <= 0) {
+            return snap.ref.remove(); // حذف الطلبات الفاسدة
+        }
 
-        // فتح قناة مراقبة خاصة لرصيد هذا المستخدم
-        db.ref(`users/${uid}/sdmBalance`).on('value', async (snap) => {
-            const currentSDM = parseFloat(snap.val());
-
-            // 1. تجاهل القيم غير الصالحة
-            if (isNaN(currentSDM)) return;
-
-            // 2. إذا نقص الرصيد (شراء/تحويل)، فهذا طبيعي وآمن
-            if (currentSDM <= localSDM) {
-                localSDM = currentSDM;
-                return;
+        // تنفيذ عملية ذرية (Transaction) لضمان عدم سرقة الرصيد
+        await db.ref(`users/${req.from}/sdmBalance`).transaction(currentBal => {
+            // هل يملك الرصيد الكافي؟
+            if ((currentBal || 0) < req.amount) {
+                return; // إلغاء العملية (Abort)
             }
+            return (currentBal || 0) - req.amount; // خصم المبلغ
+        }, async (error, committed, snapshot) => {
+            if (error) {
+                console.error("Transfer Error:", error);
+            } else if (!committed) {
+                // فشل الخصم (رصيد غير كاف)
+                db.ref(`alerts/${req.from}`).push({ msg: "❌ فشل التحويل: رصيد غير كاف", type: "error" });
+                db.ref(`requests/transfers/${reqId}`).remove();
+            } else {
+                // نجح الخصم -> إضافة المبلغ للمستلم
+                await db.ref(`users/${req.to}/sdmBalance`).transaction(b => (b || 0) + req.amount);
+                
+                // تسجيل في السجل الأبدي
+                db.ref('transactions').push({
+                    type: 'transfer', from: req.from, to: req.to, amount: req.amount, date: Date.now()
+                });
 
-            // ⚠️ هنا حدثت زيادة! لنحقق فيها
-            const diff = currentSDM - localSDM;
-            // تجاهل الزيادات الصغيرة جداً (أقل من 0.0001) لتفادي أخطاء الجافاسكريبت
-            if (diff < 0.0001) return;
+                // إرسال إشعارات
+                db.ref(`alerts/${req.to}`).push({ msg: `💰 استلمت ${req.amount} SDM`, type: "success" });
+                db.ref(`alerts/${req.from}`).push({ msg: `✅ تم إرسال ${req.amount} SDM`, type: "success" });
 
-            console.log(`🔍 Audit User ${uid}: +${diff.toFixed(4)} SDM`);
-
-            let isLegit = false;
-            let proofId = null; // سيحمل رقم المعاملة التي بررت الزيادة
-
-            try {
-                // الخطوة 1: هل المستخدم أدمن؟
-                // (نقوم بجلب البيانات للتأكد، لا نعتمد على الذاكرة القديمة)
-                const uData = await db.ref(`users/${uid}/role`).once('value');
-                if (uData.val() === 'admin') {
-                    isLegit = true;
-                    console.log(`✅ User ${uid} is Admin. Skip check.`);
-                }
-
-                // الخطوة 2: البحث في سجل المعاملات (Transactions)
-                if (!isLegit) {
-                    const txns = await db.ref('transactions')
-                                         .orderByChild('uP')
-                                         .equalTo(uid)
-                                         .limitToLast(10) 
-                                         .once('value');
-                    
-                    txns.forEach(t => {
-                        if (isLegit) return; // إذا وجدنا دليل، نتوقف
-                        
-                        const tx = t.val();
-                        const txId = t.key;
-                        
-                        // الشروط الأمنية الصارمة:
-                        // 1. النوع يجب أن يبرر الزيادة (بيع MRK أو استلام تحويل)
-                        // 2. الوقت: المعاملة حدثت في آخر 15 ثانية فقط
-                        // 3. القيمة: تطابق الزيادة مع هامش خطأ ضئيل (0.1)
-                        const isValidType = (tx.type === 'sell' || tx.type === 'receive' || tx.type === 'buy_approved');
-                        const isRecent = (Date.now() - (tx.date || Date.now())) < 15000;
-                        const isMatchingAmount = Math.abs((tx.out || tx.amount || 0) - diff) < 0.1;
-
-                        if (isValidType && isRecent && isMatchingAmount) {
-                            // 4. الحماية من التكرار (Anti-Replay)
-                            // نتأكد أن هذا الـ Transaction ID لم نستخدمه سابقاً
-                            if (processedTransactions.get(uid) !== txId) {
-                                isLegit = true;
-                                proofId = txId;
-                            } else {
-                                console.warn(`⚠️ Warning: Replay Attack attempt detected for User ${uid} with Txn ${txId}`);
-                            }
-                        }
-                    });
-                }
-
-                // الخطوة 3: البحث في طلبات الشراء المباشرة من المطور (Coin Requests)
-                if (!isLegit) {
-                    const reqs = await db.ref('coin_requests')
-                                         .orderByChild('uP')
-                                         .equalTo(uid)
-                                         .limitToLast(5)
-                                         .once('value');
-                    
-                    reqs.forEach(r => {
-                        if (isLegit) return;
-                        
-                        const req = r.val();
-                        const reqId = r.key;
-
-                        // الشروط: الطلب "approved" + الوقت حديث + الكمية متطابقة
-                        if (
-                            req.status === 'approved' && 
-                            (Date.now() - (req.date || Date.now())) < 20000 && 
-                            Math.abs(req.qty - diff) < 0.1 
-                        ) {
-                             // الحماية من التكرار
-                             if (processedTransactions.get(uid) !== reqId) {
-                                isLegit = true;
-                                proofId = reqId;
-                            }
-                        }
-                    });
-                }
-
-                // === القرار النهائي ===
-                if (!isLegit) {
-                    // 🚨 غشاش (Cheater)
-                    console.error(`🚨 CHEATER CAUGHT: ${uid} added ${diff} SDM without proof.`);
-                    
-                    // 1. إعادة الرصيد للقيمة القديمة فوراً
-                    await snap.ref.set(localSDM);
-                    
-                    // 2. حظر المستخدم وتجميد الحساب
-                    await db.ref(`users/${uid}`).update({ 
-                        bannedUntil: Date.now() + (365 * 24 * 60 * 60 * 1000), // حظر لمدة سنة
-                        role: 'banned_cheater',
-                        verified: false // إجبار النظام على التوقف له
-                    });
-
-                    // 3. إرسال تنبيه للأدمن (اختياري)
-                    await db.ref('admin_alerts').push({
-                        msg: `🚨 CHEATER DETECTED: User ${uid} tried to add ${diff} SDM. Auto-Banned.`,
-                        time: Date.now()
-                    });
-
-                } else {
-                    // ✅ عملية سليمة (Verified)
-                    console.log(`✅ Verified Increase for ${uid} (Proof ID: ${proofId || 'Admin'})`);
-                    
-                    // تحديث الرصيد المحلي الجديد
-                    localSDM = currentSDM; 
-                    
-                    // تسجيل المعاملة كـ "مستخدمة" لمنع استخدامها مرة أخرى
-                    if (proofId) processedTransactions.set(uid, proofId);
-                    
-                    // فك قفل الحماية (السماح للمستخدم بالعمل)
-                    await db.ref(`users/${uid}`).update({ verified: true });
-                }
-
-            } catch (err) {
-                console.error("❌ Audit Logic Error:", err);
-                // في حالة حدوث خطأ برمجي، نعيد الرصيد للاحتياط
-                snap.ref.set(localSDM);
+                // حذف الطلب
+                db.ref(`requests/transfers/${reqId}`).remove();
+                console.log(`✅ Transfer Success: ${req.amount} from ${req.from} to ${req.to}`);
             }
         });
+    });
+
+    // ب) معالجة أوامر الشراء (Market BUY)
+    db.ref('market/orders/buy').on('child_added', async (snap) => {
+        const order = snap.val();
+        const orderId = snap.key;
+        
+        // حساب التكلفة الكلية
+        const totalCost = order.price * order.amount;
+
+        // 1. محاولة حجز المبلغ من المشتري
+        let fundsLocked = false;
+        await db.ref(`users/${order.uP}/sdmBalance`).transaction(bal => {
+            if ((bal || 0) < totalCost) return; // رصيد غير كاف
+            return (bal || 0) - totalCost; // خصم المبلغ (تجميده)
+        }, (err, committed) => {
+            if (committed) fundsLocked = true;
+        });
+
+        if (!fundsLocked) {
+            // حذف الطلب إذا لم يوجد رصيد
+            console.log(`❌ Rejected Buy Order: No funds for ${order.uP}`);
+            return db.ref(`market/orders/buy/${orderId}`).remove();
+        }
+
+        // 2. البحث عن بائع (Matching Engine)
+        // نبحث عن أرخص بائع سعره يساوي أو أقل من سعر الشراء
+        const matchSnap = await db.ref('market/orders/sell')
+                                  .orderByChild('price')
+                                  .endAt(order.price)
+                                  .limitToFirst(1)
+                                  .once('value');
+        
+        if (matchSnap.exists()) {
+            // تم العثور على صفقة!
+            const sellKey = Object.keys(matchSnap.val())[0];
+            const sellOrder = matchSnap.val()[sellKey];
+            
+            // تحديد الكمية والسعر (السعر يتم حسب البائع لأنه الأرخص)
+            const tradeAmount = Math.min(order.amount, sellOrder.amount);
+            const executionPrice = sellOrder.price;
+            const tradeValue = tradeAmount * executionPrice;
+
+            console.log(`⚡ TRADE MATCH: Buy(${orderId}) & Sell(${sellKey}) @ ${executionPrice}`);
+
+            // تنفيذ التسوية:
+            // البائع: يحصل على SDM + يخصم منه MRK
+            await db.ref(`users/${sellOrder.uP}/sdmBalance`).transaction(b => (b || 0) + tradeValue);
+            await db.ref(`users/${sellOrder.uP}/mrkBalance`).transaction(m => (m || 0) - tradeAmount);
+
+            // المشتري: يحصل على MRK (الـ SDM تم خصمه مسبقاً)
+            await db.ref(`users/${order.uP}/mrkBalance`).transaction(m => (m || 0) + tradeAmount);
+            
+            // *مهم:* إذا اشترى بسعر أرخص مما طلب، نرجع له الفرق
+            const refund = (order.price - executionPrice) * tradeAmount;
+            if (refund > 0) {
+                await db.ref(`users/${order.uP}/sdmBalance`).transaction(b => (b || 0) + refund);
+            }
+
+            // تسجيل الصفقة للسوق
+            db.ref('market/history').push({ price: executionPrice, amount: tradeAmount, time: Date.now() });
+            db.ref('market/last_price').set(executionPrice);
+
+            // تحديث الطلبات (Partial Fills)
+            // تحديث طلب الشراء
+            if (order.amount > tradeAmount) {
+                db.ref(`market/orders/buy/${orderId}`).update({ amount: order.amount - tradeAmount });
+            } else {
+                db.ref(`market/orders/buy/${orderId}`).remove();
+            }
+            // تحديث طلب البيع
+            if (sellOrder.amount > tradeAmount) {
+                db.ref(`market/orders/sell/${sellKey}`).update({ amount: sellOrder.amount - tradeAmount });
+            } else {
+                db.ref(`market/orders/sell/${sellKey}`).remove();
+            }
+
+        } else {
+            // لا يوجد بائع حالياً، يظل الطلب معلقاً (والرصيد محجوز)
+            console.log(`⏳ Buy Order Queued: ${orderId}`);
+        }
+    });
+
+    // ج) معالجة أوامر البيع (Market SELL)
+    db.ref('market/orders/sell').on('child_added', async (snap) => {
+        const order = snap.val();
+        const orderId = snap.key;
+
+        // 1. محاولة حجز عملة MRK من البائع
+        let assetLocked = false;
+        await db.ref(`users/${order.uP}/mrkBalance`).transaction(bal => {
+            if ((bal || 0) < order.amount) return;
+            return (bal || 0) - order.amount; // حجز الكمية
+        }, (err, committed) => {
+            if (committed) assetLocked = true;
+        });
+
+        if (!assetLocked) {
+            console.log(`❌ Rejected Sell Order: No MRK for ${order.uP}`);
+            return db.ref(`market/orders/sell/${orderId}`).remove();
+        }
+
+        // 2. البحث عن مشتري (اختياري هنا لأن كود الشراء يقوم بالمطابقة أيضاً)
+        // سيظل الطلب في قائمة الانتظار حتى يأتي مشتري أو يقوم كود الشراء باكتشافه
+        console.log(`⏳ Sell Order Queued: ${orderId}`);
+    });
+
+    // د) معالجة التقييمات (Ratings)
+    db.ref('rating_queue').on('child_added', async (snap) => {
+        const d = snap.val();
+        await db.ref(`users/${d.target}`).transaction(u => {
+            if (!u) return u;
+            const count = u.ratingCount || 1;
+            const newR = ((u.rating || 5) * count + d.stars) / (count + 1);
+            u.rating = parseFloat(newR.toFixed(1));
+            u.ratingCount = count + 1;
+            return u;
+        });
+        snap.ref.remove();
     });
 }
