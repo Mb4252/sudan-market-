@@ -4,18 +4,17 @@ from flask import Flask
 from threading import Thread
 import time
 import os
-import sys
 import requests
 import json
 
 # ======================================================
-# 1. إعدادات السيرفر
+# 1. إعدادات السيرفر (لإبقاء البوت مستيقظاً)
 # ======================================================
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "✅ Bot is Running | Connected to SMM Panel"
+    return "✅ Game Worker (Python) is Running..."
 
 def run_http():
     app.run(host='0.0.0.0', port=8080)
@@ -25,158 +24,173 @@ def keep_alive():
     t.start()
 
 # ======================================================
-# 2. الاتصال بفايربيس
+# 2. الاتصال بفايربيس والمزود
 # ======================================================
+# جلب المتغيرات من إعدادات Render (الأمان أولاً)
+FIREBASE_KEY = os.environ.get('FIREBASE_PRIVATE_KEY')
+PROVIDER_URL = os.environ.get('PROVIDER_URL') # رابط موقع الشحن
+PROVIDER_KEY = os.environ.get('PROVIDER_KEY') # مفتاح موقع الشحن
+
 if not firebase_admin._apps:
     try:
-        # يحاول جلب المفاتيح من متغيرات البيئة في Render
-        key_content = os.environ.get('FIREBASE_PRIVATE_KEY')
-        if key_content:
-            firebase_creds = json.loads(key_content)
-            cred = credentials.Certificate(firebase_creds)
+        if FIREBASE_KEY:
+            # تنظيف المفتاح في حال وجود مشاكل في النسخ واللصق
+            if isinstance(FIREBASE_KEY, str):
+                cred_dict = json.loads(FIREBASE_KEY)
+            else:
+                cred_dict = FIREBASE_KEY
+                
+            cred = credentials.Certificate(cred_dict)
             firebase_admin.initialize_app(cred, {
                 'databaseURL': 'https://sudan-market-6b122-default-rtdb.firebaseio.com'
             })
-            print("✅ تم الاتصال بقاعدة البيانات.")
+            print("✅ Connected to Firebase Database.")
         else:
-            print("⚠️ لم يتم العثور على مفاتيح الفايربيس في المتغيرات.")
+            print("❌ CRITICAL: FIREBASE_PRIVATE_KEY is missing.")
     except Exception as e:
-        print(f"❌ خطأ في الاتصال: {e}")
+        print(f"❌ Firebase Connection Error: {e}")
 
-# ======================================================
-# 3. إعدادات مزود الخدمة (SMM Panel) - عدل هنا
-# ======================================================
-# 🔴🔴 هام: استبدل البيانات أدناه ببيانات الموقع الذي شحنت فيه رصيدك 🔴🔴
-PROVIDER_API_URL = "https://example.com/api/v2"  # ضع رابط الـ API للموقع هنا
-PROVIDER_API_KEY = "xxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # ضع الـ API Key الطويل هنا
-
-# أرقام الخدمات في الموقع (Service IDs)
-# تأكد من هذه الأرقام من صفحة Services في الموقع
+# خريطة الخدمات (يجب مطابقتها مع موقع المزود الذي تستخدمه)
+# مثال: الباقة 60 شدة في تطبيقك = الخدمة رقم 1555 في موقع المزود
 SERVICES_MAP = {
     'pubg': {
-        '60': 101,   # رقم خدمة 60 شدة
-        '325': 102,  # رقم خدمة 325 شدة
-        '660': 103   # رقم خدمة 660 شدة
+        '4': 101,    # سعر 4 SDM = خدمة رقم 101
+        '20': 102,   # سعر 20 SDM = خدمة رقم 102
+        '40': 103    # سعر 40 SDM = خدمة رقم 103
     },
     'ff': {
-        '100': 201,  # رقم خدمة 100 جوهرة
-        '530': 202,
-        '1080': 203
+        '4': 201,
+        '20': 202,
+        '40': 203
     }
 }
 
 # ======================================================
-# 4. دالة الشحن (API Connection)
+# 3. دالة الشحن (SMM API Standard)
 # ======================================================
-def pay_with_provider(player_id, game_type, pack_sdm):
-    # تحديد الخدمة المطلوبة
-    service_id = None
-    cost_sdm = int(pack_sdm)
-    
-    # تحويل رصيد SDM إلى رقم الخدمة المناسب
-    if game_type == 'pubg':
-        if cost_sdm == 4: service_id = SERVICES_MAP['pubg']['60']
-        elif cost_sdm == 20: service_id = SERVICES_MAP['pubg']['325']
-        elif cost_sdm == 40: service_id = SERVICES_MAP['pubg']['660']
-    elif game_type == 'ff':
-        if cost_sdm == 4: service_id = SERVICES_MAP['ff']['100']
-        elif cost_sdm == 20: service_id = SERVICES_MAP['ff']['530']
-        elif cost_sdm == 40: service_id = SERVICES_MAP['ff']['1080']
-        
-    if not service_id:
-        return False, "السعر غير مطابق لأي باقة مسجلة"
-
-    # تجهيز الطلب
-    payload = {
-        'key': PROVIDER_API_KEY,
-        'action': 'add',
-        'service': service_id,
-        'link': player_id,
-        'quantity': 1
-    }
-
-    # تنفيذ الطلب
+def process_order(order_id, order_data):
+    # 1. تحديد رقم الخدمة
     try:
-        response = requests.post(PROVIDER_API_URL, data=payload)
+        cost_str = str(int(order_data.get('cost', 0))) # تحويل السعر لنص للمقارنة
+        game_type = order_data.get('type') or order_data.get('gameType') # التأكد من اسم الحقل
+        
+        service_id = SERVICES_MAP.get(game_type, {}).get(cost_str)
+        
+        if not service_id:
+            raise ValueError(f"No service ID found for {game_type} cost {cost_str}")
+
+        print(f"⚡ Processing {order_id}: Service {service_id} for {order_data['playerId']}")
+
+        # 2. إرسال الطلب للمزود
+        payload = {
+            'key': PROVIDER_KEY,
+            'action': 'add',
+            'service': service_id,
+            'link': order_data['playerId'],
+            'quantity': 1
+        }
+
+        response = requests.post(PROVIDER_URL, data=payload)
         res_json = response.json()
-        
+
+        # 3. تحليل الرد
         if 'order' in res_json:
-            return True, f"تم الطلب برقم: {res_json['order']}"
+            # نجاح
+            return True, str(res_json['order'])
         elif 'error' in res_json:
-            return False, f"رفض المزود: {res_json['error']}"
+            # فشل من المزود
+            return False, str(res_json['error'])
         else:
-            return False, "خطأ غير معروف"
+            return False, f"Unknown Response: {res_json}"
+
     except Exception as e:
-        return False, f"خطأ اتصال: {str(e)}"
+        return False, str(e)
 
 # ======================================================
-# 5. استرجاع الأموال
+# 4. دالة استرجاع الأموال (Refund)
 # ======================================================
-def return_money(uid, amount):
+def refund_user(uid, amount, reason):
     try:
-        db.reference(f'users/{uid}/sdmBalance').transaction(
-            lambda current: (current or 0) + float(amount)
-        )
-        return True
-    except: return False
-
-# ======================================================
-# 6. التنبيهات
-# ======================================================
-def send_alert(uid, msg, type_):
-    try:
+        print(f"💸 Refunding {amount} to {uid}...")
+        ref = db.reference(f'users/{uid}/sdmBalance')
+        ref.transaction(lambda current: (current or 0) + float(amount))
+        
+        # إرسال تنبيه
         db.reference(f'alerts/{uid}').push({
-            'msg': msg, 'type': type_, 'time': int(time.time()*1000)
+            'msg': f"⚠️ تم استرجاع {amount} SDM. السبب: {reason}",
+            'type': 'error',
+            'time': int(time.time() * 1000)
         })
-    except: pass
-
-# ======================================================
-# 7. المعالج الرئيسي
-# ======================================================
-def handle_database_event(event):
-    if not event.data or event.path == "/": return
-    
-    # الحصول على المفتاح والبيانات
-    key = event.path.split('/')[-1] if '/' in event.path else event.path
-    if not key: return
-
-    try:
-        ref = db.reference(f'game_orders/{key}')
-        order = ref.get()
-        if not order: return
-
-        # الشروط: الحالة pending ولم تتم المعالجة بعد
-        if order.get('status') == 'pending' and not order.get('delivery_status'):
-            
-            # تغيير الحالة فوراً لمنع التكرار
-            ref.update({'delivery_status': 'processing'})
-            
-            # محاولة الشحن
-            success, msg = pay_with_provider(order['playerId'], order['gameType'], order['cost'])
-            
-            if success:
-                ref.update({
-                    'status': 'done',
-                    'delivery_status': 'delivered',
-                    'provider_msg': msg
-                })
-                send_alert(order['uP'], f"✅ تم شحن {order['gameType']} بنجاح!", "success")
-                print(f"✅ نجاح: طلب {key}")
-            else:
-                # فشل -> استرجاع
-                return_money(order['uP'], order['cost'])
-                ref.update({
-                    'status': 'failed',
-                    'delivery_status': 'refunded',
-                    'reason': msg
-                })
-                send_alert(order['uP'], f"❌ فشل الشحن: {msg}", "error")
-                print(f"❌ فشل: طلب {key} - {msg}")
-                
+        return True
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"❌ Refund Error: {e}")
+        return False
 
+# ======================================================
+# 5. مستمع قاعدة البيانات (Listener)
+# ======================================================
+def handle_event(event):
+    # تجاهل الأحداث الجذرية أو الفارغة
+    if event.data is None: return
+
+    # التعامل مع الحالات المختلفة لمسار الحدث
+    try:
+        # الحالة 1: تم إضافة طلب جديد (المسار يكون /)
+        if event.path == "/":
+            data = event.data
+            # إذا كانت البيانات قاموساً كبيراً (تحميل أولي أو إضافة)
+            if isinstance(data, dict):
+                for key, val in data.items():
+                    check_and_execute(key, val)
+        
+        # الحالة 2: تم تعديل طلب محدد (المسار يكون /ORDER_ID)
+        else:
+            key = event.path.strip("/")
+            val = event.data
+            check_and_execute(key, val)
+
+    except Exception as e:
+        print(f"⚠️ Event Handler Error: {e}")
+
+def check_and_execute(order_id, order_data):
+    # الشرط الذهبي: نعالج فقط الطلبات "المدفوعة وبانتظار التنفيذ"
+    if isinstance(order_data, dict) and order_data.get('status') == 'paid_waiting_execution':
+        
+        print(f"🔔 Found paid order: {order_id}")
+        
+        # 1. تغيير الحالة فوراً إلى processing لمنع التكرار
+        db.reference(f'game_orders/{order_id}').update({'status': 'processing'})
+
+        # 2. تنفيذ الشحن
+        success, result_msg = process_order(order_id, order_data)
+
+        if success:
+            # تم الشحن
+            db.reference(f'game_orders/{order_id}').update({
+                'status': 'completed',
+                'external_id': result_msg,
+                'completed_at': int(time.time() * 1000)
+            })
+            # تنبيه نجاح
+            db.reference(f'alerts/{order_data["uP"]}').push({
+                'msg': f"✅ تم شحن {order_data.get('type', 'Game')} بنجاح!",
+                'type': 'success'
+            })
+            print(f"✅ Order {order_id} Completed. ID: {result_msg}")
+        else:
+            # فشل الشحن -> استرجاع الأموال
+            refund_user(order_data['uP'], order_data['cost'], result_msg)
+            db.reference(f'game_orders/{order_id}').update({
+                'status': 'refunded',
+                'reason': result_msg
+            })
+            print(f"❌ Order {order_id} Failed & Refunded. Reason: {result_msg}")
+
+# ======================================================
+# 6. التشغيل
+# ======================================================
 if __name__ == "__main__":
-    print("🚀 Bot Started...")
     keep_alive()
-    db.reference('game_orders').listen(handle_database_event)
+    print("🚀 Python Game Worker Started... Listening for 'paid_waiting_execution'")
+    # الاستماع للعقدة game_orders
+    db.reference('game_orders').listen(handle_event)
