@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SDM Market Pro | تداول MRK</title>
+    <title>SDM Market Pro | منصة تداول P2P</title>
     
     <!-- خطوط عربية -->
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;500;800&display=swap" rel="stylesheet">
@@ -13,15 +13,10 @@
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script> 
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-
     <style>
         :root {
             --bg-dark: #0f172a;
-            --bg-card: #1e293b;
+            --bg-card: rgba(30, 41, 59, 0.95);
             --primary: #3b82f6;
             --accent: #f59e0b;
             --neon-blue: #00f3ff;
@@ -30,12 +25,8 @@
             --border: rgba(255, 255, 255, 0.1);
             --red: #ef4444; 
             --green: #10b981; 
-            --buy-green: #10b981;
-            --sell-red: #ef4444;
-            --order-blue: #3b82f6;
-            --vip-gold: #FFD700;
-            --vip-platinum: #E5E4E2;
-            --vip-diamond: #b9f2ff;
+            --buy-color: #10b981;
+            --sell-color: #ef4444;
         }
 
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline:none; }
@@ -43,7 +34,7 @@
         body {
             font-family: 'Tajawal', sans-serif; 
             margin: 0;
-            background: var(--bg-dark); 
+            background: radial-gradient(circle at top, #1e293b, #0f172a); 
             color: var(--text-main);
             padding-bottom: 90px;
             min-height: 100vh;
@@ -57,19 +48,6 @@
         .hidden { display: none !important; }
         .search-hidden { display: none !important; }
 
-        /* تعديلات SweetAlert */
-        div:where(.swal2-container) div:where(.swal2-popup) {
-            background: var(--bg-card) !important;
-            color: var(--text-main) !important;
-            border: 1px solid var(--border);
-            border-radius: 20px;
-        }
-        .swal2-input, .swal2-textarea, .swal2-select {
-            background: rgba(0,0,0,0.3) !important;
-            color: white !important;
-            border: 1px solid var(--border) !important;
-        }
-
         /* Header */
         header {
             background: rgba(15, 23, 42, 0.95);
@@ -77,6 +55,7 @@
             padding: 15px 20px;
             position: sticky; top: 0; z-index: 1000;
             border-bottom: 1px solid var(--border);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
             display: flex; flex-direction: column; gap: 10px;
         }
         .header-top { display: flex; justify-content: space-between; align-items: center; width: 100%; }
@@ -90,2406 +69,1100 @@
         }
         .search-container i { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); color: var(--accent); }
 
-        /* VIP Badges */
-        .vip-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: bold;
-            margin-left: 5px;
-            animation: vip-glow 2s infinite alternate;
-        }
-        .vip-gold {
-            background: linear-gradient(45deg, #FFD700, #FFA500);
-            color: #000;
-            border: 1px solid #FFD700;
-        }
-        .vip-platinum {
-            background: linear-gradient(45deg, #E5E4E2, #C0C0C0);
-            color: #000;
-            border: 1px solid #E5E4E2;
-        }
-        .vip-diamond {
-            background: linear-gradient(45deg, #b9f2ff, #0892d0);
-            color: #000;
-            border: 1px solid #b9f2ff;
-        }
-        @keyframes vip-glow {
-            from { box-shadow: 0 0 5px currentColor; }
-            to { box-shadow: 0 0 15px currentColor; }
-        }
-
-        /* Wallet & Trading */
-        .wallet-overview {
-            background: linear-gradient(135deg, #1e293b, #0f172a);
-            border: 1px solid var(--border); padding: 25px; border-radius: 20px;
-            text-align: center; margin-bottom: 20px; position: relative; overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-        }
-
-        /* Calculator Integrated in Trade */
-        .integrated-calculator {
-            background: rgba(30, 41, 59, 0.8);
-            border: 1px solid var(--border);
-            border-radius: 15px;
-            padding: 15px;
-            margin: 10px 0;
+        /* Trading Interface */
+        .trading-container {
             display: flex;
             flex-direction: column;
-            gap: 10px;
-        }
-        .calc-display {
-            background: rgba(0,0,0,0.3);
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-            font-size: 18px;
-            border: 1px solid var(--neon-blue);
-        }
-        .calc-display .sdm-fixed {
-            color: var(--neon-blue);
-            font-weight: bold;
-        }
-        .calc-display .mrk-dynamic {
-            color: var(--green);
-            font-weight: bold;
-        }
-
-        /* Enhanced Order Book */
-        .order-book-enhanced {
-            display: flex;
-            flex-direction: column;
-            background: rgba(0,0,0,0.3);
-            border-radius: 15px;
-            overflow: hidden;
-            border: 1px solid var(--border);
-            margin: 10px 0;
-            height: 350px;
-        }
-        .order-book-header {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            background: rgba(30, 41, 59, 0.9);
-            padding: 10px;
-            border-bottom: 1px solid var(--border);
-            font-weight: bold;
-            text-align: center;
-        }
-        .order-book-body {
-            display: flex;
-            overflow: hidden;
-        }
-        .order-book-side {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-            max-height: 300px;
-        }
-        .order-book-side.bids {
-            border-left: 1px solid var(--border);
-        }
-        .order-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            padding: 8px 10px;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-            cursor: pointer;
-            transition: background 0.2s;
-            position: relative;
-        }
-        .order-row:hover {
-            background: rgba(255,255,255,0.05);
-        }
-        .order-row.bid {
-            color: var(--buy-green);
-        }
-        .order-row.ask {
-            color: var(--sell-red);
-        }
-        .order-row.my-order {
-            background: rgba(59, 130, 246, 0.1);
-            border-left: 3px solid var(--order-blue);
-        }
-        .order-progress {
-            position: absolute;
-            bottom: 0;
-            right: 0;
-            height: 2px;
-            background: var(--order-blue);
-            opacity: 0.3;
-        }
-
-        /* Candlestick Chart */
-        .chart-container {
-            background: rgba(0,0,0,0.2);
-            border-radius: 15px;
-            border: 1px solid var(--border);
-            margin: 10px 0;
-            height: 320px;
-            overflow: hidden;
-            position: relative;
-        }
-        .chart-toolbar {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 10;
-            display: flex;
-            gap: 5px;
-        }
-        .chart-timeframe {
-            background: rgba(0,0,0,0.5);
-            border: 1px solid var(--border);
-            color: white;
-            padding: 5px 10px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-        .chart-timeframe.active {
-            background: var(--primary);
-        }
-
-        /* User Orders Panel */
-        .user-orders-panel {
-            background: var(--bg-card);
-            border-radius: 15px;
-            border: 1px solid var(--border);
-            margin: 15px 0;
+            gap: 15px;
             padding: 15px;
         }
-        .user-order {
+
+        .price-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px;
-            background: rgba(0,0,0,0.2);
-            border-radius: 10px;
-            margin-bottom: 8px;
+            background: var(--bg-card);
+            padding: 15px;
+            border-radius: 15px;
             border: 1px solid var(--border);
         }
-        .user-order.filled {
-            border-color: var(--green);
-            background: rgba(16, 185, 129, 0.1);
+
+        .current-price {
+            text-align: center;
+            flex: 1;
         }
-        .user-order.partial {
-            border-color: var(--accent);
-            background: rgba(245, 158, 11, 0.1);
+
+        .price-value {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--text-main);
         }
-        .user-order.pending {
-            border-color: var(--text-sec);
-        }
-        .order-cancel-btn {
-            background: rgba(239, 68, 68, 0.2);
-            color: var(--red);
-            border: 1px solid var(--red);
-            padding: 5px 10px;
-            border-radius: 5px;
-            cursor: pointer;
+
+        .price-change {
             font-size: 12px;
+            margin-top: 5px;
         }
 
-        /* VIP Benefits */
-        .vip-benefits {
-            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(0, 243, 255, 0.1));
-            border: 1px solid var(--accent);
-            border-radius: 15px;
-            padding: 15px;
-            margin: 15px 0;
-        }
-        .vip-benefit-item {
-            display: flex;
-            align-items: center;
+        .positive { color: var(--buy-color); }
+        .negative { color: var(--sell-color); }
+
+        .market-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
             gap: 10px;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-        .vip-benefit-item i {
-            color: var(--vip-gold);
-            font-size: 16px;
+            margin-bottom: 15px;
         }
 
-        /* Trade Controls Enhanced */
-        .trade-controls-enhanced {
+        .stat-box {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: var(--text-sec);
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 14px;
+            font-weight: bold;
+            color: var(--text-main);
+        }
+
+        /* Chart Container */
+        .chart-container {
+            height: 280px;
+            background: var(--bg-card);
+            border-radius: 15px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+
+        /* Order Book */
+        .order-book-wrapper {
+            display: flex;
+            flex-direction: column;
+            height: 300px;
+            background: var(--bg-card);
+            border-radius: 15px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .order-book-header {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(0,0,0,0.2);
+        }
+
+        .order-book-side {
+            display: flex;
+            flex: 1;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-sec);
+        }
+
+        .order-book-content {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+        }
+
+        .order-side {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .bids-side { border-left: 1px solid var(--border); }
+
+        .order-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .order-row:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .order-row.bid {
+            color: var(--buy-color);
+        }
+
+        .order-row.ask {
+            color: var(--sell-color);
+        }
+
+        .order-row .depth-bar {
+            position: absolute;
+            top: 0;
+            right: 0;
+            height: 100%;
+            opacity: 0.1;
+            z-index: 0;
+        }
+
+        .order-row.bid .depth-bar {
+            background: var(--buy-color);
+        }
+
+        .order-row.ask .depth-bar {
+            background: var(--sell-color);
+        }
+
+        .order-row .content {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+        }
+
+        /* Trade Panel */
+        .trade-panel {
             background: var(--bg-card);
             padding: 20px;
-            border-radius: 20px;
+            border-radius: 15px;
             border: 1px solid var(--border);
-            margin-top: 15px;
         }
-        .trade-tabs-enhanced {
+
+        .trade-tabs {
             display: flex;
             background: rgba(0,0,0,0.3);
-            border-radius: 12px;
+            border-radius: 10px;
             padding: 3px;
             margin-bottom: 20px;
         }
+
         .trade-tab {
             flex: 1;
             text-align: center;
             padding: 12px;
-            border-radius: 10px;
+            border-radius: 8px;
             cursor: pointer;
             transition: all 0.3s;
             font-weight: bold;
-            font-size: 16px;
+            font-size: 14px;
         }
+
         .trade-tab.buy.active {
-            background: linear-gradient(135deg, var(--buy-green), #059669);
-            color: white;
-            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+            background: var(--buy-color);
+            color: black;
         }
+
         .trade-tab.sell.active {
-            background: linear-gradient(135deg, var(--sell-red), #b91c1c);
+            background: var(--sell-color);
             color: white;
-            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
         }
 
         .input-group {
-            display: flex;
-            gap: 10px;
             margin-bottom: 15px;
         }
-        .input-group input {
-            flex: 1;
-            padding: 15px;
+
+        .input-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-sec);
+            margin-bottom: 5px;
+        }
+
+        .trade-input {
+            width: 100%;
+            padding: 12px;
             background: rgba(0,0,0,0.3);
             border: 1px solid var(--border);
-            border-radius: 10px;
+            border-radius: 8px;
             color: white;
             font-family: 'Tajawal';
-            font-size: 16px;
+            font-size: 14px;
         }
+
+        .percentage-buttons {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin: 15px 0;
+        }
+
+        .percentage-btn {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid var(--border);
+            padding: 8px;
+            text-align: center;
+            border-radius: 6px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .percentage-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
         .balance-info {
             display: flex;
             justify-content: space-between;
-            font-size: 14px;
-            margin-bottom: 15px;
+            font-size: 12px;
+            margin: 15px 0;
             color: var(--text-sec);
         }
-        .balance-info b {
-            color: white;
+
+        .balance-info span {
+            color: var(--text-main);
+            font-weight: bold;
         }
 
-        /* Trade Button */
-        .trade-execute-btn {
+        .trade-button {
             width: 100%;
-            padding: 18px;
-            border: none;
+            padding: 16px;
             border-radius: 12px;
+            border: none;
             font-weight: bold;
-            font-size: 18px;
+            font-size: 16px;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: all 0.3s;
             font-family: 'Tajawal';
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
         }
-        .trade-execute-btn:active {
-            transform: scale(0.98);
-        }
-        .trade-execute-btn.buy {
-            background: linear-gradient(135deg, var(--buy-green), #059669);
+
+        .buy-button {
+            background: linear-gradient(90deg, var(--buy-color), #059669);
             color: white;
-            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
         }
-        .trade-execute-btn.sell {
-            background: linear-gradient(135deg, var(--sell-red), #b91c1c);
+
+        .sell-button {
+            background: linear-gradient(90deg, var(--sell-color), #b91c1c);
             color: white;
-            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
         }
 
-        /* General UI Elements */
-        .btn-main { 
-            background: linear-gradient(90deg, var(--primary), #2563eb); 
-            color: white; border: none; 
-            padding: 15px; width: 100%; 
-            border-radius: 12px; 
-            font-weight: bold; 
-            cursor: pointer; 
-            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3); 
-            transition: 0.2s; 
-        }
-        .btn-main:active { transform: scale(0.98); }
-        
-        .btn-guest { 
-            background: transparent; 
-            border: 1px solid var(--text-sec); 
-            color: var(--text-sec); 
-            width: 100%; 
-            padding: 12px; 
-            border-radius: 10px; 
-            margin-top: 10px; 
-            cursor: pointer; 
+        .trade-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
         }
 
-        .slider-container { 
-            margin: 20px; 
-            height: 180px; 
-            border-radius: 20px; 
-            overflow: hidden; 
-            position: relative; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3); 
-            border: 1px solid var(--border); 
-        }
-        #slider-img { 
-            width: 100%; 
-            height: 100%; 
-            object-fit: cover; 
-            transition: opacity 0.5s; 
-        }
-        .slider-overlay { 
-            position: absolute; 
-            bottom:0; 
-            width:100%; 
-            background:linear-gradient(to top, rgba(0,0,0,0.8), transparent); 
-            padding:20px; 
+        .trade-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
         }
 
-        .grid { 
-            display: grid; 
-            grid-template-columns: repeat(2, 1fr); 
-            gap: 15px; 
-            padding: 15px; 
-        }
-        .card { 
-            background: var(--bg-card); 
-            border-radius: 18px; 
-            padding: 20px; 
-            text-align: center; 
-            border: 1px solid var(--border); 
-            transition: 0.3s; 
-            position: relative; 
-        }
-        .card:hover { 
-            border-color: var(--neon-blue); 
-            transform: translateY(-5px); 
-        }
-        .card i { 
-            font-size: 28px; 
-            margin-bottom: 10px; 
-            background: linear-gradient(45deg, #fff, #aaa); 
-            -webkit-background-clip: text; 
-            -webkit-text-fill-color: transparent; 
-        }
-
-        /* VIP Subscription Cards */
-        .vip-card {
-            background: linear-gradient(135deg, #1e293b, #0f172a);
-            border-radius: 20px;
-            padding: 25px;
-            text-align: center;
-            border: 2px solid;
-            margin-bottom: 15px;
-            position: relative;
-            overflow: hidden;
-        }
-        .vip-card.gold {
-            border-color: var(--vip-gold);
-            background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 165, 0, 0.05));
-        }
-        .vip-card.platinum {
-            border-color: var(--vip-platinum);
-            background: linear-gradient(135deg, rgba(229, 228, 226, 0.1), rgba(192, 192, 192, 0.05));
-        }
-        .vip-card.diamond {
-            border-color: var(--vip-diamond);
-            background: linear-gradient(135deg, rgba(185, 242, 255, 0.1), rgba(8, 146, 208, 0.05));
-        }
-        .vip-price {
-            font-size: 24px;
-            font-weight: bold;
-            margin: 10px 0;
-        }
-        .vip-card.gold .vip-price { color: var(--vip-gold); }
-        .vip-card.platinum .vip-price { color: var(--vip-platinum); }
-        .vip-card.diamond .vip-price { color: var(--vip-diamond); }
-
-        /* Posts System */
-        .post { 
-            background: var(--bg-card); 
-            margin: 15px; 
-            border-radius: 20px; 
-            overflow: hidden; 
-            border: 1px solid var(--border); 
-            animation: fadeIn 0.5s ease; 
-            position: relative; 
-        }
-        .post-header { 
-            padding: 12px 15px; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            border-bottom: 1px solid rgba(255,255,255,0.05); 
-        }
-        .p-user-info { 
-            display: flex; 
-            align-items: center; 
-            gap: 10px; 
-            cursor: pointer; 
-        }
-        .p-avatar { 
-            width: 35px; 
-            height: 35px; 
-            border-radius: 50%; 
-            object-fit: cover; 
-            border: 1px solid var(--accent); 
-        }
-        .p-meta h4 { 
-            margin: 0; 
-            font-size: 13px; 
-            color: var(--text-main); 
-        }
-        .p-meta span { 
-            font-size: 10px; 
-            color: var(--text-sec); 
-            display: block; 
-        }
-        .active-dot { 
-            width: 8px; 
-            height: 8px; 
-            background: var(--green); 
-            border-radius: 50%; 
-            display: inline-block; 
-            margin-right: 3px; 
-        }
-        
-        .post-options { 
-            position: relative; 
-        }
-        .dots-btn { 
-            color: var(--text-sec); 
-            padding: 5px 10px; 
-            cursor: pointer; 
-            font-size: 18px; 
-        }
-        .p-menu { 
-            position: absolute; 
-            left: 0; 
-            top: 100%; 
-            background: #0f172a; 
-            border: 1px solid var(--border); 
-            border-radius: 8px; 
-            width: 140px; 
-            display: none; 
-            z-index: 100; 
-            box-shadow: 0 5px 15px rgba(0,0,0,0.5); 
-        }
-        .p-menu div { 
-            padding: 10px; 
-            font-size: 12px; 
-            border-bottom: 1px solid rgba(255,255,255,0.05); 
-            cursor: pointer; 
-            transition: 0.2s; 
-        }
-        .p-menu div:hover { 
-            background: rgba(255,255,255,0.05); 
-        }
-        .p-menu div:last-child { 
-            border-bottom: none; 
-            color: var(--red); 
-        }
-        
-        .post-img-container { 
-            position: relative; 
-            overflow: hidden; 
-        }
-        .post-img-container img { 
-            width: 100%; 
-            display: block; 
-        }
-        .sold-overlay { 
-            position: absolute; 
-            top:0; 
-            left:0; 
-            width:100%; 
-            height:100%; 
-            background: rgba(0,0,0,0.7); 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            z-index: 10; 
-            backdrop-filter: blur(2px); 
-        }
-        .sold-badge { 
-            border: 2px solid var(--red); 
-            color: var(--red); 
-            padding: 5px 15px; 
-            font-size: 18px; 
-            font-weight: bold; 
-            transform: rotate(-15deg); 
-            border-radius: 8px; 
-        }
-
-        .post-body { 
-            padding: 15px; 
-        }
-        .post-price { 
-            font-size: 16px; 
-            color: var(--accent); 
-            font-weight: bold; 
-            margin-bottom: 5px; 
-        }
-        .post-desc { 
-            font-size: 13px; 
-            color: var(--text-sec); 
-            line-height: 1.5; 
-            white-space: pre-line; 
-        }
-
-        /* Games Section */
-        .game-card {
+        /* Recent Trades */
+        .recent-trades {
             background: var(--bg-card);
             border-radius: 15px;
-            padding: 20px;
-            text-align: center;
             border: 1px solid var(--border);
-            margin-bottom: 15px;
-            transition: transform 0.3s;
-        }
-        .game-card:hover {
-            transform: translateY(-5px);
-            border-color: var(--primary);
-        }
-        .game-icon {
-            font-size: 40px;
-            margin-bottom: 15px;
-            color: var(--accent);
-        }
-        .game-packages {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
+            padding: 15px;
             margin-top: 15px;
         }
-        .game-package {
-            background: rgba(0,0,0,0.3);
-            padding: 12px;
-            border-radius: 10px;
+
+        .recent-trades-header {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: var(--text-main);
+        }
+
+        .trade-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .trade-item {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            border: 1px solid var(--border);
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
         }
-        .game-package:hover {
-            border-color: var(--accent);
+
+        .trade-item:last-child {
+            border-bottom: none;
+        }
+
+        .trade-item.buy {
+            color: var(--buy-color);
+        }
+
+        .trade-item.sell {
+            color: var(--sell-color);
         }
 
         /* Bottom Nav */
-        .bottom-tabs { 
-            position: fixed; 
-            bottom: 20px; 
-            left: 20px; 
-            right: 20px; 
-            background: rgba(30, 41, 59, 0.95); 
-            backdrop-filter: blur(15px); 
-            border-radius: 25px; 
-            display: flex; 
-            justify-content: space-around; 
-            padding: 12px 0; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
-            border: 1px solid var(--border); 
-            z-index: 1000; 
+        .bottom-tabs {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(30, 41, 59, 0.95);
+            backdrop-filter: blur(15px);
+            border-radius: 25px;
+            display: flex;
+            justify-content: space-around;
+            padding: 12px 0;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 1px solid var(--border);
+            z-index: 1000;
         }
-        .tab-btn { 
-            color: var(--text-sec); 
-            text-align: center; 
-            font-size: 10px; 
-            flex: 1; 
-            cursor: pointer; 
-            transition: 0.3s; 
+        .tab-btn {
+            color: var(--text-sec);
+            text-align: center;
+            font-size: 10px;
+            flex: 1;
+            cursor: pointer;
+            transition: 0.3s;
         }
-        .tab-btn.active { 
-            color: var(--neon-blue); 
-            transform: translateY(-5px); 
+        .tab-btn.active {
+            color: var(--neon-blue);
+            transform: translateY(-5px);
         }
-        .tab-btn i { 
-            font-size: 22px; 
-            margin-bottom: 4px; 
-            display: block; 
-        }
-
-        /* Auth & Misc */
-        #auth-screen { 
-            position: fixed; 
-            top: 0; 
-            left: 0; 
-            width: 100%; 
-            height: 100%; 
-            background: var(--bg-dark); 
-            z-index: 2000; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-        }
-        .badge { 
-            padding: 3px 8px; 
-            border-radius: 5px; 
-            font-size: 10px; 
-            font-weight: bold; 
-        }
-        .badge-gold { 
-            background: rgba(245, 158, 11, 0.2); 
-            color: var(--accent); 
-            border: 1px solid var(--accent); 
+        .tab-btn i {
+            font-size: 22px;
+            margin-bottom: 4px;
+            display: block;
         }
 
         /* Loading */
-        .loading { 
-            position: fixed; 
-            top: 0; 
-            left: 0; 
-            width: 100%; 
-            height: 100%; 
-            background: rgba(15, 23, 42, 0.9); 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            z-index: 3000; 
-        }
-        .loader { 
-            width: 50px; 
-            height: 50px; 
-            border: 3px solid var(--border); 
-            border-top: 3px solid var(--neon-blue); 
-            border-radius: 50%; 
-            animation: spin 1s linear infinite; 
-        }
-
-        /* Chat System */
-        .chat-container {
-            position: fixed;
-            bottom: 100px;
-            right: 20px;
-            width: 350px;
-            height: 500px;
-            background: var(--bg-card);
-            border-radius: 15px;
-            border: 1px solid var(--border);
-            display: none;
-            flex-direction: column;
-            z-index: 2000;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        }
-        .chat-header {
-            padding: 15px;
-            background: rgba(0,0,0,0.3);
-            border-bottom: 1px solid var(--border);
+        .loading {
             display: flex;
-            justify-content: space-between;
+            justify-content: center;
             align-items: center;
-        }
-        .chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 15px;
-        }
-        .chat-input-area {
-            padding: 15px;
-            border-top: 1px solid var(--border);
-            display: flex;
-            gap: 10px;
-        }
-        .chat-input-area input {
-            flex: 1;
-            padding: 12px;
-            background: rgba(0,0,0,0.3);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            color: white;
-        }
-        .message {
-            margin-bottom: 10px;
-            padding: 10px 15px;
-            border-radius: 15px;
-            max-width: 80%;
-            word-wrap: break-word;
-        }
-        .message.sent {
-            background: var(--primary);
-            margin-left: auto;
-            border-bottom-right-radius: 5px;
-        }
-        .message.received {
-            background: var(--bg-dark);
-            margin-right: auto;
-            border-bottom-left-radius: 5px;
+            height: 100px;
         }
 
-        /* Notifications */
-        .notification-bell {
-            position: relative;
-            cursor: pointer;
-        }
-        .notification-count {
-            position: absolute;
-            top: -8px;
-            right: -8px;
-            background: var(--red);
-            color: white;
-            font-size: 10px;
-            padding: 2px 6px;
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
             border-radius: 50%;
-            min-width: 18px;
-            text-align: center;
+            animation: spin 1s linear infinite;
         }
 
-        @keyframes spin { 
-            0% { transform: rotate(0deg); } 
-            100% { transform: rotate(360deg); } 
-        }
-        @keyframes fadeIn { 
-            from { opacity: 0; transform: translateY(10px); } 
-            to { opacity: 1; transform: translateY(0); } 
-        }
-        @keyframes slideIn { 
-            from { transform: translateY(100px); opacity: 0; } 
-            to { transform: translateY(0); opacity: 1; } 
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
 
-<!-- شاشة الدخول -->
-<div id="auth-screen">
-    <img src="https://cdn-icons-png.flaticon.com/512/5501/5501360.png" style="width:100px; margin-bottom:20px;">
-    <h2 style="margin:0; background: linear-gradient(45deg, var(--neon-blue), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">SDM MARKET PRO</h2>
-    <p style="color:var(--text-sec);">أول منصة تداول P2P للعملات الرقمية</p>
-    <div style="width:100%; max-width:350px; padding:20px;">
-        <button onclick="loginWithGoogle()" class="btn-main" style="background: white; color: black; display:flex; align-items:center; justify-content:center; gap:10px;">
-            <i class="fab fa-google"></i> دخول بواسطة Google
-        </button>
-        <button class="btn-guest" onclick="enterGuestMode()">تصفح كزائر 👀</button>
-        <div style="margin-top:20px; font-size:12px; color:var(--text-sec); text-align:center;">
-            <p>بالدخول، فإنك توافق على <a href="#" style="color:var(--primary);" onclick="showTerms()">الشروط والأحكام</a></p>
-        </div>
-    </div>
-</div>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script> 
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
-<!-- شاشة التحميل -->
-<div id="loading-screen" class="loading hidden">
-    <div class="loader"></div>
-    <div style="margin-top:20px; color:var(--text-sec);">جاري التحميل...</div>
-</div>
-
-<!-- نظام الدردشة -->
-<div id="chat-container" class="chat-container">
-    <div class="chat-header">
-        <div id="chat-title">الدردشة</div>
-        <div style="display:flex; gap:10px;">
-            <i class="fas fa-phone" style="cursor:pointer; color:var(--primary);" onclick="startVoiceCall()"></i>
-            <i class="fas fa-video" style="cursor:pointer; color:var(--primary);" onclick="startVideoCall()"></i>
-            <i class="fas fa-times" style="cursor:pointer; color:var(--red);" onclick="closeChat()"></i>
-        </div>
-    </div>
-    <div id="chat-messages" class="chat-messages"></div>
-    <div class="chat-input-area">
-        <input type="text" id="chat-input" placeholder="اكتب رسالتك..." onkeypress="handleChatInput(event)">
-        <button onclick="sendMessage()" style="background:var(--primary); color:white; border:none; padding:0 20px; border-radius:10px; cursor:pointer;">
-            <i class="fas fa-paper-plane"></i>
-        </button>
-    </div>
-</div>
-
-<!-- التطبيق -->
-<div id="app-screen" class="hidden">
+<div id="app-screen">
     <header>
         <div class="header-top">
-            <span onclick="goBack()" style="cursor:pointer; font-size:22px; color:var(--text-sec)">
-                <i class="fas fa-arrow-right"></i>
-            </span>
-            <span id="head-title" style="font-weight: 800; font-size: 20px; color: var(--text-main);">الرئيسية</span>
-            <div style="display:flex; align-items:center; gap:10px;">
-                <div class="notification-bell" onclick="showNotifications()">
-                    <i class="fas fa-bell" style="color:var(--accent); font-size:18px;"></i>
-                    <span class="notification-count" id="notification-count">0</span>
-                </div>
-                <div id="user-vip-badge"></div>
-                <div style="background:rgba(255,255,255,0.1); padding:5px 10px; border-radius:15px; display:flex; align-items:center; gap:5px;">
-                    <i class="fas fa-star" style="color:var(--accent); font-size:12px;"></i>
-                    <span id="u-stars" style="font-size:12px; font-weight:bold;">0.0</span>
-                </div>
+            <span onclick="goBack()" style="cursor:pointer; font-size:22px; color:var(--text-sec)"><i class="fas fa-arrow-right"></i></span>
+            <span id="head-title" style="font-weight: 800; font-size: 20px; color: var(--text-main);">تداول MRK</span>
+            <div style="background:rgba(255,255,255,0.1); padding:5px 10px; border-radius:15px; display:flex; align-items:center; gap:5px;">
+                <i class="fas fa-star" style="color:var(--accent); font-size:12px;"></i>
+                <span id="u-stars" style="font-size:12px; font-weight:bold;">0.0</span>
             </div>
-        </div>
-        <div class="search-container" id="main-search">
-            <i class="fas fa-search"></i>
-            <input type="text" id="store-search" placeholder="ابحث في السوق..." oninput="filterContent(this.value)">
         </div>
     </header>
 
-    <div id="content-area"></div>
-    <div style="height: 100px;"></div>
+    <div id="content-area">
+        <div class="trading-container">
+            <!-- Price Header -->
+            <div class="price-header">
+                <div class="current-price">
+                    <div class="price-value" id="current-price">0.0500</div>
+                    <div class="price-change positive" id="price-change">+0.00%</div>
+                </div>
+                <div class="market-stats">
+                    <div class="stat-box">
+                        <div class="stat-label">24h High</div>
+                        <div class="stat-value" id="24h-high">0.0000</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">24h Low</div>
+                        <div class="stat-value" id="24h-low">0.0000</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">24h Volume</div>
+                        <div class="stat-value" id="24h-volume">0 SDM</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart -->
+            <div class="chart-container">
+                <div id="chart" style="height: 100%;"></div>
+            </div>
+
+            <!-- Order Book -->
+            <div class="order-book-wrapper">
+                <div class="order-book-header">
+                    <div class="order-book-side">
+                        <span>الكمية (MRK)</span>
+                        <span>السعر (SDM)</span>
+                    </div>
+                    <div class="order-book-side bids-side">
+                        <span>السعر (SDM)</span>
+                        <span>الكمية (MRK)</span>
+                    </div>
+                </div>
+                <div class="order-book-content">
+                    <div class="order-side" id="asks-side">
+                        <!-- Asks will be inserted here -->
+                    </div>
+                    <div class="order-side bids-side" id="bids-side">
+                        <!-- Bids will be inserted here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trade Panel -->
+            <div class="trade-panel">
+                <div class="trade-tabs">
+                    <div class="trade-tab buy active" onclick="setTradeMode('buy')">
+                        شراء MRK
+                    </div>
+                    <div class="trade-tab sell" onclick="setTradeMode('sell')">
+                        بيع MRK
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="order-price">السعر (SDM)</label>
+                    <input type="number" id="order-price" class="trade-input" placeholder="0.0000" step="0.0001">
+                </div>
+
+                <div class="input-group">
+                    <label for="order-amount">الكمية (MRK)</label>
+                    <input type="number" id="order-amount" class="trade-input" placeholder="0.00">
+                </div>
+
+                <div class="percentage-buttons">
+                    <div class="percentage-btn" onclick="setPercentage(0.25)">25%</div>
+                    <div class="percentage-btn" onclick="setPercentage(0.50)">50%</div>
+                    <div class="percentage-btn" onclick="setPercentage(0.75)">75%</div>
+                    <div class="percentage-btn" onclick="setPercentage(1)">100%</div>
+                </div>
+
+                <div class="balance-info">
+                    <div>المتاح: <span id="available-balance">0.00</span> <span id="balance-type">SDM</span></div>
+                    <div>الإجمالي: <span id="order-total">0.00</span> SDM</div>
+                </div>
+
+                <button class="trade-button buy-button" id="execute-button" onclick="executeOrder()">
+                    شراء MRK
+                </button>
+            </div>
+
+            <!-- Recent Trades -->
+            <div class="recent-trades">
+                <div class="recent-trades-header">آخر الصفقات</div>
+                <div class="trade-list" id="recent-trades-list">
+                    <!-- Recent trades will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="bottom-tabs">
-        <div class="tab-btn active" onclick="nav('home'); highlightTab(this)"><i class="fas fa-home"></i>الرئيسية</div>
-        <div class="tab-btn" onclick="checkGuestAccess('trade'); highlightTab(this)"><i class="fas fa-chart-line"></i>تداول</div>
+        <div class="tab-btn" onclick="nav('home'); highlightTab(this)"><i class="fas fa-home"></i>الرئيسية</div>
+        <div class="tab-btn active" onclick="checkGuestAccess('trade'); highlightTab(this)"><i class="fas fa-chart-line"></i>تداول</div>
         <div class="tab-btn" onclick="checkGuestAccess('wallet'); highlightTab(this)"><i class="fas fa-wallet"></i>المحفظة</div>
-        <div class="tab-btn" onclick="checkGuestAccess('games'); highlightTab(this)"><i class="fas fa-gamepad"></i>الألعاب</div>
         <div class="tab-btn" onclick="checkGuestAccess('profile'); highlightTab(this)"><i class="fas fa-user-astronaut"></i>ملفي</div>
     </div>
 </div>
 
 <script>
-    // --- 1. الإعدادات والتهيئة ---
+    // Firebase Configuration
     const firebaseConfig = {
-      apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
-      authDomain: "sudan-market-6b122.firebaseapp.com",
-      databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
-      projectId: "sudan-market-6b122",
-      storageBucket: "sudan-market-6b122.firebasestorage.app",
-      messagingSenderId: "66729481566",
-      appId: "1:66729481566:web:93393f28dc22d32cceebcf"
+        apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
+        authDomain: "sudan-market-6b122.firebaseapp.com",
+        databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
+        projectId: "sudan-market-6b122",
+        storageBucket: "sudan-market-6b122.firebasestorage.app",
+        messagingSenderId: "66729481566",
+        appId: "1:66729481566:web:93393f28dc22d32cceebcf"
     };
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+
+    // Initialize Firebase
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    
     const auth = firebase.auth();
     const db = firebase.database();
 
-    const ADMIN_EMAIL = "mb425262@gmail.com";
-    const OPENING_PRICE = 0.05;
-    const SDM_RATE = 1000;
-    const SDM_FIXED = true;
-
-    // إعدادات VIP
-    const VIP_LEVELS = {
-        none: { name: 'عادي', fee: 0.03, color: 'var(--text-sec)' },
-        gold: { 
-            name: 'ذهبي', 
-            fee: 0.02, 
-            color: 'var(--vip-gold)',
-            price: 100,
-            benefits: [
-                'عمولة مخفضة 2%',
-                'أولوية في التداول',
-                'دعم فني مميز'
-            ]
-        },
-        platinum: { 
-            name: 'بلاتينيوم', 
-            fee: 0.015, 
-            color: 'var(--vip-platinum)',
-            price: 250,
-            benefits: [
-                'عمولة 1.5%',
-                'أولوية قصوى',
-                'مزايا إضافية',
-                'دعم فني فوري'
-            ]
-        },
-        diamond: { 
-            name: 'ماسي', 
-            fee: 0.01, 
-            color: 'var(--vip-diamond)',
-            price: 500,
-            benefits: [
-                'عمولة 1% فقط',
-                'أولوية مطلقة',
-                'مزايا حصرية',
-                'دعم فني 24/7'
-            ]
-        }
-    };
-
-    // حفظ الحالة
-    const STATE_KEY = 'sdm_market_state_v2';
-    const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 دقيقة
-
+    // Global Variables
     let me = null;
-    let hStack = ['home'];
-    let curC = '', curS = '';
-    let isGuest = false;
-    let sliderInterval;
-    let chartInstance = null;
     let currentTradeMode = 'buy';
-    let marketPrice = OPENING_PRICE;
-    let tempImg = '', tempBuyImg = '', userPic = 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
-    let currentChat = null;
-    let notifications = [];
-    let sliderImages = [
-        "https://images.unsplash.com/photo-1556742049-0cfed4f7a07d?w=800",
-        "https://images.unsplash.com/photo-1534423861386-85a16f5d13fd?w=800",
-        "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=800"
-    ];
-
-    let appState = {
-        currentPage: 'home',
-        lastSession: Date.now(),
-        tradeData: {},
-        userData: {}
+    let marketPrice = 0.05;
+    let marketStats = {
+        high24h: 0.05,
+        low24h: 0.05,
+        volume24h: 0
     };
+    let chartInstance = null;
+    let lastActionTime = 0;
+    const BASE_RATE = 0.05; // 1 SDM = 20 MRK
 
-    const cats = {
-        "الهواتف": {i:"mobile-alt", s:["آيفون","سامسونج","شاومي","بكسل","هواوي","اكسسوارات"]},
-        "المركبات": {i:"car", s:["تويوتا","هيونداي","BYD","أمجاد","ركشات","شاحنات"]},
-        "العقارات": {i:"city", s:["شقق للايجار","بيوت للبيع","مزارع","اراضي سكنية"]},
-        "الأجهزة": {i:"tv", s:["شاشات","ثلاجات","مكيفات","غسالات","أفران"]},
-        "الكمبيوتر": {i:"laptop", s:["لابتوبات","طابعات","شبكات","قطع غيار"]},
-        "الأزياء": {i:"tshirt", s:["رجالي","نسائي","أطفال","أحذية"]},
-        "الذهب": {i:"gem", s:["خواتم","سلاسل","أطقم كاملة","سبائك"]},
-        "الألعاب": {i:"gamepad", s:["حسابات ببجي","فري فاير","كونسول","PC"]},
-        "الخدمات": {i:"tools", s:["تصميم","برمجة","تسويق","نقل عفش","صيانة"]},
-        "عملات": {i:"bitcoin", s:["USDT","Binance","بنوك إلكترونية"]}
-    };
-
-    const officialRates = {
-        pubg: [ 
-            { name: "60 UC", sdm: 4, mrk: 80 },
-            { name: "325 UC", sdm: 20, mrk: 400 },
-            { name: "660 UC", sdm: 40, mrk: 800 },
-            { name: "1800 UC", sdm: 100, mrk: 2000 }
-        ],
-        ff: [ 
-            { name: "100 جوهرة", sdm: 4, mrk: 80 },
-            { name: "530 جوهرة", sdm: 20, mrk: 400 },
-            { name: "1080 جوهرة", sdm: 40, mrk: 800 },
-            { name: "2200 جوهرة", sdm: 80, mrk: 1600 }
-        ],
-        minecraft: [
-            { name: "حساب أصلية", sdm: 50, mrk: 1000 },
-            { name: "نسخة كاملة", sdm: 30, mrk: 600 }
-        ]
-    };
-
-    // --- 2. نظام حفظ واسترجاع الحالة ---
-    function saveAppState() {
-        appState.currentPage = hStack[hStack.length - 1];
-        appState.lastSession = Date.now();
-        appState.tradeData = {
-            mode: currentTradeMode,
-            price: document.getElementById('trade-price')?.value || marketPrice,
-            amount: document.getElementById('trade-amount')?.value || 0
-        };
-        if (me) {
-            appState.userData = {
-                id: me.p,
-                name: me.n,
-                balance: me.sdmBalance,
-                mrkBalance: me.mrkBalance || 0,
-                vip: me.vipLevel || 'none'
-            };
-        }
-        localStorage.setItem(STATE_KEY, JSON.stringify(appState));
-    }
-
-    function restoreAppState() {
-        try {
-            const saved = localStorage.getItem(STATE_KEY);
-            if (saved) {
-                const state = JSON.parse(saved);
-                const timeDiff = Date.now() - state.lastSession;
-                
-                if (timeDiff < SESSION_TIMEOUT && !isGuest) {
-                    appState = state;
-                    hStack = [state.currentPage];
-                    
-                    if (state.userData.id && state.userData.id !== 'guest') {
-                        setTimeout(() => {
-                            render(state.currentPage);
-                            if (state.tradeData && state.currentPage === 'trade') {
-                                setTimeout(() => {
-                                    if (document.getElementById('trade-price')) {
-                                        document.getElementById('trade-price').value = state.tradeData.price;
-                                        document.getElementById('trade-amount').value = state.tradeData.amount;
-                                        setTradeMode(state.tradeData.mode);
-                                        updateTradeTotal();
-                                    }
-                                }, 500);
-                            }
-                        }, 100);
+    // Initialize Trading System
+    async function initializeTrading() {
+        // Listen for user authentication
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                // Get user data
+                const userRef = db.ref('users/' + user.uid);
+                userRef.on('value', (snapshot) => {
+                    if (snapshot.exists()) {
+                        me = snapshot.val();
+                        me.p = user.uid;
+                        updateBalanceDisplay();
                     }
-                }
-            }
-        } catch (e) {
-            console.error('Error restoring state:', e);
-            localStorage.removeItem(STATE_KEY);
-        }
-    }
-
-    window.addEventListener('beforeunload', saveAppState);
-    window.addEventListener('pagehide', saveAppState);
-    
-    function saveStateOnNav() {
-        setTimeout(saveAppState, 100);
-    }
-
-    // --- 3. النظام والدخول ---
-    auth.onAuthStateChanged(user => {
-        if (user) {
-            showLoading();
-            const uid = user.uid;
-            db.ref('users/' + uid).on('value', snap => {
-                if(snap.exists()) {
-                    let u = snap.val();
-                    me = u; 
-                    me.p = uid;
-                    
-                    // تحديث رصيد الأدمن
-                    if(me.role === 'admin') {
-                        if((me.mrkBalance || 0) < 50000000) {
-                            db.ref('users/' + uid).update({ mrkBalance: 50000000 });
-                        }
-                        if((me.sdmBalance || 0) < 1000000) {
-                            db.ref('users/' + uid).update({ sdmBalance: 1000000 });
-                        }
-                    }
-                    
-                    // تحديث شارة VIP
-                    updateVipBadge();
-                    
-                    // استرجاع الحالة
-                    restoreAppState();
-                    
-                    // تحميل الإشعارات
-                    loadNotifications();
-                    
-                    startApp(uid);
-                } else {
-                    const newUser = { 
-                        n: user.displayName, 
-                        email: user.email, 
-                        pic: user.photoURL, 
-                        sdmBalance: 100,
-                        mrkBalance: 2000,
-                        role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'), 
-                        rating: 5.0, 
-                        vipLevel: 'none',
-                        vipExpiry: null,
-                        verified: true,
-                        frozenSDM: 0,
-                        frozenMRK: 0,
-                        totalTrades: 0,
-                        successfulTrades: 0,
-                        joinDate: Date.now(),
-                        lastSeen: Date.now(),
-                        isOnline: true
-                    };
-                    db.ref('users/' + uid).set(newUser).then(() => { 
-                        me = newUser; 
-                        updateVipBadge();
-                        startApp(uid); 
-                    });
-                }
-            });
-            
-            // تحديث حالة الاتصال
-            const updateOnlineStatus = () => {
-                if(me && me.p !== 'guest') {
-                    db.ref('users/' + me.p).update({ 
-                        lastSeen: Date.now(),
-                        isOnline: true 
-                    }); 
-                }
-            };
-            
-            setInterval(updateOnlineStatus, 30000);
-            window.addEventListener('unload', () => {
-                if(me && me.p !== 'guest') {
-                    db.ref('users/' + me.p).update({ isOnline: false });
-                }
-            });
-            
-        } else {
-            if(!isGuest) { 
-                document.getElementById('auth-screen').classList.remove('hidden'); 
-                document.getElementById('app-screen').classList.add('hidden'); 
-                hideLoading();
-            }
-        }
-    });
-
-    function showLoading() {
-        document.getElementById('loading-screen').classList.remove('hidden');
-    }
-
-    function hideLoading() {
-        document.getElementById('loading-screen').classList.add('hidden');
-    }
-
-    function loginWithGoogle() { 
-        auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())
-            .catch(e => Swal.fire('خطأ', e.message, 'error')); 
-    }
-    
-    function doLogout() { 
-        if (me && me.p !== 'guest') {
-            db.ref('users/' + me.p).update({ isOnline: false });
-        }
-        auth.signOut().then(() => {
-            localStorage.removeItem(STATE_KEY);
-            location.reload();
-        }); 
-    }
-    
-    function enterGuestMode() { 
-        isGuest = true; 
-        me = { 
-            n: 'زائر', 
-            p: 'guest', 
-            role: 'guest', 
-            sdmBalance: 0, 
-            mrkBalance: 0,
-            frozenSDM: 0,
-            frozenMRK: 0,
-            vipLevel: 'none'
-        }; 
-        document.getElementById('auth-screen').classList.add('hidden'); 
-        document.getElementById('app-screen').classList.remove('hidden'); 
-        document.getElementById('u-stars').innerText = "زائر"; 
-        updateVipBadge();
-        render('home'); 
-        hideLoading();
-    }
-    
-    function checkGuestAccess(view, extra) { 
-        if (isGuest) { 
-            Swal.fire({ 
-                title: 'ميزة خاصة بالأعضاء', 
-                text: 'سجل دخول للاستفادة من جميع الميزات', 
-                icon: 'warning', 
-                showCancelButton: true,
-                confirmButtonText: 'تسجيل الدخول',
-                cancelButtonText: 'لاحقاً'
-            }).then(result => {
-                if (result.isConfirmed) {
-                    loginWithGoogle();
-                }
-            }); 
-            return; 
-        } 
-        nav(view, extra); 
-    }
-    
-    function highlightTab(el) { 
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); 
-        el.classList.add('active'); 
-    }
-
-    function updateVipBadge() {
-        const badgeElement = document.getElementById('user-vip-badge');
-        if (!badgeElement) return;
-        
-        if (!me || me.vipLevel === 'none' || me.vipLevel === 'guest') {
-            badgeElement.innerHTML = '';
-            return;
-        }
-        
-        const vipInfo = VIP_LEVELS[me.vipLevel];
-        let badgeClass = '';
-        let icon = '';
-        
-        switch(me.vipLevel) {
-            case 'gold':
-                badgeClass = 'vip-badge vip-gold';
-                icon = 'fas fa-crown';
-                break;
-            case 'platinum':
-                badgeClass = 'vip-badge vip-platinum';
-                icon = 'fas fa-gem';
-                break;
-            case 'diamond':
-                badgeClass = 'vip-badge vip-diamond';
-                icon = 'fas fa-diamond';
-                break;
-        }
-        
-        badgeElement.innerHTML = `
-            <div class="${badgeClass}">
-                <i class="${icon}"></i>
-                ${vipInfo.name}
-            </div>
-        `;
-    }
-
-    function startApp(uid) {
-        isGuest = false; 
-        hStack = ['home'];
-        
-        db.ref('market/stats/lastPrice').on('value', s => { 
-            marketPrice = s.val() || OPENING_PRICE; 
-            updateCalculator();
-            if (document.getElementById('current-price')) {
-                document.getElementById('current-price').innerText = marketPrice;
+                });
+            } else {
+                // Guest mode
+                me = { 
+                    n: 'زائر', 
+                    p: 'guest', 
+                    role: 'guest', 
+                    sdmBalance: 0, 
+                    mrkBalance: 0 
+                };
+                updateBalanceDisplay();
             }
         });
-        
-        document.getElementById('auth-screen').classList.add('hidden'); 
-        document.getElementById('app-screen').classList.remove('hidden');
-        
-        document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
-        
-        if (appState.currentPage && appState.currentPage !== 'home') {
-            nav(appState.currentPage);
-        } else {
-            render('home');
-        }
-        
-        hideLoading();
+
+        // Initialize Chart
+        initChart();
+
+        // Load Market Data
+        loadMarketData();
+        listenToOrderBook();
+        listenToRecentTrades();
+        listenToMarketStats();
+
+        // Setup event listeners
+        setupEventListeners();
     }
 
-    // --- 4. التنقل والعرض ---
-    function nav(view, extra) {
-        showLoading();
-        
-        hStack.push(view); 
-        const area = document.getElementById('content-area');
-        const searchEl = document.getElementById('main-search');
-        
-        if (sliderInterval) clearInterval(sliderInterval);
-        if (chartInstance) { 
-            chartInstance.destroy(); 
-            chartInstance = null; 
-        }
-        
-        const titles = {
-            'home': 'الرئيسية',
-            'wallet': 'المحفظة',
-            'games': 'الألعاب',
-            'profile': 'ملفي الشخصي',
-            'trade': 'تداول MRK',
-            'user_profile': 'ملف المستخدم',
-            'sub': curC || 'الأقسام',
-            'feed': curS || 'العروض',
-            'vip': 'العضوية المميزة'
-        };
-        document.getElementById('head-title').innerText = titles[view] || view;
-        
-        if (view === 'trade') {
-            searchEl.classList.add('search-hidden');
-        } else {
-            searchEl.classList.remove('search-hidden');
-        }
+    // Setup Event Listeners
+    function setupEventListeners() {
+        const priceInput = document.getElementById('order-price');
+        const amountInput = document.getElementById('order-amount');
 
-        document.getElementById('u-stars').innerText = isGuest ? "زائر" : (me.rating || 0).toFixed(1);
-
-        if(view === 'home') {
-            area.innerHTML = `
-                <div class="slider-container">
-                    <img id="slider-img" src="${sliderImages[0]}">
-                    <div class="slider-overlay">
-                        <h3 style="margin:0; color:white;">SDM Market Pro</h3>
-                        <p style="margin:5px 0 0 0; color:var(--text-sec); font-size:14px;">أول منصة تداول P2P آمنة</p>
-                    </div>
-                </div>
-                
-                ${!isGuest && me.vipLevel === 'none' ? `
-                    <div class="vip-benefits" onclick="nav('vip')" style="cursor:pointer; margin:15px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div>
-                                <h4 style="margin:0; color:var(--accent);">
-                                    <i class="fas fa-crown"></i> ترقية لعضوية VIP
-                                </h4>
-                                <p style="margin:5px 0 0 0; font-size:12px; color:var(--text-sec);">
-                                    احصل على مزايا حصرية ورسوم مخفضة
-                                </p>
-                            </div>
-                            <i class="fas fa-arrow-left" style="color:var(--text-sec);"></i>
-                        </div>
-                    </div>
-                ` : ''}
-                
-                <h3 style="padding:0 20px; margin-bottom:10px;">الأقسام</h3>
-                <div class="grid">
-                    ${Object.keys(cats).map(k=> `
-                        <div class="card" onclick="nav('sub','${k}'); saveStateOnNav()">
-                            <i class="fas fa-${cats[k].i}"></i><br>
-                            <b>${k}</b>
-                        </div>
-                    `).join('')}
-                </div>`;
-            startSlider();
-
-        } else if(view === 'sub') {
-            curC = extra || curC;
-            area.innerHTML = `
-                <div style="padding:15px;">
-                    <h2 style="color:var(--neon-blue)">${curC}</h2>
-                </div>
-                <div class="grid">
-                    ${cats[curC].s.map(s=>`
-                        <div class="card" onclick="nav('feed','${s}'); saveStateOnNav()">
-                            <b>${s}</b>
-                        </div>
-                    `).join('')}
-                </div>`;
-        
-        } else if(view === 'feed') {
-            curS = extra || curS;
-            area.innerHTML = `
-                ${!isGuest ? `
-                    <div class="post" style="padding:20px;">
-                        <h4 style="margin-top:0; color:var(--primary)">📝 إضافة إعلان: ${curS}</h4>
-                        <input id="pt" class="inp-field" placeholder="اسم المنتج">
-                        <input id="pp" type="number" class="inp-field" placeholder="السعر (SDM)">
-                        <textarea id="pd" class="inp-field" placeholder="وصف المنتج..." rows="3"></textarea>
-                        <label class="btn-main" style="background:#334155; display:block; text-align:center; margin-bottom:10px;">
-                            <i class="fas fa-camera"></i> إضافة صورة
-                            <input type="file" hidden onchange="encode(this, 'post')">
-                        </label>
-                        <button class="btn-main" onclick="publish('posts')">نشر الإعلان</button>
-                    </div>
-                ` : ''}
-                <div id="posts-list" style="padding-bottom:20px;"></div>`;
-            loadPosts('posts', curS, 'posts-list');
-        
-        } else if(view === 'trade') {
-            area.innerHTML = `
-                <div style="padding:15px;">
-                    <div class="ticker-bar">
-                        <div class="ticker-item">
-                            <span class="t-lbl">السعر الحالي</span>
-                            <span class="t-val" style="color:var(--green)" id="current-price">${marketPrice}</span>
-                        </div>
-                        <div class="ticker-item">
-                            <span class="t-lbl">حجم 24س</span>
-                            <span class="t-val" id="disp-vol">0</span>
-                        </div>
-                        <div class="ticker-item">
-                            <span class="t-lbl">رسومك</span>
-                            <span class="t-val" id="user-fee">${VIP_LEVELS[me.vipLevel || 'none'].fee * 100}%</span>
-                        </div>
-                    </div>
-                    
-                    <div class="integrated-calculator">
-                        <h4 style="margin:0 0 10px 0; color:var(--neon-blue)">آلة حاسبة التداول</h4>
-                        <input type="number" 
-                               id="calc-sdm" 
-                               placeholder="أدخل كمية SDM" 
-                               class="inp-field" 
-                               oninput="calculateMRK(this.value)">
-                        <div class="calc-display">
-                            <div>
-                                <span class="sdm-fixed" id="calc-sdm-display">0 SDM</span>
-                                <span> = </span>
-                                <span class="mrk-dynamic" id="calc-mrk-display">0 MRK</span>
-                            </div>
-                            <div style="font-size:12px; color:var(--text-sec); margin-top:5px;">
-                                السعر: <span id="calc-price">${marketPrice}</span> MRK لكل SDM
-                                ${me.vipLevel !== 'none' ? `<br>بخصم VIP: ${VIP_LEVELS[me.vipLevel].fee * 100}%` : ''}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="chart-container">
-                        <div class="chart-toolbar">
-                            <span class="chart-timeframe active" onclick="changeTimeframe('1m')">1د</span>
-                            <span class="chart-timeframe" onclick="changeTimeframe('5m')">5د</span>
-                            <span class="chart-timeframe" onclick="changeTimeframe('15m')">15د</span>
-                            <span class="chart-timeframe" onclick="changeTimeframe('1h')">1س</span>
-                            <span class="chart-timeframe" onclick="changeTimeframe('1d')">1ي</span>
-                        </div>
-                        <div id="chart-area"></div>
-                    </div>
-                    
-                    <div class="order-book-enhanced">
-                        <div class="order-book-header">
-                            <div>السعر (SDM)</div>
-                            <div>الكمية (MRK)</div>
-                            <div>الإجمالي</div>
-                        </div>
-                        <div class="order-book-body">
-                            <div class="order-book-side asks" id="order-book-asks"></div>
-                            <div class="order-book-side bids" id="order-book-bids"></div>
-                        </div>
-                    </div>
-                    
-                    <div class="user-orders-panel" id="my-orders-panel">
-                        <h4 style="margin:0 0 15px 0; color:var(--primary)">
-                            <i class="fas fa-list-alt"></i> أوامري النشطة
-                        </h4>
-                        <div id="my-orders-list"></div>
-                    </div>
-                    
-                    <div class="trade-controls-enhanced">
-                        <div class="trade-tabs-enhanced">
-                            <div id="tab-buy" class="trade-tab buy active" onclick="setTradeMode('buy')">
-                                <i class="fas fa-arrow-up"></i> شراء MRK
-                            </div>
-                            <div id="tab-sell" class="trade-tab sell" onclick="setTradeMode('sell')">
-                                <i class="fas fa-arrow-down"></i> بيع MRK
-                            </div>
-                        </div>
-                        
-                        <div class="input-group">
-                            <input type="number" 
-                                   id="trade-price" 
-                                   placeholder="السعر (SDM)" 
-                                   value="${marketPrice}"
-                                   oninput="updateTradeTotal()">
-                            <input type="number" 
-                                   id="trade-amount" 
-                                   placeholder="الكمية (MRK)"
-                                   oninput="updateTradeTotal()">
-                        </div>
-                        
-                        <div class="balance-info">
-                            <span>المتاح: 
-                                <b id="trade-balance-disp">
-                                    ${currentTradeMode === 'buy' ? (me.sdmBalance - (me.frozenSDM || 0)).toFixed(2) + ' SDM' : ((me.mrkBalance || 0) - (me.frozenMRK || 0)).toFixed(4) + ' MRK'}
-                                </b>
-                            </span>
-                            <span>الإجمالي: <b id="trade-total-disp">0</b> SDM</span>
-                        </div>
-                        
-                        <div style="font-size:12px; color:var(--text-sec); margin-bottom:10px; padding:10px; background:rgba(0,0,0,0.2); border-radius:8px;">
-                            <i class="fas fa-info-circle"></i> الرسوم: <span id="trade-fee-display">${VIP_LEVELS[me.vipLevel || 'none'].fee * 100}%</span>
-                            ${me.vipLevel !== 'none' ? `<span style="color:var(--green);"> (خصم VIP)</span>` : ''}
-                        </div>
-                        
-                        <button id="execute-trade-btn" class="trade-execute-btn buy" onclick="executeTrade()">
-                            <i class="fas fa-bolt"></i>
-                            تنفيذ الشراء
-                        </button>
-                    </div>
-                </div>`;
-            
-            setTimeout(() => {
-                initChart();
-                listenToOrderBook();
-                loadMyOrders();
-                updateCalculator();
-                document.getElementById('trade-amount').addEventListener('input', updateTradeTotal);
-                document.getElementById('trade-price').addEventListener('input', updateTradeTotal);
-                hideLoading();
-            }, 100);
-            
-            saveStateOnNav();
-
-        } else if(view === 'wallet') {
-            area.innerHTML = `
-                <div style="padding:20px;">
-                    <div class="wallet-overview">
-                        <p style="color:var(--text-sec); font-size:12px; margin-bottom:5px;">إجمالي الرصيد</p>
-                        <h1 style="color:white; margin:0; font-size:36px;">
-                            ${me.sdmBalance.toFixed(2)} 
-                            <span style="font-size:16px;">SDM</span>
-                        </h1>
-                        <p style="font-size:12px; color:var(--green); margin-top:5px;">
-                            ≈ ${(me.sdmBalance * SDM_RATE).toLocaleString()} جنيه
-                        </p>
-                    </div>
-                    
-                    <div class="card" style="margin-bottom:10px; padding:15px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div style="text-align:right;">
-                                <div style="font-weight:bold; font-size:18px;">
-                                    ${(me.mrkBalance || 0).toFixed(4)} MRK
-                                </div>
-                                <div style="font-size:11px; color:var(--text-sec);">
-                                    عملة المنصة الرقمية
-                                </div>
-                            </div>
-                            <img src="https://cdn-icons-png.flaticon.com/512/5501/5501360.png" width="40">
-                        </div>
-                        
-                        <div style="margin-top:15px; padding-top:15px; border-top:1px solid var(--border);">
-                            <div style="display:flex; justify-content:space-between; font-size:12px;">
-                                <span style="color:var(--text-sec);">SDM المجمدة:</span>
-                                <span style="color:var(--accent);">${(me.frozenSDM || 0).toFixed(2)}</span>
-                            </div>
-                            <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:5px;">
-                                <span style="color:var(--text-sec);">MRK المجمدة:</span>
-                                <span style="color:var(--accent);">${(me.frozenMRK || 0).toFixed(4)}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style="display:flex; gap:10px; margin-top:20px;">
-                        <button class="btn-main" style="background:var(--accent); color:black;" onclick="requestCoins()">
-                            <i class="fas fa-plus-circle"></i> إيداع
-                        </button>
-                        <button class="btn-main" style="background:rgba(255,255,255,0.1);" onclick="showTransfer()">
-                            <i class="fas fa-paper-plane"></i> إرسال
-                        </button>
-                        <button class="btn-main" style="background:linear-gradient(45deg, #8B5CF6, #A78BFA);" onclick="nav('vip')">
-                            <i class="fas fa-crown"></i> VIP
-                        </button>
-                    </div>
-                    
-                    <div class="post" style="padding:20px; display:none; margin-top:15px;" id="buy-coins-form">
-                         <h4 style="margin-top:0; color:var(--primary)">طلب إيداع SDM</h4>
-                         <p style="color:var(--text-sec); font-size:14px;">
-                             بنك الخرطوم: 
-                             <b style="color:white; font-size:18px;">XXXXXXX</b>
-                         </p>
-                         <input id="buy-qty" type="number" placeholder="الكمية (SDM)" class="inp-field">
-                         <label class="btn-main" style="background:#334155; display:block; text-align:center; margin-bottom:10px;">
-                             <i class="fas fa-receipt"></i> إرفاق صورة الإشعار
-                             <input type="file" hidden onchange="encode(this, 'buy')">
-                         </label>
-                         <button class="btn-main" onclick="submitCoinRequest()">
-                             <i class="fas fa-check-circle"></i> تأكيد الطلب
-                         </button>
-                    </div>
-
-                    <h3 style="margin-top:30px; font-size:16px; color:var(--text-sec);">
-                        <i class="fas fa-history"></i> سجل المعاملات
-                    </h3>
-                    <div id="transactions-history" style="margin-top:10px;"></div>
-                </div>`;
-            loadTransactions();
-            hideLoading();
-            saveStateOnNav();
-
-        } else if(view === 'games') {
-            area.innerHTML = `
-                <div style="padding:20px;">
-                    <h2 style="color:var(--neon-blue); margin-top:0;">شراء عملات الألعاب</h2>
-                    
-                    <div class="game-card" onclick="showGamePackages('pubg')">
-                        <div class="game-icon">
-                            <i class="fas fa-mobile-alt"></i>
-                        </div>
-                        <h3 style="margin:0 0 10px 0; color:white;">PUBG Mobile</h3>
-                        <p style="color:var(--text-sec); font-size:14px;">شراء UC بأسعار خاصة</p>
-                    </div>
-                    
-                    <div class="game-card" onclick="showGamePackages('ff')">
-                        <div class="game-icon">
-                            <i class="fas fa-gamepad"></i>
-                        </div>
-                        <h3 style="margin:0 0 10px 0; color:white;">Free Fire</h3>
-                        <p style="color:var(--text-sec); font-size:14px;">شراء الجواهر</p>
-                    </div>
-                    
-                    <div class="game-card" onclick="showGamePackages('minecraft')">
-                        <div class="game-icon">
-                            <i class="fas fa-cube"></i>
-                        </div>
-                        <h3 style="margin:0 0 10px 0; color:white;">Minecraft</h3>
-                        <p style="color:var(--text-sec); font-size:14px;">حسابات ونسخ أصلية</p>
-                    </div>
-                    
-                    <div id="game-packages-section" style="display:none;">
-                        <h3 id="game-title" style="color:var(--primary);"></h3>
-                        <div id="packages-list" class="game-packages"></div>
-                    </div>
-                </div>`;
-            hideLoading();
-            saveStateOnNav();
-
-        } else if(view === 'vip') {
-            const vipBenefits = VIP_LEVELS[me.vipLevel || 'none'];
-            area.innerHTML = `
-                <div style="padding:20px;">
-                    <h2 style="color:var(--neon-blue); margin-top:0;">
-                        <i class="fas fa-crown"></i> العضوية المميزة
-                    </h2>
-                    
-                    <div style="background:var(--bg-card); border-radius:15px; padding:20px; margin-bottom:20px; border:1px solid ${vipBenefits.color};">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div>
-                                <h3 style="margin:0; color:${vipBenefits.color};">عضويتك الحالية</h3>
-                                <p style="margin:5px 0 0 0; color:var(--text-sec);">${vipBenefits.name}</p>
-                            </div>
-                            <div class="vip-badge ${me.vipLevel === 'gold' ? 'vip-gold' : me.vipLevel === 'platinum' ? 'vip-platinum' : me.vipLevel === 'diamond' ? 'vip-diamond' : ''}">
-                                ${vipBenefits.name}
-                            </div>
-                        </div>
-                        
-                        <div class="vip-benefits" style="margin-top:15px;">
-                            ${vipBenefits.benefits ? vipBenefits.benefits.map(benefit => `
-                                <div class="vip-benefit-item">
-                                    <i class="fas fa-check-circle"></i>
-                                    <span>${benefit}</span>
-                                </div>
-                            `).join('') : `
-                                <div class="vip-benefit-item">
-                                    <i class="fas fa-info-circle"></i>
-                                    <span>أنت عضو عادي - لا توجد مزايا إضافية</span>
-                                </div>
-                            `}
-                        </div>
-                    </div>
-                    
-                    <h3 style="color:var(--text-main); margin-bottom:15px;">خطط العضوية</h3>
-                    
-                    <div class="vip-card gold" onclick="selectVipPlan('gold')" style="cursor:pointer;">
-                        <h3 style="margin:0; color:var(--vip-gold);">العضوية الذهبية</h3>
-                        <div class="vip-price">100 SDM / شهر</div>
-                        <div style="font-size:14px; color:var(--text-sec); margin-bottom:15px;">
-                            مثالي للمتداولين النشطين
-                        </div>
-                        <div class="vip-benefits">
-                            ${VIP_LEVELS.gold.benefits.map(benefit => `
-                                <div class="vip-benefit-item">
-                                    <i class="fas fa-check"></i>
-                                    <span>${benefit}</span>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                    
-                    <div class="vip-card platinum" onclick="selectVipPlan('platinum')" style="cursor:pointer;">
-                        <h3 style="margin:0; color:var(--vip-platinum);">العضوية البلاتينية</h3>
-                        <div class="vip-price">250 SDM / شهر</div>
-                        <div style="font-size:14px; color:var(--text-sec); margin-bottom:15px;">
-                            للمتداولين المحترفين
-                        </div>
-                        <div class="vip-benefits">
-                            ${VIP_LEVELS.platinum.benefits.map(benefit => `
-                                <div class="vip-benefit-item">
-                                    <i class="fas fa-check"></i>
-                                    <span>${benefit}</span>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                    
-                    <div class="vip-card diamond" onclick="selectVipPlan('diamond')" style="cursor:pointer;">
-                        <h3 style="margin:0; color:var(--vip-diamond);">العضوية الماسية</h3>
-                        <div class="vip-price">500 SDM / شهر</div>
-                        <div style="font-size:14px; color:var(--text-sec); margin-bottom:15px;">
-                            المستوى الأقصى للتداول
-                        </div>
-                        <div class="vip-benefits">
-                            ${VIP_LEVELS.diamond.benefits.map(benefit => `
-                                <div class="vip-benefit-item">
-                                    <i class="fas fa-check"></i>
-                                    <span>${benefit}</span>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                    
-                    <div style="margin-top:20px; font-size:12px; color:var(--text-sec); text-align:center;">
-                        <p>سيتم تجديد العضوية تلقائياً كل شهر</p>
-                    </div>
-                </div>`;
-            hideLoading();
-            saveStateOnNav();
-
-        } else if(view === 'profile' || view === 'user_profile') {
-            const targetId = (view === 'user_profile') ? extra : me.p;
-            
-            db.ref('users/' + targetId).once('value', snap => {
-                const u = snap.val();
-                if (!u) return;
-                
-                const isOnline = u.isOnline || (Date.now() - (u.lastSeen || 0)) < 5 * 60 * 1000;
-                const onlineStatus = isOnline ? 
-                    `<span style="color:var(--green); font-size:12px;">● متصل الآن</span>` : 
-                    `<span style="color:var(--text-sec); font-size:12px;">آخر ظهور: ${new Date(u.lastSeen || Date.now()).toLocaleTimeString('ar-EG')}</span>`;
-                
-                const vipBadge = u.vipLevel && u.vipLevel !== 'none' ? 
-                    `<div class="vip-badge ${u.vipLevel === 'gold' ? 'vip-gold' : u.vipLevel === 'platinum' ? 'vip-platinum' : u.vipLevel === 'diamond' ? 'vip-diamond' : ''}" style="margin:10px auto;">
-                        ${VIP_LEVELS[u.vipLevel].name}
-                    </div>` : '';
-                
-                area.innerHTML = `
-                    <div style="text-align:center; padding:40px 20px;">
-                        <img src="${u.pic || userPic}" 
-                             style="width:120px; height:120px; border-radius:50%; border:3px solid var(--neon-blue); padding:3px; object-fit:cover;">
-                        <h2 style="margin:10px 0;">
-                            ${u.n} 
-                            ${u.role === 'admin' ? '<i class="fas fa-shield-alt" style="color:var(--primary); margin-right:5px;"></i>' : ''}
-                        </h2>
-                        
-                        ${onlineStatus}
-                        ${vipBadge}
-                        
-                        <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; display:inline-flex; align-items:center; gap:10px; margin:15px 0;">
-                            <span style="color:var(--text-sec); font-size:12px;">ID: ${u.p || targetId}</span>
-                            <i class="fas fa-copy" style="cursor:pointer; color:var(--accent);" 
-                               onclick="copyToClipboard('${u.p || targetId}')"></i>
-                        </div>
-
-                        <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;">
-                            <span class="badge badge-gold">
-                                <i class="fas fa-star"></i> ${(u.rating || 5).toFixed(1)}
-                            </span>
-                            <span style="background:rgba(59, 130, 246, 0.2); color:var(--primary); padding:3px 8px; border-radius:5px; font-size:10px;">
-                                ${u.role === 'admin' ? 'مدير' : (u.role === 'user' ? 'مستخدم' : u.role)}
-                            </span>
-                        </div>
-                        
-                        <div style="background:var(--bg-card); border-radius:15px; padding:15px; margin:20px 0;">
-                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-                                <div style="text-align:center;">
-                                    <div style="color:var(--text-sec); font-size:12px;">رصيد SDM</div>
-                                    <div style="font-weight:bold; font-size:18px;">${(u.sdmBalance || 0).toFixed(2)}</div>
-                                </div>
-                                <div style="text-align:center;">
-                                    <div style="color:var(--text-sec); font-size:12px;">رصيد MRK</div>
-                                    <div style="font-weight:bold; color:var(--green); font-size:18px;">${(u.mrkBalance || 0).toFixed(4)}</div>
-                                </div>
-                                <div style="text-align:center;">
-                                    <div style="color:var(--text-sec); font-size:12px;">عدد الصفقات</div>
-                                    <div style="font-weight:bold; font-size:18px;">${u.totalTrades || 0}</div>
-                                </div>
-                                <div style="text-align:center;">
-                                    <div style="color:var(--text-sec); font-size:12px;">نسبة النجاح</div>
-                                    <div style="font-weight:bold; color:var(--green); font-size:18px;">
-                                        ${u.totalTrades ? Math.round((u.successfulTrades || 0) / u.totalTrades * 100) : 0}%
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div style="display:flex; flex-direction:column; gap:10px;">
-                            ${(view === 'profile') ? `
-                                <button class="btn-main" onclick="nav('wallet')">
-                                    <i class="fas fa-wallet"></i> محفظتي
-                                </button>
-                                <button class="btn-main" onclick="nav('vip')">
-                                    <i class="fas fa-crown"></i> العضوية المميزة
-                                </button>
-                                <button class="btn-main" onclick="showSettings()">
-                                    <i class="fas fa-cog"></i> الإعدادات
-                                </button>
-                                <button class="btn-main" style="background:rgba(239, 68, 68, 0.2); color:#ef4444; border:1px solid #ef4444;" 
-                                        onclick="doLogout()">
-                                    <i class="fas fa-sign-out-alt"></i> تسجيل خروج
-                                </button>
-                            ` : `
-                                <button class="btn-main" onclick="startChat('${targetId}')">
-                                    <i class="fas fa-comment"></i> مراسلة
-                                </button>
-                                ${me.role === 'admin' ? `
-                                    <button class="btn-main" style="background:rgba(245, 158, 11, 0.2); color:var(--accent); border:1px solid var(--accent);"
-                                            onclick="adminActions('${targetId}')">
-                                        <i class="fas fa-tools"></i> إجراءات المدير
-                                    </button>
-                                ` : ''}
-                                <button class="btn-main" style="background:rgba(255,255,255,0.1);" 
-                                        onclick="showUserReports('${targetId}')">
-                                    <i class="fas fa-flag"></i> تقرير
-                                </button>
-                            `}
-                        </div>
-                    </div>`;
-                hideLoading();
-            });
-            
-            saveStateOnNav();
-        }
+        priceInput.addEventListener('input', updateOrderTotal);
+        amountInput.addEventListener('input', updateOrderTotal);
     }
 
-    // --- 5. نظام VIP ---
-    function selectVipPlan(plan) {
-        const vipPlan = VIP_LEVELS[plan];
-        
-        Swal.fire({
-            title: `ترقية إلى ${vipPlan.name}`,
-            html: `
-                <div style="text-align:right; margin-bottom:20px;">
-                    <p style="color:var(--text-sec);">السعر: <b style="color:${vipPlan.color};">${vipPlan.price} SDM</b> شهرياً</p>
-                    <div class="vip-benefits">
-                        ${vipPlan.benefits.map(benefit => `
-                            <div class="vip-benefit-item">
-                                <i class="fas fa-check"></i>
-                                <span>${benefit}</span>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-                <p style="color:var(--text-sec); font-size:12px;">
-                    سيتم تجديد العضوية تلقائياً كل شهر إذا كان رصيدك كافياً
-                </p>
-            `,
-            showCancelButton: true,
-            confirmButtonText: 'اشترك الآن',
-            cancelButtonText: 'إلغاء',
-            confirmButtonColor: vipPlan.color,
-            preConfirm: () => {
-                if (me.sdmBalance < vipPlan.price) {
-                    Swal.showValidationMessage('رصيدك غير كاف للاشتراك');
-                    return false;
-                }
-                return true;
-            }
-        }).then(async (result) => {
-            if (result.isConfirmed) {
-                try {
-                    // خصم المبلغ
-                    const newBalance = me.sdmBalance - vipPlan.price;
-                    await db.ref(`users/${me.p}`).update({
-                        sdmBalance: newBalance,
-                        vipLevel: plan,
-                        vipExpiry: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 يوم
-                        vipJoinDate: Date.now()
-                    });
-                    
-                    me.sdmBalance = newBalance;
-                    me.vipLevel = plan;
-                    me.vipExpiry = Date.now() + 30 * 24 * 60 * 60 * 1000;
-                    
-                    // تسجيل الصفقة
-                    await db.ref('vip_subscriptions').push({
-                        userId: me.p,
-                        userName: me.n,
-                        plan: plan,
-                        price: vipPlan.price,
-                        date: Date.now(),
-                        expiry: Date.now() + 30 * 24 * 60 * 60 * 1000
-                    });
-                    
-                    // تحديث الواجهة
-                    updateVipBadge();
-                    
-                    Swal.fire({
-                        title: 'مبروك!',
-                        text: `تمت ترقيتك إلى العضوية ${vipPlan.name}`,
-                        icon: 'success',
-                        confirmButtonText: 'حسناً'
-                    });
-                    
-                    // تحديث صفحة VIP
-                    nav('vip');
-                    
-                } catch (error) {
-                    Swal.fire('خطأ', 'حدث خطأ أثناء الاشتراك: ' + error.message, 'error');
-                }
-            }
-        });
+    // Update Balance Display
+    function updateBalanceDisplay() {
+        if (!me) return;
+
+        const balanceType = currentTradeMode === 'buy' ? 'SDM' : 'MRK';
+        const availableBalance = currentTradeMode === 'buy' 
+            ? (me.sdmBalance || 0).toFixed(2)
+            : (me.mrkBalance || 0).toFixed(4);
+
+        document.getElementById('available-balance').textContent = availableBalance;
+        document.getElementById('balance-type').textContent = balanceType;
     }
 
-    // --- 6. نظام التداول المتكامل ---
-    function calculateMRK(sdmAmount) {
-        if (!sdmAmount || sdmAmount <= 0) {
-            document.getElementById('calc-mrk-display').innerText = '0 MRK';
-            return;
-        }
-        const vipFee = VIP_LEVELS[me.vipLevel || 'none'].fee;
-        const mrkAmount = sdmAmount * marketPrice * (1 - vipFee);
-        document.getElementById('calc-sdm-display').innerText = sdmAmount + ' SDM';
-        document.getElementById('calc-mrk-display').innerText = mrkAmount.toFixed(4) + ' MRK';
-        document.getElementById('calc-price').innerText = marketPrice;
-        
-        if (currentTradeMode === 'buy') {
-            document.getElementById('trade-amount').value = mrkAmount.toFixed(4);
-            updateTradeTotal();
-        }
-    }
-
-    function updateCalculator() {
-        const sdmInput = document.getElementById('calc-sdm');
-        if (sdmInput && sdmInput.value) {
-            calculateMRK(sdmInput.value);
-        }
-    }
-
+    // Set Trade Mode
     function setTradeMode(mode) {
         currentTradeMode = mode;
-        const buyTab = document.getElementById('tab-buy');
-        const sellTab = document.getElementById('tab-sell');
-        const tradeBtn = document.getElementById('execute-trade-btn');
         
-        buyTab.className = `trade-tab buy ${mode === 'buy' ? 'active' : ''}`;
-        sellTab.className = `trade-tab sell ${mode === 'sell' ? 'active' : ''}`;
+        // Update UI
+        document.querySelectorAll('.trade-tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
         
+        const activeTab = mode === 'buy' 
+            ? document.querySelector('.trade-tab.buy')
+            : document.querySelector('.trade-tab.sell');
+        
+        if (activeTab) activeTab.classList.add('active');
+
+        // Update button
+        const executeButton = document.getElementById('execute-button');
         if (mode === 'buy') {
-            tradeBtn.className = 'trade-execute-btn buy';
-            tradeBtn.innerHTML = '<i class="fas fa-bolt"></i> تنفيذ الشراء';
-            document.getElementById('trade-balance-disp').innerText = 
-                `${(me.sdmBalance - (me.frozenSDM || 0)).toFixed(2)} SDM متاح`;
+            executeButton.textContent = 'شراء MRK';
+            executeButton.className = 'trade-button buy-button';
         } else {
-            tradeBtn.className = 'trade-execute-btn sell';
-            tradeBtn.innerHTML = '<i class="fas fa-bolt"></i> تنفيذ البيع';
-            document.getElementById('trade-balance-disp').innerText = 
-                `${(me.mrkBalance - (me.frozenMRK || 0)).toFixed(4)} MRK متاح`;
+            executeButton.textContent = 'بيع MRK';
+            executeButton.className = 'trade-button sell-button';
         }
-        
-        updateTradeTotal();
-        saveStateOnNav();
+
+        // Update balance display
+        updateBalanceDisplay();
+        updateOrderTotal();
     }
 
-    function updateTradeTotal() {
-        const price = parseFloat(document.getElementById('trade-price')?.value) || 0;
-        const amount = parseFloat(document.getElementById('trade-amount')?.value) || 0;
+    // Set Percentage
+    function setPercentage(percentage) {
+        if (!me) return;
+
+        const price = parseFloat(document.getElementById('order-price').value) || marketPrice;
+        
+        if (currentTradeMode === 'buy') {
+            const availableSDM = me.sdmBalance || 0;
+            const maxMRK = availableSDM / price;
+            const amount = maxMRK * percentage;
+            document.getElementById('order-amount').value = amount.toFixed(4);
+        } else {
+            const availableMRK = me.mrkBalance || 0;
+            const amount = availableMRK * percentage;
+            document.getElementById('order-amount').value = amount.toFixed(4);
+        }
+
+        updateOrderTotal();
+    }
+
+    // Update Order Total
+    function updateOrderTotal() {
+        const price = parseFloat(document.getElementById('order-price').value) || 0;
+        const amount = parseFloat(document.getElementById('order-amount').value) || 0;
         const total = price * amount;
         
-        document.getElementById('trade-total-disp').innerText = total.toFixed(2);
-        
-        if (currentTradeMode === 'buy' && amount > 0) {
-            const sdmAmount = amount / price;
-            document.getElementById('calc-sdm').value = sdmAmount.toFixed(2);
-            calculateMRK(sdmAmount);
-        }
+        document.getElementById('order-total').textContent = total.toFixed(2);
     }
 
-    async function executeTrade() {
-        const price = parseFloat(document.getElementById('trade-price').value);
-        const amount = parseFloat(document.getElementById('trade-amount').value);
-        
-        if (!price || price <= 0 || !amount || amount <= 0) {
-            Swal.fire('خطأ', 'أدخل السعر والكمية بشكل صحيح', 'error');
+    // Execute Order
+    async function executeOrder() {
+        if (Date.now() - lastActionTime < 2000) {
+            showAlert('تنبيه', 'انتظر قليلاً بين العمليات', 'warning');
             return;
         }
-        
+
+        lastActionTime = Date.now();
+
+        const price = parseFloat(document.getElementById('order-price').value);
+        const amount = parseFloat(document.getElementById('order-amount').value);
         const total = price * amount;
-        const vipFee = VIP_LEVELS[me.vipLevel || 'none'].fee;
-        const feeAmount = total * vipFee;
-        const netAmount = total - feeAmount;
-        
-        // التحقق من الرصيد
+
+        // Validation
+        if (!price || !amount || price <= 0 || amount <= 0) {
+            showAlert('خطأ', 'الرجاء إدخال بيانات صحيحة', 'error');
+            return;
+        }
+
         if (currentTradeMode === 'buy') {
-            const availableBalance = me.sdmBalance - (me.frozenSDM || 0);
-            if (availableBalance < total) {
-                Swal.fire('فشل', `رصيدك غير كاف. المتاح: ${availableBalance.toFixed(2)} SDM`, 'error');
+            if ((me.sdmBalance || 0) < total) {
+                showAlert('خطأ', 'رصيد SDM غير كافي', 'error');
                 return;
             }
         } else {
-            const availableBalance = (me.mrkBalance || 0) - (me.frozenMRK || 0);
-            if (availableBalance < amount) {
-                Swal.fire('فشل', `رصيدك غير كاف. المتاح: ${availableBalance.toFixed(4)} MRK`, 'error');
+            if ((me.mrkBalance || 0) < amount) {
+                showAlert('خطأ', 'رصيد MRK غير كافي', 'error');
                 return;
             }
         }
-        
+
+        // Disable button during processing
+        const button = document.getElementById('execute-button');
+        button.disabled = true;
+        const originalText = button.textContent;
+        button.textContent = 'جاري المعالجة...';
+
         try {
             const orderData = {
-                uP: me.p,
-                uN: me.n,
+                userId: me.p,
+                userName: me.n,
                 price: price,
                 amount: amount,
+                originalAmount: amount,
                 type: currentTradeMode,
-                total: total,
-                status: 'pending',
-                filled: 0,
-                date: Date.now(),
                 timestamp: Date.now(),
-                vipLevel: me.vipLevel || 'none',
-                fee: vipFee
+                status: 'pending'
+            };
+
+            // Reserve balance
+            if (currentTradeMode === 'buy') {
+                await db.ref(`users/${me.p}`).update({
+                    sdmBalance: (me.sdmBalance || 0) - total
+                });
+                me.sdmBalance = (me.sdmBalance || 0) - total;
+            } else {
+                await db.ref(`users/${me.p}`).update({
+                    mrkBalance: (me.mrkBalance || 0) - amount
+                });
+                me.mrkBalance = (me.mrkBalance || 0) - amount;
+            }
+
+            // Create order
+            const orderRef = db.ref(`market/orders/${currentTradeMode}`).push();
+            await orderRef.set(orderData);
+
+            // Try to match order
+            await matchOrder(orderRef.key, orderData);
+
+            // Clear inputs
+            document.getElementById('order-price').value = '';
+            document.getElementById('order-amount').value = '';
+            updateOrderTotal();
+
+            showAlert('نجاح', 'تم إرسال الطلب بنجاح', 'success');
+
+        } catch (error) {
+            console.error('Error executing order:', error);
+            showAlert('خطأ', 'حدث خطأ أثناء المعالجة', 'error');
+            
+            // Revert balance reservation on error
+            if (currentTradeMode === 'buy') {
+                await db.ref(`users/${me.p}`).update({
+                    sdmBalance: (me.sdmBalance || 0)
+                });
+            } else {
+                await db.ref(`users/${me.p}`).update({
+                    mrkBalance: (me.mrkBalance || 0)
+                });
+            }
+        } finally {
+            // Re-enable button
+            button.disabled = false;
+            button.textContent = originalText;
+            updateBalanceDisplay();
+        }
+    }
+
+    // Match Order Function
+    async function matchOrder(orderId, order) {
+        const oppositeType = order.type === 'buy' ? 'sell' : 'buy';
+        const ordersRef = db.ref(`market/orders/${oppositeType}`);
+        
+        // Query for matching orders
+        let query;
+        if (order.type === 'buy') {
+            // For buy orders: find sell orders with price <= buy price
+            query = ordersRef.orderByChild('price').endAt(order.price);
+        } else {
+            // For sell orders: find buy orders with price >= sell price
+            query = ordersRef.orderByChild('price').startAt(order.price);
+        }
+
+        const snapshot = await query.once('value');
+        if (!snapshot.exists()) return;
+
+        let remainingAmount = order.amount;
+        const matches = [];
+
+        snapshot.forEach((childSnapshot) => {
+            if (remainingAmount <= 0) return;
+
+            const oppositeOrder = childSnapshot.val();
+            if (oppositeOrder.status !== 'pending') return;
+
+            const matchAmount = Math.min(remainingAmount, oppositeOrder.amount);
+            const matchPrice = oppositeOrder.price;
+            
+            matches.push({
+                matchOrderId: childSnapshot.key,
+                matchOrder: oppositeOrder,
+                amount: matchAmount,
+                price: matchPrice
+            });
+
+            remainingAmount -= matchAmount;
+        });
+
+        // Execute matches
+        for (const match of matches) {
+            await executeTradeMatch(orderId, order, match.matchOrderId, match.matchOrder, match.amount, match.price);
+        }
+
+        // Update original order if partially filled
+        if (remainingAmount < order.amount) {
+            const filledAmount = order.amount - remainingAmount;
+            
+            if (remainingAmount > 0) {
+                // Partial fill - update order
+                await db.ref(`market/orders/${order.type}/${orderId}`).update({
+                    amount: remainingAmount,
+                    status: 'partially_filled',
+                    filledAmount: filledAmount
+                });
+            } else {
+                // Full fill - remove order
+                await db.ref(`market/orders/${order.type}/${orderId}`).update({
+                    status: 'filled',
+                    filledAmount: order.amount
+                });
+            }
+        }
+    }
+
+    // Execute Trade Match
+    async function executeTradeMatch(buyOrderId, buyOrder, sellOrderId, sellOrder, amount, price) {
+        const totalValue = amount * price;
+        const tradeId = db.ref('market/trades').push().key;
+
+        // Calculate amounts
+        const buyerSDMDeduction = totalValue;
+        const buyerMRKAddition = amount;
+        
+        const sellerMRKDeduction = amount;
+        const sellerSDMAddition = totalValue;
+
+        try {
+            // Update balances atomically
+            await db.ref().transaction(async (currentData) => {
+                if (!currentData) return currentData;
+
+                // Check balances
+                const buyer = currentData.users && currentData.users[buyOrder.userId];
+                const seller = currentData.users && currentData.users[sellOrder.userId];
+
+                if (!buyer || !seller) return;
+
+                if (buyer.sdmBalance < buyerSDMDeduction) {
+                    throw new Error('Insufficient buyer balance');
+                }
+
+                if (seller.mrkBalance < sellerMRKDeduction) {
+                    throw new Error('Insufficient seller balance');
+                }
+
+                // Update balances
+                currentData.users[buyOrder.userId].sdmBalance -= buyerSDMDeduction;
+                currentData.users[buyOrder.userId].mrkBalance += buyerMRKAddition;
+                
+                currentData.users[sellOrder.userId].mrkBalance -= sellerMRKDeduction;
+                currentData.users[sellOrder.userId].sdmBalance += sellerSDMAddition;
+
+                // Record trade
+                if (!currentData.market) currentData.market = {};
+                if (!currentData.market.trades) currentData.market.trades = {};
+                
+                currentData.market.trades[tradeId] = {
+                    buyerId: buyOrder.userId,
+                    sellerId: sellOrder.userId,
+                    price: price,
+                    amount: amount,
+                    total: totalValue,
+                    timestamp: Date.now(),
+                    type: 'trade'
+                };
+
+                // Update order status
+                if (!currentData.market.orders) currentData.market.orders = {};
+                
+                // Update buy order
+                if (buyOrder.amount === amount) {
+                    if (!currentData.market.orders.buy) currentData.market.orders.buy = {};
+                    currentData.market.orders.buy[buyOrderId] = {
+                        ...buyOrder,
+                        status: 'filled',
+                        filledAt: Date.now()
+                    };
+                }
+                
+                // Update sell order
+                if (sellOrder.amount === amount) {
+                    if (!currentData.market.orders.sell) currentData.market.orders.sell = {};
+                    currentData.market.orders.sell[sellOrderId] = {
+                        ...sellOrder,
+                        status: 'filled',
+                        filledAt: Date.now()
+                    };
+                }
+
+                return currentData;
+            });
+
+            // Update user data locally
+            if (me.p === buyOrder.userId) {
+                me.sdmBalance = (me.sdmBalance || 0) - buyerSDMDeduction;
+                me.mrkBalance = (me.mrkBalance || 0) + buyerMRKAddition;
+            } else if (me.p === sellOrder.userId) {
+                me.mrkBalance = (me.mrkBalance || 0) - sellerMRKDeduction;
+                me.sdmBalance = (me.sdmBalance || 0) + sellerSDMAddition;
+            }
+
+            // Update market price
+            marketPrice = price;
+            updatePriceDisplay();
+
+            showAlert('نجاح', `تم تنفيذ صفقة ${amount} MRK بسعر ${price} SDM`, 'success');
+
+        } catch (error) {
+            console.error('Trade execution failed:', error);
+            showAlert('خطأ', 'فشل تنفيذ الصفقة', 'error');
+        }
+    }
+
+    // Load Market Data
+    function loadMarketData() {
+        // Load initial market price
+        db.ref('market/price').on('value', (snapshot) => {
+            if (snapshot.exists()) {
+                marketPrice = snapshot.val();
+                updatePriceDisplay();
+            }
+        });
+    }
+
+    // Listen to Order Book
+    function listenToOrderBook() {
+        // Listen to buy orders
+        db.ref('market/orders/buy')
+            .orderByChild('price')
+            .limitToLast(10)
+            .on('value', (snapshot) => {
+                updateOrderBook('bids', snapshot);
+            });
+
+        // Listen to sell orders
+        db.ref('market/orders/sell')
+            .orderByChild('price')
+            .limitToFirst(10)
+            .on('value', (snapshot) => {
+                updateOrderBook('asks', snapshot);
+            });
+    }
+
+    // Update Order Book Display
+    function updateOrderBook(type, snapshot) {
+        const container = type === 'bids' 
+            ? document.getElementById('bids-side')
+            : document.getElementById('asks-side');
+
+        if (!container) return;
+
+        container.innerHTML = '';
+        const orders = [];
+        let totalAmount = 0;
+
+        snapshot.forEach((child) => {
+            const order = child.val();
+            if (order.status === 'pending' || order.status === 'partially_filled') {
+                orders.push(order);
+                totalAmount += order.amount;
+            }
+        });
+
+        // Sort orders
+        if (type === 'bids') {
+            orders.sort((a, b) => b.price - a.price); // Highest price first
+        } else {
+            orders.sort((a, b) => a.price - b.price); // Lowest price first
+        }
+
+        // Calculate max amount for depth visualization
+        const maxAmount = Math.max(...orders.map(o => o.amount), 1);
+
+        // Display orders
+        orders.forEach((order) => {
+            const depthPercentage = (order.amount / maxAmount) * 100;
+            const row = document.createElement('div');
+            row.className = `order-row ${type === 'bids' ? 'bid' : 'ask'}`;
+            
+            row.innerHTML = `
+                <div class="depth-bar" style="width: ${depthPercentage}%"></div>
+                <div class="content">
+                    <span>${order.amount.toFixed(2)}</span>
+                    <span>${order.price.toFixed(4)}</span>
+                </div>
+            `;
+            
+            // Add click event to fill order
+            row.onclick = () => {
+                document.getElementById('order-price').value = order.price;
+                document.getElementById('order-amount').value = order.amount;
+                updateOrderTotal();
             };
             
-            const orderRef = db.ref(`market/orders/${currentTradeMode}`).push(orderData);
-            const orderKey = orderRef.key;
-            
-            // تجميد الأموال مع خصم رسوم VIP
-            if (currentTradeMode === 'buy') {
-                const newFrozenSDM = (me.frozenSDM || 0) + netAmount;
-                await db.ref(`users/${me.p}`).update({ frozenSDM: newFrozenSDM });
-                me.frozenSDM = newFrozenSDM;
-                
-                // خصم الرسوم للمنصة (إذا كانت رسوم VIP)
-                if (feeAmount > 0) {
-                    await db.ref('market/stats/platformFees').transaction(current => (current || 0) + feeAmount);
-                }
-            } else {
-                const newFrozenMRK = (me.frozenMRK || 0) + amount;
-                await db.ref(`users/${me.p}`).update({ frozenMRK: newFrozenMRK });
-                me.frozenMRK = newFrozenMRK;
-            }
-            
-            await attemptMatchOrders(orderKey, orderData);
-            
-            Swal.fire({
-                title: 'تم بنجاح',
-                text: 'تم وضع طلبك في السوق',
-                icon: 'success',
-                confirmButtonText: 'حسناً'
-            });
-            
-            document.getElementById('trade-amount').value = '';
-            updateTradeTotal();
-            
-        } catch (error) {
-            Swal.fire('خطأ', 'حدث خطأ أثناء تنفيذ العملية: ' + error.message, 'error');
-        }
-    }
-
-    async function attemptMatchOrders(orderKey, orderData) {
-        const oppositeType = orderData.type === 'buy' ? 'sell' : 'buy';
-        const oppositeOrdersRef = db.ref(`market/orders/${oppositeType}`);
-        
-        oppositeOrdersRef.orderByChild('price')
-            .once('value')
-            .then(async (snapshot) => {
-                const matches = [];
-                
-                snapshot.forEach(child => {
-                    const oppositeOrder = child.val();
-                    if (oppositeOrder.status !== 'pending') return;
-                    
-                    // إعطاء الأولوية لأعضاء VIP
-                    const priority1 = VIP_LEVELS[orderData.vipLevel || 'none'].fee;
-                    const priority2 = VIP_LEVELS[oppositeOrder.vipLevel || 'none'].fee;
-                    
-                    if ((orderData.type === 'buy' && oppositeOrder.price <= orderData.price) ||
-                        (orderData.type === 'sell' && oppositeOrder.price >= orderData.price)) {
-                        
-                        // حساب الأولوية (كلما كانت الرسوم أقل، الأولوية أعلى)
-                        matches.push({
-                            key: child.key,
-                            priority: priority2,
-                            ...oppositeOrder
-                        });
-                    }
-                });
-                
-                // ترتيب حسب الأولوية (الأعلى أولاً)
-                matches.sort((a, b) => a.priority - b.priority);
-                
-                for (const match of matches) {
-                    if (orderData.amount <= 0) break;
-                    
-                    const fillAmount = Math.min(orderData.amount - orderData.filled, match.amount - match.filled);
-                    if (fillAmount <= 0) continue;
-                    
-                    await executeTradeMatch(
-                        orderData,
-                        orderKey,
-                        match,
-                        match.key,
-                        fillAmount
-                    );
-                    
-                    orderData.filled += fillAmount;
-                    
-                    await db.ref(`market/orders/${orderData.type}/${orderKey}`).update({
-                        filled: orderData.filled,
-                        status: orderData.filled >= orderData.amount ? 'filled' : 'partial'
-                    });
-                    
-                    if (orderData.filled >= orderData.amount) {
-                        await unfreezeFunds(orderData.type, orderData.uP, orderData.total, orderData.amount);
-                        break;
-                    }
-                }
-            });
-    }
-
-    async function executeTradeMatch(order1, order1Key, order2, order2Key, fillAmount) {
-        const fillPrice = order2.price;
-        const totalValue = fillAmount * fillPrice;
-        
-        // حساب الرسوم لكل طرف
-        const fee1 = totalValue * order1.fee;
-        const fee2 = totalValue * order2.fee;
-        
-        if (order1.type === 'buy') {
-            // المشتري يدفع (بعد خصم رسومه)
-            const buyerPays = totalValue - fee1;
-            await transferSDM(order1.uP, order2.uP, buyerPays);
-            await transferMRK(order2.uP, order1.uP, fillAmount);
-            
-            // خصم رسوم المشتري للمنصة
-            if (fee1 > 0) {
-                await db.ref('market/stats/platformFees').transaction(current => (current || 0) + fee1);
-            }
-        } else {
-            const sellerReceives = totalValue - fee2;
-            await transferSDM(order2.uP, order1.uP, sellerReceives);
-            await transferMRK(order1.uP, order2.uP, fillAmount);
-            
-            if (fee2 > 0) {
-                await db.ref('market/stats/platformFees').transaction(current => (current || 0) + fee2);
-            }
-        }
-        
-        const newFilled2 = order2.filled + fillAmount;
-        const newStatus2 = newFilled2 >= order2.amount ? 'filled' : 'partial';
-        
-        await db.ref(`market/orders/${order2.type}/${order2Key}`).update({
-            filled: newFilled2,
-            status: newStatus2
-        });
-        
-        if (newFilled2 >= order2.amount) {
-            await unfreezeFunds(order2.type, order2.uP, order2.total, order2.amount);
-        }
-        
-        await recordTransaction({
-            buyer: order1.type === 'buy' ? order1.uP : order2.uP,
-            seller: order1.type === 'sell' ? order1.uP : order2.uP,
-            amount: fillAmount,
-            price: fillPrice,
-            total: totalValue,
-            buyerFee: order1.fee * totalValue,
-            sellerFee: order2.fee * totalValue,
-            timestamp: Date.now(),
-            buyerVip: order1.vipLevel,
-            sellerVip: order2.vipLevel
-        });
-        
-        await db.ref('market/stats/lastPrice').set(fillPrice);
-        addToCandleData(fillPrice, fillAmount);
-        
-        // تحديث إحصائيات المستخدمين
-        await updateUserStats(order1.uP, 'buyer', true);
-        await updateUserStats(order2.uP, 'seller', true);
-    }
-
-    async function transferSDM(fromUserId, toUserId, amount) {
-        const fromUserRef = db.ref(`users/${fromUserId}`);
-        const fromSnap = await fromUserRef.once('value');
-        const fromUser = fromSnap.val();
-        
-        await fromUserRef.update({
-            sdmBalance: (fromUser.sdmBalance || 0) - amount
-        });
-        
-        const toUserRef = db.ref(`users/${toUserId}`);
-        const toSnap = await toUserRef.once('value');
-        const toUser = toSnap.val();
-        
-        await toUserRef.update({
-            sdmBalance: (toUser.sdmBalance || 0) + amount
-        });
-        
-        if (me.p === fromUserId) {
-            me.sdmBalance = (fromUser.sdmBalance || 0) - amount;
-        } else if (me.p === toUserId) {
-            me.sdmBalance = (toUser.sdmBalance || 0) + amount;
-        }
-    }
-
-    async function transferMRK(fromUserId, toUserId, amount) {
-        const fromUserRef = db.ref(`users/${fromUserId}`);
-        const fromSnap = await fromUserRef.once('value');
-        const fromUser = fromSnap.val();
-        
-        await fromUserRef.update({
-            mrkBalance: (fromUser.mrkBalance || 0) - amount
-        });
-        
-        const toUserRef = db.ref(`users/${toUserId}`);
-        const toSnap = await toUserRef.once('value');
-        const toUser = toSnap.val();
-        
-        await toUserRef.update({
-            mrkBalance: (toUser.mrkBalance || 0) + amount
-        });
-        
-        if (me.p === fromUserId) {
-            me.mrkBalance = (fromUser.mrkBalance || 0) - amount;
-        } else if (me.p === toUserId) {
-            me.mrkBalance = (toUser.mrkBalance || 0) + amount;
-        }
-    }
-
-    async function unfreezeFunds(orderType, userId, total, amount) {
-        const userRef = db.ref(`users/${userId}`);
-        
-        if (orderType === 'buy') {
-            const userSnap = await userRef.once('value');
-            const user = userSnap.val();
-            const newFrozenSDM = Math.max(0, (user.frozenSDM || 0) - total);
-            await userRef.update({ frozenSDM: newFrozenSDM });
-            
-            if (me.p === userId) {
-                me.frozenSDM = newFrozenSDM;
-            }
-        } else {
-            const userSnap = await userRef.once('value');
-            const user = userSnap.val();
-            const newFrozenMRK = Math.max(0, (user.frozenMRK || 0) - amount);
-            await userRef.update({ frozenMRK: newFrozenMRK });
-            
-            if (me.p === userId) {
-                me.frozenMRK = newFrozenMRK;
-            }
-        }
-    }
-
-    async function recordTransaction(tx) {
-        await db.ref('market/transactions').push(tx);
-        
-        await db.ref(`user_transactions/${tx.buyer}`).push({
-            ...tx,
-            type: 'buy',
-            date: Date.now()
-        });
-        
-        await db.ref(`user_transactions/${tx.seller}`).push({
-            ...tx,
-            type: 'sell',
-            date: Date.now()
+            container.appendChild(row);
         });
     }
 
-    async function updateUserStats(userId, role, success) {
-        const userRef = db.ref(`users/${userId}`);
-        const userSnap = await userRef.once('value');
-        const user = userSnap.val();
-        
-        const updates = {
-            totalTrades: (user.totalTrades || 0) + 1
-        };
-        
-        if (success) {
-            updates.successfulTrades = (user.successfulTrades || 0) + 1;
-            
-            // زيادة التقييم
-            const currentRating = user.rating || 5.0;
-            const newRating = Math.min(5.0, currentRating + 0.1);
-            updates.rating = newRating;
-        }
-        
-        await userRef.update(updates);
-    }
-
-    async function cancelOrder(orderType, orderKey) {
-        try {
-            const orderRef = db.ref(`market/orders/${orderType}/${orderKey}`);
-            const orderSnap = await orderRef.once('value');
-            const order = orderSnap.val();
-            
-            if (!order || order.uP !== me.p) {
-                Swal.fire('خطأ', 'لا يمكنك إلغاء هذا الطلب', 'error');
-                return;
-            }
-            
-            if (order.status === 'filled') {
-                Swal.fire('مكتمل', 'لا يمكن إلغاء طلب مكتمل', 'info');
-                return;
-            }
-            
-            const remainingAmount = order.amount - order.filled;
-            const remainingTotal = remainingAmount * order.price;
-            
-            if (orderType === 'buy') {
-                await unfreezeFunds('buy', me.p, remainingTotal, remainingAmount);
-            } else {
-                await unfreezeFunds('sell', me.p, remainingTotal, remainingAmount);
-            }
-            
-            await orderRef.update({ status: 'cancelled' });
-            
-            Swal.fire('تم', 'تم إلغاء الطلب بنجاح', 'success');
-            loadMyOrders();
-            
-        } catch (error) {
-            Swal.fire('خطأ', 'حدث خطأ أثناء الإلغاء: ' + error.message, 'error');
-        }
-    }
-
-    // --- 7. عرض قائمة الطلبات ---
-    function listenToOrderBook() {
-        db.ref('market/orders/sell')
-            .orderByChild('price')
-            .limitToFirst(20)
-            .on('value', snapshot => renderOrderBook(snapshot, 'order-book-asks', 'ask'));
-        
-        db.ref('market/orders/buy')
-            .orderByChild('price')
+    // Listen to Recent Trades
+    function listenToRecentTrades() {
+        db.ref('market/trades')
+            .orderByChild('timestamp')
             .limitToLast(20)
-            .on('value', snapshot => renderOrderBook(snapshot, 'order-book-bids', 'bid'));
+            .on('value', (snapshot) => {
+                updateRecentTrades(snapshot);
+            });
     }
 
-    function renderOrderBook(snapshot, elementId, type) {
-        const element = document.getElementById(elementId);
-        if (!element) return;
-        
-        let orders = [];
-        snapshot.forEach(child => {
-            const order = child.val();
-            if (order.status === 'pending' || order.status === 'partial') {
-                orders.push({
-                    key: child.key,
-                    ...order
-                });
+    // Update Recent Trades Display
+    function updateRecentTrades(snapshot) {
+        const container = document.getElementById('recent-trades-list');
+        if (!container) return;
+
+        container.innerHTML = '';
+        const trades = [];
+
+        snapshot.forEach((child) => {
+            trades.push(child.val());
+        });
+
+        // Sort by timestamp (newest first)
+        trades.sort((a, b) => b.timestamp - a.timestamp);
+
+        // Display trades
+        trades.forEach((trade) => {
+            const tradeTime = new Date(trade.timestamp);
+            const timeString = tradeTime.toLocaleTimeString('ar-SA', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            const item = document.createElement('div');
+            item.className = `trade-item ${trade.type === 'buy' ? 'buy' : 'sell'}`;
+            
+            item.innerHTML = `
+                <span>${timeString}</span>
+                <span>${trade.price.toFixed(4)}</span>
+                <span>${trade.amount.toFixed(2)}</span>
+            `;
+            
+            container.appendChild(item);
+        });
+    }
+
+    // Listen to Market Stats
+    function listenToMarketStats() {
+        db.ref('market/stats').on('value', (snapshot) => {
+            if (snapshot.exists()) {
+                marketStats = snapshot.val();
+                updateMarketStats();
             }
         });
-        
-        if (type === 'ask') {
-            orders.sort((a, b) => a.price - b.price);
-        } else {
-            orders.sort((a, b) => b.price - a.price);
-        }
-        
-        element.innerHTML = orders.map(order => {
-            const isMine = order.uP === me.p;
-            const filledPercent = (order.filled / order.amount) * 100;
-            const total = order.price * order.amount;
-            
-            return `
-                <div class="order-row ${type} ${isMine ? 'my-order' : ''}" 
-                     onclick="fillOrderInput('${order.price}', '${order.amount}', '${type}')">
-                    <div class="order-progress" style="width: ${filledPercent}%"></div>
-                    <div>${order.price.toFixed(4)}</div>
-                    <div>${order.amount.toFixed(4)}</div>
-                    <div>${total.toFixed(2)}</div>
-                </div>
-            `;
-        }).join('');
     }
 
-    function loadMyOrders() {
-        if (isGuest) return;
-        
-        db.ref('market/orders/buy')
-            .orderByChild('uP')
-            .equalTo(me.p)
-            .on('value', snapshot => renderMyOrders(snapshot, 'buy'));
-        
-        db.ref('market/orders/sell')
-            .orderByChild('uP')
-            .equalTo(me.p)
-            .on('value', snapshot => renderMyOrders(snapshot, 'sell'));
+    // Update Market Stats Display
+    function updateMarketStats() {
+        document.getElementById('24h-high').textContent = marketStats.high24h?.toFixed(4) || '0.0000';
+        document.getElementById('24h-low').textContent = marketStats.low24h?.toFixed(4) || '0.0000';
+        document.getElementById('24h-volume').textContent = `${(marketStats.volume24h || 0).toLocaleString()} SDM`;
     }
 
-    function renderMyOrders(snapshot, type) {
-        const element = document.getElementById('my-orders-list');
-        if (!element) return;
+    // Update Price Display
+    function updatePriceDisplay() {
+        const priceElement = document.getElementById('current-price');
+        const changeElement = document.getElementById('price-change');
         
-        let orders = [];
-        snapshot.forEach(child => {
-            const order = child.val();
-            if (order.status !== 'cancelled') {
-                orders.push({
-                    key: child.key,
-                    type: type,
-                    ...order
-                });
-            }
-        });
+        priceElement.textContent = marketPrice.toFixed(4);
         
-        orders.sort((a, b) => b.date - a.date);
+        // Calculate percentage change
+        const change = ((marketPrice - BASE_RATE) / BASE_RATE) * 100;
+        const changeText = change >= 0 ? `+${change.toFixed(2)}%` : `${change.toFixed(2)}%`;
         
-        element.innerHTML = orders.map(order => {
-            const filledPercent = (order.filled / order.amount) * 100;
-            const statusText = order.status === 'filled' ? 'مكتمل' :
-                              order.status === 'partial' ? 'جزئي' :
-                              order.status === 'pending' ? 'في الانتظار' : order.status;
-            
-            const statusClass = order.status === 'filled' ? 'filled' :
-                               order.status === 'partial' ? 'partial' :
-                               'pending';
-            
-            return `
-                <div class="user-order ${statusClass}">
-                    <div>
-                        <div style="font-weight:bold; color:${order.type === 'buy' ? 'var(--buy-green)' : 'var(--sell-red)'}">
-                            ${order.type === 'buy' ? 'شراء' : 'بيع'} MRK
-                        </div>
-                        <div style="font-size:12px; color:var(--text-sec);">
-                            السعر: ${order.price} | الكمية: ${order.amount.toFixed(4)}
-                        </div>
-                        <div style="font-size:11px; color:var(--text-sec); margin-top:5px;">
-                            ${statusText} - ${filledPercent.toFixed(1)}% مكتمل
-                        </div>
-                    </div>
-                    <div>
-                        ${order.status === 'pending' || order.status === 'partial' ? 
-                            `<button class="order-cancel-btn" onclick="cancelOrder('${order.type}', '${order.key}')">
-                                إلغاء
-                            </button>` : 
-                            `<span style="color:var(--text-sec); font-size:12px;">مكتمل</span>`
-                        }
-                    </div>
-                </div>
-            `;
-        }).join('');
+        changeElement.textContent = changeText;
+        changeElement.className = change >= 0 ? 'price-change positive' : 'price-change negative';
     }
 
-    function fillOrderInput(price, amount, type) {
-        setTradeMode(type === 'bid' ? 'buy' : 'sell');
-        document.getElementById('trade-price').value = price;
-        document.getElementById('trade-amount').value = amount;
-        updateTradeTotal();
-    }
-
-    // --- 8. مخطط الشموع ---
-    let candleData = [];
-    let currentTimeframe = '1m';
-
+    // Initialize Chart
     function initChart() {
         const options = {
             series: [{
@@ -2497,25 +1170,17 @@
             }],
             chart: {
                 type: 'candlestick',
-                height: 300,
+                height: 280,
                 background: 'transparent',
                 toolbar: {
                     show: false
-                }
-            },
-            title: {
-                text: 'SDM/MRK',
-                align: 'left',
-                style: {
-                    color: 'white',
-                    fontSize: '14px'
                 }
             },
             xaxis: {
                 type: 'datetime',
                 labels: {
                     style: {
-                        colors: 'var(--text-sec)'
+                        colors: '#94a3b8'
                     }
                 }
             },
@@ -2525,661 +1190,108 @@
                 },
                 labels: {
                     style: {
-                        colors: 'var(--text-sec)'
-                    },
-                    formatter: function(value) {
-                        return value.toFixed(4);
-                    }
-                }
-            },
-            plotOptions: {
-                candlestick: {
-                    colors: {
-                        upward: '#10b981',
-                        downward: '#ef4444'
+                        colors: '#94a3b8'
                     }
                 }
             },
             grid: {
-                borderColor: 'var(--border)'
+                borderColor: '#334155'
             },
             theme: {
                 mode: 'dark'
             }
         };
 
-        chartInstance = new ApexCharts(document.querySelector("#chart-area"), options);
+        chartInstance = new ApexCharts(document.querySelector("#chart"), options);
         chartInstance.render();
-        
-        loadCandleData();
+
+        // Load chart data
+        loadChartData();
     }
 
-    function changeTimeframe(tf) {
-        currentTimeframe = tf;
-        document.querySelectorAll('.chart-timeframe').forEach(el => {
-            el.classList.remove('active');
-        });
-        event.target.classList.add('active');
-        loadCandleData();
-    }
-
-    function loadCandleData() {
-        db.ref('market/transactions')
+    // Load Chart Data
+    function loadChartData() {
+        db.ref('market/trades')
             .orderByChild('timestamp')
             .limitToLast(100)
             .once('value')
-            .then(snapshot => {
-                const transactions = [];
-                snapshot.forEach(child => {
-                    transactions.push(child.val());
-                });
-                
-                processTransactionsToCandles(transactions);
+            .then((snapshot) => {
+                const candles = processTradesToCandles(snapshot);
+                chartInstance.updateSeries([{
+                    data: candles
+                }]);
             });
     }
 
-    function processTransactionsToCandles(transactions) {
-        const candles = [];
-        let currentCandle = null;
-        const timeframeMs = getTimeframeMs(currentTimeframe);
+    // Process Trades to Candles
+    function processTradesToCandles(snapshot) {
+        const trades = [];
+        snapshot.forEach((child) => {
+            trades.push(child.val());
+        });
+
+        // Group trades by 15-minute intervals
+        const interval = 15 * 60 * 1000; // 15 minutes in milliseconds
+        const candles = {};
         
-        transactions.sort((a, b) => a.timestamp - b.timestamp);
-        
-        transactions.forEach(tx => {
-            const candleTime = Math.floor(tx.timestamp / timeframeMs) * timeframeMs;
+        trades.forEach((trade) => {
+            const timestamp = trade.timestamp;
+            const intervalStart = Math.floor(timestamp / interval) * interval;
             
-            if (!currentCandle || currentCandle.x !== candleTime) {
-                if (currentCandle) candles.push(currentCandle);
-                currentCandle = {
-                    x: candleTime,
-                    y: [tx.price, tx.price, tx.price, tx.price, tx.amount]
+            if (!candles[intervalStart]) {
+                candles[intervalStart] = {
+                    x: intervalStart,
+                    y: [trade.price, trade.price, trade.price, trade.price]
                 };
             } else {
-                currentCandle.y[1] = Math.max(currentCandle.y[1], tx.price);
-                currentCandle.y[2] = Math.min(currentCandle.y[2], tx.price);
-                currentCandle.y[3] = tx.price;
-                currentCandle.y[4] += tx.amount;
+                const candle = candles[intervalStart];
+                candle.y[1] = Math.max(candle.y[1], trade.price); // high
+                candle.y[2] = Math.min(candle.y[2], trade.price); // low
+                candle.y[3] = trade.price; // close
             }
         });
-        
-        if (currentCandle) candles.push(currentCandle);
-        
-        if (chartInstance) {
-            chartInstance.updateSeries([{
-                data: candles
-            }]);
-        }
+
+        return Object.values(candles);
     }
 
-    function addToCandleData(price, volume) {
-        const newCandle = {
-            x: Date.now(),
-            y: [price, price, price, price, volume]
-        };
-        
-        if (chartInstance) {
-            const currentData = chartInstance.w.globals.series[0].data;
-            const lastCandle = currentData[currentData.length - 1];
-            const timeframeMs = getTimeframeMs(currentTimeframe);
-            
-            const currentTime = Math.floor(Date.now() / timeframeMs) * timeframeMs;
-            
-            if (lastCandle && lastCandle.x === currentTime) {
-                lastCandle.y[1] = Math.max(lastCandle.y[1], price);
-                lastCandle.y[2] = Math.min(lastCandle.y[2], price);
-                lastCandle.y[3] = price;
-                lastCandle.y[4] += volume;
-            } else {
-                currentData.push(newCandle);
-            }
-            
-            chartInstance.updateSeries([{
-                data: currentData
-            }]);
-        }
+    // Helper Functions
+    function showAlert(title, text, icon) {
+        Swal.fire({
+            title: title,
+            text: text,
+            icon: icon,
+            toast: true,
+            position: 'top-end',
+            timer: 3000,
+            showConfirmButton: false,
+            background: '#1e293b',
+            color: '#fff'
+        });
     }
 
-    function getTimeframeMs(tf) {
-        switch(tf) {
-            case '1m': return 60000;
-            case '5m': return 300000;
-            case '15m': return 900000;
-            case '1h': return 3600000;
-            case '1d': return 86400000;
-            default: return 60000;
-        }
+    function goBack() {
+        window.history.back();
     }
 
-    // --- 9. نظام الألعاب ---
-    function showGamePackages(game) {
-        const packages = officialRates[game];
-        if (!packages) return;
-        
-        document.getElementById('game-packages-section').style.display = 'block';
-        document.getElementById('game-title').innerText = 
-            game === 'pubg' ? 'باقات PUBG Mobile' :
-            game === 'ff' ? 'باقات Free Fire' :
-            'باقات Minecraft';
-        
-        const packagesList = document.getElementById('packages-list');
-        packagesList.innerHTML = packages.map(pkg => `
-            <div class="game-package" onclick="buyGamePackage('${game}', ${pkg.sdm}, ${pkg.mrk}, '${pkg.name}')">
-                <div>
-                    <div style="font-weight:bold;">${pkg.name}</div>
-                    <div style="font-size:11px; color:var(--text-sec);">${pkg.mrk} MRK</div>
-                </div>
-                <div style="color:var(--accent); font-weight:bold;">${pkg.sdm} SDM</div>
-            </div>
-        `).join('');
-    }
-
-    async function buyGamePackage(game, sdmPrice, mrkAmount, packageName) {
-        if (isGuest) return checkGuestAccess();
-        
-        if (me.sdmBalance < sdmPrice) {
-            Swal.fire('رصيد غير كاف', `تحتاج ${sdmPrice} SDM لشراء هذه الباقة`, 'error');
+    function checkGuestAccess(view) {
+        if (me && me.p === 'guest') {
+            showAlert('عذراً', 'هذه الميزة تتطلب تسجيل دخول', 'warning');
             return;
         }
-        
-        Swal.fire({
-            title: 'تأكيد الشراء',
-            html: `
-                <p>هل تريد شراء <b>${packageName}</b>؟</p>
-                <p>السعر: ${sdmPrice} SDM</p>
-                <p>ستحصل على: ${mrkAmount} MRK</p>
-            `,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'شراء',
-            cancelButtonText: 'إلغاء'
-        }).then(async (result) => {
-            if (result.isConfirmed) {
-                try {
-                    // خصم السعر
-                    const newBalance = me.sdmBalance - sdmPrice;
-                    await db.ref(`users/${me.p}`).update({ 
-                        sdmBalance: newBalance 
-                    });
-                    
-                    // إضافة MRK للمستخدم
-                    await db.ref(`users/${me.p}`).update({
-                        mrkBalance: (me.mrkBalance || 0) + mrkAmount
-                    });
-                    
-                    me.sdmBalance = newBalance;
-                    me.mrkBalance = (me.mrkBalance || 0) + mrkAmount;
-                    
-                    // تسجيل العملية
-                    await db.ref('game_purchases').push({
-                        userId: me.p,
-                        userName: me.n,
-                        game: game,
-                        package: packageName,
-                        sdmPrice: sdmPrice,
-                        mrkReceived: mrkAmount,
-                        date: Date.now()
-                    });
-                    
-                    Swal.fire('تم الشراء', `تمت إضافة ${mrkAmount} MRK إلى رصيدك`, 'success');
-                    
-                } catch (error) {
-                    Swal.fire('خطأ', 'حدث خطأ أثناء الشراء: ' + error.message, 'error');
-                }
-            }
-        });
+        // Navigation logic here
     }
 
-    // --- 10. نظام الإشعارات ---
-    function loadNotifications() {
-        if (isGuest) return;
-        
-        db.ref('notifications/' + me.p)
-            .limitToLast(20)
-            .on('value', snapshot => {
-                notifications = [];
-                let unreadCount = 0;
-                
-                snapshot.forEach(child => {
-                    const notif = child.val();
-                    notifications.push(notif);
-                    if (!notif.read) unreadCount++;
-                });
-                
-                document.getElementById('notification-count').innerText = unreadCount;
-            });
+    function highlightTab(el) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        el.classList.add('active');
     }
 
-    function showNotifications() {
-        if (isGuest) return;
-        
-        let notifHTML = '<div style="max-height:400px; overflow-y:auto;">';
-        
-        if (notifications.length === 0) {
-            notifHTML += '<p style="text-align:center; color:var(--text-sec); padding:20px;">لا توجد إشعارات</p>';
-        } else {
-            notifications.reverse().forEach(notif => {
-                const time = new Date(notif.date).toLocaleString('ar-EG');
-                notifHTML += `
-                    <div style="padding:10px; border-bottom:1px solid var(--border); ${!notif.read ? 'background:rgba(59, 130, 246, 0.1);' : ''}">
-                        <div style="font-weight:bold; color:${notif.type === 'success' ? 'var(--green)' : notif.type === 'error' ? 'var(--red)' : 'var(--primary)'}">
-                            ${notif.title}
-                        </div>
-                        <div style="font-size:12px; color:var(--text-sec);">${notif.message}</div>
-                        <div style="font-size:10px; color:var(--text-sec); margin-top:5px;">${time}</div>
-                    </div>
-                `;
-            });
-        }
-        
-        notifHTML += '</div>';
-        
-        Swal.fire({
-            title: 'الإشعارات',
-            html: notifHTML,
-            width: 400,
-            showConfirmButton: false,
-            showCloseButton: true
-        });
-        
-        // تحديث الإشعارات كمقروءة
-        db.ref('notifications/' + me.p).orderByChild('read').equalTo(false).once('value', snapshot => {
-            const updates = {};
-            snapshot.forEach(child => {
-                updates[child.key + '/read'] = true;
-            });
-            db.ref('notifications/' + me.p).update(updates);
-        });
+    function nav(view) {
+        // Navigation logic here
     }
 
-    // --- 11. نظام الدردشة ---
-    function startChat(userId) {
-        if (isGuest) return checkGuestAccess();
-        
-        currentChat = userId;
-        const chatContainer = document.getElementById('chat-container');
-        chatContainer.style.display = 'flex';
-        chatContainer.style.animation = 'slideIn 0.3s ease';
-        
-        db.ref('users/' + userId).once('value', snap => {
-            const user = snap.val();
-            document.getElementById('chat-title').innerText = user.n;
-        });
-        
-        loadChatMessages(userId);
-    }
-
-    function loadChatMessages(userId) {
-        const chatId = [me.p, userId].sort().join('_');
-        const messagesRef = db.ref('chats/' + chatId);
-        
-        messagesRef.limitToLast(50).on('value', snapshot => {
-            const messagesDiv = document.getElementById('chat-messages');
-            messagesDiv.innerHTML = '';
-            
-            const messages = [];
-            snapshot.forEach(child => {
-                messages.push(child.val());
-            });
-            
-            messages.sort((a, b) => a.timestamp - b.timestamp);
-            
-            messages.forEach(msg => {
-                const messageClass = msg.senderId === me.p ? 'sent' : 'received';
-                const time = new Date(msg.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-                
-                messagesDiv.innerHTML += `
-                    <div class="message ${messageClass}">
-                        <div>${msg.text}</div>
-                        <div style="font-size:10px; opacity:0.7; text-align:${messageClass === 'sent' ? 'left' : 'right'}; margin-top:5px;">
-                            ${time}
-                        </div>
-                    </div>
-                `;
-            });
-            
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        });
-    }
-
-    function sendMessage() {
-        if (!currentChat) return;
-        
-        const input = document.getElementById('chat-input');
-        const text = input.value.trim();
-        
-        if (!text) return;
-        
-        const chatId = [me.p, currentChat].sort().join('_');
-        const message = {
-            senderId: me.p,
-            senderName: me.n,
-            receiverId: currentChat,
-            text: text,
-            timestamp: Date.now(),
-            read: false
-        };
-        
-        db.ref('chats/' + chatId).push(message);
-        
-        // إرسال إشعار
-        db.ref('notifications/' + currentChat).push({
-            title: 'رسالة جديدة',
-            message: `${me.n}: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}`,
-            type: 'message',
-            date: Date.now(),
-            read: false,
-            chatId: chatId
-        });
-        
-        input.value = '';
-        input.focus();
-    }
-
-    function handleChatInput(event) {
-        if (event.key === 'Enter') {
-            sendMessage();
-        }
-    }
-
-    function closeChat() {
-        document.getElementById('chat-container').style.display = 'none';
-        currentChat = null;
-    }
-
-    // --- 12. وظائف المساعدة ---
-    function startSlider() { 
-        const el = document.getElementById('slider-img'); 
-        let idx = 0;
-        sliderInterval = setInterval(() => { 
-            idx = (idx + 1) % sliderImages.length; 
-            if(el) el.src = sliderImages[idx]; 
-        }, 4000); 
-    }
-
-    function showTransfer() {
-        Swal.fire({
-            title: 'تحويل رصيد 💸',
-            html: `
-                <input id="tr-id" placeholder="ID المستلم" class="swal2-input" oninput="checkTransferUser(this.value)">
-                <div id="tr-name-check" style="height:20px; font-size:12px; color:var(--green); margin-bottom:10px;"></div>
-                <input id="tr-amount" type="number" placeholder="المبلغ (SDM)" class="swal2-input">
-                <textarea id="tr-note" placeholder="ملاحظة (اختياري)" class="swal2-textarea" rows="2"></textarea>
-            `,
-            confirmButtonText: 'إرسال',
-            showCancelButton: true,
-            preConfirm: () => {
-                const id = document.getElementById('tr-id').value;
-                const am = document.getElementById('tr-amount').value;
-                if(!id || !am) Swal.showValidationMessage('البيانات ناقصة');
-                return { id: id, amount: am, note: document.getElementById('tr-note').value };
-            }
-        }).then(async res => {
-            if(res.isConfirmed) {
-                const availableBalance = me.sdmBalance - (me.frozenSDM || 0);
-                if(availableBalance < res.value.amount) {
-                    return Swal.fire('فشل', `رصيدك غير كاف. المتاح: ${availableBalance.toFixed(2)} SDM`, 'error');
-                }
-                
-                await db.ref('transfers').push({
-                    from: me.p,
-                    fromName: me.n,
-                    to: res.value.id,
-                    amount: Number(res.value.amount),
-                    note: res.value.note,
-                    date: Date.now(),
-                    status: 'pending'
-                });
-                
-                Swal.fire('تم', 'تم إرسال طلب التحويل للمعالجة', 'success');
-            }
-        });
-    }
-
-    function checkTransferUser(id) {
-        const display = document.getElementById('tr-name-check');
-        if(id.length < 5) { display.innerText = ''; return; }
-        db.ref('users/' + id).once('value', s => {
-            if(s.exists()) display.innerText = `✅ المستلم: ${s.val().n}`;
-            else display.innerText = `❌ مستخدم غير موجود`;
-        });
-    }
-
-    function encode(i, t) {
-        if(!i.files[0]) return;
-        const reader = new FileReader();
-        reader.readAsDataURL(i.files[0]);
-        reader.onload = (e) => {
-            const img = new Image();
-            img.src = e.target.result;
-            img.onload = () => {
-                const cvs = document.createElement('canvas');
-                const scale = 800 / img.width;
-                cvs.width = 800;
-                cvs.height = img.height * scale;
-                const ctx = cvs.getContext('2d');
-                ctx.drawImage(img, 0, 0, cvs.width, cvs.height);
-                const res = cvs.toDataURL('image/jpeg', 0.7);
-                if(t === 'post') tempImg = res;
-                if(t === 'buy') tempBuyImg = res;
-                Swal.fire({
-                    toast: true,
-                    position: 'top',
-                    icon: 'success',
-                    title: 'تم رفع الصورة',
-                    timer: 2000,
-                    showConfirmButton: false
-                });
-            }
-        }
-    }
-
-    function publish(path) {
-        if(isGuest) return checkGuestAccess();
-        const t = document.getElementById('pt').value;
-        const pr = document.getElementById('pp').value;
-        const d = document.getElementById('pd').value;
-        if(!t || !pr || !tempImg) return Swal.fire('تنبيه', 'أكمل البيانات والصورة', 'warning');
-        
-        db.ref(path).push({ 
-            t, pr, d, img: tempImg, sub: curS,
-            uP: me.p, uN: me.n, uPic: me.pic||userPic, uLastSeen: Date.now(),
-            date: Date.now(), status: 'active' 
-        }).then(() => { 
-            Swal.fire('تم النشر', '', 'success'); 
-            tempImg = ""; 
-            render('feed', curS); 
-        });
-    }
-
-    function requestCoins() { 
-        const form = document.getElementById('buy-coins-form');
-        form.style.display = form.style.display === 'none' ? 'block' : 'none';
-    }
-    
-    function submitCoinRequest() { 
-        const qty = document.getElementById('buy-qty').value;
-        if(!qty || !tempBuyImg) return Swal.fire('تنبيه', 'أدخل الكمية والصورة', 'warning');
-        db.ref('coin_requests').push({ 
-            uP: me.p, 
-            uN: me.n, 
-            qty, 
-            img: tempBuyImg, 
-            date: Date.now(), 
-            status: 'pending' 
-        });
-        Swal.fire('تم', 'تم إرسال طلب الإيداع', 'success');
-        document.getElementById('buy-coins-form').style.display = 'none';
-    }
-
-    function loadTransactions() {
-        if (isGuest) return;
-        
-        db.ref('user_transactions/' + me.p)
-            .limitToLast(20)
-            .on('value', snapshot => {
-                const element = document.getElementById('transactions-history');
-                if (!element) return;
-                
-                element.innerHTML = '';
-                
-                const transactions = [];
-                snapshot.forEach(child => {
-                    transactions.push(child.val());
-                });
-                
-                transactions.sort((a, b) => b.date - a.date);
-                
-                transactions.forEach(tx => {
-                    const date = new Date(tx.date).toLocaleString('ar-EG');
-                    const isBuy = tx.type === 'buy';
-                    
-                    element.innerHTML += `
-                        <div style="padding:12px; border-bottom:1px solid var(--border);">
-                            <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <div>
-                                    <div style="color:${isBuy ? 'var(--buy-green)' : 'var(--sell-red)'}; font-weight:bold;">
-                                        ${isBuy ? 'شراء' : 'بيع'} MRK
-                                    </div>
-                                    <div style="font-size:11px; color:var(--text-sec);">${date}</div>
-                                </div>
-                                <div style="text-align:left;">
-                                    <div style="font-weight:bold;">${tx.amount.toFixed(4)} MRK</div>
-                                    <div style="font-size:11px; color:var(--text-sec);">
-                                        السعر: ${tx.price} SDM
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                });
-            });
-    }
-
-    function goBack() { 
-        if(hStack.length > 1) { 
-            hStack.pop(); 
-            const prevPage = hStack[hStack.length-1];
-            nav(prevPage); 
-        } 
-    }
-    
-    function escapeHtml(text) { 
-        return text ? String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : ''; 
-    }
-    
-    function filterContent(q) { 
-        q=q.toLowerCase(); 
-        document.querySelectorAll('.card, .post').forEach(el => {
-            el.style.display = el.innerText.toLowerCase().includes(q) ? 'block' : 'none';
-        }); 
-    }
-
-    function copyToClipboard(text) {
-        navigator.clipboard.writeText(text).then(() => {
-            Swal.fire({
-                toast: true,
-                position: 'top-end',
-                icon: 'success',
-                title: 'تم نسخ الـ ID',
-                timer: 2000,
-                showConfirmButton: false
-            });
-        });
-    }
-
-    // --- 13. وظائف إدارية ---
-    function adminActions(userId) {
-        if (me.role !== 'admin') return;
-        
-        Swal.fire({
-            title: 'إجراءات المدير',
-            html: `
-                <div style="text-align:right;">
-                    <button onclick="adminAddBalance('${userId}')" style="width:100%; padding:10px; margin:5px 0; background:var(--primary); color:white; border:none; border-radius:8px; cursor:pointer;">
-                        إضافة رصيد
-                    </button>
-                    <button onclick="adminChangeVip('${userId}')" style="width:100%; padding:10px; margin:5px 0; background:var(--accent); color:black; border:none; border-radius:8px; cursor:pointer;">
-                        تغيير VIP
-                    </button>
-                    <button onclick="adminViewLogs('${userId}')" style="width:100%; padding:10px; margin:5px 0; background:var(--green); color:white; border:none; border-radius:8px; cursor:pointer;">
-                        عرض السجلات
-                    </button>
-                    <button onclick="adminResetPassword('${userId}')" style="width:100%; padding:10px; margin:5px 0; background:var(--red); color:white; border:none; border-radius:8px; cursor:pointer;">
-                        إعادة تعيين كلمة السر
-                    </button>
-                </div>
-            `,
-            showConfirmButton: false,
-            showCloseButton: true
-        });
-    }
-
-    function adminAddBalance(userId) {
-        Swal.fire({
-            title: 'إضافة رصيد',
-            html: `
-                <input id="admin-balance-type" class="swal2-select">
-                <input id="admin-balance-amount" type="number" placeholder="المبلغ" class="swal2-input">
-            `,
-            showCancelButton: true,
-            confirmButtonText: 'إضافة',
-            preConfirm: () => {
-                const amount = document.getElementById('admin-balance-amount').value;
-                const type = document.getElementById('admin-balance-type').value;
-                if (!amount || !type) {
-                    Swal.showValidationMessage('أدخل جميع البيانات');
-                    return false;
-                }
-                return { amount: amount, type: type };
-            }
-        }).then(async (result) => {
-            if (result.isConfirmed) {
-                const update = {};
-                if (result.value.type === 'sdm') {
-                    update.sdmBalance = firebase.database.ServerValue.increment(parseFloat(result.value.amount));
-                } else {
-                    update.mrkBalance = firebase.database.ServerValue.increment(parseFloat(result.value.amount));
-                }
-                
-                await db.ref('users/' + userId).update(update);
-                Swal.fire('تم', 'تمت إضافة الرصيد بنجاح', 'success');
-            }
-        });
-    }
-
-    // --- 14. التهيئة الأولية ---
-    document.addEventListener('DOMContentLoaded', function() {
-        restoreAppState();
-        
-        const loadingDiv = document.createElement('div');
-        loadingDiv.id = 'loading-screen';
-        loadingDiv.className = 'loading hidden';
-        loadingDiv.innerHTML = '<div class="loader"></div><div style="margin-top:20px; color:var(--text-sec);">جاري تحميل التطبيق...</div>';
-        document.body.appendChild(loadingDiv);
-        
-        const chatDiv = document.createElement('div');
-        chatDiv.id = 'chat-container';
-        chatDiv.className = 'chat-container';
-        chatDiv.innerHTML = `
-            <div class="chat-header">
-                <div id="chat-title">الدردشة</div>
-                <div style="display:flex; gap:10px;">
-                    <i class="fas fa-phone" style="cursor:pointer; color:var(--primary);" onclick="startVoiceCall()"></i>
-                    <i class="fas fa-video" style="cursor:pointer; color:var(--primary);" onclick="startVideoCall()"></i>
-                    <i class="fas fa-times" style="cursor:pointer; color:var(--red);" onclick="closeChat()"></i>
-                </div>
-            </div>
-            <div id="chat-messages" class="chat-messages"></div>
-            <div class="chat-input-area">
-                <input type="text" id="chat-input" placeholder="اكتب رسالتك..." onkeypress="handleChatInput(event)">
-                <button onclick="sendMessage()" style="background:var(--primary); color:white; border:none; padding:0 20px; border-radius:10px; cursor:pointer;">
-                    <i class="fas fa-paper-plane"></i>
-                </button>
-            </div>
-        `;
-        document.body.appendChild(chatDiv);
-    });
-
+    // Initialize the application
+    document.addEventListener('DOMContentLoaded', initializeTrading);
 </script>
 </body>
 </html>
