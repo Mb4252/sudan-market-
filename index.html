@@ -81,177 +81,62 @@
             transition: 0.3s; font-family: 'Tajawal';
         }
         .search-container i { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); color: var(--accent); }
-div.innerHTML// --- دوال التداول الجديدة ---
-    let tradeMode = 'buy'; 
-    let lastPrice = 0.05;
 
-    function initNewTradeLogic() {
-        setTradeMode('buy');
-        initMarketData();
-        initMyOrders();
-        
-        // تفعيل الحساب التلقائي
-        document.getElementById('inp-price').addEventListener('input', calculateTotal);
-        document.getElementById('inp-amount').addEventListener('input', calculateTotal);
-    }
-
-    function setTradeMode(mode) {
-        tradeMode = mode;
-        // تحديث الألوان
-        document.getElementById('tab-buy').style.background = mode==='buy' ? 'var(--green)' : 'rgba(0,0,0,0.3)';
-        document.getElementById('tab-buy').style.color = mode==='buy' ? 'white' : '#848e9c';
-        
-        document.getElementById('tab-sell').style.background = mode==='sell' ? 'var(--red)' : 'rgba(0,0,0,0.3)';
-        document.getElementById('tab-sell').style.color = mode==='sell' ? 'white' : '#848e9c';
-        
-        // تحديث الزر
-        const btn = document.getElementById('btn-trade');
-        btn.innerText = mode==='buy' ? 'شراء MRK' : 'بيع MRK';
-        btn.style.background = mode==='buy' ? 'var(--green)' : 'var(--red)';
-        
-        updateBalanceDisplay();
-    }
-
-    function updateBalanceDisplay() {
-        if(!me) return;
-        const bal = tradeMode === 'buy' ? me.sdmBalance : me.mrkBalance;
-        const curr = tradeMode === 'buy' ? 'SDM' : 'MRK';
-        document.getElementById('wallet-balance').innerText = (bal || 0).toFixed(4);
-        document.getElementById('wallet-curr').innerText = curr;
-        calculateTotal();
-    }
-
-    function calculateTotal() {
-        const p = parseFloat(document.getElementById('inp-price').value) || 0;
-        const a = parseFloat(document.getElementById('inp-amount').value) || 0;
-        document.getElementById('total-val').innerText = (p * a).toFixed(4);
-    }
-
-    function setPercent(pct) {
-        if(!me) return;
-        const price = parseFloat(document.getElementById('inp-price').value) || lastPrice;
-        if(price <= 0) return;
-
-        let amount = 0;
-        if(tradeMode === 'buy') {
-            const maxSDM = (me.sdmBalance || 0) * pct;
-            amount = maxSDM / price;
-        } else {
-            amount = (me.mrkBalance || 0) * pct;
+        /* Wallet & Trading */
+        .wallet-overview {
+            background: linear-gradient(135deg, #0f172a, #1e293b);
+            border: 1px solid var(--border); padding: 25px; border-radius: 20px;
+            text-align: center; margin-bottom: 20px; position: relative; overflow: hidden;
         }
-        document.getElementById('inp-amount').value = amount.toFixed(4);
-        calculateTotal();
-    }
+        .wallet-overview::before {
+            content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+            background: radial-gradient(circle, rgba(59,130,246,0.1), transparent); pointer-events: none;
+        }
 
-    function fillPrice(p) {
-        document.getElementById('inp-price').value = p;
-        calculateTotal();
-    }
+        .ticker-bar {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            background: rgba(0,0,0,0.3); padding: 10px;
+            border-bottom: 1px solid var(--border); margin-bottom: 10px; border-radius: 10px;
+        }
+        .ticker-item { text-align: center; border-left: 1px solid var(--border); }
+        .ticker-item:last-child { border-left: none; }
+        .t-lbl { font-size: 10px; color: var(--text-sec); display: block; }
+        .t-val { font-size: 13px; font-weight: bold; }
 
-    function placeOrder() {
-        if(!me) return;
-        const price = parseFloat(document.getElementById('inp-price').value);
-        const amount = parseFloat(document.getElementById('inp-amount').value);
+        .chart-box {
+            height: 300px; background: rgba(0,0,0,0.2);
+            border-radius: 15px; margin-bottom: 10px; border: 1px solid var(--border); overflow: hidden;
+        }
 
-        if (!price || !amount || price <= 0 || amount <= 0) return Swal.fire('تنبيه', 'أدخل بيانات صحيحة', 'warning');
+        .order-book-container {
+            display: flex; gap: 5px; margin: 10px 0;
+            background: rgba(0,0,0,0.3); padding: 5px; border-radius: 10px;
+            height: 280px; font-size: 11px;
+        }
+        .ob-side { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .ob-header { text-align: center; color: var(--text-sec); border-bottom: 1px solid var(--border); margin-bottom: 5px; font-weight: bold; }
+        .ob-list { overflow-y: auto; flex: 1; }
+        .ob-row { display: flex; justify-content: space-between; padding: 2px 4px; position: relative; cursor: pointer; margin-bottom: 1px; }
+        .ob-row:hover { background: rgba(255,255,255,0.05); }
+        .ob-bg { position: absolute; top:0; right:0; height:100%; opacity: 0.15; z-index: 0; }
+        .ob-txt { position: relative; z-index: 1; }
 
-        // إرسال الطلب للسيرفر (البوت سيعالجه)
-        const btn = document.getElementById('btn-trade');
-        btn.disabled = true;
-        btn.innerText = 'جاري الإرسال...';
+        .trade-controls {
+            background: var(--bg-card); padding: 15px;
+            border-radius: 15px; border: 1px solid var(--border); margin-top: 10px;
+        }
+        .trade-tabs { display: flex; background: rgba(0,0,0,0.3); border-radius: 10px; padding: 3px; margin-bottom: 15px; }
+        .t-btn { flex: 1; text-align: center; padding: 10px; border-radius: 8px; cursor: pointer; transition: 0.3s; font-weight: bold; }
+        .t-btn.buy.active { background: var(--green); color: black; }
+        .t-btn.sell.active { background: var(--red); color: white; }
+        
+        .trade-input-group { margin-bottom: 10px; }
+        .trade-input-group label { display: block; font-size: 11px; color: var(--text-sec); margin-bottom: 4px; }
+        .inp-field { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; color: white; font-family: 'Tajawal'; }
 
-        db.ref(`market/orders/${tradeMode}`).push({
-            uP: me.p,
-            uN: me.n || 'User',
-            price: price,
-            amount: amount,
-            status: 'pending',
-            date: firebase.database.ServerValue.TIMESTAMP
-        }).then(() => {
-            Swal.fire({ icon: 'success', title: 'تم الطلب', timer: 1000, showConfirmButton: false });
-            document.getElementById('inp-amount').value = '';
-            btn.disabled = false;
-            setTradeMode(tradeMode);
-        }).catch(err => {
-            btn.disabled = false;
-            setTradeMode(tradeMode);
-            Swal.fire('خطأ', err.message, 'error');
-        });
-    }
+        .pct-bar { display: flex; gap: 5px; margin-bottom: 15px; }
+        .pct-btn { flex: 1; background: rgba(255,255,255,0.1); padding: 5px; text-align: center; border-radius: 5px; font-size: 10px; cursor: pointer; border: 1px solid var(--border); }
 
-    function initMarketData() {
-        // السعر
-        db.ref('market/stats/lastPrice').on('value', s => {
-            lastPrice = s.val() || 0.05;
-            const el = document.getElementById('market-price');
-            if(el) {
-                el.innerText = lastPrice.toFixed(4);
-                document.getElementById('mid-price').innerText = lastPrice.toFixed(4);
-                if(!document.getElementById('inp-price').value) document.getElementById('inp-price').value = lastPrice.toFixed(4);
-            }
-        });
-
-        // طلبات البيع
-        db.ref('market/orders/sell').orderByChild('price').limitToFirst(10).on('value', snap => {
-            const div = document.getElementById('ob-sells');
-            if(!div) return;
-            div.innerHTML = '';
-            const orders = [];
-            snap.forEach(c => orders.push(c.val()));
-            orders.sort((a,b) => b.price - a.price).forEach(o => {
-                if(o.status !== 'pending') return;
-                div.innerHTML += `<div class="ob-row" onclick="fillPrice(${o.price})" style="display:flex; justify-content:space-between; padding:3px 0; font-size:12px; cursor:pointer; color:var(--red)">
-                    <span>${o.price.toFixed(4)}</span> <span style="color:#eaecef">${o.amount.toFixed(2)}</span>
-                </div>`;
-            });
-        });
-
-        // طلبات الشراء
-        db.ref('market/orders/buy').orderByChild('price').limitToLast(10).on('value', snap => {
-            const div = document.getElementById('ob-buys');
-            if(!div) return;
-            div.innerHTML = '';
-            const orders = [];
-            snap.forEach(c => orders.push(c.val()));
-            orders.sort((a,b) => b.price - a.price).forEach(o => {
-                if(o.status !== 'pending') return;
-                div.innerHTML += `<div class="ob-row" onclick="fillPrice(${o.price})" style="display:flex; justify-content:space-between; padding:3px 0; font-size:12px; cursor:pointer; color:var(--green)">
-                    <span>${o.price.toFixed(4)}</span> <span style="color:#eaecef">${o.amount.toFixed(2)}</span>
-                </div>`;
-            });
-        });
-    }
-
-    function initMyOrders() {
-        const list = document.getElementById('my-orders-list');
-        list.innerHTML = '';
-        ['buy', 'sell'].forEach(type => {
-            db.ref(`market/orders/${type}`).orderByChild('uP').equalTo(me.p).on('child_added', snap => {
-                const o = snap.val();
-                if(o.status !== 'pending') return;
-                const color = type==='buy'?'var(--green)':'var(--red)';
-                const html = `<div id="ord-${snap.key}" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; margin-bottom:5px; border-right:3px solid ${color}">
-                    <div style="font-size:12px;">
-                        <span style="font-weight:bold; color:${color}">${type==='buy'?'شراء':'بيع'}</span> 
-                        ${o.amount.toFixed(2)} بسعر ${o.price.toFixed(4)}
-                    </div>
-                    <div onclick="cancelMyOrder('${type}','${snap.key}')" style="color:var(--red); cursor:pointer;"><i class="fas fa-times"></i></div>
-                </div>`;
-                list.insertAdjacentHTML('afterbegin', html);
-            });
-            // حذف عند الإلغاء
-            db.ref(`market/orders/${type}`).on('child_removed', s => {
-                const el = document.getElementById(`ord-${s.key}`);
-                if(el) el.remove();
-            });
-        });
-    }
-
-    function cancelMyOrder(type, key) {
-        Swal.fire({title:'إلغاء؟', showCancelButton:true, confirmButtonText:'نعم'}).then(r=>{
-            if(r.isConfirmed) db.ref(`market/orders/${type}/${key}`).remove();
-        });
-    }
         /* General UI Elements */
         .btn-main { background: linear-gradient(90deg, var(--primary), #2563eb); color: white; border: none; padding: 15px; width: 100%; border-radius: 12px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3); transition: 0.2s; }
         .btn-guest { background: transparent; border: 1px solid var(--text-sec); color: var(--text-sec); width: 100%; padding: 12px; border-radius: 10px; margin-top: 10px; cursor: pointer; }
@@ -917,177 +802,179 @@ div.innerHTML// --- دوال التداول الجديدة ---
                 </div>`;
         }
     }
-    // --- دوال التداول الجديدة ---
-    let tradeMode = 'buy'; 
-    let lastPrice = 0.05;
 
-    function initNewTradeLogic() {
-        setTradeMode('buy');
-        initMarketData();
-        initMyOrders();
-        
-        // تفعيل الحساب التلقائي
-        document.getElementById('inp-price').addEventListener('input', calculateTotal);
-        document.getElementById('inp-amount').addEventListener('input', calculateTotal);
-    }
-
+    // --- Trading Logic ---
     function setTradeMode(mode) {
-        tradeMode = mode;
-        // تحديث الألوان
-        document.getElementById('tab-buy').style.background = mode==='buy' ? 'var(--green)' : 'rgba(0,0,0,0.3)';
-        document.getElementById('tab-buy').style.color = mode==='buy' ? 'white' : '#848e9c';
-        
-        document.getElementById('tab-sell').style.background = mode==='sell' ? 'var(--red)' : 'rgba(0,0,0,0.3)';
-        document.getElementById('tab-sell').style.color = mode==='sell' ? 'white' : '#848e9c';
-        
-        // تحديث الزر
-        const btn = document.getElementById('btn-trade');
-        btn.innerText = mode==='buy' ? 'شراء MRK' : 'بيع MRK';
-        btn.style.background = mode==='buy' ? 'var(--green)' : 'var(--red)';
-        
-        updateBalanceDisplay();
-    }
-
-    function updateBalanceDisplay() {
-        if(!me) return;
-        const bal = tradeMode === 'buy' ? me.sdmBalance : me.mrkBalance;
-        const curr = tradeMode === 'buy' ? 'SDM' : 'MRK';
-        document.getElementById('wallet-balance').innerText = (bal || 0).toFixed(4);
-        document.getElementById('wallet-curr').innerText = curr;
-        calculateTotal();
-    }
-
-    function calculateTotal() {
-        const p = parseFloat(document.getElementById('inp-price').value) || 0;
-        const a = parseFloat(document.getElementById('inp-amount').value) || 0;
-        document.getElementById('total-val').innerText = (p * a).toFixed(4);
-    }
-
-    function setPercent(pct) {
-        if(!me) return;
-        const price = parseFloat(document.getElementById('inp-price').value) || lastPrice;
-        if(price <= 0) return;
-
-        let amount = 0;
-        if(tradeMode === 'buy') {
-            const maxSDM = (me.sdmBalance || 0) * pct;
-            amount = maxSDM / price;
-        } else {
-            amount = (me.mrkBalance || 0) * pct;
+        currentTradeMode = mode;
+        const btn = document.getElementById('execute-trade-btn');
+        document.getElementById('tab-buy').className = `t-btn buy ${mode==='buy'?'active':''}`;
+        document.getElementById('tab-sell').className = `t-btn sell ${mode==='sell'?'active':''}`;
+        if (mode === 'buy') { 
+            btn.className = 'btn-main'; 
+            btn.style.background = 'linear-gradient(90deg, var(--green), #059669)'; 
+            btn.innerText = 'تنفيذ الشراء 🚀'; 
+            if(document.getElementById('trade-balance-disp')) 
+                document.getElementById('trade-balance-disp').innerText = `${(me.sdmBalance || 0).toFixed(2)} SDM`; 
+        } else { 
+            btn.className = 'btn-main'; 
+            btn.style.background = 'linear-gradient(90deg, var(--red), #b91c1c)'; 
+            btn.innerText = 'تنفيذ البيع 📉'; 
+            if(document.getElementById('trade-balance-disp')) 
+                document.getElementById('trade-balance-disp').innerText = `${(me.mrkBalance||0).toFixed(4)} MRK`; 
         }
-        document.getElementById('inp-amount').value = amount.toFixed(4);
-        calculateTotal();
+        updateTradeTotal();
+    }
+    
+    function updateTradeTotal() { 
+        const p = parseFloat(document.getElementById('trade-price').value) || 0; 
+        const a = parseFloat(document.getElementById('trade-amount').value) || 0; 
+        document.getElementById('trade-total-disp').innerText = (p * a).toFixed(2); 
+    }
+    
+    function calcPct(pct) { 
+        const price = parseFloat(document.getElementById('trade-price').value); 
+        if(!price && currentTradeMode==='buy') 
+            return Swal.fire('تنبيه', 'أدخل السعر أولاً', 'info'); 
+        if(currentTradeMode==='buy') 
+            document.getElementById('trade-amount').value = (((me.sdmBalance||0) * pct) / price).toFixed(4); 
+        else 
+            document.getElementById('trade-amount').value = ((me.mrkBalance||0) * pct).toFixed(4); 
+        updateTradeTotal(); 
+    }
+    
+    async function executeTrade() { 
+        if (Date.now() - lastActionTime < 2000) 
+            return Swal.fire('تنبيه', 'انتظر قليلاً', 'warning'); 
+        lastActionTime = Date.now(); 
+        const price = parseFloat(document.getElementById('trade-price').value); 
+        const amount = parseFloat(document.getElementById('trade-amount').value); 
+        const total = price * amount; 
+        if(!price || !amount || price<=0 || amount<=0) 
+            return Swal.fire('خطأ', 'البيانات غير صحيحة', 'error'); 
+        if(currentTradeMode === 'buy' && (me.sdmBalance||0) < total) 
+            return Swal.fire('فشل', 'رصيد SDM غير كاف', 'error'); 
+        if(currentTradeMode === 'sell' && (me.mrkBalance||0) < amount) 
+            return Swal.fire('فشل', 'رصيد MRK غير كاف', 'error'); 
+        const btn = document.getElementById('execute-trade-btn'); 
+        btn.disabled = true; 
+        btn.innerText = 'جاري الإرسال للسيرفر...'; 
+        try { 
+            const path = currentTradeMode === 'buy' ? 'market/orders/buy' : 'market/orders/sell'; 
+            await db.ref(path).push({ uP: me.p, price, amount, date: Date.now(), status: 'pending' }); 
+            document.getElementById('trade-amount').value = ''; 
+            Swal.fire({icon:'success', title:'تم إرسال الطلب', text:'النظام يعالج طلبك الآن...', toast:true, position:'top-end', timer:3000, showConfirmButton:false}); 
+        } catch(e) { 
+            Swal.fire('خطأ', 'فشل الاتصال', 'error'); 
+        } finally { 
+            btn.disabled = false; 
+            setTradeMode(currentTradeMode); 
+        } 
+    }
+    
+    function listenToOrderBook() { 
+        db.ref('market/orders/sell').orderByChild('price').limitToFirst(20).on('value', s => renderOB(s, 'ob-asks', true)); 
+        db.ref('market/orders/buy').orderByChild('price').limitToLast(20).on('value', s => renderOB(s, 'ob-bids', false)); 
+    }
+    
+    function renderOB(snap, id, isAsk) { 
+        const el = document.getElementById(id); 
+        if(!el) return; 
+        el.innerHTML = ""; 
+        let arr = []; 
+        snap.forEach(c => arr.push(c.val())); 
+        if(isAsk) arr.reverse(); 
+        else arr.reverse(); 
+        arr.forEach(o => { 
+            const pct = Math.min((o.amount/10000)*100, 100); 
+            const color = isAsk ? 'var(--red)' : 'var(--green)'; 
+            el.innerHTML += `<div class="ob-row" onclick="fillOrderInput(${o.price}, ${o.amount}, '${isAsk?'buy':'sell'}')">
+                <div class="ob-bg" style="background:${color}; width:${pct}%"></div>
+                <span class="ob-txt" style="color:${color}">${o.price.toFixed(4)}</span>
+                <span class="ob-txt">${o.amount.toFixed(2)}</span>
+            </div>`; 
+        }); 
+    }
+    
+    function fillOrderInput(p, a, type) { 
+        setTradeMode(type); 
+        document.getElementById('trade-price').value = p; 
+        document.getElementById('trade-amount').value = a;
+        updateTradeTotal(); 
+    }
+    
+    function listenToMarketStats() { 
+        db.ref('market/trades').limitToLast(500).on('value', snap => { 
+            let trades = []; 
+            let vol = 0, h=0, l=999999; 
+            const oneDay = 24*60*60*1000; 
+            const now = Date.now(); 
+            snap.forEach(c => { 
+                const t = c.val(); 
+                trades.push([t.date, t.price]); 
+                if(now - t.date < oneDay) { 
+                    vol += (t.price * t.amount); 
+                    if(t.price > h) h=t.price; 
+                    if(t.price < l) l=t.price; 
+                } 
+            }); 
+            if(document.getElementById('disp-vol')) { 
+                document.getElementById('disp-vol').innerText = vol.toLocaleString(undefined, {maximumFractionDigits:0}) + ' SDM'; 
+                document.getElementById('disp-hl').innerText = `${h.toFixed(4)} / ${l===999999?'-':l.toFixed(4)}`; 
+            } 
+            updateChart(trades); 
+        }); 
+    }
+    
+    function initChart() { 
+        var options = { 
+            series: [], 
+            chart: { 
+                type: 'candlestick', 
+                height: 300, 
+                background: 'transparent', 
+                toolbar:{show:false}, 
+                animations:{enabled:false} 
+            }, 
+            theme: { mode: 'dark' }, 
+            xaxis: { 
+                type: 'datetime', 
+                axisBorder:{show:false}, 
+                axisTicks:{show:false} 
+            }, 
+            yaxis: { 
+                opposite: true, 
+                tooltip:{enabled:true} 
+            }, 
+            grid: { borderColor: '#334155' }, 
+            plotOptions: { 
+                candlestick: { 
+                    colors: { upward: '#10b981', downward: '#ef4444' } 
+                } 
+            } 
+        }; 
+        chartInstance = new ApexCharts(document.querySelector("#chart-area"), options); 
+        chartInstance.render(); 
+    }
+    
+    function updateChart(trades) { 
+        if(!chartInstance || trades.length===0) return; 
+        const interval = 15*60*1000; 
+        let candles = {}; 
+        trades.forEach(t => { 
+            const key = Math.floor(t[0]/interval)*interval; 
+            if(!candles[key]) 
+                candles[key] = {x:key, o:t[1], h:t[1], l:t[1], c:t[1]}; 
+            else { 
+                const c = candles[key]; 
+                c.h = Math.max(c.h, t[1]); 
+                c.l = Math.min(c.l, t[1]); 
+                c.c = t[1]; 
+            } 
+        }); 
+        const data = Object.values(candles).map(c => ({x:c.x, y:[c.o, c.h, c.l, c.c]})); 
+        chartInstance.updateSeries([{data:data}]); 
     }
 
-    function fillPrice(p) {
-        document.getElementById('inp-price').value = p;
-        calculateTotal();
-    }
-
-    function placeOrder() {
-        if(!me) return;
-        const price = parseFloat(document.getElementById('inp-price').value);
-        const amount = parseFloat(document.getElementById('inp-amount').value);
-
-        if (!price || !amount || price <= 0 || amount <= 0) return Swal.fire('تنبيه', 'أدخل بيانات صحيحة', 'warning');
-
-        // إرسال الطلب للسيرفر (البوت سيعالجه)
-        const btn = document.getElementById('btn-trade');
-        btn.disabled = true;
-        btn.innerText = 'جاري الإرسال...';
-
-        db.ref(`market/orders/${tradeMode}`).push({
-            uP: me.p,
-            uN: me.n || 'User',
-            price: price,
-            amount: amount,
-            status: 'pending',
-            date: firebase.database.ServerValue.TIMESTAMP
-        }).then(() => {
-            Swal.fire({ icon: 'success', title: 'تم الطلب', timer: 1000, showConfirmButton: false });
-            document.getElementById('inp-amount').value = '';
-            btn.disabled = false;
-            setTradeMode(tradeMode);
-        }).catch(err => {
-            btn.disabled = false;
-            setTradeMode(tradeMode);
-            Swal.fire('خطأ', err.message, 'error');
-        });
-    }
-
-    function initMarketData() {
-        // السعر
-        db.ref('market/stats/lastPrice').on('value', s => {
-            lastPrice = s.val() || 0.05;
-            const el = document.getElementById('market-price');
-            if(el) {
-                el.innerText = lastPrice.toFixed(4);
-                document.getElementById('mid-price').innerText = lastPrice.toFixed(4);
-                if(!document.getElementById('inp-price').value) document.getElementById('inp-price').value = lastPrice.toFixed(4);
-            }
-        });
-
-        // طلبات البيع
-        db.ref('market/orders/sell').orderByChild('price').limitToFirst(10).on('value', snap => {
-            const div = document.getElementById('ob-sells');
-            if(!div) return;
-            div.innerHTML = '';
-            const orders = [];
-            snap.forEach(c => orders.push(c.val()));
-            orders.sort((a,b) => b.price - a.price).forEach(o => {
-                if(o.status !== 'pending') return;
-                div.innerHTML += `<div class="ob-row" onclick="fillPrice(${o.price})" style="display:flex; justify-content:space-between; padding:3px 0; font-size:12px; cursor:pointer; color:var(--red)">
-                    <span>${o.price.toFixed(4)}</span> <span style="color:#eaecef">${o.amount.toFixed(2)}</span>
-                </div>`;
-            });
-        });
-
-        // طلبات الشراء
-        db.ref('market/orders/buy').orderByChild('price').limitToLast(10).on('value', snap => {
-            const div = document.getElementById('ob-buys');
-            if(!div) return;
-            div.innerHTML = '';
-            const orders = [];
-            snap.forEach(c => orders.push(c.val()));
-            orders.sort((a,b) => b.price - a.price).forEach(o => {
-                if(o.status !== 'pending') return;
-                div.innerHTML += `<div class="ob-row" onclick="fillPrice(${o.price})" style="display:flex; justify-content:space-between; padding:3px 0; font-size:12px; cursor:pointer; color:var(--green)">
-                    <span>${o.price.toFixed(4)}</span> <span style="color:#eaecef">${o.amount.toFixed(2)}</span>
-                </div>`;
-            });
-        });
-    }
-
-    function initMyOrders() {
-        const list = document.getElementById('my-orders-list');
-        list.innerHTML = '';
-        ['buy', 'sell'].forEach(type => {
-            db.ref(`market/orders/${type}`).orderByChild('uP').equalTo(me.p).on('child_added', snap => {
-                const o = snap.val();
-                if(o.status !== 'pending') return;
-                const color = type==='buy'?'var(--green)':'var(--red)';
-                const html = `<div id="ord-${snap.key}" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; margin-bottom:5px; border-right:3px solid ${color}">
-                    <div style="font-size:12px;">
-                        <span style="font-weight:bold; color:${color}">${type==='buy'?'شراء':'بيع'}</span> 
-                        ${o.amount.toFixed(2)} بسعر ${o.price.toFixed(4)}
-                    </div>
-                    <div onclick="cancelMyOrder('${type}','${snap.key}')" style="color:var(--red); cursor:pointer;"><i class="fas fa-times"></i></div>
-                </div>`;
-                list.insertAdjacentHTML('afterbegin', html);
-            });
-            // حذف عند الإلغاء
-            db.ref(`market/orders/${type}`).on('child_removed', s => {
-                const el = document.getElementById(`ord-${s.key}`);
-                if(el) el.remove();
-            });
-        });
-    }
-
-    function cancelMyOrder(type, key) {
-        Swal.fire({title:'إلغاء؟', showCancelButton:true, confirmButtonText:'نعم'}).then(r=>{
-            if(r.isConfirmed) db.ref(`market/orders/${type}/${key}`).remove();
-        });
-    }
     // --- الوظائف المساعدة والعمليات ---
     function showTransfer() { 
         if (Date.now() - lastActionTime < 3000) 
