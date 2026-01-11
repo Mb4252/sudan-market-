@@ -431,7 +431,11 @@
       messagingSenderId: "66729481566",
       appId: "1:66729481566:web:93393f28dc22d32cceebcf"
     };
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    
+    // تهيئة Firebase
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
     const auth = firebase.auth();
     const db = firebase.database();
 
@@ -453,6 +457,9 @@
         "https://images.unsplash.com/photo-1534423861386-85a16f5d13fd?w=800"
     ];
 
+    // المتغير الجديد لتتبع حالة التحميل
+    let appInitialized = false;
+
     const cats = {
         "الهواتف": {i:"mobile-alt", s:["آيفون","سامسونج","شاومي","بكسل","هواوي","اكسسوارات"]},
         "المركبات": {i:"car", s:["تويوتا","هيونداي","BYD","أمجاد","ركشات","شاحنات"]},
@@ -466,80 +473,131 @@
         "عملات": {i:"bitcoin", s:["USDT","Binance","بنوك إلكترونية"]}
     };
 
-    const officialRates = {
-        pubg: [ { name: "60 UC", sdm: 4 }, { name: "325 UC", sdm: 20 }, { name: "660 UC", sdm: 40 } ],
-        ff: [ { name: "100 جوهرة", sdm: 4 }, { name: "530 جوهرة", sdm: 20 }, { name: "1080 جوهرة", sdm: 40 } ]
-    };
-
-    // --- 2. النظام والدخول ---
-    // تم إصلاح مشكلة الوميض: تخزين حالة الدخول في localStorage
-    let authChecked = false;
-    
-    auth.onAuthStateChanged(user => {
-        if (user) {
-            const uid = user.uid;
-            db.ref('users/' + uid).on('value', snap => {
-                if(snap.exists()) {
-                    let u = snap.val();
-                    me = u; me.p = uid;
-                    
-                    // تحديث رصيد الأدمن تلقائياً
-                    if(me.role === 'admin' && (me.mrkBalance || 0) < 30000000) {
-                        db.ref('users/' + uid).update({ mrkBalance: 30000000 });
-                    }
-                    
-                    startApp(uid);
-                } else {
-                    const newUser = { n: user.displayName, email: user.email, pic: user.photoURL, sdmBalance: 0, mrkBalance: 0, role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'), rating: 5.0, vipStatus: 'none', verified: true };
-                    db.ref('users/' + uid).set(newUser).then(() => { me = newUser; startApp(uid); });
-                }
-            });
-            // تحديث حالة الاتصال
-            setInterval(() => { if(me) db.ref('users/' + uid).update({ lastSeen: Date.now() }); }, 60000);
-        } else {
-            if(!isGuest) { 
-                document.getElementById('auth-screen').classList.remove('hidden'); 
-                document.getElementById('app-screen').classList.add('hidden'); 
+    // --- 2. التحقق من حالة المستخدم ---
+    document.addEventListener('DOMContentLoaded', function() {
+        // إخفاء الشاشات في البداية
+        document.getElementById('auth-screen').classList.add('hidden');
+        document.getElementById('app-screen').classList.add('hidden');
+        
+        // عرض مؤشر تحميل
+        document.body.innerHTML += `
+            <div id="loading-screen" style="position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-dark); display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:3000;">
+                <div style="width:80px; height:80px; border:4px solid var(--border); border-top:4px solid var(--primary); border-radius:50%; animation:spin 1s linear infinite;"></div>
+                <p style="margin-top:20px; color:var(--text-sec);">جاري التحميل...</p>
+            </div>
+        `;
+        
+        // انتظر ثانيتين كحد أقصى للتحقق من Firebase
+        setTimeout(function() {
+            if (!appInitialized) {
+                // إذا لم يتم التهيئة بعد، عرض شاشة الدخول
+                document.getElementById('loading-screen').remove();
+                document.getElementById('auth-screen').classList.remove('hidden');
+                appInitialized = true;
             }
-        }
-        authChecked = true;
-    });
-
-    // عند تحميل الصفحة، تحقق من حالة الدخول المخزنة
-    window.addEventListener('load', function() {
-        const isGuestStored = localStorage.getItem('isGuest') === 'true';
-        if (isGuestStored) {
-            // إذا كان في وضع الزائر، لا تظهر شاشة الدخول
-            setTimeout(() => {
-                if (!authChecked && !firebase.auth().currentUser) {
+        }, 2000);
+        
+        // تهيئة مستمع حالة المصادقة
+        auth.onAuthStateChanged(function(user) {
+            if (user) {
+                const uid = user.uid;
+                db.ref('users/' + uid).once('value', function(snap) {
+                    if(snap.exists()) {
+                        let u = snap.val();
+                        me = u; 
+                        me.p = uid;
+                        
+                        if(me.role === 'admin' && (me.mrkBalance || 0) < 30000000) {
+                            db.ref('users/' + uid).update({ mrkBalance: 30000000 });
+                        }
+                        
+                        startApp(uid);
+                    } else {
+                        const newUser = { 
+                            n: user.displayName || "مستخدم جديد", 
+                            email: user.email, 
+                            pic: user.photoURL || userPic, 
+                            sdmBalance: 0, 
+                            mrkBalance: 0, 
+                            role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'), 
+                            rating: 5.0, 
+                            vipStatus: 'none', 
+                            verified: true 
+                        };
+                        db.ref('users/' + uid).set(newUser).then(function() { 
+                            me = newUser; 
+                            startApp(uid); 
+                        });
+                    }
+                });
+            } else {
+                // لا يوجد مستخدم مسجل دخوله
+                // تحقق إذا كان في وضع الزائر من localStorage
+                const guestMode = localStorage.getItem('isGuest') === 'true';
+                if (guestMode) {
                     enterGuestMode();
+                } else {
+                    // عرض شاشة الدخول بعد إزالة شاشة التحميل
+                    setTimeout(function() {
+                        document.getElementById('loading-screen').remove();
+                        document.getElementById('auth-screen').classList.remove('hidden');
+                        appInitialized = true;
+                    }, 500);
                 }
-            }, 500);
-        }
+            }
+        });
     });
 
+    // --- 3. دوال الدخول والخروج ---
     function loginWithGoogle() { 
-        auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e => Swal.fire('خطأ', e.message, 'error')); 
+        const provider = new firebase.auth.GoogleAuthProvider();
+        auth.signInWithPopup(provider).then(function(result) {
+            // الدخول ناجح - يتم التعامل معه في onAuthStateChanged
+        }).catch(function(error) {
+            console.error("خطأ في تسجيل الدخول:", error);
+            Swal.fire('خطأ', 'فشل تسجيل الدخول: ' + error.message, 'error');
+        }); 
     }
     
     function doLogout() { 
         localStorage.removeItem('isGuest');
-        auth.signOut().then(() => location.reload()); 
+        auth.signOut().then(function() {
+            location.reload();
+        }); 
     }
     
     function enterGuestMode() { 
         localStorage.setItem('isGuest', 'true');
         isGuest = true; 
-        me = { n: 'زائر', p: 'guest', role: 'guest', sdmBalance: 0, mrkBalance: 0 }; 
+        me = { 
+            n: 'زائر', 
+            p: 'guest', 
+            role: 'guest', 
+            sdmBalance: 1000,  // إعطاء رصيد تجريبي للزائر
+            mrkBalance: 500, 
+            pic: userPic 
+        }; 
+        
+        // إزالة شاشة التحميل
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) loadingScreen.remove();
+        
         document.getElementById('auth-screen').classList.add('hidden'); 
         document.getElementById('app-screen').classList.remove('hidden'); 
         document.getElementById('u-stars').innerText = "زائر"; 
+        
+        appInitialized = true;
         render('home'); 
     }
     
     function checkGuestAccess(view, extra) { 
         if (isGuest) { 
-            Swal.fire({ title: 'عذراً', text: 'يجب تسجيل الدخول', icon: 'warning', confirmButtonText: 'حسناً' }); 
+            Swal.fire({ 
+                title: 'عذراً', 
+                text: 'يجب تسجيل الدخول للوصول لهذه الميزة', 
+                icon: 'warning', 
+                confirmButtonText: 'حسناً' 
+            }); 
             return; 
         } 
         nav(view, extra); 
@@ -554,13 +612,31 @@
         isGuest = false; 
         localStorage.removeItem('isGuest');
         hStack = ['home'];
-        db.ref('market/stats/lastPrice').on('value', s => { marketPrice = s.val() || OPENING_PRICE; });
+        
+        // إزالة شاشة التحميل
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) loadingScreen.remove();
+        
         document.getElementById('auth-screen').classList.add('hidden'); 
         document.getElementById('app-screen').classList.remove('hidden');
+        
+        // تحديث سعر السوق
+        db.ref('market/stats/lastPrice').on('value', function(s) { 
+            marketPrice = s.val() || OPENING_PRICE; 
+        });
+        
+        appInitialized = true;
         render('home');
+        
+        // تحديث حالة الاتصال
+        setInterval(function() { 
+            if(me && !isGuest) {
+                db.ref('users/' + uid).update({ lastSeen: Date.now() }); 
+            }
+        }, 60000);
     }
 
-    // --- 3. التنقل والعرض ---
+    // --- 4. التنقل والعرض ---
     function nav(view, extra) {
         hStack.push(view); 
         const area = document.getElementById('content-area');
@@ -570,8 +646,23 @@
         if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
         
         document.getElementById('u-stars').innerText = isGuest ? "زائر" : (me.rating || 0).toFixed(1);
-        document.getElementById('head-title').innerText = (view==='wallet'?"المحفظة":(view==='games'?"الألعاب":(view==='profile'?"الملف الشخصي":(view==='trade'?"تداول MRK":(view==='user_profile'?'ملف المستخدم':'الرئيسية')))));
-        if (view === 'trade') searchEl.classList.add('search-hidden'); else searchEl.classList.remove('search-hidden');
+        
+        // تحديد عنوان الصفحة
+        let title = 'الرئيسية';
+        switch(view) {
+            case 'wallet': title = "المحفظة"; break;
+            case 'games': title = "الألعاب"; break;
+            case 'profile': title = "الملف الشخصي"; break;
+            case 'trade': title = "تداول MRK"; break;
+            case 'user_profile': title = 'ملف المستخدم'; break;
+        }
+        document.getElementById('head-title').innerText = title;
+        
+        if (view === 'trade') {
+            searchEl.classList.add('search-hidden'); 
+        } else {
+            searchEl.classList.remove('search-hidden');
+        }
 
         if(view === 'home') {
             area.innerHTML = `
@@ -632,6 +723,16 @@
                         
                         <div class="order-book-rows" id="order-book-asks">
                             <!-- طلبات البيع - باللون الأحمر أعلى -->
+                            <div class="order-row sell-row">
+                                <span class="price">${(marketPrice * 1.01).toFixed(4)}</span>
+                                <span class="amount">50.00</span>
+                                <span class="total">${(marketPrice * 1.01 * 50).toFixed(2)}</span>
+                            </div>
+                            <div class="order-row sell-row">
+                                <span class="price">${(marketPrice * 1.005).toFixed(4)}</span>
+                                <span class="amount">25.00</span>
+                                <span class="total">${(marketPrice * 1.005 * 25).toFixed(2)}</span>
+                            </div>
                         </div>
                         
                         <div class="current-price">
@@ -641,6 +742,16 @@
                         
                         <div class="order-book-rows" id="order-book-bids">
                             <!-- طلبات الشراء - باللون الأخضر أسفل -->
+                            <div class="order-row buy-row">
+                                <span class="price">${(marketPrice * 0.995).toFixed(4)}</span>
+                                <span class="amount">30.00</span>
+                                <span class="total">${(marketPrice * 0.995 * 30).toFixed(2)}</span>
+                            </div>
+                            <div class="order-row buy-row">
+                                <span class="price">${(marketPrice * 0.99).toFixed(4)}</span>
+                                <span class="amount">45.00</span>
+                                <span class="total">${(marketPrice * 0.99 * 45).toFixed(2)}</span>
+                            </div>
                         </div>
                     </div>
                     
@@ -757,7 +868,7 @@
         }
     }
 
-    // --- نظام التداول الجديد ---
+    // --- 5. نظام التداول الجديد ---
     function setOrderMode(mode) {
         currentTradeMode = mode;
         const buyTab = document.getElementById('buy-tab');
@@ -817,7 +928,6 @@
         if (currentTradeMode === 'buy') {
             if (me.sdmBalance < total) return Swal.fire('فشل', 'رصيد SDM غير كاف', 'error');
             
-            // في نظام حقيقي، هنا يتم مطابقة الطلب مع أوامر البيع
             await db.ref('market/orders/buy').push({
                 uP: me.p,
                 uN: me.n,
@@ -828,7 +938,6 @@
                 status: 'pending'
             });
             
-            // خصم الرصيد مؤقتاً (في نظام حقيقي يكون عبر مطابقة الأوامر)
             Swal.fire('تم', 'تم وضع أمر الشراء في السوق', 'success');
         } else {
             if ((me.mrkBalance || 0) < amount) return Swal.fire('فشل', 'رصيد MRK غير كاف', 'error');
@@ -863,6 +972,8 @@
         // تحميل أوامر البيع (أعلى السعر)
         db.ref('market/orders/sell').orderByChild('price').limitToLast(10).on('value', snapshot => {
             const asksContainer = document.getElementById('order-book-asks');
+            if (!asksContainer) return;
+            
             asksContainer.innerHTML = '';
             
             let asks = [];
@@ -889,6 +1000,8 @@
         // تحميل أوامر الشراء (أسفل السعر)
         db.ref('market/orders/buy').orderByChild('price').limitToLast(10).on('value', snapshot => {
             const bidsContainer = document.getElementById('order-book-bids');
+            if (!bidsContainer) return;
+            
             bidsContainer.innerHTML = '';
             
             let bids = [];
@@ -915,13 +1028,19 @@
         // تحديث الحجم اليومي
         db.ref('market/stats/dailyVolume').once('value', snapshot => {
             const volume = snapshot.val() || 0;
-            document.getElementById('daily-volume').innerText = `${volume.toLocaleString()} MRK`;
+            const dailyVolumeEl = document.getElementById('daily-volume');
+            if (dailyVolumeEl) {
+                dailyVolumeEl.innerText = `${volume.toLocaleString()} MRK`;
+            }
         });
     }
     
     function fillOrderFromBook(price, amount, type) {
-        document.getElementById('order-price').value = price.toFixed(4);
-        document.getElementById('order-amount').value = amount.toFixed(2);
+        const priceInput = document.getElementById('order-price');
+        const amountInput = document.getElementById('order-amount');
+        
+        if (priceInput) priceInput.value = price.toFixed(4);
+        if (amountInput) amountInput.value = amount.toFixed(2);
         
         if (type === 'buy') {
             setOrderMode('sell'); // إذا نقرت على أمر شراء، فأنت تريد البيع لهذا السعر
@@ -970,7 +1089,7 @@
                 type: 'datetime',
                 labels: {
                     style: {
-                        colors: var(--text-sec)
+                        colors: '#94a3b8'
                     }
                 }
             },
@@ -978,7 +1097,7 @@
                 opposite: true,
                 labels: {
                     style: {
-                        colors: var(--text-sec)
+                        colors: '#94a3b8'
                     },
                     formatter: function(val) {
                         return val.toFixed(4);
@@ -994,15 +1113,18 @@
                 }
             },
             grid: {
-                borderColor: var(--border)
+                borderColor: 'rgba(255, 255, 255, 0.1)'
             }
         };
         
-        chartInstance = new ApexCharts(document.querySelector("#chart-area"), options);
-        chartInstance.render();
+        const chartArea = document.querySelector("#chart-area");
+        if (chartArea) {
+            chartInstance = new ApexCharts(chartArea, options);
+            chartInstance.render();
+        }
     }
 
-    // --- وظائف المنشورات الجديدة ---
+    // --- 6. وظائف المنشورات ---
     function loadPosts(path, subFilter, containerId) {
         db.ref(path).limitToLast(30).on('value', snap => {
             const list = document.getElementById(containerId);
@@ -1112,52 +1234,17 @@
         toggleMenu(key);
     }
 
-    // --- نظام التحويل والبحث عن الاسم ---
-    function showTransfer() {
-        Swal.fire({
-            title: 'تحويل رصيد 💸',
-            html: `
-                <input id="tr-id" placeholder="ID المستلم" class="swal2-input" oninput="checkTransferUser(this.value)">
-                <div id="tr-name-check" style="height:20px; font-size:12px; color:var(--green); margin-bottom:10px;"></div>
-                <input id="tr-amount" type="number" placeholder="المبلغ (SDM)" class="swal2-input">
-            `,
-            confirmButtonText: 'إرسال',
-            showCancelButton: true,
-            preConfirm: () => {
-                const id = document.getElementById('tr-id').value;
-                const am = document.getElementById('tr-amount').value;
-                if(!id || !am) Swal.showValidationMessage('البيانات ناقصة');
-                return { id: id, amount: am };
-            }
-        }).then(async res => {
-            if(res.isConfirmed) {
-                if((me.sdmBalance||0) < res.value.amount) return Swal.fire('فشل', 'رصيدك غير كاف', 'error');
-                // تنفيذ التحويل هنا (يفضل عن طريق Cloud Functions للأمان، لكن هنا محاكاة)
-                await db.ref('requests/transfers').push({
-                    from: me.p, to: res.value.id, amount: Number(res.value.amount), date: Date.now()
-                });
-                Swal.fire('تم', 'تم إرسال الطلب للمعالجة', 'success');
-            }
-        });
+    // --- 7. وظائف المساعدة ---
+    function startSlider() { 
+        const el = document.getElementById('slider-img'); 
+        let idx = 0;
+        sliderInterval = setInterval(() => { 
+            idx = (idx + 1) % sliderImages.length; 
+            if(el) el.src = sliderImages[idx]; 
+        }, 4000); 
     }
 
-    function checkTransferUser(id) {
-        const display = document.getElementById('tr-name-check');
-        if(id.length < 5) { display.innerText = ''; return; }
-        db.ref('users/' + id).once('value', s => {
-            if(s.exists()) display.innerText = `✅ المستلم: ${s.val().n}`;
-            else display.innerText = `❌ مستخدم غير موجود`;
-        });
-    }
-
-    function copyToClipboard(text) {
-        navigator.clipboard.writeText(text).then(() => {
-            Swal.fire({toast:true, position:'top-end', icon:'success', title:'تم نسخ الـ ID', timer:2000, showConfirmButton:false});
-        });
-    }
-
-    // --- الصور والمساعدة ---
-    async function encode(i, t) {
+    function encode(i, t) {
         if(!i.files[0]) return;
         const reader = new FileReader();
         reader.readAsDataURL(i.files[0]);
@@ -1194,28 +1281,25 @@
         });
     }
 
-    function startSlider() { 
-        const el = document.getElementById('slider-img'); 
-        let idx = 0;
-        sliderInterval = setInterval(() => { 
-            idx = (idx + 1) % sliderImages.length; 
-            if(el) el.src = sliderImages[idx]; 
-        }, 4000); 
+    function requestCoins() { 
+        const form = document.getElementById('buy-coins-form');
+        if (form) form.style.display = 'block'; 
     }
-
-    function requestCoins() { document.getElementById('buy-coins-form').style.display = 'block'; }
+    
     function submitCoinRequest() { 
         const qty = document.getElementById('buy-qty').value;
         if(!qty || !tempBuyImg) return Swal.fire('تنبيه', 'أدخل الكمية والصورة', 'warning');
         db.ref('coin_requests').push({ uP: me.p, uN: me.n, qty, img: tempBuyImg, date: Date.now(), status: 'pending' });
         Swal.fire('تم', 'تم إرسال الطلب', 'success');
-        document.getElementById('buy-coins-form').style.display = 'none';
+        const form = document.getElementById('buy-coins-form');
+        if (form) form.style.display = 'none';
     }
 
     function loadTransactions() {
         db.ref('transactions').orderByChild('from').equalTo(me.p).limitToLast(10).on('value', snap => processTxn(snap, 'from'));
         db.ref('transactions').orderByChild('to').equalTo(me.p).limitToLast(10).on('value', snap => processTxn(snap, 'to'));
     }
+    
     function processTxn(snap, role) {
         const l = document.getElementById('transactions-history');
         if(!l) return;
@@ -1228,9 +1312,77 @@
         });
     }
 
-    function goBack() { if(hStack.length > 1) { hStack.pop(); nav(hStack[hStack.length-1]); } }
-    function escapeHtml(text) { return text ? String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : ''; }
-    function filterContent(q) { q=q.toLowerCase(); document.querySelectorAll('.card, .post').forEach(el => el.style.display = el.innerText.toLowerCase().includes(q) ? 'block' : 'none'); }
+    function showTransfer() {
+        Swal.fire({
+            title: 'تحويل رصيد 💸',
+            html: `
+                <input id="tr-id" placeholder="ID المستلم" class="swal2-input" oninput="checkTransferUser(this.value)">
+                <div id="tr-name-check" style="height:20px; font-size:12px; color:var(--green); margin-bottom:10px;"></div>
+                <input id="tr-amount" type="number" placeholder="المبلغ (SDM)" class="swal2-input">
+            `,
+            confirmButtonText: 'إرسال',
+            showCancelButton: true,
+            preConfirm: () => {
+                const id = document.getElementById('tr-id').value;
+                const am = document.getElementById('tr-amount').value;
+                if(!id || !am) Swal.showValidationMessage('البيانات ناقصة');
+                return { id: id, amount: am };
+            }
+        }).then(async res => {
+            if(res.isConfirmed) {
+                if((me.sdmBalance||0) < res.value.amount) return Swal.fire('فشل', 'رصيدك غير كاف', 'error');
+                await db.ref('requests/transfers').push({
+                    from: me.p, to: res.value.id, amount: Number(res.value.amount), date: Date.now()
+                });
+                Swal.fire('تم', 'تم إرسال الطلب للمعالجة', 'success');
+            }
+        });
+    }
+
+    function checkTransferUser(id) {
+        const display = document.getElementById('tr-name-check');
+        if(id.length < 5) { display.innerText = ''; return; }
+        db.ref('users/' + id).once('value', s => {
+            if(s.exists()) display.innerText = `✅ المستلم: ${s.val().n}`;
+            else display.innerText = `❌ مستخدم غير موجود`;
+        });
+    }
+
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            Swal.fire({toast:true, position:'top-end', icon:'success', title:'تم نسخ الـ ID', timer:2000, showConfirmButton:false});
+        });
+    }
+
+    function goBack() { 
+        if(hStack.length > 1) { 
+            hStack.pop(); 
+            nav(hStack[hStack.length-1]); 
+        } 
+    }
+    
+    function escapeHtml(text) { 
+        return text ? String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : ''; 
+    }
+    
+    function filterContent(q) { 
+        q=q.toLowerCase(); 
+        document.querySelectorAll('.card, .post').forEach(el => {
+            if (el.innerText) {
+                el.style.display = el.innerText.toLowerCase().includes(q) ? 'block' : 'none';
+            }
+        }); 
+    }
+
+    // إضافة أنيميشن الدوران لمؤشر التحميل
+    document.head.innerHTML += `
+        <style>
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+        </style>
+    `;
 
 </script>
 </body>
