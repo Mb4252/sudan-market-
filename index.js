@@ -1,4 +1,4 @@
-const express = require('express'); // ✅ صحيح
+const express = require('express');
 const admin = require("firebase-admin");
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -6,24 +6,23 @@ const PORT = process.env.PORT || 3000;
 // ============================================================
 // 1. نظام الحماية من السبام (Anti-Spam System) - 🛡️
 // ============================================================
-const userCooldowns = {}; // ذاكرة مؤقتة لتخزين توقيت آخر عملية
+const userCooldowns = {};
 
 function isSpam(uid) {
     if (!uid) return false;
     const now = Date.now();
     const lastAction = userCooldowns[uid] || 0;
     
-    // هل مرت أقل من 3 ثوانٍ (3000 ميلي ثانية)؟
+    // هل مرت أقل من 3 ثوانٍ؟
     if (now - lastAction < 3000) {
-        return true; // نعم، هذا سبام (سريع جداً)
+        return true; 
     }
     
-    // تحديث التوقيت والسماح بالعملية
     userCooldowns[uid] = now;
     return false;
 }
 
-// تنظيف الذاكرة كل ساعة لتوفير الرام
+// تنظيف الذاكرة كل ساعة
 setInterval(() => {
     const now = Date.now();
     for (const uid in userCooldowns) {
@@ -36,19 +35,27 @@ setInterval(() => {
 // ============================================================
 let serviceAccount;
 try {
+    // ⚠️ تأكد أن متغير البيئة موجود أو قم بوضع ملف json بجانب الملف
+    // إذا كنت تشغله محلياً، يمكنك استدعاء الملف مباشرة: require('./serviceAccountKey.json')
     const envKey = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (envKey) {
         serviceAccount = JSON.parse(envKey);
-        console.log("✅ Credentials loaded.");
+        console.log("✅ Credentials loaded from ENV.");
     } else {
-        console.error("❌ CRITICAL: FIREBASE_SERVICE_ACCOUNT is missing.");
+        // محاولة تحميل الملف محلياً إذا لم يوجد متغير بيئة
+        try {
+            serviceAccount = require("./serviceAccountKey.json");
+            console.log("✅ Credentials loaded from local file.");
+        } catch(e) {
+            console.error("❌ CRITICAL: No credentials found.");
+        }
     }
 } catch (error) { console.error("❌ Error parsing credentials:", error); }
 
 if (serviceAccount) {
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
+        databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com" // تأكد أن هذا الرابط صحيح 100%
     });
 }
 
@@ -57,7 +64,6 @@ const db = admin.apps.length ? admin.database() : null;
 // ============================================================
 // 3. السيرفر ونبض القلب (Heartbeat)
 // ============================================================
-// هذا الرابط لـ Uptime Robot
 app.get('/', (req, res) => { res.send('🛡️ SDM CORE ENGINE (SECURE BANK) IS RUNNING.'); });
 
 app.listen(PORT, () => { 
@@ -66,8 +72,8 @@ app.listen(PORT, () => {
 
 if (db) {
     console.log("💓 System Heartbeat started...");
+    // تحديث حالة السيرفر في الداتابيز ليظهر في التطبيق أنه "متصل"
     setInterval(() => {
-        // تحديث الحالة لتراها الواجهة الأمامية
         db.ref('system/status').update({ 
             last_online: admin.database.ServerValue.TIMESTAMP,
             active: true 
@@ -88,21 +94,17 @@ if (db) {
         const req = snap.val();
         const reqId = snap.key;
         
-        // 1. فحص السبام
         if (isSpam(req.from)) {
-            console.log(`🚫 Spam Transfer detected from ${req.from}`);
             db.ref(`alerts/${req.from}`).push({ msg: "⚠️ انتظر 3 ثوانٍ بين العمليات", type: "error" });
             return snap.ref.remove();
         }
 
-        // 2. التحقق
         if (!req.from || !req.to || !req.amount || req.amount <= 0) {
             return snap.ref.remove();
         }
 
-        // 3. التنفيذ
         await db.ref(`users/${req.from}/sdmBalance`).transaction(currentBal => {
-            if ((currentBal || 0) < req.amount) return; // رصيد غير كاف
+            if ((currentBal || 0) < req.amount) return; 
             return (currentBal || 0) - req.amount;
         }, async (error, committed) => {
             if (!committed) {
@@ -132,9 +134,7 @@ if (db) {
         
         if(order.status !== 'pending') return;
 
-        // 1. فحص السبام
         if (isSpam(order.uP)) {
-            console.log(`🚫 Spam Buy Order from ${order.uP}`);
             db.ref(`alerts/${order.uP}`).push({ msg: "⚠️ تمهل قليلاً!", type: "error" });
             return snap.ref.remove();
         }
@@ -142,7 +142,7 @@ if (db) {
         const totalCost = order.price * order.amount;
         let fundsLocked = false;
 
-        // 2. حجز الأموال
+        // حجز الرصيد (SDM)
         await db.ref(`users/${order.uP}/sdmBalance`).transaction(bal => {
             if ((bal || 0) < totalCost) return;
             return (bal || 0) - totalCost;
@@ -155,11 +155,11 @@ if (db) {
             return db.ref(`market/orders/buy/${orderId}`).remove();
         }
 
-        // 3. المطابقة
+        // البحث عن بائع (سعر البيع <= سعر الشراء)
         const matchSnap = await db.ref('market/orders/sell')
                                   .orderByChild('price')
                                   .endAt(order.price)
-                                  .limitToFirst(1)
+                                  .limitToFirst(1) // نأخذ أرخص بائع
                                   .once('value');
         
         if (matchSnap.exists()) {
@@ -167,16 +167,17 @@ if (db) {
             const sellOrder = matchSnap.val()[sellKey];
             
             const tradeAmount = Math.min(order.amount, sellOrder.amount);
-            const executionPrice = sellOrder.price;
+            const executionPrice = sellOrder.price; // التنفيذ بسعر البائع (الأرخص)
             const tradeValue = tradeAmount * executionPrice;
 
-            console.log(`⚡ MATCH: Buy(${orderId}) & Sell(${sellKey}) @ ${executionPrice}`);
+            console.log(`⚡ MATCH (Buy Trigger): Buy(${orderId}) & Sell(${sellKey}) @ ${executionPrice}`);
 
-            // التسوية
+            // تسوية الأرصدة
             await db.ref(`users/${sellOrder.uP}/sdmBalance`).transaction(b => (b || 0) + tradeValue);
             await db.ref(`users/${sellOrder.uP}/mrkBalance`).transaction(m => (m || 0) - tradeAmount);
             await db.ref(`users/${order.uP}/mrkBalance`).transaction(m => (m || 0) + tradeAmount);
             
+            // إرجاع الفارق للمشتري
             const refund = (order.price - executionPrice) * tradeAmount;
             if (refund > 0) {
                 await db.ref(`users/${order.uP}/sdmBalance`).transaction(b => (b || 0) + refund);
@@ -204,7 +205,7 @@ if (db) {
     });
 
     // --------------------------------------------------------
-    // ج) أوامر البيع (Market SELL)
+    // ج) أوامر البيع (Market SELL) - 🔥 النسخة المعدلة والذكية
     // --------------------------------------------------------
     db.ref('market/orders/sell').on('child_added', async (snap) => {
         const order = snap.val();
@@ -212,13 +213,12 @@ if (db) {
 
         if(order.status !== 'pending') return;
 
-        // 1. فحص السبام
         if (isSpam(order.uP)) {
-            console.log(`🚫 Spam Sell Order from ${order.uP}`);
             db.ref(`alerts/${order.uP}`).push({ msg: "⚠️ تمهل قليلاً!", type: "error" });
             return snap.ref.remove();
         }
 
+        // حجز العملة (MRK)
         let assetLocked = false;
         await db.ref(`users/${order.uP}/mrkBalance`).transaction(bal => {
             if ((bal || 0) < order.amount) return;
@@ -231,7 +231,60 @@ if (db) {
             console.log(`❌ Rejected Sell Order: No MRK for ${order.uP}`);
             return db.ref(`market/orders/sell/${orderId}`).remove();
         }
-        console.log(`⏳ Sell Order Queued: ${orderId}`);
+
+        // 🔥 البحث عن مشتري (سعر الشراء >= سعر البيع)
+        // startAt: لجلب الأسعار التي تساوي أو أكبر من سعر البيع
+        // limitToLast: لأن Firebase يرتب تصاعدياً، ونحن نريد أعلى سعر شراء (أفضل عرض)
+        const matchSnap = await db.ref('market/orders/buy')
+                                  .orderByChild('price')
+                                  .startAt(order.price)
+                                  .limitToLast(1)
+                                  .once('value');
+        
+        if (matchSnap.exists()) {
+            const buyKey = Object.keys(matchSnap.val())[0];
+            const buyOrder = matchSnap.val()[buyKey];
+            
+            const tradeAmount = Math.min(order.amount, buyOrder.amount);
+            const executionPrice = order.price; // التنفيذ بسعر البائع (لأنه هو من حرك السوق الآن)
+            const tradeValue = tradeAmount * executionPrice;
+
+            console.log(`⚡ MATCH (Sell Trigger): Sell(${orderId}) & Buy(${buyKey}) @ ${executionPrice}`);
+
+            // 1. البائع يستلم الكاش
+            await db.ref(`users/${order.uP}/sdmBalance`).transaction(b => (b || 0) + tradeValue);
+            
+            // 2. المشتري يستلم العملة
+            await db.ref(`users/${buyOrder.uP}/mrkBalance`).transaction(m => (m || 0) + tradeAmount);
+            
+            // 3. إرجاع الفارق للمشتري (لأنه كان مستعد يدفع أكثر)
+            if (buyOrder.price > executionPrice) {
+                const refund = (buyOrder.price - executionPrice) * tradeAmount;
+                if(refund > 0) {
+                     await db.ref(`users/${buyOrder.uP}/sdmBalance`).transaction(b => (b || 0) + refund);
+                }
+            }
+
+            // التحديث
+            db.ref('market/trades').push({ price: executionPrice, amount: tradeAmount, date: Date.now() });
+            db.ref('market/stats/lastPrice').set(executionPrice);
+
+            // تحديث الطلبات
+            if (order.amount > tradeAmount) {
+                db.ref(`market/orders/sell/${orderId}`).update({ amount: order.amount - tradeAmount });
+            } else {
+                db.ref(`market/orders/sell/${orderId}`).remove();
+            }
+
+            if (buyOrder.amount > tradeAmount) {
+                db.ref(`market/orders/buy/${buyKey}`).update({ amount: buyOrder.amount - tradeAmount });
+            } else {
+                db.ref(`market/orders/buy/${buyKey}`).remove();
+            }
+
+        } else {
+            console.log(`⏳ Sell Order Queued: ${orderId}`);
+        }
     });
 
     // --------------------------------------------------------
@@ -243,16 +296,13 @@ if (db) {
 
         if (order.status !== 'pending') return;
 
-        // 1. فحص السبام
         if (isSpam(order.uP)) {
-            console.log(`🚫 Spam Game Order from ${order.uP}`);
             db.ref(`alerts/${order.uP}`).push({ msg: "⚠️ تمهل قليلاً!", type: "error" });
             return snap.ref.remove();
         }
 
-        // 2. الخصم
         await db.ref(`users/${order.uP}/sdmBalance`).transaction(currentBal => {
-            if ((currentBal || 0) < order.cost) return; // رصيد غير كاف
+            if ((currentBal || 0) < order.cost) return; 
             return (currentBal || 0) - order.cost;
         }, (error, committed) => {
             if (committed) {
@@ -270,7 +320,6 @@ if (db) {
     // --------------------------------------------------------
     db.ref('rating_queue').on('child_added', async (snap) => {
         const d = snap.val();
-        
         if (isSpam(d.rater)) return snap.ref.remove();
 
         await db.ref(`users/${d.target}`).transaction(u => {
@@ -285,37 +334,32 @@ if (db) {
     });
 
     // --------------------------------------------------------
-    // و) حماية المحتوى والطلبات الأخرى (Content Protection) - جديد 🛡️
+    // و) حماية المحتوى
     // --------------------------------------------------------
     
-    // 1. حماية المنشورات العادية
+    // حماية المنشورات
     db.ref('posts').on('child_added', (snap) => {
         const p = snap.val();
         if (isSpam(p.uP)) {
-            console.log(`🗑️ Spam Post deleted from ${p.uN}`);
             snap.ref.remove();
-            db.ref(`alerts/${p.uP}`).push({ msg: "⚠️ تم حذف المنشور: تكرار سريع!", type: "error" });
+            db.ref(`alerts/${p.uP}`).push({ msg: "⚠️ تكرار سريع، تم حذف المنشور", type: "error" });
         }
     });
 
-    // 2. حماية منشورات VIP
     db.ref('vip_posts').on('child_added', (snap) => {
         const p = snap.val();
         if (isSpam(p.uP)) {
             snap.ref.remove();
-            db.ref(`alerts/${p.uP}`).push({ msg: "⚠️ تم حذف المنشور: تكرار سريع!", type: "error" });
+            db.ref(`alerts/${p.uP}`).push({ msg: "⚠️ تكرار سريع!", type: "error" });
         }
     });
 
-    // 3. حماية طلبات الإيداع (شراء العملة)
     db.ref('coin_requests').on('child_added', (snap) => {
         const req = snap.val();
         if (req.status !== 'pending') return;
-        
         if (isSpam(req.uP)) {
-            console.log(`🗑️ Spam Coin Request deleted from ${req.uN}`);
             snap.ref.remove();
-            db.ref(`alerts/${req.uP}`).push({ msg: "⚠️ طلب إيداع مكرر، تم الحذف!", type: "error" });
+            db.ref(`alerts/${req.uP}`).push({ msg: "⚠️ طلب إيداع مكرر!", type: "error" });
         }
     });
 }
