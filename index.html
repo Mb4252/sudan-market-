@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SDM Market Pro | المتجر المتكامل</title>
+    <title>SDM Market Pro | تداول MRK</title>
     
     <!-- خطوط عربية -->
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;500;800&display=swap" rel="stylesheet">
@@ -13,15 +13,6 @@
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- OneSignal -->
-    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
-    <script>
-      window.OneSignalDeferred = window.OneSignalDeferred || [];
-      OneSignalDeferred.push(async function(OneSignal) {
-        await OneSignal.init({ appId: "74a3085c-32b9-4c35-bc32-e67c3a2506c3" });
-      });
-    </script>
-    
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script> 
@@ -30,7 +21,7 @@
     <style>
         :root {
             --bg-dark: #0f172a;
-            --bg-card: rgba(30, 41, 59, 0.95);
+            --bg-card: #1e293b;
             --primary: #3b82f6;
             --accent: #f59e0b;
             --neon-blue: #00f3ff;
@@ -39,6 +30,9 @@
             --border: rgba(255, 255, 255, 0.1);
             --red: #ef4444; 
             --green: #10b981; 
+            --buy-green: #10b981;
+            --sell-red: #ef4444;
+            --order-blue: #3b82f6;
         }
 
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline:none; }
@@ -46,13 +40,12 @@
         body {
             font-family: 'Tajawal', sans-serif; 
             margin: 0;
-            background: radial-gradient(circle at top, #1e293b, #0f172a); 
+            background: var(--bg-dark); 
             color: var(--text-main);
             padding-bottom: 90px;
             min-height: 100vh;
             user-select: none;
             overflow-x: hidden;
-            overscroll-behavior-y: contain;
         }
 
         ::-webkit-scrollbar { width: 4px; }
@@ -61,6 +54,19 @@
         .hidden { display: none !important; }
         .search-hidden { display: none !important; }
 
+        /* تعديلات SweetAlert لتكون داكنة */
+        div:where(.swal2-container) div:where(.swal2-popup) {
+            background: var(--bg-card) !important;
+            color: var(--text-main) !important;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+        }
+        .swal2-input, .swal2-textarea, .swal2-select {
+            background: rgba(0,0,0,0.3) !important;
+            color: white !important;
+            border: 1px solid var(--border) !important;
+        }
+
         /* Header */
         header {
             background: rgba(15, 23, 42, 0.95);
@@ -68,7 +74,6 @@
             padding: 15px 20px;
             position: sticky; top: 0; z-index: 1000;
             border-bottom: 1px solid var(--border);
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
             display: flex; flex-direction: column; gap: 10px;
         }
         .header-top { display: flex; justify-content: space-between; align-items: center; width: 100%; }
@@ -84,354 +89,566 @@
 
         /* Wallet & Trading */
         .wallet-overview {
-            background: linear-gradient(135deg, #0f172a, #1e293b);
+            background: linear-gradient(135deg, #1e293b, #0f172a);
             border: 1px solid var(--border); padding: 25px; border-radius: 20px;
             text-align: center; margin-bottom: 20px; position: relative; overflow: hidden;
-        }
-        .wallet-overview::before {
-            content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
-            background: radial-gradient(circle, rgba(59,130,246,0.1), transparent); pointer-events: none;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
         }
 
-        .ticker-bar {
-            display: grid; grid-template-columns: repeat(3, 1fr);
-            background: rgba(0,0,0,0.3); padding: 10px;
-            border-bottom: 1px solid var(--border); margin-bottom: 10px; border-radius: 10px;
-        }
-        .ticker-item { text-align: center; border-left: 1px solid var(--border); }
-        .ticker-item:last-child { border-left: none; }
-        .t-lbl { font-size: 10px; color: var(--text-sec); display: block; }
-        .t-val { font-size: 13px; font-weight: bold; }
-
-        .chart-box {
-            height: 300px; background: rgba(0,0,0,0.2);
-            border-radius: 15px; margin-bottom: 10px; border: 1px solid var(--border); overflow: hidden;
-        }
-
-        .order-book-container {
-            display: flex; gap: 5px; margin: 10px 0;
-            background: rgba(0,0,0,0.3); padding: 5px; border-radius: 10px;
-            height: 280px; font-size: 11px;
-        }
-        .ob-side { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-        .ob-header { text-align: center; color: var(--text-sec); border-bottom: 1px solid var(--border); margin-bottom: 5px; font-weight: bold; }
-        .ob-list { overflow-y: auto; flex: 1; }
-        .ob-row { display: flex; justify-content: space-between; padding: 2px 4px; position: relative; cursor: pointer; margin-bottom: 1px; }
-        .ob-row:hover { background: rgba(255,255,255,0.05); }
-        .ob-bg { position: absolute; top:0; right:0; height:100%; opacity: 0.15; z-index: 0; }
-        .ob-txt { position: relative; z-index: 1; }
-
-        .trade-controls {
-            background: var(--bg-card); padding: 15px;
-            border-radius: 15px; border: 1px solid var(--border); margin-top: 10px;
-        }
-        .trade-tabs { display: flex; background: rgba(0,0,0,0.3); border-radius: 10px; padding: 3px; margin-bottom: 15px; }
-        .t-btn { flex: 1; text-align: center; padding: 10px; border-radius: 8px; cursor: pointer; transition: 0.3s; font-weight: bold; }
-        .t-btn.buy.active { background: var(--green); color: black; }
-        .t-btn.sell.active { background: var(--red); color: white; }
-        
-        .trade-input-group { margin-bottom: 10px; }
-        .trade-input-group label { display: block; font-size: 11px; color: var(--text-sec); margin-bottom: 4px; }
-        .inp-field { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; color: white; font-family: 'Tajawal'; }
-
-        .pct-bar { display: flex; gap: 5px; margin-bottom: 15px; }
-        .pct-btn { flex: 1; background: rgba(255,255,255,0.1); padding: 5px; text-align: center; border-radius: 5px; font-size: 10px; cursor: pointer; border: 1px solid var(--border); }
-
-        /* General UI Elements */
-        .btn-main { background: linear-gradient(90deg, var(--primary), #2563eb); color: white; border: none; padding: 15px; width: 100%; border-radius: 12px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3); transition: 0.2s; }
-        .btn-guest { background: transparent; border: 1px solid var(--text-sec); color: var(--text-sec); width: 100%; padding: 12px; border-radius: 10px; margin-top: 10px; cursor: pointer; }
-        
-        .slider-container { margin: 20px; height: 180px; border-radius: 20px; overflow: hidden; position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 1px solid var(--border); }
-        #slider-img { width: 100%; height: 100%; object-fit: cover; transition: opacity 0.5s; }
-        .edit-slider-btn { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 15px; cursor: pointer; z-index: 20; font-size: 12px; color: var(--accent); border: 1px solid var(--accent); }
-
-        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; padding: 15px; }
-        .card { background: var(--bg-card); border-radius: 18px; padding: 20px; text-align: center; border: 1px solid var(--border); transition: 0.3s; position: relative; }
-        .card:hover { border-color: var(--neon-blue); transform: translateY(-5px); }
-        .card i { font-size: 28px; margin-bottom: 10px; background: linear-gradient(45deg, #fff, #aaa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .edit-cat-btn { position: absolute; top: 5px; left: 5px; background: rgba(0,0,0,0.7); color: var(--accent); border-radius: 50%; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; z-index: 10; border: 1px solid var(--accent); }
-        .cat-custom-img { width: 50px; height: 50px; object-fit: cover; margin-bottom: 10px; border-radius: 10px; }
-
-        /* تحسين المنشورات */
-        .post {
+        /* Calculator Integrated in Trade */
+        .integrated-calculator {
             background: rgba(30, 41, 59, 0.8);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 20px;
-            margin: 15px;
-            padding: 18px;
-            transition: all 0.3s ease;
-            position: relative;
-        }
-
-        .post:hover {
-            border-color: var(--neon-blue);
-            transform: translateY(-3px);
-            box-shadow: 0 10px 25px rgba(0, 243, 255, 0.1);
-        }
-
-        /* رأس المنشور */
-        .post-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 15px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        }
-
-        .user-avatar {
-            width: 45px;
-            height: 45px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 2px solid var(--primary);
-            cursor: pointer;
-        }
-
-        .user-info {
-            flex: 1;
-        }
-
-        .username {
-            font-weight: 800;
-            color: var(--text-main);
-            font-size: 15px;
-            margin-bottom: 3px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .online-dot {
-            width: 8px;
-            height: 8px;
-            background: var(--green);
-            border-radius: 50%;
-            display: inline-block;
-            animation: pulse 2s infinite;
-        }
-
-        .post-date {
-            font-size: 11px;
-            color: var(--text-sec);
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        /* زر النقاط الثلاث */
-        .post-menu-btn {
-            position: absolute;
-            top: 18px;
-            left: 18px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            width: 35px;
-            height: 35px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            color: var(--text-sec);
-            font-size: 18px;
-            z-index: 10;
-        }
-
-        .post-menu-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: var(--text-main);
-        }
-
-        /* قائمة خيارات المنشور */
-        .post-menu-dropdown {
-            position: absolute;
-            top: 55px;
-            left: 18px;
-            background: rgba(15, 23, 42, 0.95);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 12px;
-            padding: 8px 0;
-            min-width: 150px;
-            z-index: 100;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-            display: none;
-        }
-
-        .menu-item {
-            padding: 10px 15px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            cursor: pointer;
-            font-size: 13px;
-            color: var(--text-main);
-            transition: background 0.2s;
-        }
-
-        .menu-item:hover {
-            background: rgba(59, 130, 246, 0.2);
-        }
-
-        .menu-item.delete:hover {
-            background: rgba(239, 68, 68, 0.2);
-            color: var(--red);
-        }
-
-        /* علامة تم البيع */
-        .sold-badge {
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            background: linear-gradient(135deg, var(--green), #059669);
-            color: black;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: bold;
-            z-index: 5;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        /* صورة المنشور */
-        .post-img-container {
-            height: 220px;
-            border-radius: 15px;
-            overflow: hidden;
-            margin-bottom: 15px;
-            position: relative;
-        }
-
-        .post-img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transition: transform 0.5s;
-            cursor: pointer;
-        }
-
-        .post-img:hover {
-            transform: scale(1.03);
-        }
-
-        /* تفاصيل المنشور */
-        .post-title {
-            font-size: 18px;
-            font-weight: 800;
-            margin-bottom: 8px;
-            color: var(--text-main);
-        }
-
-        .post-price {
-            font-size: 22px;
-            font-weight: 800;
-            color: var(--accent);
-            margin-bottom: 8px;
-        }
-
-        .post-description {
-            font-size: 14px;
-            color: var(--text-sec);
-            line-height: 1.5;
-            margin-bottom: 15px;
-        }
-
-        /* تحسين الألعاب */
-        .games-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            padding: 20px;
-        }
-
-        .game-card {
-            background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.9));
-            border-radius: 20px;
-            padding: 20px;
-            text-align: center;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            transition: all 0.3s ease;
-            cursor: pointer;
-        }
-
-        .game-card:hover {
-            border-color: var(--neon-blue);
-            transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(0, 243, 255, 0.15);
-        }
-
-        .game-icon {
-            font-size: 40px;
-            margin-bottom: 15px;
-            background: linear-gradient(45deg, var(--neon-blue), var(--accent));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        /* زر النسخ في العنوان */
-        .copy-btn {
-            background: rgba(59, 130, 246, 0.2);
-            border: 1px solid var(--primary);
-            color: var(--primary);
-            padding: 5px 12px;
-            border-radius: 8px;
-            font-size: 11px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            margin-top: 5px;
-        }
-
-        .copy-btn:hover {
-            background: rgba(59, 130, 246, 0.3);
-        }
-
-        /* تأكيد التحويل */
-        .transfer-confirm {
-            background: rgba(15, 23, 42, 0.95);
             border: 1px solid var(--border);
             border-radius: 15px;
             padding: 15px;
-            margin-top: 10px;
+            margin: 10px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
-
-        .recipient-name {
+        .calc-display {
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 18px;
+            border: 1px solid var(--neon-blue);
+        }
+        .calc-display .sdm-fixed {
             color: var(--neon-blue);
             font-weight: bold;
         }
+        .calc-display .mrk-dynamic {
+            color: var(--green);
+            font-weight: bold;
+        }
 
-        /* Posts */
-        .discount-tag { background: var(--red); color: white; padding: 2px 8px; border-radius: 5px; font-size: 10px; font-weight: bold; animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
+        /* Enhanced Order Book */
+        .order-book-enhanced {
+            display: flex;
+            flex-direction: column;
+            background: rgba(0,0,0,0.3);
+            border-radius: 15px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            margin: 10px 0;
+            height: 350px;
+        }
+        .order-book-header {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            background: rgba(30, 41, 59, 0.9);
+            padding: 10px;
+            border-bottom: 1px solid var(--border);
+            font-weight: bold;
+            text-align: center;
+        }
+        .order-book-body {
+            display: flex;
+            overflow: hidden;
+        }
+        .order-book-side {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            max-height: 300px;
+        }
+        .order-book-side.bids {
+            border-left: 1px solid var(--border);
+        }
+        .order-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            cursor: pointer;
+            transition: background 0.2s;
+            position: relative;
+        }
+        .order-row:hover {
+            background: rgba(255,255,255,0.05);
+        }
+        .order-row.bid {
+            color: var(--buy-green);
+        }
+        .order-row.ask {
+            color: var(--sell-red);
+        }
+        .order-row.my-order {
+            background: rgba(59, 130, 246, 0.1);
+            border-left: 3px solid var(--order-blue);
+        }
+        .order-progress {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            height: 2px;
+            background: var(--order-blue);
+            opacity: 0.3;
+        }
+
+        /* Candlestick Chart */
+        .chart-container {
+            background: rgba(0,0,0,0.2);
+            border-radius: 15px;
+            border: 1px solid var(--border);
+            margin: 10px 0;
+            height: 320px;
+            overflow: hidden;
+            position: relative;
+        }
+        .chart-toolbar {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            display: flex;
+            gap: 5px;
+        }
+        .chart-timeframe {
+            background: rgba(0,0,0,0.5);
+            border: 1px solid var(--border);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .chart-timeframe.active {
+            background: var(--primary);
+        }
+
+        /* User Orders Panel */
+        .user-orders-panel {
+            background: var(--bg-card);
+            border-radius: 15px;
+            border: 1px solid var(--border);
+            margin: 15px 0;
+            padding: 15px;
+        }
+        .user-order {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            margin-bottom: 8px;
+            border: 1px solid var(--border);
+        }
+        .user-order.filled {
+            border-color: var(--green);
+            background: rgba(16, 185, 129, 0.1);
+        }
+        .user-order.partial {
+            border-color: var(--accent);
+            background: rgba(245, 158, 11, 0.1);
+        }
+        .user-order.pending {
+            border-color: var(--text-sec);
+        }
+        .order-cancel-btn {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--red);
+            border: 1px solid var(--red);
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        /* Trade Controls Enhanced */
+        .trade-controls-enhanced {
+            background: var(--bg-card);
+            padding: 20px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            margin-top: 15px;
+        }
+        .trade-tabs-enhanced {
+            display: flex;
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            padding: 3px;
+            margin-bottom: 20px;
+        }
+        .trade-tab {
+            flex: 1;
+            text-align: center;
+            padding: 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .trade-tab.buy.active {
+            background: linear-gradient(135deg, var(--buy-green), #059669);
+            color: white;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        }
+        .trade-tab.sell.active {
+            background: linear-gradient(135deg, var(--sell-red), #b91c1c);
+            color: white;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .input-group input {
+            flex: 1;
+            padding: 15px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: white;
+            font-family: 'Tajawal';
+            font-size: 16px;
+        }
+        .balance-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            margin-bottom: 15px;
+            color: var(--text-sec);
+        }
+        .balance-info b {
+            color: white;
+        }
+
+        /* Trade Button */
+        .trade-execute-btn {
+            width: 100%;
+            padding: 18px;
+            border: none;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 18px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            font-family: 'Tajawal';
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .trade-execute-btn:active {
+            transform: scale(0.98);
+        }
+        .trade-execute-btn.buy {
+            background: linear-gradient(135deg, var(--buy-green), #059669);
+            color: white;
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+        }
+        .trade-execute-btn.sell {
+            background: linear-gradient(135deg, var(--sell-red), #b91c1c);
+            color: white;
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+        }
+
+        /* General UI Elements */
+        .btn-main { 
+            background: linear-gradient(90deg, var(--primary), #2563eb); 
+            color: white; border: none; 
+            padding: 15px; width: 100%; 
+            border-radius: 12px; 
+            font-weight: bold; 
+            cursor: pointer; 
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3); 
+            transition: 0.2s; 
+        }
+        .btn-main:active { transform: scale(0.98); }
+        
+        .btn-guest { 
+            background: transparent; 
+            border: 1px solid var(--text-sec); 
+            color: var(--text-sec); 
+            width: 100%; 
+            padding: 12px; 
+            border-radius: 10px; 
+            margin-top: 10px; 
+            cursor: pointer; 
+        }
+
+        .slider-container { 
+            margin: 20px; 
+            height: 180px; 
+            border-radius: 20px; 
+            overflow: hidden; 
+            position: relative; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3); 
+            border: 1px solid var(--border); 
+        }
+        #slider-img { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+            transition: opacity 0.5s; 
+        }
+        .slider-overlay { 
+            position: absolute; 
+            bottom:0; 
+            width:100%; 
+            background:linear-gradient(to top, rgba(0,0,0,0.8), transparent); 
+            padding:20px; 
+        }
+
+        .grid { 
+            display: grid; 
+            grid-template-columns: repeat(2, 1fr); 
+            gap: 15px; 
+            padding: 15px; 
+        }
+        .card { 
+            background: var(--bg-card); 
+            border-radius: 18px; 
+            padding: 20px; 
+            text-align: center; 
+            border: 1px solid var(--border); 
+            transition: 0.3s; 
+            position: relative; 
+        }
+        .card:hover { 
+            border-color: var(--neon-blue); 
+            transform: translateY(-5px); 
+        }
+        .card i { 
+            font-size: 28px; 
+            margin-bottom: 10px; 
+            background: linear-gradient(45deg, #fff, #aaa); 
+            -webkit-background-clip: text; 
+            -webkit-text-fill-color: transparent; 
+        }
+
+        /* Posts System */
+        .post { 
+            background: var(--bg-card); 
+            margin: 15px; 
+            border-radius: 20px; 
+            overflow: hidden; 
+            border: 1px solid var(--border); 
+            animation: fadeIn 0.5s ease; 
+            position: relative; 
+        }
+        .post-header { 
+            padding: 12px 15px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            border-bottom: 1px solid rgba(255,255,255,0.05); 
+        }
+        .p-user-info { 
+            display: flex; 
+            align-items: center; 
+            gap: 10px; 
+            cursor: pointer; 
+        }
+        .p-avatar { 
+            width: 35px; 
+            height: 35px; 
+            border-radius: 50%; 
+            object-fit: cover; 
+            border: 1px solid var(--accent); 
+        }
+        .p-meta h4 { 
+            margin: 0; 
+            font-size: 13px; 
+            color: var(--text-main); 
+        }
+        .p-meta span { 
+            font-size: 10px; 
+            color: var(--text-sec); 
+            display: block; 
+        }
+        .active-dot { 
+            width: 8px; 
+            height: 8px; 
+            background: var(--green); 
+            border-radius: 50%; 
+            display: inline-block; 
+            margin-right: 3px; 
+        }
+        
+        .post-options { 
+            position: relative; 
+        }
+        .dots-btn { 
+            color: var(--text-sec); 
+            padding: 5px 10px; 
+            cursor: pointer; 
+            font-size: 18px; 
+        }
+        .p-menu { 
+            position: absolute; 
+            left: 0; 
+            top: 100%; 
+            background: #0f172a; 
+            border: 1px solid var(--border); 
+            border-radius: 8px; 
+            width: 140px; 
+            display: none; 
+            z-index: 100; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5); 
+        }
+        .p-menu div { 
+            padding: 10px; 
+            font-size: 12px; 
+            border-bottom: 1px solid rgba(255,255,255,0.05); 
+            cursor: pointer; 
+            transition: 0.2s; 
+        }
+        .p-menu div:hover { 
+            background: rgba(255,255,255,0.05); 
+        }
+        .p-menu div:last-child { 
+            border-bottom: none; 
+            color: var(--red); 
+        }
+        
+        .post-img-container { 
+            position: relative; 
+            overflow: hidden; 
+        }
+        .post-img-container img { 
+            width: 100%; 
+            display: block; 
+        }
+        .sold-overlay { 
+            position: absolute; 
+            top:0; 
+            left:0; 
+            width:100%; 
+            height:100%; 
+            background: rgba(0,0,0,0.7); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            z-index: 10; 
+            backdrop-filter: blur(2px); 
+        }
+        .sold-badge { 
+            border: 2px solid var(--red); 
+            color: var(--red); 
+            padding: 5px 15px; 
+            font-size: 18px; 
+            font-weight: bold; 
+            transform: rotate(-15deg); 
+            border-radius: 8px; 
+        }
+
+        .post-body { 
+            padding: 15px; 
+        }
+        .post-price { 
+            font-size: 16px; 
+            color: var(--accent); 
+            font-weight: bold; 
+            margin-bottom: 5px; 
+        }
+        .post-desc { 
+            font-size: 13px; 
+            color: var(--text-sec); 
+            line-height: 1.5; 
+            white-space: pre-line; 
+        }
 
         /* Bottom Nav */
-        .bottom-tabs { position: fixed; bottom: 20px; left: 20px; right: 20px; background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(15px); border-radius: 25px; display: flex; justify-content: space-around; padding: 12px 0; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid var(--border); z-index: 1000; }
-        .tab-btn { color: var(--text-sec); text-align: center; font-size: 10px; flex: 1; cursor: pointer; transition: 0.3s; }
-        .tab-btn.active { color: var(--neon-blue); transform: translateY(-5px); }
-        .tab-btn i { font-size: 22px; margin-bottom: 4px; display: block; }
+        .bottom-tabs { 
+            position: fixed; 
+            bottom: 20px; 
+            left: 20px; 
+            right: 20px; 
+            background: rgba(30, 41, 59, 0.95); 
+            backdrop-filter: blur(15px); 
+            border-radius: 25px; 
+            display: flex; 
+            justify-content: space-around; 
+            padding: 12px 0; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
+            border: 1px solid var(--border); 
+            z-index: 1000; 
+        }
+        .tab-btn { 
+            color: var(--text-sec); 
+            text-align: center; 
+            font-size: 10px; 
+            flex: 1; 
+            cursor: pointer; 
+            transition: 0.3s; 
+        }
+        .tab-btn.active { 
+            color: var(--neon-blue); 
+            transform: translateY(-5px); 
+        }
+        .tab-btn i { 
+            font-size: 22px; 
+            margin-bottom: 4px; 
+            display: block; 
+        }
 
-        /* Auth & Offline */
-        #offline-guard { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.98); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(15px); }
-        #auth-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-dark); z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        
-        .badge { padding: 3px 8px; border-radius: 5px; font-size: 10px; font-weight: bold; }
-        .badge-admin { background: rgba(239, 68, 68, 0.2); color: var(--red); border: 1px solid var(--red); }
-        .badge-gold { background: rgba(245, 158, 11, 0.2); color: var(--accent); border: 1px solid var(--accent); }
+        /* Auth & Misc */
+        #auth-screen { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: var(--bg-dark); 
+            z-index: 2000; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+        }
+        .badge { 
+            padding: 3px 8px; 
+            border-radius: 5px; 
+            font-size: 10px; 
+            font-weight: bold; 
+        }
+        .badge-gold { 
+            background: rgba(245, 158, 11, 0.2); 
+            color: var(--accent); 
+            border: 1px solid var(--accent); 
+        }
+
+        /* Loading */
+        .loading { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: rgba(15, 23, 42, 0.9); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            z-index: 3000; 
+        }
+        .loader { 
+            width: 50px; 
+            height: 50px; 
+            border: 3px solid var(--border); 
+            border-top: 3px solid var(--neon-blue); 
+            border-radius: 50%; 
+            animation: spin 1s linear infinite; 
+        }
+
+        @keyframes spin { 
+            0% { transform: rotate(0deg); } 
+            100% { transform: rotate(360deg); } 
+        }
+        @keyframes fadeIn { 
+            from { opacity: 0; transform: translateY(10px); } 
+            to { opacity: 1; transform: translateY(0); } 
+        }
     </style>
 </head>
 <body>
-
-<!-- حماية الاتصال -->
-<div id="offline-guard" class="hidden">
-    <i class="fas fa-wifi" style="font-size:50px; color:var(--red); margin-bottom:20px;"></i>
-    <h3 style="color:white;">لا يوجد اتصال</h3>
-</div>
 
 <!-- شاشة الدخول -->
 <div id="auth-screen">
@@ -444,6 +661,11 @@
         </button>
         <button class="btn-guest" onclick="enterGuestMode()">تصفح كزائر 👀</button>
     </div>
+</div>
+
+<!-- شاشة التحميل -->
+<div id="loading-screen" class="loading hidden">
+    <div class="loader"></div>
 </div>
 
 <!-- التطبيق -->
@@ -463,16 +685,14 @@
         </div>
     </header>
 
-    <div id="admin-notifications-area"></div>
     <div id="content-area"></div>
     <div style="height: 100px;"></div>
 
     <div class="bottom-tabs">
         <div class="tab-btn active" onclick="nav('home'); highlightTab(this)"><i class="fas fa-home"></i>الرئيسية</div>
-        <div class="tab-btn" onclick="checkGuestAccess('trade'); highlightTab(this)"><i class="fas fa-chart-line" style="color:var(--up-color);"></i>تداول</div>
+        <div class="tab-btn" onclick="checkGuestAccess('trade'); highlightTab(this)"><i class="fas fa-chart-line"></i>تداول</div>
         <div class="tab-btn" onclick="checkGuestAccess('wallet'); highlightTab(this)"><i class="fas fa-wallet"></i>المحفظة</div>
         <div class="tab-btn" onclick="checkGuestAccess('games'); highlightTab(this)"><i class="fas fa-gamepad"></i>الألعاب</div>
-        <div class="tab-btn" onclick="checkGuestAccess('vip'); highlightTab(this)"><i class="fas fa-crown" style="color:var(--accent)"></i>VIP</div>
         <div class="tab-btn" onclick="checkGuestAccess('profile'); highlightTab(this)"><i class="fas fa-user-astronaut"></i>ملفي</div>
     </div>
 </div>
@@ -494,76 +714,122 @@
 
     const ADMIN_EMAIL = "mb425262@gmail.com";
     const OPENING_PRICE = 0.05;
-    const TOTAL_SUPPLY = 30000000;
-    const SDM_RATE = 1000; 
+    const SDM_RATE = 1000;
+    const SDM_FIXED = true; // SDM ثابتة لا تتغير
+
+    // حفظ الحالة في localStorage
+    const STATE_KEY = 'sdm_market_state';
+    const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 دقائق
 
     let me = null;
     let hStack = ['home'];
     let curC = '', curS = '';
-    let isGuest = false; 
+    let isGuest = false;
     let sliderInterval;
-    const sdmCoinImage = "https://cdn-icons-png.flaticon.com/512/5501/5501360.png";
     let chartInstance = null;
-    let currentTradeMode = 'buy'; 
+    let currentTradeMode = 'buy';
     let marketPrice = OPENING_PRICE;
-    let lastActionTime = 0;
-    let sliderIdx = 0;
-    
-    // متغيرات الصور
     let tempImg = '', tempBuyImg = '', userPic = 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
-    
     let sliderImages = [
         "https://images.unsplash.com/photo-1556742049-0cfed4f7a07d?w=800",
         "https://images.unsplash.com/photo-1534423861386-85a16f5d13fd?w=800"
     ];
 
-    const cats = {
-        "الهواتف": {i:"mobile-alt", s:["آيفون","سامسونج","شاومي","بكسل","هواوي","اكسسوارات"]},
-        "المركبات": {i:"car", s:["تويوتا","هيونداي","BYD","أمجاد","ركشات","شاحنات"]},
-        "العقارات": {i:"city", s:["شقق للايجار","بيوت للبيع","مزارع","اراضي سكنية"]},
-        "الأجهزة": {i:"tv", s:["شاشات","ثلاجات","مكيفات","غسالات","أفران"]},
-        "الكمبيوتر": {i:"laptop", s:["لابتوبات","طابعات","شبكات","قطع غيار"]},
-        "الأزياء": {i:"tshirt", s:["رجالي","نسائي","أطفال","أحذية"]},
-        "الذهب": {i:"gem", s:["خواتم","سلاسل","أطقم كاملة","سبائك"]},
-        "الألعاب": {i:"gamepad", s:["حسابات ببجي","فري فاير","كونسول","PC"]},
-        "الوظائف": {i:"briefcase", s:["وظائف شاغرة","بحث عن عمل","عمالة"]},
-        "الخدمات": {i:"tools", s:["تصميم","برمجة","تسويق","نقل عفش","صيانة"]},
-        "الطعام": {i:"utensils", s:["وجبات","توصيل","مواد تموينية","حلويات"]},
-        "الصحة": {i:"heartbeat", s:["أدوية","مستلزمات طبية","فيتامينات"]},
-        "التعليم": {i:"graduation-cap", s:["دروس خصوصية","كتب","دورات تدريبية"]},
-        "الحيوانات": {i:"paw", s:["طيور","قطط","كلاب","أعلاف","مواشي"]},
-        "الزراعة": {i:"leaf", s:["بذور","أسمدة","معدات زراعية","محاصيل"]},
-        "المعدات": {i:"cogs", s:["معدات ثقيلة","مولدات","أدوات بناء"]},
-        "الكتب": {i:"book", s:["روايات","كتب دراسية","كتب دينية"]},
-        "الفن": {i:"palette", s:["رسم","تصميم داخلي","أعمال يدوية"]},
-        "الرياضة": {i:"futbol", s:["معدات رياضية","ملابس رياضية","بروتينات"]},
-        "عملات": {i:"bitcoin", s:["USDT","Binance","بنوك إلكترونية"]},
-        "جملة": {i:"boxes", s:["مواد غذائية","ملابس","كهرباء"]}
+    // البيانات المخزنة محلياً
+    let appState = {
+        currentPage: 'home',
+        lastSession: Date.now(),
+        tradeData: {},
+        userData: {}
     };
 
-    const officialRates = {
-        pubg: [ { name: "60 UC", sdm: 4 }, { name: "325 UC", sdm: 20 }, { name: "660 UC", sdm: 40 } ],
-        ff: [ { name: "100 جوهرة", sdm: 4 }, { name: "530 جوهرة", sdm: 20 }, { name: "1080 جوهرة", sdm: 40 } ]
-    };
+    // --- 2. نظام حفظ واسترجاع الحالة ---
+    function saveAppState() {
+        appState.currentPage = hStack[hStack.length - 1];
+        appState.lastSession = Date.now();
+        appState.tradeData = {
+            mode: currentTradeMode,
+            price: document.getElementById('trade-price')?.value || marketPrice,
+            amount: document.getElementById('trade-amount')?.value || 0
+        };
+        if (me) {
+            appState.userData = {
+                id: me.p,
+                name: me.n,
+                balance: me.sdmBalance,
+                mrkBalance: me.mrkBalance || 0
+            };
+        }
+        localStorage.setItem(STATE_KEY, JSON.stringify(appState));
+    }
 
-    // --- 2. النظام والدخول ---
-    db.ref('system/status/active').on('value', snap => {
-        if(!snap.val()) document.getElementById('offline-guard').classList.remove('hidden');
-        else document.getElementById('offline-guard').classList.add('hidden');
-    });
+    function restoreAppState() {
+        try {
+            const saved = localStorage.getItem(STATE_KEY);
+            if (saved) {
+                const state = JSON.parse(saved);
+                const timeDiff = Date.now() - state.lastSession;
+                
+                if (timeDiff < SESSION_TIMEOUT && !isGuest) {
+                    // استرجاع الحالة إذا لم ينته الوقت
+                    appState = state;
+                    hStack = [state.currentPage];
+                    
+                    if (state.userData.id && state.userData.id !== 'guest') {
+                        // توجيه المستخدم للصفحة السابقة
+                        setTimeout(() => {
+                            render(state.currentPage);
+                            // تحديث بيانات التداول
+                            if (state.tradeData && state.currentPage === 'trade') {
+                                setTimeout(() => {
+                                    if (document.getElementById('trade-price')) {
+                                        document.getElementById('trade-price').value = state.tradeData.price;
+                                        document.getElementById('trade-amount').value = state.tradeData.amount;
+                                        setTradeMode(state.tradeData.mode);
+                                        updateTradeTotal();
+                                    }
+                                }, 500);
+                            }
+                        }, 100);
+                    }
+                } else {
+                    // مسح الحالة القديمة
+                    localStorage.removeItem(STATE_KEY);
+                }
+            }
+        } catch (e) {
+            console.error('Error restoring state:', e);
+            localStorage.removeItem(STATE_KEY);
+        }
+    }
 
+    // حفظ الحالة عند الخروج
+    window.addEventListener('beforeunload', saveAppState);
+    window.addEventListener('pagehide', saveAppState);
+    
+    // حفظ الحالة عند تغيير الصفحة
+    function saveStateOnNav() {
+        setTimeout(saveAppState, 100);
+    }
+
+    // --- 3. النظام والدخول ---
     auth.onAuthStateChanged(user => {
         if (user) {
+            showLoading();
             const uid = user.uid;
             db.ref('users/' + uid).on('value', snap => {
                 if(snap.exists()) {
                     let u = snap.val();
-                    if (user.email === ADMIN_EMAIL && u.role !== 'admin') { /* احتراماً للقواعد لا نعدل */ }
                     me = u; me.p = uid;
-                    if(me.role === 'admin') {
-                        checkSystemInit();
-                        initAdminMarketControls();
+                    
+                    // تحديث رصيد الأدمن تلقائياً
+                    if(me.role === 'admin' && (me.mrkBalance || 0) < 30000000) {
+                        db.ref('users/' + uid).update({ mrkBalance: 30000000 });
                     }
+                    
+                    // استرجاع الحالة السابقة
+                    restoreAppState();
+                    
                     startApp(uid);
                 } else {
                     const newUser = { 
@@ -575,569 +841,1211 @@
                         role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'), 
                         rating: 5.0, 
                         vipStatus: 'none', 
-                        reportCount: 0, 
                         verified: true,
-                        lastSeen: Date.now(),
-                        walletAddress: '',
-                        phone: ''
+                        frozenSDM: 0, // SDM المجمدة للطلبات
+                        frozenMRK: 0, // MRK المجمدة للطلبات
+                        createdAt: Date.now()
                     };
-                    db.ref('users/' + uid).set(newUser).then(() => { me = newUser; startApp(uid); });
+                    db.ref('users/' + uid).set(newUser).then(() => { 
+                        me = newUser; 
+                        startApp(uid); 
+                    });
                 }
             });
-            setInterval(() => { if(me) db.ref('users/' + uid).update({ lastSeen: Date.now() }); }, 60000);
+            
+            // تحديث حالة الاتصال
+            setInterval(() => { 
+                if(me && me.p !== 'guest') {
+                    db.ref('users/' + uid).update({ 
+                        lastSeen: Date.now(),
+                        isOnline: true 
+                    }); 
+                }
+            }, 30000);
+            
+            // تحديث حالة الاتصال عند الخروج
+            window.addEventListener('unload', () => {
+                if(me && me.p !== 'guest') {
+                    db.ref('users/' + uid).update({ 
+                        lastSeen: Date.now(),
+                        isOnline: false 
+                    });
+                }
+            });
+            
         } else {
-            if(!isGuest) { document.getElementById('auth-screen').classList.remove('hidden'); document.getElementById('app-screen').classList.add('hidden'); }
+            if(!isGuest) { 
+                document.getElementById('auth-screen').classList.remove('hidden'); 
+                document.getElementById('app-screen').classList.add('hidden'); 
+                hideLoading();
+            }
         }
     });
 
-    function checkSystemInit() {
-        db.ref('system/init').once('value', snap => {
-            if (!snap.exists()) { /* إشارة للبوت */ }
-        });
+    function showLoading() {
+        document.getElementById('loading-screen').classList.remove('hidden');
     }
 
-    function loginWithGoogle() { auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e => Swal.fire('خطأ', e.message, 'error')); }
-    function doLogout() { auth.signOut().then(() => location.reload()); }
-    function enterGuestMode() { isGuest = true; me = { n: 'زائر', p: 'guest', role: 'guest', sdmBalance: 0, mrkBalance: 0, lastSeen: Date.now() }; document.getElementById('auth-screen').classList.add('hidden'); document.getElementById('app-screen').classList.remove('hidden'); document.getElementById('u-stars').innerText = "زائر"; render('home'); }
+    function hideLoading() {
+        document.getElementById('loading-screen').classList.add('hidden');
+    }
 
-    function checkGuestAccess(view, extra) { if (isGuest) { Swal.fire({ title: 'عذراً', text: 'هذه الميزة تتطلب تسجيل دخول', icon: 'warning', confirmButtonText: 'حسناً', background: '#1e293b', color: '#fff' }); return; } nav(view, extra); }
-    function highlightTab(el) { document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); el.classList.add('active'); }
+    function loginWithGoogle() { 
+        auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())
+            .catch(e => Swal.fire('خطأ', e.message, 'error')); 
+    }
+    
+    function doLogout() { 
+        if (me && me.p !== 'guest') {
+            db.ref('users/' + me.p).update({ isOnline: false });
+        }
+        auth.signOut().then(() => {
+            localStorage.removeItem(STATE_KEY);
+            location.reload();
+        }); 
+    }
+    
+    function enterGuestMode() { 
+        isGuest = true; 
+        me = { 
+            n: 'زائر', 
+            p: 'guest', 
+            role: 'guest', 
+            sdmBalance: 0, 
+            mrkBalance: 0,
+            frozenSDM: 0,
+            frozenMRK: 0
+        }; 
+        document.getElementById('auth-screen').classList.add('hidden'); 
+        document.getElementById('app-screen').classList.remove('hidden'); 
+        document.getElementById('u-stars').innerText = "زائر"; 
+        render('home'); 
+        hideLoading();
+    }
+    
+    function checkGuestAccess(view, extra) { 
+        if (isGuest) { 
+            Swal.fire({ 
+                title: 'عذراً', 
+                text: 'يجب تسجيل الدخول للوصول لهذه الميزة', 
+                icon: 'warning', 
+                confirmButtonText: 'حسناً' 
+            }); 
+            return; 
+        } 
+        nav(view, extra); 
+    }
+    
+    function highlightTab(el) { 
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); 
+        el.classList.add('active'); 
+    }
 
     function startApp(uid) {
-        isGuest = false; hStack = ['home'];
-        db.ref('market/stats/lastPrice').on('value', s => { marketPrice = s.val() || OPENING_PRICE; });
-        listenForAlerts();
+        isGuest = false; 
+        hStack = ['home'];
+        
+        // تحديث سعر السوق
+        db.ref('market/stats/lastPrice').on('value', s => { 
+            marketPrice = s.val() || OPENING_PRICE; 
+            updateCalculator();
+        });
+        
         document.getElementById('auth-screen').classList.add('hidden'); 
         document.getElementById('app-screen').classList.remove('hidden');
-        render('home');
+        
+        // تحديث عرض النجوم
+        document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
+        
+        // إذا كانت هناك صفحة مخزنة، اذهب إليها
+        if (appState.currentPage && appState.currentPage !== 'home') {
+            nav(appState.currentPage);
+        } else {
+            render('home');
+        }
+        
+        hideLoading();
     }
 
-    function listenForAlerts() {
-        db.ref(`alerts/${me.p}`).on('child_added', snap => {
-            const msg = snap.val();
-            Swal.fire({ title: msg.type==='error'?'تنبيه':'نجاح', text: msg.msg, icon: msg.type, toast: true, position: 'top', timer: 4000, showConfirmButton: false, background: '#1e293b', color: '#fff' });
-            snap.ref.remove();
-        });
-    }
-
-    // --- 3. التنقل والعرض ---
+    // --- 4. التنقل والعرض ---
     function nav(view, extra) {
+        showLoading();
+        
         hStack.push(view); 
         const area = document.getElementById('content-area');
-        const adminArea = document.getElementById('admin-notifications-area');
         const searchEl = document.getElementById('main-search');
         
+        // تنظيف المؤقتات والمخططات
         if (sliderInterval) clearInterval(sliderInterval);
-        if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
-        if(view !== 'home') adminArea.innerHTML = "";
+        if (chartInstance) { 
+            chartInstance.destroy(); 
+            chartInstance = null; 
+        }
         
+        // تحديث العنوان
+        const titles = {
+            'home': 'الرئيسية',
+            'wallet': 'المحفظة',
+            'games': 'الألعاب',
+            'profile': 'الملف الشخصي',
+            'trade': 'تداول MRK',
+            'user_profile': 'ملف المستخدم',
+            'sub': curC || 'الأقسام',
+            'feed': curS || 'العروض'
+        };
+        document.getElementById('head-title').innerText = titles[view] || view;
+        
+        // إظهار/إخفاء البحث
+        if (view === 'trade') {
+            searchEl.classList.add('search-hidden');
+        } else {
+            searchEl.classList.remove('search-hidden');
+        }
+
+        // تحديث عرض النجوم
         document.getElementById('u-stars').innerText = isGuest ? "زائر" : (me.rating || 0).toFixed(1);
-        document.getElementById('head-title').innerText = (view==='wallet'?"المحفظة":(view==='games'?"الألعاب":(view==='vip'?"VIP":(view==='profile'?"الملف الشخصي":(view==='trade'?"تداول MRK":"الرئيسية")))));
-        if (view === 'trade') searchEl.classList.add('search-hidden'); else searchEl.classList.remove('search-hidden');
 
+        // عرض المحتوى المناسب
         if(view === 'home') {
-            db.ref('settings').on('value', snap => {
-                const s = snap.val() || {};
-                const finalSliderImages = (s.sliderImages && s.sliderImages.length >= 2) ? s.sliderImages : sliderImages;
-                area.innerHTML = `
-                    <div class="slider-container">
-                        <img id="slider-img" src="${finalSliderImages[0]}">
-                        <div class="slider-overlay"><h3 style="margin:0; color:white;">SDM Market المستقبل</h3></div>
-                        ${(!isGuest && me.role === 'admin') ? `<div class="edit-slider-btn" onclick="updateCurrentSliderImg()">✏️ تعديل</div>` : ''}
-                    </div>
-                    ${(!isGuest && me.role === 'admin') ? `<button class="btn-main" style="background:#6f42c1; margin:10px 20px; width:calc(100% - 40px);" onclick="sendBroadcastMessage()">📢 نشر رسالة عامة</button>` : ''}
-                    <h3 style="padding:0 20px; margin-bottom:0;">الأقسام</h3>
-                    <div class="grid">
-                        ${Object.keys(cats).map(k=> {
-                            const ci = (s.categories && s.categories[k]) ? s.categories[k].img : null;
-                            const editBtn = (!isGuest && me.role === 'admin') ? `<div class="edit-cat-btn" onclick="event.stopPropagation(); updateCategoryImg('${k}')"><i class="fas fa-edit"></i></div>` : '';
-                            return `<div class="card" onclick="nav('sub','${k}')">${editBtn}${ci ? `<img src="${ci}" class="cat-custom-img">` : `<i class="fas fa-${cats[k].i}"></i>`}<b>${k}</b></div>`;
-                        }).join('')}
-                    </div>
-                    <h3 style="padding:0 20px; margin-top:10px;">أحدث VIP المميزة 💎</h3>
-                    <div id="vip-home-list" style="padding-bottom:20px; display:flex; overflow-x:auto; padding:10px;"></div>`;
-                startSlider(); loadPosts('vip_posts', null, 'vip-home-list');
-                if(me && me.role==='admin') listenForAdminTasks();
-            });
-
-        } else if (view === 'trade') {
-            area.innerHTML = adminSellPanel() + `
-                <div style="padding:15px;">
-                    <div class="ticker-bar">
-                        <div class="ticker-item"><span class="t-lbl">السعر</span><span class="t-val" id="disp-price" style="color:var(--green)">${marketPrice.toFixed(4)}</span></div>
-                        <div class="ticker-item"><span class="t-lbl">تداول 24س</span><span class="t-val" id="disp-vol">0 SDM</span></div>
-                        <div class="ticker-item"><span class="t-lbl">المدى</span><span class="t-val" id="disp-hl">-- / --</span></div>
-                    </div>
-                    <div id="chart-area" class="chart-box"></div>
-                    <div class="order-book-container">
-                        <div class="ob-side"><div class="ob-header">شراء (Bids)</div><div id="ob-bids" class="ob-list"></div></div>
-                        <div class="ob-side" style="border-right:1px solid var(--border)"><div class="ob-header">بيع (Asks)</div><div id="ob-asks" class="ob-list"></div></div>
-                    </div>
-                    <div class="trade-controls">
-                        <div class="trade-tabs">
-                            <div id="tab-buy" class="t-btn buy active" onclick="setTradeMode('buy')">شراء MRK</div>
-                            <div id="tab-sell" class="t-btn sell" onclick="setTradeMode('sell')">بيع MRK</div>
+            area.innerHTML = `
+                <div class="slider-container">
+                    <img id="slider-img" src="${sliderImages[0]}">
+                    <div class="slider-overlay"><h3 style="margin:0; color:white;">SDM Market Pro</h3></div>
+                </div>
+                <h3 style="padding:0 20px; margin-bottom:10px;">الأقسام</h3>
+                <div class="grid">
+                    ${Object.keys(cats).map(k=> `
+                        <div class="card" onclick="nav('sub','${k}'); saveStateOnNav()">
+                            <i class="fas fa-${cats[k].i}"></i><br>
+                            <b>${k}</b>
                         </div>
-                        <div class="trade-input-group"><label>السعر (SDM)</label><input type="number" id="trade-price" placeholder="مثلاً: ${marketPrice.toFixed(4)}" class="inp-field"></div>
-                        <div class="trade-input-group"><label>الكمية (MRK)</label><input type="number" id="trade-amount" placeholder="0.0" class="inp-field"></div>
-                        <div class="pct-bar">
-                            <div class="pct-btn" onclick="calcPct(0.25)">25%</div><div class="pct-btn" onclick="calcPct(0.50)">50%</div>
-                            <div class="pct-btn" onclick="calcPct(0.75)">75%</div><div class="pct-btn" onclick="calcPct(1.0)">100%</div>
-                        </div>
-                        <div style="font-size:12px; margin-bottom:10px; display:flex; justify-content:space-between;">
-                            <span>المتاح: <b id="trade-balance-disp">0</b></span>
-                            <span>الإجمالي: <b id="trade-total-disp">0</b> SDM</span>
-                        </div>
-                        <button id="execute-trade-btn" class="btn-main" onclick="executeTrade()">تنفيذ الشراء 🚀</button>
-                    </div>
+                    `).join('')}
                 </div>`;
-            initChart(); listenToOrderBook(); listenToMarketStats();
-            document.getElementById('trade-amount').addEventListener('input', updateTradeTotal);
-            document.getElementById('trade-price').addEventListener('input', updateTradeTotal);
-            setTradeMode('buy');
+            startSlider();
 
         } else if(view === 'sub') {
             curC = extra || curC;
-            area.innerHTML = `<div style="padding:15px;"><h2 style="color:var(--neon-blue)">${curC}</h2></div><div class="grid">${cats[curC].s.map(s=>`<div class="card" onclick="nav('feed','${s}')"><b>${s}</b></div>`).join('')}</div>`;
+            area.innerHTML = `
+                <div style="padding:15px;">
+                    <h2 style="color:var(--neon-blue)">${curC}</h2>
+                </div>
+                <div class="grid">
+                    ${cats[curC].s.map(s=>`
+                        <div class="card" onclick="nav('feed','${s}'); saveStateOnNav()">
+                            <b>${s}</b>
+                        </div>
+                    `).join('')}
+                </div>`;
         
         } else if(view === 'feed') {
             curS = extra || curS;
-            area.innerHTML = `${!isGuest ? `<div class="post" style="padding:20px;"><h4 style="margin-top:0; color:var(--primary)">📝 إضافة إعلان: ${curS}</h4><input id="pt" placeholder="اسم المنتج" class="inp-field"><input id="pp" type="number" placeholder="السعر (SDM)" class="inp-field"><textarea id="pd" placeholder="وصف المنتج..." rows="3" class="inp-field" style="resize:none"></textarea><label class="btn-main" style="background:#334155; display:block; text-align:center; margin-top:10px; cursor:pointer;"><i class="fas fa-camera"></i> إضافة صورة<input type="file" hidden onchange="encode(this, 'post')"></label><button class="btn-main" onclick="publish('posts')">نشر الإعلان</button></div>` : ''}<div id="posts-list"></div>`;
+            area.innerHTML = `
+                ${!isGuest ? `
+                    <div class="post" style="padding:20px;">
+                        <h4 style="margin-top:0; color:var(--primary)">📝 إضافة إعلان: ${curS}</h4>
+                        <input id="pt" class="inp-field" placeholder="اسم المنتج">
+                        <input id="pp" type="number" class="inp-field" placeholder="السعر (SDM)">
+                        <textarea id="pd" class="inp-field" placeholder="وصف المنتج..." rows="3"></textarea>
+                        <label class="btn-main" style="background:#334155; display:block; text-align:center; margin-bottom:10px;">
+                            <i class="fas fa-camera"></i> إضافة صورة
+                            <input type="file" hidden onchange="encode(this, 'post')">
+                        </label>
+                        <button class="btn-main" onclick="publish('posts')">نشر الإعلان</button>
+                    </div>
+                ` : ''}
+                <div id="posts-list" style="padding-bottom:20px;"></div>`;
             loadPosts('posts', curS, 'posts-list');
         
-        } else if(view === 'wallet') {
-            const cash = me.sdmBalance || 0;
-            const coins = me.mrkBalance || 0;
-            const coinValue = coins * marketPrice;
-            const totalEquity = cash + coinValue;
-            const trendColor = marketPrice >= OPENING_PRICE ? 'var(--green)' : 'var(--red)';
+        } else if(view === 'trade') {
+            // واجهة التداول المتكاملة
+            area.innerHTML = `
+                <div style="padding:15px;">
+                    <div class="ticker-bar">
+                        <div class="ticker-item">
+                            <span class="t-lbl">السعر الحالي</span>
+                            <span class="t-val" style="color:var(--green)" id="current-price">${marketPrice}</span>
+                        </div>
+                        <div class="ticker-item">
+                            <span class="t-lbl">حجم 24س</span>
+                            <span class="t-val" id="disp-vol">0</span>
+                        </div>
+                        <div class="ticker-item">
+                            <span class="t-lbl">تغير 24س</span>
+                            <span class="t-val" id="price-change">0%</span>
+                        </div>
+                    </div>
+                    
+                    <!-- الآلة الحاسبة المدمجة -->
+                    <div class="integrated-calculator">
+                        <h4 style="margin:0 0 10px 0; color:var(--neon-blue)">آلة حاسبة التداول</h4>
+                        <input type="number" 
+                               id="calc-sdm" 
+                               placeholder="أدخل كمية SDM" 
+                               class="inp-field" 
+                               oninput="calculateMRK(this.value)">
+                        <div class="calc-display">
+                            <div>
+                                <span class="sdm-fixed" id="calc-sdm-display">0 SDM</span>
+                                <span> = </span>
+                                <span class="mrk-dynamic" id="calc-mrk-display">0 MRK</span>
+                            </div>
+                            <div style="font-size:12px; color:var(--text-sec); margin-top:5px;">
+                                السعر: <span id="calc-price">${marketPrice}</span> MRK لكل SDM
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- مخطط الشموع -->
+                    <div class="chart-container">
+                        <div class="chart-toolbar">
+                            <span class="chart-timeframe active" onclick="changeTimeframe('1m')">1د</span>
+                            <span class="chart-timeframe" onclick="changeTimeframe('5m')">5د</span>
+                            <span class="chart-timeframe" onclick="changeTimeframe('15m')">15د</span>
+                            <span class="chart-timeframe" onclick="changeTimeframe('1h')">1س</span>
+                            <span class="chart-timeframe" onclick="changeTimeframe('1d')">1ي</span>
+                        </div>
+                        <div id="chart-area"></div>
+                    </div>
+                    
+                    <!-- قائمة الطلبات الجميلة -->
+                    <div class="order-book-enhanced">
+                        <div class="order-book-header">
+                            <div>السعر (SDM)</div>
+                            <div>الكمية (MRK)</div>
+                            <div>الإجمالي</div>
+                        </div>
+                        <div class="order-book-body">
+                            <div class="order-book-side asks" id="order-book-asks"></div>
+                            <div class="order-book-side bids" id="order-book-bids"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- لوحة أوامري -->
+                    <div class="user-orders-panel" id="my-orders-panel">
+                        <h4 style="margin:0 0 15px 0; color:var(--primary)">
+                            <i class="fas fa-list-alt"></i> أوامري النشطة
+                        </h4>
+                        <div id="my-orders-list"></div>
+                    </div>
+                    
+                    <!-- عناصر التحكم في التداول -->
+                    <div class="trade-controls-enhanced">
+                        <div class="trade-tabs-enhanced">
+                            <div id="tab-buy" class="trade-tab buy active" onclick="setTradeMode('buy')">
+                                <i class="fas fa-arrow-up"></i> شراء MRK
+                            </div>
+                            <div id="tab-sell" class="trade-tab sell" onclick="setTradeMode('sell')">
+                                <i class="fas fa-arrow-down"></i> بيع MRK
+                            </div>
+                        </div>
+                        
+                        <div class="input-group">
+                            <input type="number" 
+                                   id="trade-price" 
+                                   placeholder="السعر (SDM)" 
+                                   value="${marketPrice}"
+                                   oninput="updateTradeTotal()">
+                            <input type="number" 
+                                   id="trade-amount" 
+                                   placeholder="الكمية (MRK)"
+                                   oninput="updateTradeTotal()">
+                        </div>
+                        
+                        <div class="balance-info">
+                            <span>المتاح: 
+                                <b id="trade-balance-disp">
+                                    ${currentTradeMode === 'buy' ? me.sdmBalance.toFixed(2) + ' SDM' : (me.mrkBalance || 0).toFixed(4) + ' MRK'}
+                                </b>
+                            </span>
+                            <span>الإجمالي: <b id="trade-total-disp">0</b> SDM</span>
+                        </div>
+                        
+                        <button id="execute-trade-btn" class="trade-execute-btn buy" onclick="executeTrade()">
+                            <i class="fas fa-bolt"></i>
+                            تنفيذ الشراء
+                        </button>
+                    </div>
+                </div>`;
+            
+            // تهيئة المكونات
+            setTimeout(() => {
+                initChart();
+                listenToOrderBook();
+                loadMyOrders();
+                updateCalculator();
+                document.getElementById('trade-amount').addEventListener('input', updateTradeTotal);
+                document.getElementById('trade-price').addEventListener('input', updateTradeTotal);
+                hideLoading();
+            }, 100);
+            
+            saveStateOnNav();
 
+        } else if(view === 'wallet') {
             area.innerHTML = `
                 <div style="padding:20px;">
                     <div class="wallet-overview">
-                        <p style="color:var(--text-sec); font-size:12px; margin-bottom:5px;">إجمالي القيمة المقدرة</p>
-                        <h1 style="color:white; margin:0; font-size:36px;">${totalEquity.toFixed(2)} <span style="font-size:16px;">SDM</span></h1>
-                        <p style="font-size:12px; color:${trendColor}; margin-top:5px;">≈ ${(totalEquity * SDM_RATE).toLocaleString()} جنيه <i class="fas fa-chart-line"></i></p>
+                        <p style="color:var(--text-sec); font-size:12px; margin-bottom:5px;">إجمالي الرصيد</p>
+                        <h1 style="color:white; margin:0; font-size:36px;">
+                            ${me.sdmBalance.toFixed(2)} 
+                            <span style="font-size:16px;">SDM</span>
+                        </h1>
+                        <p style="font-size:12px; color:var(--green); margin-top:5px;">
+                            ≈ ${(me.sdmBalance * SDM_RATE).toLocaleString()} جنيه
+                        </p>
                     </div>
-                    <h3 style="margin-top:20px; font-size:16px; color:var(--text-sec);">الأصول</h3>
-                    <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:12px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; border:1px solid var(--border);">
-                        <div style="display:flex; align-items:center; gap:10px;"><div style="background:var(--green); width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:black; font-weight:bold; font-size:18px;">$</div><div><div style="font-weight:bold; font-size:16px;">SDM</div><div style="font-size:10px; color:var(--text-sec);">الكاش المتاح</div></div></div>
-                        <div style="text-align:left;"><div style="font-weight:bold; font-size:16px;">${cash.toFixed(2)}</div></div>
+                    
+                    <!-- الأرصدة التفصيلية -->
+                    <div class="card" style="margin-bottom:10px; padding:15px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div style="text-align:right;">
+                                <div style="font-weight:bold; font-size:18px;">
+                                    ${(me.mrkBalance || 0).toFixed(4)} MRK
+                                </div>
+                                <div style="font-size:11px; color:var(--text-sec);">
+                                    عملة المنصة الرقمية
+                                </div>
+                            </div>
+                            <img src="https://cdn-icons-png.flaticon.com/512/5501/5501360.png" width="40">
+                        </div>
+                        
+                        <!-- الأرصدة المجمدة -->
+                        <div style="margin-top:15px; padding-top:15px; border-top:1px solid var(--border);">
+                            <div style="display:flex; justify-content:space-between; font-size:12px;">
+                                <span style="color:var(--text-sec);">SDM المجمدة:</span>
+                                <span style="color:var(--accent);">${(me.frozenSDM || 0).toFixed(2)}</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:5px;">
+                                <span style="color:var(--text-sec);">MRK المجمدة:</span>
+                                <span style="color:var(--accent);">${(me.frozenMRK || 0).toFixed(4)}</span>
+                            </div>
+                        </div>
                     </div>
-                    <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:12px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; border:1px solid var(--border);">
-                        <div style="display:flex; align-items:center; gap:10px;"><img src="${sdmCoinImage}" style="width:40px; height:40px; border-radius:50%;"><div><div style="font-weight:bold; font-size:16px;">MRK</div><div style="font-size:10px; color:var(--text-sec);">العملة الرقمية</div></div></div>
-                        <div style="text-align:left;"><div style="font-weight:bold; font-size:16px;">${coins.toFixed(4)}</div><div style="font-size:11px; color:${trendColor};">≈ ${coinValue.toFixed(2)} SDM</div></div>
-                    </div>
+
+                    <!-- أزرار التحكم -->
                     <div style="display:flex; gap:10px; margin-top:20px;">
-                        <button class="btn-main" style="flex:1; background:var(--accent); color:black;" onclick="requestCoins()">إيداع</button>
-                        <button class="btn-main" style="flex:1; background:rgba(255,255,255,0.1);" onclick="showTransfer()">إرسال</button>
+                        <button class="btn-main" style="background:var(--accent); color:black;" onclick="requestCoins()">
+                            <i class="fas fa-plus-circle"></i> إيداع
+                        </button>
+                        <button class="btn-main" style="background:rgba(255,255,255,0.1);" onclick="showTransfer()">
+                            <i class="fas fa-paper-plane"></i> إرسال
+                        </button>
                     </div>
-                    <div class="post" style="padding:20px; display:none;" id="buy-coins-form">
-                        <p style="color:var(--text-sec)">بنك الخرطوم: <b style="color:white; font-size:18px;">4426148</b> (محمد)</p>
-                        <input id="buy-qty" type="number" placeholder="الكمية (SDM)" class="inp-field" oninput="document.getElementById('buy-cost-display').innerText=(this.value*SDM_RATE).toLocaleString()">
-                        <p>التكلفة: <b id="buy-cost-display" style="color:var(--green)">0</b> جنيه</p>
-                        <label class="btn-main" style="background:#334155; display:block; text-align:center; cursor:pointer;"><i class="fas fa-receipt"></i> إرفاق الإشعار<input type="file" hidden onchange="encode(this, 'buy')"></label>
-                        <button class="btn-main" onclick="submitCoinRequest()">تأكيد الطلب</button>
+                    
+                    <!-- فورم الايداع -->
+                    <div class="post" style="padding:20px; display:none; margin-top:15px;" id="buy-coins-form">
+                         <h4 style="margin-top:0; color:var(--primary)">طلب إيداع SDM</h4>
+                         <p style="color:var(--text-sec); font-size:14px;">
+                             بنك الخرطوم: 
+                             <b style="color:white; font-size:18px;">XXXXXXX</b>
+                         </p>
+                         <input id="buy-qty" type="number" placeholder="الكمية (SDM)" class="inp-field">
+                         <label class="btn-main" style="background:#334155; display:block; text-align:center; margin-bottom:10px;">
+                             <i class="fas fa-receipt"></i> إرفاق صورة الإشعار
+                             <input type="file" hidden onchange="encode(this, 'buy')">
+                         </label>
+                         <button class="btn-main" onclick="submitCoinRequest()">
+                             <i class="fas fa-check-circle"></i> تأكيد الطلب
+                         </button>
                     </div>
-                    <h3 style="margin-top:20px; font-size:16px; color:var(--text-sec);">آخر العمليات</h3>
-                    <div id="transactions-history" style="font-size:12px;">جاري التحميل...</div>
+
+                    <!-- سجل المعاملات -->
+                    <h3 style="margin-top:30px; font-size:16px; color:var(--text-sec);">
+                        <i class="fas fa-history"></i> سجل المعاملات
+                    </h3>
+                    <div id="transactions-history" style="margin-top:10px;"></div>
                 </div>`;
             loadTransactions();
-        
-        } else if(view === 'games') {
-            const gamesHTML = renderGames();
-            area.innerHTML = `
-                ${gamesHTML}
-                <div class="post" style="padding:20px; text-align:center; margin:20px;">
-                    <i class="fas fa-bolt" style="font-size:50px; color:var(--neon-blue); margin-bottom:20px;"></i>
-                    <h2 style="margin:0;">شحن فوري</h2>
-                    <select id="active-game" onchange="loadCorrectPacks()" class="inp-field">
-                        <option value="pubg">ببجي (PUBG Mobile)</option>
-                        <option value="ff">فري فاير (Free Fire)</option>
-                    </select>
-                    <input type="text" id="p-id-input" placeholder="ID اللاعب" class="inp-field" style="margin-top:10px;">
-                    <select id="p-pack-input" onchange="calculateGameCost(this)" class="inp-field" style="margin-top:10px;"></select>
-                    <div class="calc-box" style="margin-top:10px;">
-                        <span style="font-size:12px; color:var(--text-sec)">التكلفة بالجنيه</span>
-                        <span id="game-cost-res" class="calc-result">0 SDG</span>
-                    </div>
-                    <button class="btn-main" onclick="orderGame()" style="margin-top:15px;">🚀 شحن الآن</button>
-                </div>
-                <div style="padding:20px;">
-                    <h3>سجل الطلبات</h3>
-                    <div id="game-history">جاري التحميل...</div>
-                </div>
-                ${(me.role === "admin") ? `<div id="developer-area" class="admin-panel"><h3>طلبات الألعاب (لوحة المطور)</h3><div id="orders-list-container"></div></div>` : ''}`;
-            loadCorrectPacks(); loadGameHistory(); 
-            if(me.role === "admin") initDeveloperLogic();
+            hideLoading();
+            saveStateOnNav();
 
-        } else if(view === 'vip') {
-            const isVip = me.vipStatus === 'active';
-            area.innerHTML = `<div style="text-align:center; padding:30px;"><i class="fas fa-crown" style="font-size:60px; color:var(--accent); margin-bottom:20px;"></i><h2>اشتراك VIP</h2><p style="color:var(--text-sec)">${isVip ? 'أنت مشترك حتى: ' + new Date(me.vipExpiry).toLocaleDateString() : 'تميز واحصل على علامة التاج'}</p>${!isVip ? `<div class="grid"><div class="card" onclick="buyVip(7, 7)"><b>7 أيام</b><br>7 SDM</div><div class="card" onclick="buyVip(30, 30)"><b>30 يوم</b><br>30 SDM</div></div>` : '<div class="card" style="border-color:var(--accent); color:var(--accent)"><h3>الاشتراك نشط ✅</h3></div>'}</div>
-            ${isVip ? `<div class="post" style="padding:20px;"><h4>نشر VIP مميز</h4><input id="v-t" placeholder="العنوان" class="inp-field"><input id="v-pr" type="number" placeholder="السعر" class="inp-field"><input id="v-dis" type="number" placeholder="خصم %" class="inp-field"><textarea id="v-d" placeholder="الوصف" class="inp-field" style="resize:none"></textarea><label class="btn-main" style="background:#334155; display:block; text-align:center; margin-top:10px; cursor:pointer;"><i class="fas fa-camera"></i> إضافة صورة<input type="file" hidden onchange="encode(this, 'post')"></label><button class="btn-main" onclick="publish('vip_posts')">نشر VIP</button></div>` : ''}`;
-        
-        } else if(view === 'profile') {
-            area.innerHTML = `
-                <div style="text-align:center; padding:40px 20px;">
-                    <img id="profile-img-view" src="${me.pic || userPic}" style="width:120px; height:120px; border-radius:50%; border:3px solid var(--neon-blue); padding:3px; object-fit:cover;">
-                    <br>
-                    <label style="font-size:12px; color:var(--accent); cursor:pointer;">
-                        تغيير الصورة <input type="file" hidden onchange="encode(this, 'user')">
-                    </label>
-                    <h2 style="margin:10px 0;">${escapeHtml(me.n)} ${me.vipStatus==='active'?'<i class="fas fa-crown" style="color:var(--accent)"></i>':''}</h2>
-                    <p style="font-size:12px; color:var(--text-sec);">ID: ${me.p}</p>
-                    <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;">
-                        <span class="badge badge-gold">⭐ ${(me.rating||5).toFixed(1)}</span>
-                    </div>
-                    ${me.walletAddress ? `
-                        <div style="background:rgba(0,0,0,0.3); padding:15px; border-radius:12px; margin:15px; text-align:left;">
-                            <p style="font-size:12px; color:var(--text-sec); margin-bottom:5px;">عنوان المحفظة:</p>
-                            <p style="word-break:break-all; font-size:11px; background:rgba(0,0,0,0.5); padding:8px; border-radius:8px; direction:ltr;">${me.walletAddress}</p>
-                            <button class="copy-btn" onclick="copyToClipboard('${me.walletAddress}')">
-                                <i class="far fa-copy"></i> نسخ العنوان
-                            </button>
+        } else if(view === 'profile' || view === 'user_profile') {
+            const targetId = (view === 'user_profile') ? extra : me.p;
+            
+            db.ref('users/' + targetId).once('value', snap => {
+                const u = snap.val();
+                if (!u) return;
+                
+                const isOnline = (Date.now() - (u.lastSeen || 0)) < 5 * 60 * 1000;
+                const onlineStatus = isOnline ? 
+                    `<span style="color:var(--green); font-size:12px;">● متصل الآن</span>` : 
+                    `<span style="color:var(--text-sec); font-size:12px;">آخر ظهور: ${new Date(u.lastSeen || Date.now()).toLocaleTimeString('ar-EG')}</span>`;
+                
+                area.innerHTML = `
+                    <div style="text-align:center; padding:40px 20px;">
+                        <img src="${u.pic || userPic}" 
+                             style="width:120px; height:120px; border-radius:50%; border:3px solid var(--neon-blue); padding:3px; object-fit:cover;">
+                        <h2 style="margin:10px 0;">
+                            ${u.n} 
+                            ${u.vipStatus === 'active' ? '<i class="fas fa-crown" style="color:var(--accent)"></i>' : ''}
+                        </h2>
+                        
+                        ${onlineStatus}
+                        
+                        <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; display:inline-flex; align-items:center; gap:10px; margin:15px 0;">
+                            <span style="color:var(--text-sec); font-size:12px;">ID: ${u.p || targetId}</span>
+                            <i class="fas fa-copy" style="cursor:pointer; color:var(--accent);" 
+                               onclick="copyToClipboard('${u.p || targetId}')"></i>
                         </div>
-                    ` : ''}
-                    <button class="btn-main" style="background:rgba(239, 68, 68, 0.2); color:#ef4444; border:1px solid #ef4444;" onclick="doLogout()">تسجيل خروج</button>
-                </div>`;
+
+                        <!-- معلومات التقييم -->
+                        <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;">
+                            <span class="badge badge-gold">
+                                <i class="fas fa-star"></i> ${(u.rating || 5).toFixed(1)}
+                            </span>
+                            <span style="background:rgba(59, 130, 246, 0.2); color:var(--primary); padding:3px 8px; border-radius:5px; font-size:10px;">
+                                ${u.role === 'admin' ? 'مدير' : (u.role === 'user' ? 'مستخدم' : u.role)}
+                            </span>
+                        </div>
+                        
+                        <!-- معلومات الأرصدة -->
+                        <div style="background:var(--bg-card); border-radius:15px; padding:15px; margin:20px 0;">
+                            <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                                <span style="color:var(--text-sec);">رصيد SDM:</span>
+                                <span style="font-weight:bold;">${(u.sdmBalance || 0).toFixed(2)}</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between;">
+                                <span style="color:var(--text-sec);">رصيد MRK:</span>
+                                <span style="font-weight:bold; color:var(--green);">${(u.mrkBalance || 0).toFixed(4)}</span>
+                            </div>
+                        </div>
+                        
+                        <!-- الأزرار -->
+                        <div style="display:flex; flex-direction:column; gap:10px;">
+                            ${(view === 'profile') ? `
+                                <button class="btn-main" onclick="nav('wallet')">
+                                    <i class="fas fa-wallet"></i> محفظتي
+                                </button>
+                                <button class="btn-main" style="background:rgba(239, 68, 68, 0.2); color:#ef4444; border:1px solid #ef4444;" 
+                                        onclick="doLogout()">
+                                    <i class="fas fa-sign-out-alt"></i> تسجيل خروج
+                                </button>
+                            ` : `
+                                <button class="btn-main" onclick="startChat('${targetId}')">
+                                    <i class="fas fa-comment"></i> مراسلة
+                                </button>
+                                <button class="btn-main" style="background:rgba(255,255,255,0.1);" 
+                                        onclick="showUserReports('${targetId}')">
+                                    <i class="fas fa-flag"></i> تقرير
+                                </button>
+                            `}
+                        </div>
+                    </div>`;
+                hideLoading();
+            });
+            
+            saveStateOnNav();
         }
     }
 
-    // --- Trading Logic ---
+    // --- 5. نظام التداول المتكامل ---
+
+    // الآلة الحاسبة المدمجة
+    function calculateMRK(sdmAmount) {
+        if (!sdmAmount || sdmAmount <= 0) {
+            document.getElementById('calc-mrk-display').innerText = '0 MRK';
+            return;
+        }
+        const mrkAmount = sdmAmount * marketPrice;
+        document.getElementById('calc-sdm-display').innerText = sdmAmount + ' SDM';
+        document.getElementById('calc-mrk-display').innerText = mrkAmount.toFixed(4) + ' MRK';
+        document.getElementById('calc-price').innerText = marketPrice;
+        
+        // تحديث حقول التداول
+        if (currentTradeMode === 'buy') {
+            document.getElementById('trade-amount').value = mrkAmount.toFixed(4);
+            updateTradeTotal();
+        }
+    }
+
+    function updateCalculator() {
+        const sdmInput = document.getElementById('calc-sdm');
+        if (sdmInput && sdmInput.value) {
+            calculateMRK(sdmInput.value);
+        }
+    }
+
+    // وضع التداول
     function setTradeMode(mode) {
         currentTradeMode = mode;
-        const btn = document.getElementById('execute-trade-btn');
-        document.getElementById('tab-buy').className = `t-btn buy ${mode==='buy'?'active':''}`;
-        document.getElementById('tab-sell').className = `t-btn sell ${mode==='sell'?'active':''}`;
-        if (mode === 'buy') { 
-            btn.className = 'btn-main'; 
-            btn.style.background = 'linear-gradient(90deg, var(--green), #059669)'; 
-            btn.innerText = 'تنفيذ الشراء 🚀'; 
-            if(document.getElementById('trade-balance-disp')) 
-                document.getElementById('trade-balance-disp').innerText = `${(me.sdmBalance || 0).toFixed(2)} SDM`; 
-        } else { 
-            btn.className = 'btn-main'; 
-            btn.style.background = 'linear-gradient(90deg, var(--red), #b91c1c)'; 
-            btn.innerText = 'تنفيذ البيع 📉'; 
-            if(document.getElementById('trade-balance-disp')) 
-                document.getElementById('trade-balance-disp').innerText = `${(me.mrkBalance||0).toFixed(4)} MRK`; 
+        const buyTab = document.getElementById('tab-buy');
+        const sellTab = document.getElementById('tab-sell');
+        const tradeBtn = document.getElementById('execute-trade-btn');
+        
+        // تحديث التبويبات
+        buyTab.className = `trade-tab buy ${mode === 'buy' ? 'active' : ''}`;
+        sellTab.className = `trade-tab sell ${mode === 'sell' ? 'active' : ''}`;
+        
+        // تحديث زر التنفيذ
+        if (mode === 'buy') {
+            tradeBtn.className = 'trade-execute-btn buy';
+            tradeBtn.innerHTML = '<i class="fas fa-bolt"></i> تنفيذ الشراء';
+            document.getElementById('trade-balance-disp').innerText = 
+                `${(me.sdmBalance - (me.frozenSDM || 0)).toFixed(2)} SDM متاح`;
+        } else {
+            tradeBtn.className = 'trade-execute-btn sell';
+            tradeBtn.innerHTML = '<i class="fas fa-bolt"></i> تنفيذ البيع';
+            document.getElementById('trade-balance-disp').innerText = 
+                `${(me.mrkBalance - (me.frozenMRK || 0)).toFixed(4)} MRK متاح`;
         }
+        
         updateTradeTotal();
-    }
-    
-    function updateTradeTotal() { 
-        const p = parseFloat(document.getElementById('trade-price').value) || 0; 
-        const a = parseFloat(document.getElementById('trade-amount').value) || 0; 
-        document.getElementById('trade-total-disp').innerText = (p * a).toFixed(2); 
-    }
-    
-    function calcPct(pct) { 
-        const price = parseFloat(document.getElementById('trade-price').value); 
-        if(!price && currentTradeMode==='buy') 
-            return Swal.fire('تنبيه', 'أدخل السعر أولاً', 'info'); 
-        if(currentTradeMode==='buy') 
-            document.getElementById('trade-amount').value = (((me.sdmBalance||0) * pct) / price).toFixed(4); 
-        else 
-            document.getElementById('trade-amount').value = ((me.mrkBalance||0) * pct).toFixed(4); 
-        updateTradeTotal(); 
-    }
-    
-    async function executeTrade() { 
-        if (Date.now() - lastActionTime < 2000) 
-            return Swal.fire('تنبيه', 'انتظر قليلاً', 'warning'); 
-        lastActionTime = Date.now(); 
-        const price = parseFloat(document.getElementById('trade-price').value); 
-        const amount = parseFloat(document.getElementById('trade-amount').value); 
-        const total = price * amount; 
-        if(!price || !amount || price<=0 || amount<=0) 
-            return Swal.fire('خطأ', 'البيانات غير صحيحة', 'error'); 
-        if(currentTradeMode === 'buy' && (me.sdmBalance||0) < total) 
-            return Swal.fire('فشل', 'رصيد SDM غير كاف', 'error'); 
-        if(currentTradeMode === 'sell' && (me.mrkBalance||0) < amount) 
-            return Swal.fire('فشل', 'رصيد MRK غير كاف', 'error'); 
-        const btn = document.getElementById('execute-trade-btn'); 
-        btn.disabled = true; 
-        btn.innerText = 'جاري الإرسال للسيرفر...'; 
-        try { 
-            const path = currentTradeMode === 'buy' ? 'market/orders/buy' : 'market/orders/sell'; 
-            await db.ref(path).push({ uP: me.p, price, amount, date: Date.now(), status: 'pending' }); 
-            document.getElementById('trade-amount').value = ''; 
-            Swal.fire({icon:'success', title:'تم إرسال الطلب', text:'النظام يعالج طلبك الآن...', toast:true, position:'top-end', timer:3000, showConfirmButton:false}); 
-        } catch(e) { 
-            Swal.fire('خطأ', 'فشل الاتصال', 'error'); 
-        } finally { 
-            btn.disabled = false; 
-            setTradeMode(currentTradeMode); 
-        } 
-    }
-    
-    function listenToOrderBook() { 
-        db.ref('market/orders/sell').orderByChild('price').limitToFirst(20).on('value', s => renderOB(s, 'ob-asks', true)); 
-        db.ref('market/orders/buy').orderByChild('price').limitToLast(20).on('value', s => renderOB(s, 'ob-bids', false)); 
-    }
-    
-    function renderOB(snap, id, isAsk) { 
-        const el = document.getElementById(id); 
-        if(!el) return; 
-        el.innerHTML = ""; 
-        let arr = []; 
-        snap.forEach(c => arr.push(c.val())); 
-        if(isAsk) arr.reverse(); 
-        else arr.reverse(); 
-        arr.forEach(o => { 
-            const pct = Math.min((o.amount/10000)*100, 100); 
-            const color = isAsk ? 'var(--red)' : 'var(--green)'; 
-            el.innerHTML += `<div class="ob-row" onclick="fillOrderInput(${o.price}, ${o.amount}, '${isAsk?'buy':'sell'}')">
-                <div class="ob-bg" style="background:${color}; width:${pct}%"></div>
-                <span class="ob-txt" style="color:${color}">${o.price.toFixed(4)}</span>
-                <span class="ob-txt">${o.amount.toFixed(2)}</span>
-            </div>`; 
-        }); 
-    }
-    
-    function fillOrderInput(p, a, type) { 
-        setTradeMode(type); 
-        document.getElementById('trade-price').value = p; 
-        document.getElementById('trade-amount').value = a;
-        updateTradeTotal(); 
-    }
-    
-    function listenToMarketStats() { 
-        db.ref('market/trades').limitToLast(500).on('value', snap => { 
-            let trades = []; 
-            let vol = 0, h=0, l=999999; 
-            const oneDay = 24*60*60*1000; 
-            const now = Date.now(); 
-            snap.forEach(c => { 
-                const t = c.val(); 
-                trades.push([t.date, t.price]); 
-                if(now - t.date < oneDay) { 
-                    vol += (t.price * t.amount); 
-                    if(t.price > h) h=t.price; 
-                    if(t.price < l) l=t.price; 
-                } 
-            }); 
-            if(document.getElementById('disp-vol')) { 
-                document.getElementById('disp-vol').innerText = vol.toLocaleString(undefined, {maximumFractionDigits:0}) + ' SDM'; 
-                document.getElementById('disp-hl').innerText = `${h.toFixed(4)} / ${l===999999?'-':l.toFixed(4)}`; 
-            } 
-            updateChart(trades); 
-        }); 
-    }
-    
-    function initChart() { 
-        var options = { 
-            series: [], 
-            chart: { 
-                type: 'candlestick', 
-                height: 300, 
-                background: 'transparent', 
-                toolbar:{show:false}, 
-                animations:{enabled:false} 
-            }, 
-            theme: { mode: 'dark' }, 
-            xaxis: { 
-                type: 'datetime', 
-                axisBorder:{show:false}, 
-                axisTicks:{show:false} 
-            }, 
-            yaxis: { 
-                opposite: true, 
-                tooltip:{enabled:true} 
-            }, 
-            grid: { borderColor: '#334155' }, 
-            plotOptions: { 
-                candlestick: { 
-                    colors: { upward: '#10b981', downward: '#ef4444' } 
-                } 
-            } 
-        }; 
-        chartInstance = new ApexCharts(document.querySelector("#chart-area"), options); 
-        chartInstance.render(); 
-    }
-    
-    function updateChart(trades) { 
-        if(!chartInstance || trades.length===0) return; 
-        const interval = 15*60*1000; 
-        let candles = {}; 
-        trades.forEach(t => { 
-            const key = Math.floor(t[0]/interval)*interval; 
-            if(!candles[key]) 
-                candles[key] = {x:key, o:t[1], h:t[1], l:t[1], c:t[1]}; 
-            else { 
-                const c = candles[key]; 
-                c.h = Math.max(c.h, t[1]); 
-                c.l = Math.min(c.l, t[1]); 
-                c.c = t[1]; 
-            } 
-        }); 
-        const data = Object.values(candles).map(c => ({x:c.x, y:[c.o, c.h, c.l, c.c]})); 
-        chartInstance.updateSeries([{data:data}]); 
+        saveStateOnNav();
     }
 
-    // --- الوظائف المساعدة والعمليات ---
-    function showTransfer() { 
-        if (Date.now() - lastActionTime < 3000) 
-            return Swal.fire('تنبيه', 'تمهل قليلاً', 'warning'); 
-        lastActionTime = Date.now();
+    // تحديث الإجمالي
+    function updateTradeTotal() {
+        const price = parseFloat(document.getElementById('trade-price')?.value) || 0;
+        const amount = parseFloat(document.getElementById('trade-amount')?.value) || 0;
+        const total = price * amount;
         
-        Swal.fire({
-            title: 'تحويل رصيد 💸',
-            html: `
-                <input id="tr-id" placeholder="ID المستلم" class="swal2-input">
-                <input id="tr-amount" type="number" placeholder="المبلغ (SDM)" class="swal2-input">
-                <div id="recipient-info" style="display:none;margin-top:10px;" class="transfer-confirm">
-                    <p>المستلم: <span id="recipient-name" class="recipient-name">...</span></p>
-                </div>
-            `,
-            background: '#1e293b',
-            color: '#fff',
-            showCancelButton: true,
-            confirmButtonText: 'تحويل',
-            cancelButtonText: 'إلغاء',
-            didOpen: () => {
-                // البحث عن المستلم عند إدخال ID
-                document.getElementById('tr-id').addEventListener('input', async (e) => {
-                    const userId = e.target.value.trim();
-                    if(userId && userId.length > 5) {
-                        const snap = await db.ref('users/' + userId).once('value');
-                        if(snap.exists()) {
-                            const user = snap.val();
-                            document.getElementById('recipient-info').style.display = 'block';
-                            document.getElementById('recipient-name').textContent = escapeHtml(user.n);
-                        } else {
-                            document.getElementById('recipient-info').style.display = 'none';
-                        }
-                    } else {
-                        document.getElementById('recipient-info').style.display = 'none';
+        document.getElementById('trade-total-disp').innerText = total.toFixed(2);
+        
+        // تحديث الآلة الحاسبة
+        if (currentTradeMode === 'buy' && amount > 0) {
+            const sdmAmount = amount / price;
+            document.getElementById('calc-sdm').value = sdmAmount.toFixed(2);
+            calculateMRK(sdmAmount);
+        }
+    }
+
+    // تنفيذ التداول
+    async function executeTrade() {
+        const price = parseFloat(document.getElementById('trade-price').value);
+        const amount = parseFloat(document.getElementById('trade-amount').value);
+        
+        if (!price || price <= 0 || !amount || amount <= 0) {
+            Swal.fire('خطأ', 'أدخل السعر والكمية بشكل صحيح', 'error');
+            return;
+        }
+        
+        const total = price * amount;
+        
+        // التحقق من الرصيد
+        if (currentTradeMode === 'buy') {
+            const availableBalance = me.sdmBalance - (me.frozenSDM || 0);
+            if (availableBalance < total) {
+                Swal.fire('فشل', `رصيدك غير كاف. المتاح: ${availableBalance.toFixed(2)} SDM`, 'error');
+                return;
+            }
+        } else {
+            const availableBalance = (me.mrkBalance || 0) - (me.frozenMRK || 0);
+            if (availableBalance < amount) {
+                Swal.fire('فشل', `رصيدك غير كاف. المتاح: ${availableBalance.toFixed(4)} MRK`, 'error');
+                return;
+            }
+        }
+        
+        try {
+            // إنشاء الطلب
+            const orderData = {
+                uP: me.p,
+                uN: me.n,
+                price: price,
+                amount: amount,
+                type: currentTradeMode,
+                total: total,
+                status: 'pending',
+                filled: 0,
+                date: Date.now(),
+                timestamp: Date.now()
+            };
+            
+            const orderRef = db.ref(`market/orders/${currentTradeMode}`).push(orderData);
+            const orderKey = orderRef.key;
+            
+            // تجميد الأموال
+            if (currentTradeMode === 'buy') {
+                const newFrozenSDM = (me.frozenSDM || 0) + total;
+                await db.ref(`users/${me.p}`).update({ frozenSDM: newFrozenSDM });
+                me.frozenSDM = newFrozenSDM;
+            } else {
+                const newFrozenMRK = (me.frozenMRK || 0) + amount;
+                await db.ref(`users/${me.p}`).update({ frozenMRK: newFrozenMRK });
+                me.frozenMRK = newFrozenMRK;
+            }
+            
+            // محاولة مطابقة الطلبات
+            await attemptMatchOrders(orderKey, orderData);
+            
+            Swal.fire({
+                title: 'تم بنجاح',
+                text: 'تم وضع طلبك في السوق',
+                icon: 'success',
+                confirmButtonText: 'حسناً'
+            });
+            
+            // تحديث الواجهة
+            document.getElementById('trade-amount').value = '';
+            updateTradeTotal();
+            
+        } catch (error) {
+            Swal.fire('خطأ', 'حدث خطأ أثناء تنفيذ العملية: ' + error.message, 'error');
+        }
+    }
+
+    // محاولة مطابقة الطلبات
+    async function attemptMatchOrders(orderKey, orderData) {
+        const oppositeType = orderData.type === 'buy' ? 'sell' : 'buy';
+        const oppositeOrdersRef = db.ref(`market/orders/${oppositeType}`);
+        
+        // البحث عن مطابقات
+        oppositeOrdersRef.orderByChild('price')
+            .once('value')
+            .then(async (snapshot) => {
+                const matches = [];
+                
+                snapshot.forEach(child => {
+                    const oppositeOrder = child.val();
+                    if (oppositeOrder.status !== 'pending') return;
+                    
+                    // المطابقة عندما يكون السعر متساوي
+                    if ((orderData.type === 'buy' && oppositeOrder.price <= orderData.price) ||
+                        (orderData.type === 'sell' && oppositeOrder.price >= orderData.price)) {
+                        matches.push({
+                            key: child.key,
+                            ...oppositeOrder
+                        });
                     }
                 });
-            },
-            preConfirm: () => {
-                const id = document.getElementById('tr-id').value;
-                const amount = parseFloat(document.getElementById('tr-amount').value);
                 
-                if(!id || !amount) {
-                    Swal.showValidationMessage('الرجاء تعبئة جميع الحقول');
-                    return false;
+                // معالجة المطابقات بالترتيب
+                for (const match of matches) {
+                    if (orderData.amount <= 0) break;
+                    
+                    const fillAmount = Math.min(orderData.amount - orderData.filled, match.amount - match.filled);
+                    if (fillAmount <= 0) continue;
+                    
+                    // تنفيذ الصفقة
+                    await executeTradeMatch(
+                        orderData,
+                        orderKey,
+                        match,
+                        match.key,
+                        fillAmount
+                    );
+                    
+                    // تحديث بيانات الطلب
+                    orderData.filled += fillAmount;
+                    
+                    // تحديث في قاعدة البيانات
+                    await db.ref(`market/orders/${orderData.type}/${orderKey}`).update({
+                        filled: orderData.filled,
+                        status: orderData.filled >= orderData.amount ? 'filled' : 'partial'
+                    });
+                    
+                    // إذا امتلأ الطلب تماماً
+                    if (orderData.filled >= orderData.amount) {
+                        // تحرير الأموال المجمدة
+                        await unfreezeFunds(orderData.type, orderData.uP, orderData.total, orderData.amount);
+                        break;
+                    }
                 }
-                
-                if((me.sdmBalance || 0) < amount) {
-                    Swal.showValidationMessage('رصيدك غير كافٍ');
-                    return false;
-                }
-                
-                return {id, amount};
+            });
+    }
+
+    // تنفيذ صفقة مطابقة
+    async function executeTradeMatch(order1, order1Key, order2, order2Key, fillAmount) {
+        const fillPrice = order2.price; // سعر المطابقة
+        const totalValue = fillAmount * fillPrice;
+        
+        // تحديث أسهم المشترين والبائعين
+        if (order1.type === 'buy') {
+            // المشتري (order1) يدفع SDM ويأخذ MRK
+            // البائع (order2) يأخذ SDM ويدفع MRK
+            
+            // نقل SDM من المشتري إلى البائع
+            await transferSDM(order1.uP, order2.uP, totalValue);
+            
+            // نقل MRK من البائع إلى المشتري
+            await transferMRK(order2.uP, order1.uP, fillAmount);
+            
+        } else {
+            // البائع (order1) يأخذ SDM ويدفع MRK
+            // المشتري (order2) يدفع SDM ويأخذ MRK
+            
+            // نقل SDM من المشتري إلى البائع
+            await transferSDM(order2.uP, order1.uP, totalValue);
+            
+            // نقل MRK من البائع إلى المشتري
+            await transferMRK(order1.uP, order2.uP, fillAmount);
+        }
+        
+        // تحديث حالة الطلب الثاني
+        const newFilled2 = order2.filled + fillAmount;
+        const newStatus2 = newFilled2 >= order2.amount ? 'filled' : 'partial';
+        
+        await db.ref(`market/orders/${order2.type}/${order2Key}`).update({
+            filled: newFilled2,
+            status: newStatus2
+        });
+        
+        // إذا امتلأ الطلب الثاني، تحرير أمواله المجمدة
+        if (newFilled2 >= order2.amount) {
+            await unfreezeFunds(order2.type, order2.uP, order2.total, order2.amount);
+        }
+        
+        // تسجيل الصفقة
+        await recordTransaction({
+            buyer: order1.type === 'buy' ? order1.uP : order2.uP,
+            seller: order1.type === 'sell' ? order1.uP : order2.uP,
+            amount: fillAmount,
+            price: fillPrice,
+            total: totalValue,
+            timestamp: Date.now()
+        });
+        
+        // تحديث سعر السوق
+        await db.ref('market/stats/lastPrice').set(fillPrice);
+        
+        // إضافة إلى مخطط الشموع
+        addToCandleData(fillPrice, fillAmount);
+    }
+
+    // نقل SDM
+    async function transferSDM(fromUserId, toUserId, amount) {
+        // خصم من المرسل
+        const fromUserRef = db.ref(`users/${fromUserId}`);
+        const fromSnap = await fromUserRef.once('value');
+        const fromUser = fromSnap.val();
+        
+        await fromUserRef.update({
+            sdmBalance: (fromUser.sdmBalance || 0) - amount
+        });
+        
+        // إضافة للمستلم
+        const toUserRef = db.ref(`users/${toUserId}`);
+        const toSnap = await toUserRef.once('value');
+        const toUser = toSnap.val();
+        
+        await toUserRef.update({
+            sdmBalance: (toUser.sdmBalance || 0) + amount
+        });
+        
+        // تحديث بيانات المستخدم الحالي
+        if (me.p === fromUserId) {
+            me.sdmBalance = (fromUser.sdmBalance || 0) - amount;
+        } else if (me.p === toUserId) {
+            me.sdmBalance = (toUser.sdmBalance || 0) + amount;
+        }
+    }
+
+    // نقل MRK
+    async function transferMRK(fromUserId, toUserId, amount) {
+        // خصم من المرسل
+        const fromUserRef = db.ref(`users/${fromUserId}`);
+        const fromSnap = await fromUserRef.once('value');
+        const fromUser = fromSnap.val();
+        
+        await fromUserRef.update({
+            mrkBalance: (fromUser.mrkBalance || 0) - amount
+        });
+        
+        // إضافة للمستلم
+        const toUserRef = db.ref(`users/${toUserId}`);
+        const toSnap = await toUserRef.once('value');
+        const toUser = toSnap.val();
+        
+        await toUserRef.update({
+            mrkBalance: (toUser.mrkBalance || 0) + amount
+        });
+        
+        // تحديث بيانات المستخدم الحالي
+        if (me.p === fromUserId) {
+            me.mrkBalance = (fromUser.mrkBalance || 0) - amount;
+        } else if (me.p === toUserId) {
+            me.mrkBalance = (toUser.mrkBalance || 0) + amount;
+        }
+    }
+
+    // تحرير الأموال المجمدة
+    async function unfreezeFunds(orderType, userId, total, amount) {
+        const userRef = db.ref(`users/${userId}`);
+        
+        if (orderType === 'buy') {
+            const userSnap = await userRef.once('value');
+            const user = userSnap.val();
+            const newFrozenSDM = Math.max(0, (user.frozenSDM || 0) - total);
+            await userRef.update({ frozenSDM: newFrozenSDM });
+            
+            if (me.p === userId) {
+                me.frozenSDM = newFrozenSDM;
             }
-        }).then(async result => {
-            if(result.isConfirmed) {
-                await db.ref('requests/transfers').push({
-                    from: me.p,
-                    to: result.value.id,
-                    amount: result.value.amount,
-                    date: Date.now(),
-                    status: 'pending'
-                });
-                Swal.fire('تم!', 'تم إرسال طلب التحويل', 'success');
+        } else {
+            const userSnap = await userRef.once('value');
+            const user = userSnap.val();
+            const newFrozenMRK = Math.max(0, (user.frozenMRK || 0) - amount);
+            await userRef.update({ frozenMRK: newFrozenMRK });
+            
+            if (me.p === userId) {
+                me.frozenMRK = newFrozenMRK;
             }
+        }
+    }
+
+    // تسجيل الصفقة
+    async function recordTransaction(tx) {
+        await db.ref('market/transactions').push(tx);
+        
+        // تسجيل في سجلات المستخدمين
+        await db.ref(`user_transactions/${tx.buyer}`).push({
+            ...tx,
+            type: 'buy',
+            date: Date.now()
+        });
+        
+        await db.ref(`user_transactions/${tx.seller}`).push({
+            ...tx,
+            type: 'sell',
+            date: Date.now()
         });
     }
-    
-    function requestCoins() { 
-        document.getElementById('buy-coins-form').style.display = 'block'; 
+
+    // إلغاء الطلب
+    async function cancelOrder(orderType, orderKey) {
+        try {
+            const orderRef = db.ref(`market/orders/${orderType}/${orderKey}`);
+            const orderSnap = await orderRef.once('value');
+            const order = orderSnap.val();
+            
+            if (!order || order.uP !== me.p) {
+                Swal.fire('خطأ', 'لا يمكنك إلغاء هذا الطلب', 'error');
+                return;
+            }
+            
+            if (order.status === 'filled') {
+                Swal.fire('مكتمل', 'لا يمكن إلغاء طلب مكتمل', 'info');
+                return;
+            }
+            
+            // تحرير الأموال المجمدة
+            const remainingAmount = order.amount - order.filled;
+            const remainingTotal = remainingAmount * order.price;
+            
+            if (orderType === 'buy') {
+                await unfreezeFunds('buy', me.p, remainingTotal, remainingAmount);
+            } else {
+                await unfreezeFunds('sell', me.p, remainingTotal, remainingAmount);
+            }
+            
+            // تحديث حالة الطلب
+            await orderRef.update({ status: 'cancelled' });
+            
+            Swal.fire('تم', 'تم إلغاء الطلب بنجاح', 'success');
+            loadMyOrders();
+            
+        } catch (error) {
+            Swal.fire('خطأ', 'حدث خطأ أثناء الإلغاء: ' + error.message, 'error');
+        }
     }
-    
-    function submitCoinRequest() { 
-        if (Date.now() - lastActionTime < 3000) 
-            return Swal.fire('تنبيه', 'تمهل قليلاً', 'warning'); 
-        lastActionTime = Date.now(); 
-        const qty = document.getElementById('buy-qty').value; 
-        if(!qty || !tempBuyImg) 
-            return Swal.fire('تنبيه', 'مطلوب الكمية والصورة', 'warning'); 
-        db.ref('coin_requests').push({ uP: me.p, uN: me.n, qty: qty, img: tempBuyImg, date: Date.now(), status: 'pending' }); 
-        Swal.fire('تم', 'تم إرسال طلب الإيداع', 'success'); 
-        document.getElementById('buy-coins-form').style.display = 'none'; 
+
+    // --- 6. عرض قائمة الطلبات ---
+    function listenToOrderBook() {
+        // طلبات البيع (Asks)
+        db.ref('market/orders/sell')
+            .orderByChild('price')
+            .limitToFirst(20)
+            .on('value', snapshot => renderOrderBook(snapshot, 'order-book-asks', 'ask'));
+        
+        // طلبات الشراء (Bids)
+        db.ref('market/orders/buy')
+            .orderByChild('price')
+            .limitToLast(20)
+            .on('value', snapshot => renderOrderBook(snapshot, 'order-book-bids', 'bid'));
     }
-    
-    async function orderGame() { 
-        if (Date.now() - lastActionTime < 3000) 
-            return Swal.fire('تنبيه', 'تمهل قليلاً', 'warning'); 
-        lastActionTime = Date.now(); 
-        const type = document.getElementById('active-game').value; 
-        const id = document.getElementById('p-id-input').value; 
-        const pack = document.getElementById('p-pack-input').value; 
-        if(!id) 
-            return Swal.fire('تنبيه', 'أدخل ID اللاعب', 'warning'); 
-        if((me.sdmBalance||0) < pack) 
-            return Swal.fire('فشل', 'رصيدك غير كاف', 'error'); 
-        await db.ref('game_orders').push({ uP: me.p, uN: me.n, type, playerId: id, cost: Number(pack), status: 'pending', date: Date.now() }); 
-        Swal.fire('نجاح', 'تم إرسال الطلب', 'success'); 
+
+    function renderOrderBook(snapshot, elementId, type) {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+        
+        let orders = [];
+        snapshot.forEach(child => {
+            const order = child.val();
+            if (order.status === 'pending' || order.status === 'partial') {
+                orders.push({
+                    key: child.key,
+                    ...order
+                });
+            }
+        });
+        
+        // ترتيب الطلبات
+        if (type === 'ask') {
+            orders.sort((a, b) => a.price - b.price); // تصاعدي
+        } else {
+            orders.sort((a, b) => b.price - a.price); // تنازلي
+        }
+        
+        element.innerHTML = orders.map(order => {
+            const isMine = order.uP === me.p;
+            const filledPercent = (order.filled / order.amount) * 100;
+            const total = order.price * order.amount;
+            
+            return `
+                <div class="order-row ${type} ${isMine ? 'my-order' : ''}" 
+                     onclick="fillOrderInput('${order.price}', '${order.amount}', '${type}')">
+                    <div class="order-progress" style="width: ${filledPercent}%"></div>
+                    <div>${order.price.toFixed(4)}</div>
+                    <div>${order.amount.toFixed(4)}</div>
+                    <div>${total.toFixed(2)}</div>
+                </div>
+            `;
+        }).join('');
     }
-    
-    function loadTransactions() { 
-        db.ref('transactions').orderByChild('from').equalTo(me.p).limitToLast(10).on('value', snap => processTxn(snap, 'from')); 
-        db.ref('transactions').orderByChild('to').equalTo(me.p).limitToLast(10).on('value', snap => processTxn(snap, 'to')); 
+
+    // تحميل أوامري
+    function loadMyOrders() {
+        if (isGuest) return;
+        
+        // طلبات الشراء
+        db.ref('market/orders/buy')
+            .orderByChild('uP')
+            .equalTo(me.p)
+            .on('value', snapshot => renderMyOrders(snapshot, 'buy'));
+        
+        // طلبات البيع
+        db.ref('market/orders/sell')
+            .orderByChild('uP')
+            .equalTo(me.p)
+            .on('value', snapshot => renderMyOrders(snapshot, 'sell'));
     }
-    
-    function processTxn(snap, role) { 
-        const l = document.getElementById('transactions-history'); 
-        if(!l) return; 
-        snap.forEach(c => { 
-            const t = c.val(); 
-            if(!l.innerHTML.includes(c.key)) { 
-                const color = role === 'from' ? 'var(--red)' : 'var(--green)'; 
-                const sign = role === 'from' ? '-' : '+'; 
-                l.innerHTML += `<div style="padding:10px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between;">
-                    <span>${t.type||'Transfer'}</span>
-                    <span style="color:${color}">${sign}${t.amount}</span>
-                </div>`; 
-            } 
-        }); 
+
+    function renderMyOrders(snapshot, type) {
+        const element = document.getElementById('my-orders-list');
+        if (!element) return;
+        
+        let orders = [];
+        snapshot.forEach(child => {
+            const order = child.val();
+            if (order.status !== 'cancelled') {
+                orders.push({
+                    key: child.key,
+                    type: type,
+                    ...order
+                });
+            }
+        });
+        
+        // فرز حسب التاريخ
+        orders.sort((a, b) => b.date - a.date);
+        
+        element.innerHTML = orders.map(order => {
+            const filledPercent = (order.filled / order.amount) * 100;
+            const statusText = order.status === 'filled' ? 'مكتمل' :
+                              order.status === 'partial' ? 'جزئي' :
+                              order.status === 'pending' ? 'في الانتظار' : order.status;
+            
+            const statusClass = order.status === 'filled' ? 'filled' :
+                               order.status === 'partial' ? 'partial' :
+                               'pending';
+            
+            return `
+                <div class="user-order ${statusClass}">
+                    <div>
+                        <div style="font-weight:bold; color:${order.type === 'buy' ? 'var(--buy-green)' : 'var(--sell-red)'}">
+                            ${order.type === 'buy' ? 'شراء' : 'بيع'} MRK
+                        </div>
+                        <div style="font-size:12px; color:var(--text-sec);">
+                            السعر: ${order.price} | الكمية: ${order.amount.toFixed(4)}
+                        </div>
+                        <div style="font-size:11px; color:var(--text-sec); margin-top:5px;">
+                            ${statusText} - ${filledPercent.toFixed(1)}% مكتمل
+                        </div>
+                    </div>
+                    <div>
+                        ${order.status === 'pending' || order.status === 'partial' ? 
+                            `<button class="order-cancel-btn" onclick="cancelOrder('${order.type}', '${order.key}')">
+                                إلغاء
+                            </button>` : 
+                            `<span style="color:var(--text-sec); font-size:12px;">مكتمل</span>`
+                        }
+                    </div>
+                </div>
+            `;
+        }).join('');
     }
-    
-    function startSlider() { 
-        const el = document.getElementById('slider-img'); 
-        if(!el) return; 
-        setInterval(() => { 
-            sliderIdx = (sliderIdx + 1) % sliderImages.length; 
-            el.src = sliderImages[sliderIdx]; 
-        }, 4000); 
+
+    // ملء حقول الإدخال من قائمة الطلبات
+    function fillOrderInput(price, amount, type) {
+        setTradeMode(type === 'bid' ? 'buy' : 'sell');
+        document.getElementById('trade-price').value = price;
+        document.getElementById('trade-amount').value = amount;
+        updateTradeTotal();
     }
-    
-    function loadCorrectPacks() { 
-        const g = document.getElementById('active-game').value; 
-        const p = document.getElementById('p-pack-input'); 
-        p.innerHTML = officialRates[g].map(r => `<option value="${r.sdm}">${r.name} (${r.sdm} SDM)</option>`).join(''); 
-        calculateGameCost(p); 
+
+    // --- 7. مخطط الشموع ---
+    let candleData = [];
+    let currentTimeframe = '1m';
+
+    function initChart() {
+        const options = {
+            series: [{
+                data: []
+            }],
+            chart: {
+                type: 'candlestick',
+                height: 300,
+                background: 'transparent',
+                toolbar: {
+                    show: false
+                }
+            },
+            title: {
+                text: 'SDM/MRK',
+                align: 'left',
+                style: {
+                    color: 'white',
+                    fontSize: '14px'
+                }
+            },
+            xaxis: {
+                type: 'datetime',
+                labels: {
+                    style: {
+                        colors: 'var(--text-sec)'
+                    }
+                }
+            },
+            yaxis: {
+                tooltip: {
+                    enabled: true
+                },
+                labels: {
+                    style: {
+                        colors: 'var(--text-sec)'
+                    },
+                    formatter: function(value) {
+                        return value.toFixed(4);
+                    }
+                }
+            },
+            plotOptions: {
+                candlestick: {
+                    colors: {
+                        upward: '#10b981',
+                        downward: '#ef4444'
+                    }
+                }
+            },
+            grid: {
+                borderColor: 'var(--border)'
+            },
+            theme: {
+                mode: 'dark'
+            }
+        };
+
+        chartInstance = new ApexCharts(document.querySelector("#chart-area"), options);
+        chartInstance.render();
+        
+        // تحميل بيانات الشموع
+        loadCandleData();
     }
-    
-    function calculateGameCost(selectElement) { 
-        const val = parseFloat(selectElement.value); 
-        const resElement = document.getElementById('game-cost-res'); 
-        if (isNaN(val) || val < 0) { 
-            resElement.innerText = "0 SDG"; 
-        } else { 
-            const sdg = val * SDM_RATE; 
-            resElement.innerText = sdg.toLocaleString() + " SDG"; 
-        } 
+
+    function changeTimeframe(tf) {
+        currentTimeframe = tf;
+        document.querySelectorAll('.chart-timeframe').forEach(el => {
+            el.classList.remove('active');
+        });
+        event.target.classList.add('active');
+        loadCandleData();
     }
-    
-    function loadGameHistory() { 
-        db.ref('game_orders').orderByChild('uP').equalTo(me.p).limitToLast(5).on('value', snap => { 
-            const div = document.getElementById('game-history'); 
-            if(!div) return; 
-            div.innerHTML = ""; 
-            snap.forEach(c => { 
-                const o = c.val(); 
-                div.innerHTML += `<div style="background:rgba(255,255,255,0.05); padding:10px; margin-bottom:5px; border-radius:10px; display:flex; justify-content:space-between;">
-                    <span>${o.type||'Game'}</span>
-                    <span>${o.status==='done'?'✅':(o.status==='rejected'?'❌':'⏳')}</span>
-                </div>`; 
-            }); 
-        }); 
+
+    function loadCandleData() {
+        // تحميل بيانات الشموع من السجلات
+        db.ref('market/transactions')
+            .orderByChild('timestamp')
+            .limitToLast(100)
+            .once('value')
+            .then(snapshot => {
+                const transactions = [];
+                snapshot.forEach(child => {
+                    transactions.push(child.val());
+                });
+                
+                // تحويل المعاملات إلى بيانات شموع
+                processTransactionsToCandles(transactions);
+            });
     }
-    
-    // تحسين عرض المنشورات مع الميزات الجديدة
+
+    function processTransactionsToCandles(transactions) {
+        // تجميع المعاملات حسب الفترة الزمنية
+        const candles = [];
+        let currentCandle = null;
+        const timeframeMs = getTimeframeMs(currentTimeframe);
+        
+        transactions.sort((a, b) => a.timestamp - b.timestamp);
+        
+        transactions.forEach(tx => {
+            const candleTime = Math.floor(tx.timestamp / timeframeMs) * timeframeMs;
+            
+            if (!currentCandle || currentCandle.x !== candleTime) {
+                if (currentCandle) candles.push(currentCandle);
+                currentCandle = {
+                    x: candleTime,
+                    y: [tx.price, tx.price, tx.price, tx.price, tx.amount]
+                };
+            } else {
+                // تحديث الشمعة الحالية
+                currentCandle.y[1] = Math.max(currentCandle.y[1], tx.price); // high
+                currentCandle.y[2] = Math.min(currentCandle.y[2], tx.price); // low
+                currentCandle.y[3] = tx.price; // close
+                currentCandle.y[4] += tx.amount; // volume
+            }
+        });
+        
+        if (currentCandle) candles.push(currentCandle);
+        
+        // تحديث المخطط
+        if (chartInstance) {
+            chartInstance.updateSeries([{
+                data: candles
+            }]);
+        }
+    }
+
+    function addToCandleData(price, volume) {
+        // إضافة بيانات جديدة للمخطط
+        const newCandle = {
+            x: Date.now(),
+            y: [price, price, price, price, volume]
+        };
+        
+        if (chartInstance) {
+            const currentData = chartInstance.w.globals.series[0].data;
+            const lastCandle = currentData[currentData.length - 1];
+            const timeframeMs = getTimeframeMs(currentTimeframe);
+            
+            const currentTime = Math.floor(Date.now() / timeframeMs) * timeframeMs;
+            
+            if (lastCandle && lastCandle.x === currentTime) {
+                // تحديث الشمعة الحالية
+                lastCandle.y[1] = Math.max(lastCandle.y[1], price);
+                lastCandle.y[2] = Math.min(lastCandle.y[2], price);
+                lastCandle.y[3] = price;
+                lastCandle.y[4] += volume;
+            } else {
+                // إضافة شمعة جديدة
+                currentData.push(newCandle);
+            }
+            
+            chartInstance.updateSeries([{
+                data: currentData
+            }]);
+        }
+    }
+
+    function getTimeframeMs(tf) {
+        switch(tf) {
+            case '1m': return 60000;
+            case '5m': return 300000;
+            case '15m': return 900000;
+            case '1h': return 3600000;
+            case '1d': return 86400000;
+            default: return 60000;
+        }
+    }
+
+    // --- 8. وظائف المنشورات ---
     function loadPosts(path, subFilter, containerId) {
         db.ref(path).limitToLast(30).on('value', snap => {
             const list = document.getElementById(containerId);
@@ -1149,568 +2057,330 @@
             posts.forEach(p => {
                 if(subFilter && p.sub !== subFilter) return;
                 
-                // التحقق من اتصال المستخدم
-                const isOnline = (Date.now() - (p.uLastSeen || 0)) < 300000; // 5 دقائق
-                const isSold = p.status === 'sold';
-                const isOwner = !isGuest && me && me.p === p.uP;
+                const now = Date.now();
+                const isOnline = (now - (p.uLastSeen || 0)) < 5 * 60 * 1000;
+                const dateStr = new Date(p.date).toLocaleDateString('ar-EG');
+                const statusHTML = isOnline ? 
+                    `<span style="color:var(--green); font-size:10px;">● متصل الآن</span>` : 
+                    `<span style="font-size:10px; color:var(--text-sec);">${dateStr}</span>`;
                 
+                const isOwner = (p.uP === me.p || me.role === 'admin');
+                const menuHTML = isOwner ? `
+                    <div class="dots-btn" onclick="toggleMenu('${p.k}')">⋮</div>
+                    <div id="menu-${p.k}" class="p-menu">
+                        <div onclick="markSold('${path}', '${p.k}')">
+                            <i class="fas fa-check-circle"></i> تم البيع
+                        </div>
+                        <div onclick="editPost('${path}', '${p.k}', '${p.t}', '${p.pr}', \`${p.d}\`)">
+                            <i class="fas fa-edit"></i> تعديل
+                        </div>
+                        <div onclick="deletePost('${path}', '${p.k}')">
+                            <i class="fas fa-trash"></i> مسح
+                        </div>
+                    </div>` : '';
+
+                const soldOverlay = (p.status === 'sold') ? 
+                    `<div class="sold-overlay">
+                        <div class="sold-badge">تم البيع</div>
+                    </div>` : '';
+
                 list.innerHTML += `
-                    <div class="post" id="post-${p.k}">
-                        ${isOwner ? `
-                            <div class="post-menu-btn" onclick="togglePostMenu('${p.k}')">⋮</div>
-                            <div class="post-menu-dropdown" id="menu-${p.k}">
-                                <div class="menu-item" onclick="markAsSold('${p.k}')">
-                                    <i class="fas fa-check-circle"></i> تم البيع
-                                </div>
-                                <div class="menu-item" onclick="editPost('${p.k}')">
-                                    <i class="fas fa-edit"></i> تعديل
-                                </div>
-                                <div class="menu-item delete" onclick="deletePost('${p.k}')">
-                                    <i class="fas fa-trash"></i> مسح
-                                </div>
-                            </div>
-                        ` : ''}
-                        
-                        ${isSold ? `<div class="sold-badge"><i class="fas fa-check"></i> تم البيع</div>` : ''}
-                        
+                    <div class="post">
                         <div class="post-header">
-                            <img src="${p.uPic || userPic}" class="user-avatar" onclick="viewProfile('${p.uP}')">
-                            <div class="user-info">
-                                <div class="username" onclick="viewProfile('${p.uP}')">
-                                    ${escapeHtml(p.uN || 'مستخدم')}
-                                    ${isOnline ? '<span class="online-dot"></span>' : ''}
+                            <div class="p-user-info" onclick="nav('user_profile', '${p.uP}')">
+                                <img src="${p.uPic || userPic}" class="p-avatar">
+                                <div class="p-meta">
+                                    <h4>${escapeHtml(p.uN)}</h4>
+                                    ${statusHTML}
                                 </div>
-                                <div class="post-date">
-                                    <i class="far fa-clock"></i> ${formatDate(p.date)}
-                                </div>
+                            </div>
+                            <div class="post-options">
+                                ${menuHTML}
                             </div>
                         </div>
                         
-                        ${p.img ? `
-                            <div class="post-img-container">
-                                <img src="${p.img}" class="post-img" onclick="viewImage('${p.img}')">
-                            </div>
-                        ` : ''}
-                        
-                        <div class="post-title">${escapeHtml(p.t || '')}</div>
-                        <div class="post-price">${p.pr || 0} SDM</div>
-                        <div class="post-description">${escapeHtml(p.d || '')}</div>
-                        
-                        <div style="display:flex; gap:10px; margin-top:15px;">
-                            <button class="btn-main" style="flex:1; background:var(--green)" 
-                                    onclick="contactSeller('${p.uP}')">
-                                <i class="fas fa-comment"></i> تواصل
-                            </button>
-                            ${!isSold && !isGuest && me.p !== p.uP ? `
-                                <button class="btn-main" style="flex:1; background:var(--accent)" 
-                                        onclick="makeOffer('${p.k}')">
-                                    <i class="fas fa-handshake"></i> تفاوض
-                                </button>
-                            ` : ''}
+                        <div class="post-img-container">
+                            ${soldOverlay}
+                            ${p.img ? `<img src="${p.img}" loading="lazy">` : ''}
                         </div>
-                    </div>
-                `;
+                        
+                        <div class="post-body">
+                            <div class="post-price">${p.pr} SDM</div>
+                            <h3 style="margin:0 0 5px 0;">${escapeHtml(p.t)}</h3>
+                            <div class="post-desc">${escapeHtml(p.d)}</div>
+                        </div>
+                    </div>`;
             });
         });
     }
-    
-    function goBack() { if(hStack.length > 1) { hStack.pop(); nav(hStack[hStack.length-1]); } }
-    function escapeHtml(text) { if (!text) return text; return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
-    function filterContent(q) { q=q.toLowerCase(); document.querySelectorAll('.card, .post').forEach(el => el.style.display = el.innerText.toLowerCase().includes(q) ? 'block' : 'none'); }
-    
-    // --- Image Handling & Encoding (مهم جداً للصور) ---
-    async function encode(i, t) {
-        if(!i.files[0]) return;
-        try {
-            Swal.fire({ title: 'جاري المعالجة...', didOpen: () => Swal.showLoading(), background: '#1e293b', color: '#fff' });
-            const compressed = await compressImage(i.files[0]);
-            if(t === 'user') { 
-                userPic = compressed; 
-                if(me && !isGuest) { 
-                    db.ref('users/'+me.p).update({ pic: userPic }); 
-                    if(document.getElementById('profile-img-view')) 
-                        document.getElementById('profile-img-view').src = userPic; 
-                } 
-            }
-            else if(t === 'buy') { tempBuyImg = compressed; }
-            else { tempImg = compressed; }
-            Swal.close();
-        } catch(e) { Swal.fire('خطأ', 'فشل المعالجة', 'error'); }
+
+    // --- 9. وظائف إضافية ---
+    function toggleMenu(key) {
+        const menu = document.getElementById(`menu-${key}`);
+        if(menu.style.display === 'block') menu.style.display = 'none';
+        else {
+            document.querySelectorAll('.p-menu').forEach(m => m.style.display = 'none');
+            menu.style.display = 'block';
+        }
     }
-    
-    function compressImage(file) {
-        return new Promise((resolve) => {
-            const reader = new FileReader(); reader.readAsDataURL(file);
-            reader.onload = (event) => {
-                const img = new Image(); img.src = event.target.result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const scaleSize = 800 / img.width;
-                    if (scaleSize >= 1) { resolve(event.target.result); return; }
-                    canvas.width = 800; canvas.height = img.height * scaleSize;
-                    const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.7));
+
+    function markSold(path, key) {
+        db.ref(`${path}/${key}`).update({ status: 'sold' });
+        toggleMenu(key);
+    }
+
+    function deletePost(path, key) {
+        Swal.fire({
+            title: 'حذف المنشور؟',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'نعم',
+            cancelButtonText: 'لا',
+            confirmButtonColor: 'var(--red)'
+        }).then(r => {
+            if(r.isConfirmed) db.ref(`${path}/${key}`).remove();
+        });
+    }
+
+    function editPost(path, key, t, pr, d) {
+        Swal.fire({
+            title: 'تعديل المنشور',
+            html: `
+                <input id="e-t" class="swal2-input" value="${t}">
+                <input id="e-pr" type="number" class="swal2-input" value="${pr}">
+                <textarea id="e-d" class="swal2-textarea">${d}</textarea>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'حفظ',
+            preConfirm: () => {
+                return {
+                    t: document.getElementById('e-t').value,
+                    pr: document.getElementById('e-pr').value,
+                    d: document.getElementById('e-d').value
                 }
-            };
+            }
+        }).then(res => {
+            if(res.isConfirmed) {
+                db.ref(`${path}/${key}`).update(res.value);
+                Swal.fire('تم التعديل', '', 'success');
+            }
         });
+        toggleMenu(key);
     }
-    
-    function publish(path) {
-        if(isGuest) return checkGuestAccess();
-        const t = document.getElementById(path==='vip_posts'?'v-t':'pt').value;
-        const pr = document.getElementById(path==='vip_posts'?'v-pr':'pp').value;
-        const d = document.getElementById(path==='vip_posts'?'v-d':'pd').value;
-        if(!t || !pr || !tempImg) return Swal.fire('تنبيه', 'البيانات ناقصة', 'warning');
-        const data = { 
-            t, pr, d, img: tempImg, 
-            uP: me.p, uN: me.n, uPic: me.pic||userPic, 
-            wa: me.wa, uStars: me.rating||0, 
-            date: Date.now(), status: 'active', 
-            uLastSeen: me.lastSeen||Date.now() 
-        };
-        if(path==='posts') data.sub = curS; 
-        else data.vExpiry = me.vipExpiry;
-        db.ref(path).push(data).then(() => { 
-            Swal.fire('تم النشر', '', 'success'); 
-            tempImg = ""; 
-            if(path==='vip_posts') nav('home'); 
-            else render('feed', curS); 
+
+    function showTransfer() {
+        Swal.fire({
+            title: 'تحويل رصيد 💸',
+            html: `
+                <input id="tr-id" placeholder="ID المستلم" class="swal2-input" oninput="checkTransferUser(this.value)">
+                <div id="tr-name-check" style="height:20px; font-size:12px; color:var(--green); margin-bottom:10px;"></div>
+                <input id="tr-amount" type="number" placeholder="المبلغ (SDM)" class="swal2-input">
+                <textarea id="tr-note" placeholder="ملاحظة (اختياري)" class="swal2-textarea" rows="2"></textarea>
+            `,
+            confirmButtonText: 'إرسال',
+            showCancelButton: true,
+            preConfirm: () => {
+                const id = document.getElementById('tr-id').value;
+                const am = document.getElementById('tr-amount').value;
+                if(!id || !am) Swal.showValidationMessage('البيانات ناقصة');
+                return { id: id, amount: am, note: document.getElementById('tr-note').value };
+            }
+        }).then(async res => {
+            if(res.isConfirmed) {
+                const availableBalance = me.sdmBalance - (me.frozenSDM || 0);
+                if(availableBalance < res.value.amount) {
+                    return Swal.fire('فشل', `رصيدك غير كاف. المتاح: ${availableBalance.toFixed(2)} SDM`, 'error');
+                }
+                
+                await db.ref('transfers').push({
+                    from: me.p,
+                    fromName: me.n,
+                    to: res.value.id,
+                    amount: Number(res.value.amount),
+                    note: res.value.note,
+                    date: Date.now(),
+                    status: 'pending'
+                });
+                
+                Swal.fire('تم', 'تم إرسال طلب التحويل للمعالجة', 'success');
+            }
         });
     }
 
-    // --- وظائف جديدة للمنشورات ---
-    function formatDate(timestamp) {
-        const date = new Date(timestamp);
-        const now = new Date();
-        const diff = now - date;
-        
-        if (diff < 60000) return 'الآن';
-        if (diff < 3600000) return `${Math.floor(diff/60000)} دقيقة`;
-        if (diff < 86400000) return `${Math.floor(diff/3600000)} ساعة`;
-        return date.toLocaleDateString('ar-SA');
-    }
-
-    function viewProfile(userId) {
-        if(isGuest) return checkGuestAccess('profile');
-        db.ref('users/' + userId).once('value').then(snap => {
-            const user = snap.val();
-            Swal.fire({
-                title: `${escapeHtml(user.n)}`,
-                html: `
-                    <div style="text-align:center;">
-                        <img src="${user.pic || userPic}" style="width:100px;height:100px;border-radius:50%;margin-bottom:15px;">
-                        <p>⭐ التقييم: ${(user.rating || 0).toFixed(1)}</p>
-                        <p>📧 ${user.email || 'لا يوجد'}</p>
-                        ${user.walletAddress ? `
-                            <div style="background:rgba(0,0,0,0.3);padding:10px;border-radius:10px;margin-top:10px;">
-                                <p style="font-size:12px;color:var(--text-sec)">العنوان:</p>
-                                <p style="word-break:break-all;font-size:11px;">${user.walletAddress}</p>
-                                <button class="copy-btn" onclick="copyToClipboard('${user.walletAddress}')">
-                                    <i class="far fa-copy"></i> نسخ
-                                </button>
-                            </div>
-                        ` : ''}
-                    </div>
-                `,
-                background: '#1e293b',
-                color: '#fff',
-                showCloseButton: true
-            });
+    function checkTransferUser(id) {
+        const display = document.getElementById('tr-name-check');
+        if(id.length < 5) { display.innerText = ''; return; }
+        db.ref('users/' + id).once('value', s => {
+            if(s.exists()) display.innerText = `✅ المستلم: ${s.val().n}`;
+            else display.innerText = `❌ مستخدم غير موجود`;
         });
     }
 
     function copyToClipboard(text) {
-        navigator.clipboard.writeText(text);
-        Swal.fire({
-            title: 'تم النسخ',
-            icon: 'success',
-            toast: true,
-            position: 'top-end',
-            timer: 2000,
-            showConfirmButton: false
-        });
-    }
-
-    function togglePostMenu(postId) {
-        const allMenus = document.querySelectorAll('.post-menu-dropdown');
-        allMenus.forEach(menu => menu.style.display = 'none');
-        
-        const menu = document.getElementById(`menu-${postId}`);
-        if(menu) {
-            menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
-        }
-        
-        // إغلاق القائمة عند النقر خارجها
-        document.addEventListener('click', function closeMenu(e) {
-            if(!e.target.closest('.post-menu-btn') && !e.target.closest('.post-menu-dropdown')) {
-                allMenus.forEach(menu => menu.style.display = 'none');
-                document.removeEventListener('click', closeMenu);
-            }
-        });
-    }
-
-    function markAsSold(postId) {
-        Swal.fire({
-            title: 'تأكيد البيع',
-            text: 'هل تم بيع هذا المنتج بالفعل؟',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'نعم، تم البيع',
-            cancelButtonText: 'إلغاء',
-            background: '#1e293b',
-            color: '#fff'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                db.ref(`posts/${postId}`).update({ status: 'sold' });
-                Swal.fire('تم!', 'تم تحديث حالة المنشور', 'success');
-            }
-        });
-    }
-
-    function editPost(postId) {
-        db.ref(`posts/${postId}`).once('value').then(snap => {
-            const post = snap.val();
-            
+        navigator.clipboard.writeText(text).then(() => {
             Swal.fire({
-                title: 'تعديل المنشور',
-                html: `
-                    <input id="edit-title" value="${escapeHtml(post.t)}" class="swal2-input" placeholder="العنوان">
-                    <input id="edit-price" type="number" value="${post.pr}" class="swal2-input" placeholder="السعر">
-                    <textarea id="edit-desc" class="swal2-textarea" placeholder="الوصف">${escapeHtml(post.d || '')}</textarea>
-                    <p style="color:var(--text-sec);font-size:12px;">ملاحظة: لا يمكن تغيير الصورة بعد النشر</p>
-                `,
-                showCancelButton: true,
-                confirmButtonText: 'حفظ التعديلات',
-                cancelButtonText: 'إلغاء',
-                background: '#1e293b',
-                color: '#fff',
-                preConfirm: () => {
-                    return {
-                        title: document.getElementById('edit-title').value,
-                        price: document.getElementById('edit-price').value,
-                        desc: document.getElementById('edit-desc').value
-                    }
-                }
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    const updates = {
-                        t: result.value.title,
-                        pr: result.value.price,
-                        d: result.value.desc,
-                        editedAt: Date.now()
-                    };
-                    db.ref(`posts/${postId}`).update(updates);
-                    Swal.fire('تم!', 'تم تحديث المنشور', 'success');
-                }
+                toast: true,
+                position: 'top-end',
+                icon: 'success',
+                title: 'تم نسخ الـ ID',
+                timer: 2000,
+                showConfirmButton: false
             });
         });
     }
 
-    function deletePost(postId) {
-        Swal.fire({
-            title: 'حذف المنشور',
-            text: 'هل أنت متأكد من حذف هذا المنشور؟',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'نعم، احذف',
-            cancelButtonText: 'إلغاء',
-            background: '#1e293b',
-            color: '#fff',
-            confirmButtonColor: '#ef4444'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                db.ref(`posts/${postId}`).remove();
-                Swal.fire('تم الحذف!', '', 'success');
-            }
-        });
-    }
-
-    function renderGames() {
-        const games = [
-            { name: "ببجي موبايل", icon: "fas fa-bomb", color: "#FF4500" },
-            { name: "فري فاير", icon: "fas fa-fire", color: "#FF9900" },
-            { name: "بيس 2024", icon: "fas fa-futbol", color: "#00AA00" },
-            { name: "كلاش رويال", icon: "fas fa-crown", color: "#FFD700" },
-            { name: "كول أوف ديوتي", icon: "fas fa-crosshairs", color: "#4169E1" },
-            { name: "فورت نايت", icon: "fas fa-umbrella", color: "#9370DB" }
-        ];
-        
-        return `
-            <h3 style="padding:0 20px; margin-top:20px; color:var(--text-main);">الألعاب</h3>
-            <div class="games-grid">
-                ${games.map(game => `
-                    <div class="game-card" onclick="selectGame('${game.name}')">
-                        <div class="game-icon"><i class="${game.icon}"></i></div>
-                        <h3 style="color:white; margin-bottom:10px;">${game.name}</h3>
-                        <p style="font-size:12px;color:var(--text-sec);">اضغط للشحن</p>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-    }
-
-    function selectGame(gameName) {
-        Swal.fire({
-            title: gameName,
-            text: 'سيتم تحويلك لصفحة الشحن',
-            icon: 'info',
-            showCancelButton: true,
-            confirmButtonText: 'متابعة',
-            cancelButtonText: 'إلغاء',
-            background: '#1e293b',
-            color: '#fff'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                // يمكنك إضافة منطق خاص هنا
-                document.getElementById('active-game').value = gameName.includes('ببجي') ? 'pubg' : 'ff';
-                loadCorrectPacks();
-                document.getElementById('content-area').scrollTo(0, 500);
-            }
-        });
-    }
-
-    function contactSeller(userId) {
-        if(isGuest) return checkGuestAccess('profile');
-        viewProfile(userId);
-    }
-
-    function makeOffer(postId) {
-        if(isGuest) return checkGuestAccess('profile');
-        Swal.fire({
-            title: 'تقديم عرض',
-            input: 'number',
-            inputLabel: 'المبلغ الذي تريد عرضه (SDM)',
-            showCancelButton: true,
-            confirmButtonText: 'إرسال العرض',
-            cancelButtonText: 'إلغاء',
-            background: '#1e293b',
-            color: '#fff'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                Swal.fire('تم!', 'تم إرسال عرضك', 'success');
-            }
-        });
-    }
-
-    function viewImage(imgUrl) {
-        Swal.fire({
-            imageUrl: imgUrl,
-            imageAlt: 'صورة المنتج',
-            showCloseButton: true,
-            background: '#1e293b',
-            color: '#fff'
-        });
-    }
-
-    // --- Admin Edit Functions (للأدمن) ---
-    async function updateCurrentSliderImg() { 
-        if (me.role !== 'admin') return; 
-        const { value: file } = await Swal.fire({ 
-            title: 'تغيير الصورة', 
-            input: 'file', 
-            inputAttributes: { accept: 'image/*' },
-            background: '#1e293b', 
-            color: '#fff' 
-        });
-        if (file) { 
-            const imgData = await compressImage(file);
-            let newImgs = [...sliderImages]; 
-            newImgs[sliderIdx] = imgData;
-            db.ref('settings/sliderImages').set(newImgs); 
-            Swal.fire('تم','','success');
-        }
-    }
-    
-    async function updateCategoryImg(catName) {
-        if (me.role !== 'admin') return;
-        const { value: file } = await Swal.fire({ 
-            title: `صورة: ${catName}`, 
-            input: 'file', 
-            inputAttributes: { accept: 'image/*' },
-            background: '#1e293b', 
-            color: '#fff' 
-        });
-        if (file) {
-            const imgData = await compressImage(file);
-            db.ref(`settings/categories/${catName}`).set({ img: imgData });
-            Swal.fire('تم','','success');
-        }
-    }
-    
-    function sendBroadcastMessage() { 
-        if(me.role !== 'admin') return; 
-        Swal.fire({ 
-            title: 'نشر رسالة', 
-            input: 'textarea', 
-            background: '#1e293b', 
-            color: '#fff' 
-        }).then(res => { 
-            if(res.value) db.ref('settings/broadcast').set({ text: res.value, id: Date.now() }); 
-        }); 
-    }
-    
-    function listenForAdminTasks() {
-        if (me.role !== "admin") return;
-        db.ref('coin_requests').orderByChild('status').equalTo('pending').on('value', snap => { 
-            const area = document.getElementById('admin-notifications-area'); 
-            if(!area) return; 
-            area.innerHTML = ""; 
-            snap.forEach(child => { 
-                const req = child.val(); 
-                area.innerHTML += `<div class="post" style="padding:15px; margin:10px; background:rgba(245,158,11,0.1);">
-                    <p>🔔 طلب شراء: ${req.qty} SDM من ${escapeHtml(req.uN)}</p>
-                    <img src="${req.img}" width="100%" style="border-radius:10px; margin-top:10px; cursor:pointer;" onclick="Swal.fire({imageUrl:'${req.img}', background:'#1e293b'})">
-                    <div style="display:flex; gap:10px; margin-top:10px;">
-                        <button class="btn-main" style="background:var(--green); flex:1;" onclick="approveCoinRequest('${child.key}')">✅ قبول</button>
-                        <button class="btn-main" style="background:var(--red); flex:1;" onclick="rejectCoinRequest('${child.key}')">❌ رفض</button>
-                    </div>
-                </div>`; 
-            }); 
-        });
-    }
-    
-    function approveCoinRequest(requestId) {
-        db.ref(`coin_requests/${requestId}`).once('value').then(snap => {
-            const req = snap.val();
-            db.ref(`users/${req.uP}/sdmBalance`).transaction(balance => (balance || 0) + Number(req.qty));
-            db.ref(`coin_requests/${requestId}`).update({ status: 'approved', processedAt: Date.now() });
-            Swal.fire('تم', 'تمت الموافقة على الطلب', 'success');
-        });
-    }
-    
-    function rejectCoinRequest(requestId) {
-        db.ref(`coin_requests/${requestId}`).update({ status: 'rejected', processedAt: Date.now() });
-        Swal.fire('تم', 'تم رفض الطلب', 'success');
-    }
-    
-    function initDeveloperLogic() { 
-        if (me.role !== "admin") return; 
-        db.ref('game_orders').orderByChild('status').equalTo('pending').on('value', snap => { 
-            const container = document.getElementById('orders-list-container'); 
-            if(!container) return; 
-            container.innerHTML = ""; 
-            snap.forEach(child => { 
-                const o = child.val(); 
-                container.innerHTML += `<div class="post" style="margin:10px;">
-                    <b>${o.uN}</b>: ${o.type} (${o.cost} SDM)<br>
-                    ID: ${o.playerId}
-                    <div style="display:flex; gap:10px; margin-top:10px;">
-                        <button class="btn-main" style="background:var(--green); flex:1;" onclick="completeGameOrder('${child.key}')">✅ إكمال</button>
-                        <button class="btn-main" style="background:var(--red); flex:1;" onclick="cancelGameOrder('${child.key}')">❌ إلغاء</button>
-                    </div>
-                </div>`; 
-            }); 
-        }); 
-    }
-    
-    function completeGameOrder(orderId) {
-        db.ref(`game_orders/${orderId}`).update({ status: 'done', completedAt: Date.now() });
-        Swal.fire('تم', 'تم إكمال الطلب', 'success');
-    }
-    
-    function cancelGameOrder(orderId) {
-        db.ref(`game_orders/${orderId}`).update({ status: 'cancelled', cancelledAt: Date.now() });
-        Swal.fire('تم', 'تم إلغاء الطلب', 'success');
-    }
-
-    // --- ميزات الإدارة (30 مليون MRK) ---
-    function initAdminMarketControls() {
-        if(me.role !== 'admin') return;
-        
-        // إعطاء الإدارة 30 مليون MRK
-        if(!me.mrkBalance || me.mrkBalance < 30000000) {
-            db.ref('users/' + me.p).update({
-                mrkBalance: 30000000
-            }).then(() => {
-                me.mrkBalance = 30000000;
-            });
-        }
-    }
-
-    function adminSellPanel() {
-        if(me.role !== 'admin') return '';
-        
-        return `
-            <div class="post" style="padding:20px; background:rgba(245,158,11,0.1); border:2px solid var(--accent); margin:20px;">
-                <h3 style="color:var(--accent); margin-top:0;">لوحة بيع MRK (إدارة)</h3>
-                <div class="trade-input-group"><label>سعر البيع (SDM)</label><input id="admin-sell-price" type="number" value="${marketPrice.toFixed(4)}" class="inp-field" placeholder="سعر البيع"></div>
-                <div class="trade-input-group"><label>الكمية (MRK)</label><input id="admin-sell-amount" type="number" class="inp-field" placeholder="الكمية للبيع"></div>
-                <div class="pct-bar">
-                    <div class="pct-btn" onclick="document.getElementById('admin-sell-amount').value = 10000">10K</div>
-                    <div class="pct-btn" onclick="document.getElementById('admin-sell-amount').value = 50000">50K</div>
-                    <div class="pct-btn" onclick="document.getElementById('admin-sell-amount').value = 100000">100K</div>
-                    <div class="pct-btn" onclick="document.getElementById('admin-sell-amount').value = 1000000">1M</div>
-                </div>
-                <div style="font-size:12px; margin:10px 0; color:var(--text-sec);">
-                    الرصيد المتاح: <b style="color:var(--accent)">${(me.mrkBalance || 0).toLocaleString()} MRK</b>
-                </div>
-                <button class="btn-main" style="background:var(--accent); color:black;" onclick="executeAdminSell()">
-                    <i class="fas fa-coins"></i> وضع للبيع
-                </button>
-            </div>
-        `;
-    }
-
-    async function executeAdminSell() {
-        const price = parseFloat(document.getElementById('admin-sell-price').value);
-        const amount = parseFloat(document.getElementById('admin-sell-amount').value);
-        
-        if(!price || !amount || price <= 0 || amount <= 0) {
-            return Swal.fire('خطأ', 'البيانات غير صحيحة', 'error');
-        }
-        
-        if(amount > (me.mrkBalance || 0)) {
-            return Swal.fire('فشل', 'رصيد MRK غير كاف', 'error');
-        }
-        
-        try {
-            await db.ref('market/orders/sell').push({
-                uP: me.p,
-                price,
-                amount,
-                date: Date.now(),
-                status: 'pending',
-                isAdmin: true
-            });
-            
-            Swal.fire('تم!', 'تم وضع الكمية للبيع', 'success');
-            document.getElementById('admin-sell-amount').value = '';
-        } catch(e) {
-            Swal.fire('خطأ', 'فشل الاتصال', 'error');
-        }
-    }
-
-    function buyVip(days, cost) {
-        if((me.sdmBalance || 0) < cost) 
-            return Swal.fire('فشل', 'رصيدك غير كاف', 'error');
-        
-        const expiry = Date.now() + (days * 24 * 60 * 60 * 1000);
-        
-        Swal.fire({
-            title: 'تأكيد الشراء',
-            text: `هل تريد شراء اشتراك VIP لمدة ${days} يوم بمبلغ ${cost} SDM؟`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'نعم، اشترِ',
-            cancelButtonText: 'إلغاء',
-            background: '#1e293b',
-            color: '#fff'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                db.ref(`users/${me.p}`).update({
-                    sdmBalance: (me.sdmBalance || 0) - cost,
-                    vipStatus: 'active',
-                    vipExpiry: expiry
-                }).then(() => {
-                    me.sdmBalance -= cost;
-                    me.vipStatus = 'active';
-                    me.vipExpiry = expiry;
-                    Swal.fire('تم!', `تم تفعيل VIP لمدة ${days} يوم`, 'success');
-                    nav('vip');
+    function encode(i, t) {
+        if(!i.files[0]) return;
+        const reader = new FileReader();
+        reader.readAsDataURL(i.files[0]);
+        reader.onload = (e) => {
+            const img = new Image();
+            img.src = e.target.result;
+            img.onload = () => {
+                const cvs = document.createElement('canvas');
+                const scale = 800 / img.width;
+                cvs.width = 800;
+                cvs.height = img.height * scale;
+                const ctx = cvs.getContext('2d');
+                ctx.drawImage(img, 0, 0, cvs.width, cvs.height);
+                const res = cvs.toDataURL('image/jpeg', 0.7);
+                if(t === 'post') tempImg = res;
+                if(t === 'buy') tempBuyImg = res;
+                Swal.fire({
+                    toast: true,
+                    position: 'top',
+                    icon: 'success',
+                    title: 'تم رفع الصورة',
+                    timer: 2000,
+                    showConfirmButton: false
                 });
             }
+        }
+    }
+
+    function publish(path) {
+        if(isGuest) return checkGuestAccess();
+        const t = document.getElementById('pt').value;
+        const pr = document.getElementById('pp').value;
+        const d = document.getElementById('pd').value;
+        if(!t || !pr || !tempImg) return Swal.fire('تنبيه', 'أكمل البيانات والصورة', 'warning');
+        
+        db.ref(path).push({ 
+            t, pr, d, img: tempImg, sub: curS,
+            uP: me.p, uN: me.n, uPic: me.pic||userPic, uLastSeen: Date.now(),
+            date: Date.now(), status: 'active' 
+        }).then(() => { 
+            Swal.fire('تم النشر', '', 'success'); 
+            tempImg = ""; 
+            render('feed', curS); 
         });
     }
+
+    function startSlider() { 
+        const el = document.getElementById('slider-img'); 
+        let idx = 0;
+        sliderInterval = setInterval(() => { 
+            idx = (idx + 1) % sliderImages.length; 
+            if(el) el.src = sliderImages[idx]; 
+        }, 4000); 
+    }
+
+    function requestCoins() { 
+        const form = document.getElementById('buy-coins-form');
+        form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    }
+    
+    function submitCoinRequest() { 
+        const qty = document.getElementById('buy-qty').value;
+        if(!qty || !tempBuyImg) return Swal.fire('تنبيه', 'أدخل الكمية والصورة', 'warning');
+        db.ref('coin_requests').push({ 
+            uP: me.p, 
+            uN: me.n, 
+            qty, 
+            img: tempBuyImg, 
+            date: Date.now(), 
+            status: 'pending' 
+        });
+        Swal.fire('تم', 'تم إرسال طلب الإيداع', 'success');
+        document.getElementById('buy-coins-form').style.display = 'none';
+    }
+
+    function loadTransactions() {
+        if (isGuest) return;
+        
+        db.ref('user_transactions/' + me.p)
+            .limitToLast(20)
+            .on('value', snapshot => {
+                const element = document.getElementById('transactions-history');
+                if (!element) return;
+                
+                element.innerHTML = '';
+                
+                const transactions = [];
+                snapshot.forEach(child => {
+                    transactions.push(child.val());
+                });
+                
+                transactions.sort((a, b) => b.date - a.date);
+                
+                transactions.forEach(tx => {
+                    const date = new Date(tx.date).toLocaleString('ar-EG');
+                    const isBuy = tx.type === 'buy';
+                    
+                    element.innerHTML += `
+                        <div style="padding:12px; border-bottom:1px solid var(--border);">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <div style="color:${isBuy ? 'var(--buy-green)' : 'var(--sell-red)'}; font-weight:bold;">
+                                        ${isBuy ? 'شراء' : 'بيع'} MRK
+                                    </div>
+                                    <div style="font-size:11px; color:var(--text-sec);">${date}</div>
+                                </div>
+                                <div style="text-align:left;">
+                                    <div style="font-weight:bold;">${tx.amount.toFixed(4)} MRK</div>
+                                    <div style="font-size:11px; color:var(--text-sec);">
+                                        السعر: ${tx.price} SDM
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            });
+    }
+
+    function goBack() { 
+        if(hStack.length > 1) { 
+            hStack.pop(); 
+            const prevPage = hStack[hStack.length-1];
+            nav(prevPage); 
+        } 
+    }
+    
+    function escapeHtml(text) { 
+        return text ? String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : ''; 
+    }
+    
+    function filterContent(q) { 
+        q=q.toLowerCase(); 
+        document.querySelectorAll('.card, .post').forEach(el => {
+            el.style.display = el.innerText.toLowerCase().includes(q) ? 'block' : 'none';
+        }); 
+    }
+
+    // --- 10. التهيئة الأولية ---
+    document.addEventListener('DOMContentLoaded', function() {
+        // استرجاع الحالة عند التحميل
+        restoreAppState();
+        
+        // إضافة مؤشر التحميل
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = 'loading-screen';
+        loadingDiv.className = 'loading hidden';
+        loadingDiv.innerHTML = '<div class="loader"></div>';
+        document.body.appendChild(loadingDiv);
+    });
+
 </script>
 </body>
 </html>
