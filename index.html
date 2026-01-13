@@ -1057,63 +1057,86 @@
     // ============================================================
     // 2. تحديث التداول (إرسال للبوت market/orders)
     // ============================================================
-async function placeOrder() {
-        if(isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول', 'error');
-        
-        const price = parseFloat(document.getElementById('i-price').value);
-        const amount = parseFloat(document.getElementById('i-amount').value);
-        
-        if(!price || price <= 0 || !amount || amount <= 0) return Swal.fire('خطأ', 'البيانات غير صحيحة', 'error');
-        
-        // 🔥 هذا هو الجزء الجديد للتحقق من الحد الأدنى 4 SDM
-        const total = price * amount;
-        if (total < 4) {
-            return Swal.fire({
-                title: 'تنبيه',
-                text: 'أقل حد للطلب (بيع أو شراء) هو 4 SDM',
-                icon: 'warning',
-                background: '#1e293b',
-                color: '#fff'
-            });
-        }
-        
-        Swal.fire({ 
-            title: 'جاري الإرسال...', 
-            didOpen: () => Swal.showLoading(), 
-            background: '#1e293b', 
-            color: '#fff' 
-        });
-        
-        try {
-            const path = currentTradeMode === 'buy' ? 'market/orders/buy' : 'market/orders/sell';
-            
-            // إرسال البيانات للبوت
-            await db.ref(path).push({
-                uP: me.p,
-                uN: me.n,
-                price: price,
-                amount: amount,
-                timestamp: firebase.database.ServerValue.TIMESTAMP,
-                status: 'pending'
-            });
-            
-            Swal.fire({ 
-                icon: 'success', 
-                title: 'تم الإرسال', 
-                text: 'سيتم التنفيذ آلياً', 
-                timer: 2000, 
-                showConfirmButton: false,
-                background: '#1e293b',
-                color: '#fff'
-            });
-            
-            document.getElementById('i-amount').value = '';
-            calc();
-        } catch(error) {
-            Swal.fire('خطأ', error.message, 'error');
-        }
-}
+   async function placeOrder() {
+    // 1. التحقق من تسجيل الدخول
+    if (isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول للقيام بعملية تداول', 'error');
+
+    // 2. جلب القيم وتحويلها لأرقام
+    const priceInput = document.getElementById('i-price').value;
+    const amountInput = document.getElementById('i-amount').value;
     
+    const price = parseFloat(priceInput);
+    const amount = parseFloat(amountInput);
+
+    // 3. التحقق من صحة المدخلات
+    if (!price || price <= 0 || !amount || amount <= 0) {
+        return Swal.fire('خطأ', 'البيانات غير صحيحة، يرجى إدخال السعر والكمية', 'error');
+    }
+
+    // 4. التحقق من الحد الأدنى للطلب (4 SDM)
+    const total = price * amount;
+    if (total < 4) {
+        return Swal.fire({
+            title: 'تنبيه',
+            text: 'أقل حد للطلب (بيع أو شراء) هو 4 SDM لضمان استقرار السوق',
+            icon: 'warning',
+            background: '#1e293b',
+            color: '#fff'
+        });
+    }
+
+    // 5. إظهار علامة التحميل
+    Swal.fire({
+        title: 'جاري إرسال الطلب...',
+        didOpen: () => Swal.showLoading(),
+        background: '#1e293b',
+        color: '#fff',
+        allowOutsideClick: false
+    });
+
+    try {
+        // تحديد المسار (شراء أو بيع)
+        const path = currentTradeMode === 'buy' ? 'market/orders/buy' : 'market/orders/sell';
+        
+        // تجهيز البيانات مع تحويل قسري للأرقام لضمان قبول البوت لها
+        const finalOrder = {
+            uP: me.p,
+            uN: me.n,
+            price: Number(price.toFixed(4)),  // تحويل لرقم بـ 4 خانات عشرية
+            amount: Number(amount.toFixed(4)), // تحويل لرقم بـ 4 خانات عشرية
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            status: 'pending'
+        };
+
+        // إرسال الطلب لقاعدة البيانات
+        await db.ref(path).push(finalOrder);
+
+        // 6. رسالة النجاح
+        Swal.fire({
+            icon: 'success',
+            title: 'تم إدراج الطلب',
+            text: 'تم إرسال طلبك بنجاح، سيتم التنفيذ آلياً عند توفر مطابقة في السعر',
+            timer: 2500,
+            showConfirmButton: false,
+            background: '#1e293b',
+            color: '#fff'
+        });
+
+        // 7. إعادة ضبط الواجهة
+        document.getElementById('i-amount').value = '';
+        if (typeof calc === "function") calc(); // تحديث الحسابات في الواجهة
+
+    } catch (error) {
+        console.error("Order Error:", error);
+        Swal.fire({
+            icon: 'error',
+            title: 'فشل الإرسال',
+            text: 'حدث خطأ أثناء الاتصال بالخادم: ' + error.message,
+            background: '#1e293b',
+            color: '#fff'
+        });
+    }
+} 
     // ============================================================
     // 3. تحديث طلبات الألعاب (إرسال للبوت game_orders)
     // ============================================================
