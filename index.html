@@ -1695,325 +1695,1588 @@
 
     // دوال إضافية لم تكتمل في الكود السابق
     // ============================================================
-    // 5. إكمال الدوال الناقصة (السوق، الشارت، الأدمن، المستخدم)
-    // ============================================================
+// دوال تداول MRK (دفتر الطلبات، الشارت، طلباتي)
+// ============================================================
 
-    function loadAdminTransferRequests() {
-        if(!me || me.role !== 'admin') return;
-        const container = document.getElementById('admin-transfer-requests');
-        if(!container) return;
+function initMarket() {
+    // تحديث سعر السوق تلقائياً
+    db.ref('market/current_price').on('value', snap => {
+        if (snap.exists()) {
+            marketPrice = parseFloat(snap.val());
+            document.getElementById('m-price').innerText = marketPrice.toFixed(4);
+            document.getElementById('i-price').value = marketPrice.toFixed(4);
+        }
+    });
 
-        db.ref('requests/transfers').orderByChild('status').equalTo('pending').on('value', snap => {
-            container.innerHTML = '';
-            if(!snap.exists()) {
-                container.innerHTML = '<div style="text-align:center; padding:10px; color:var(--text-sec)">لا توجد طلبات تحويل معلقة</div>';
-                return;
+    // تحديث دفتر طلبات الشراء
+    db.ref('market/orders/buy').orderByChild('price').limitToLast(10).on('value', snap => {
+        const bids = document.getElementById('bids');
+        const bidsList = document.getElementById('ob-bids-list');
+        if (!bids && !bidsList) return;
+        
+        let html = '';
+        let listHtml = '';
+        const orders = [];
+        
+        snap.forEach(child => {
+            const order = child.val();
+            if (order.status === 'pending' || order.status === 'partial') {
+                orders.push(order);
             }
-            snap.forEach(child => {
-                const r = child.val();
-                container.innerHTML += `
-                    <div class="admin-item">
-                        <div style="font-size:12px; margin-bottom:5px;">
-                            من: <code style="color:var(--text-sec)">${r.from}</code><br>
-                            إلى: <code style="color:var(--neon-blue)">${r.to}</code>
-                        </div>
-                        <div style="font-weight:bold; font-size:16px; margin:5px 0;">
-                            ${r.amount} SDM
-                        </div>
-                        ${r.note ? `<div style="font-size:11px; background:rgba(0,0,0,0.2); padding:5px; border-radius:5px;">📝 ${escapeHtml(r.note)}</div>` : ''}
-                        <div style="display:flex; gap:10px; margin-top:10px;">
-                            <button class="btn-main" style="background:var(--green); margin:0; padding:5px;" onclick="processTransfer('${child.key}', '${r.from}', '${r.to}', ${r.amount})">✔ تنفيذ</button>
-                            <button class="btn-main" style="background:var(--red); margin:0; padding:5px;" onclick="rejectTransfer('${child.key}')">❌ رفض</button>
-                        </div>
-                    </div>`;
-            });
         });
+        
+        // ترتيب تنازلي للعرض
+        orders.sort((a, b) => b.price - a.price);
+        
+        orders.forEach(order => {
+            const total = (order.price * order.amount).toFixed(2);
+            const isMine = order.uP === me.p;
+            
+            html += `<div class="row" onclick="useOrder(${order.price}, ${order.amount})">
+                <div class="bar" style="width: ${Math.min((order.filled || 0) / order.amount * 100, 100)}%; background: var(--trade-green);"></div>
+                <div style="z-index: 2; color: var(--trade-green);">${order.price.toFixed(4)}</div>
+                <div style="z-index: 2;">${order.amount.toFixed(4)}</div>
+            </div>`;
+            
+            listHtml += `<div class="ob-row ${isMine ? 'my-order' : ''}" onclick="useOrder(${order.price}, ${order.amount})">
+                <span>${order.price.toFixed(4)}</span>
+                <span>${order.amount.toFixed(4)}</span>
+                <span>${total}</span>
+            </div>`;
+        });
+        
+        if (bids) bids.innerHTML = html;
+        if (bidsList) bidsList.innerHTML = listHtml;
+    });
+
+    // تحديث دفتر طلبات البيع
+    db.ref('market/orders/sell').orderByChild('price').limitToFirst(10).on('value', snap => {
+        const asks = document.getElementById('asks');
+        const asksList = document.getElementById('ob-asks-list');
+        if (!asks && !asksList) return;
+        
+        let html = '';
+        let listHtml = '';
+        const orders = [];
+        
+        snap.forEach(child => {
+            const order = child.val();
+            if (order.status === 'pending' || order.status === 'partial') {
+                orders.push(order);
+            }
+        });
+        
+        // ترتيب تصاعدي للعرض
+        orders.sort((a, b) => a.price - b.price);
+        
+        orders.forEach(order => {
+            const total = (order.price * order.amount).toFixed(2);
+            const isMine = order.uP === me.p;
+            
+            html = `<div class="row" onclick="useOrder(${order.price}, ${order.amount})">
+                <div class="bar" style="width: ${Math.min((order.filled || 0) / order.amount * 100, 100)}%; background: var(--trade-red);"></div>
+                <div style="z-index: 2; color: var(--trade-red);">${order.price.toFixed(4)}</div>
+                <div style="z-index: 2;">${order.amount.toFixed(4)}</div>
+            </div>` + html;
+            
+            listHtml = `<div class="ob-row ${isMine ? 'my-order' : ''}" onclick="useOrder(${order.price}, ${order.amount})">
+                <span>${order.price.toFixed(4)}</span>
+                <span>${order.amount.toFixed(4)}</span>
+                <span>${total}</span>
+            </div>` + listHtml;
+        });
+        
+        if (asks) asks.innerHTML = html;
+        if (asksList) asksList.innerHTML = listHtml;
+    });
+
+    // تحديث طلباتي
+    updateMyOrders();
+}
+
+function useOrder(price, amount) {
+    document.getElementById('i-price').value = price;
+    document.getElementById('i-amount').value = amount;
+    calc();
+}
+
+function updateMyOrders() {
+    if (isGuest) return;
+    
+    const myOrdersList = document.getElementById('my-orders-list');
+    if (!myOrdersList) return;
+
+    // استمع لطلبات الشراء
+    db.ref('market/orders/buy').orderByChild('uP').equalTo(me.p).on('value', snapshot => {
+        updateOrdersDisplay(snapshot, 'buy');
+    });
+
+    // استمع لطلبات البيع
+    db.ref('market/orders/sell').orderByChild('uP').equalTo(me.p).on('value', snapshot => {
+        updateOrdersDisplay(snapshot, 'sell');
+    });
+
+    function updateOrdersDisplay(snapshot, type) {
+        let ordersHtml = '';
+        const orders = [];
+
+        snapshot.forEach(child => {
+            const order = child.val();
+            if (order.status !== 'filled' && order.status !== 'cancelled') {
+                orders.push({
+                    key: child.key,
+                    type: type,
+                    ...order
+                });
+            }
+        });
+
+        // ترتيب حسب التاريخ
+        orders.sort((a, b) => b.timestamp - a.timestamp);
+
+        orders.forEach(order => {
+            const filledPercent = ((order.filled || 0) / order.amount * 100).toFixed(1);
+            const statusText = getStatusText(order.status, filledPercent);
+            const statusColor = getStatusColor(order.status);
+            const typeText = order.type === 'buy' ? 'شراء' : 'بيع';
+            const typeColor = order.type === 'buy' ? 'var(--trade-green)' : 'var(--trade-red)';
+
+            ordersHtml += `
+                <div class="mo-row">
+                    <div>
+                        <div style="color:${typeColor}; font-weight:bold;">${typeText} MRK</div>
+                        <div style="font-size:10px; color:var(--text-sec);">
+                            السعر: ${order.price} | الكمية: ${order.amount.toFixed(4)}
+                        </div>
+                        <div style="font-size:9px; color:${statusColor}; margin-top:3px;">
+                            ${statusText}
+                        </div>
+                    </div>
+                    <div>
+                        <button class="btn-cancel" onclick="cancelMyOrder('${order.type}', '${order.key}')">
+                            إلغاء
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+
+        myOrdersList.innerHTML = ordersHtml;
+    }
+}
+
+function getStatusText(status, filledPercent) {
+    switch(status) {
+        case 'pending': return 'في الانتظار';
+        case 'partial': return `${filledPercent}% مكتمل`;
+        case 'filled': return 'مكتمل';
+        default: return status;
+    }
+}
+
+function getStatusColor(status) {
+    switch(status) {
+        case 'pending': return 'var(--accent)';
+        case 'partial': return 'var(--neon-blue)';
+        case 'filled': return 'var(--trade-green)';
+        default: return 'var(--text-sec)';
+    }
+}
+
+async function cancelMyOrder(type, key) {
+    if (isGuest) return;
+    
+    Swal.fire({
+        title: 'هل تريد إلغاء هذا الطلب؟',
+        text: 'سيتم تحرير الأموال المجمدة',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، إلغاء',
+        cancelButtonText: 'تراجع',
+        background: '#1e293b',
+        color: '#fff'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            try {
+                // تحديث حالة الطلب
+                await db.ref(`market/orders/${type}/${key}`).update({
+                    status: 'cancelled',
+                    cancelledAt: firebase.database.ServerValue.TIMESTAMP
+                });
+
+                // تحرير الأموال المجمدة (يجب على البوت التعامل مع هذا)
+                Swal.fire('تم', 'تم إلغاء الطلب', 'success');
+            } catch (error) {
+                Swal.fire('خطأ', error.message, 'error');
+            }
+        }
+    });
+}
+
+// ============================================================
+// دالة الشارت (مخطط الشموع)
+// ============================================================
+
+function initChart() {
+    const chartContainer = document.getElementById('chart-container');
+    if (!chartContainer) return;
+
+    // خيارات المخطط
+    const options = {
+        series: [{
+            data: generateSampleData()
+        }],
+        chart: {
+            type: 'candlestick',
+            height: 250,
+            background: 'transparent',
+            toolbar: {
+                show: false
+            },
+            zoom: {
+                enabled: false
+            }
+        },
+        xaxis: {
+            type: 'datetime',
+            labels: {
+                style: {
+                    colors: 'var(--text-sec)',
+                    fontSize: '10px'
+                }
+            }
+        },
+        yaxis: {
+            tooltip: {
+                enabled: true
+            },
+            labels: {
+                style: {
+                    colors: 'var(--text-sec)',
+                    fontSize: '10px'
+                },
+                formatter: function(value) {
+                    return value.toFixed(4);
+                }
+            }
+        },
+        grid: {
+            borderColor: 'var(--border)',
+            strokeDashArray: 3
+        },
+        plotOptions: {
+            candlestick: {
+                colors: {
+                    upward: 'var(--trade-green)',
+                    downward: 'var(--trade-red)'
+                },
+                wick: {
+                    useFillColor: true
+                }
+            }
+        },
+        theme: {
+            mode: 'dark'
+        },
+        tooltip: {
+            custom: function({seriesIndex, dataPointIndex, w}) {
+                const o = w.globals.seriesCandleO[seriesIndex][dataPointIndex];
+                const h = w.globals.seriesCandleH[seriesIndex][dataPointIndex];
+                const l = w.globals.seriesCandleL[seriesIndex][dataPointIndex];
+                const c = w.globals.seriesCandleC[seriesIndex][dataPointIndex];
+                return `
+                    <div style="background: var(--bg-card); padding: 8px; border-radius: 6px; border: 1px solid var(--border);">
+                        <div style="font-weight: bold; margin-bottom: 5px;">تفاصيل الشمعة</div>
+                        <div style="font-size: 11px;">فتح: <span style="color: var(--text-sec)">${o.toFixed(4)}</span></div>
+                        <div style="font-size: 11px;">أعلى: <span style="color: var(--trade-green)">${h.toFixed(4)}</span></div>
+                        <div style="font-size: 11px;">أدنى: <span style="color: var(--trade-red)">${l.toFixed(4)}</span></div>
+                        <div style="font-size: 11px;">إغلاق: <span style="color: ${c >= o ? 'var(--trade-green)' : 'var(--trade-red)'}">${c.toFixed(4)}</span></div>
+                    </div>
+                `;
+            }
+        }
+    };
+
+    // إنشاء المخطط
+    chartInstance = new ApexCharts(chartContainer, options);
+    chartInstance.render();
+
+    // تحديث البيانات الحية
+    updateChartData();
+}
+
+function generateSampleData() {
+    const data = [];
+    let basePrice = marketPrice;
+    let timestamp = Date.now() - (24 * 60 * 60 * 1000); // بداية من 24 ساعة مضت
+
+    for (let i = 0; i < 24; i++) {
+        const open = basePrice;
+        const close = open + (Math.random() - 0.5) * 0.002;
+        const high = Math.max(open, close) + Math.random() * 0.001;
+        const low = Math.min(open, close) - Math.random() * 0.001;
+        
+        data.push({
+            x: new Date(timestamp),
+            y: [open, high, low, close]
+        });
+
+        basePrice = close;
+        timestamp += 60 * 60 * 1000; // زيادة ساعة
     }
 
-    async function processTransfer(key, fromId, toId, amount) {
-        if(me.role !== 'admin') return;
-        
-        // التحقق من صحة الرصيد قبل التحويل
-        const fromSnap = await db.ref('users/'+fromId+'/sdmBalance').once('value');
-        const currentBal = fromSnap.val() || 0;
+    return data;
+}
 
-        if(currentBal < amount) {
-            Swal.fire('خطأ', 'رصيد المرسل غير كافٍ لإتمام العملية', 'error');
+function updateChartData() {
+    // الاستماع للمعاملات الجديدة وتحديث المخطط
+    db.ref('market/transactions').orderByChild('timestamp').limitToLast(100).on('value', snapshot => {
+        const transactions = [];
+        snapshot.forEach(child => {
+            transactions.push(child.val());
+        });
+        
+        if (transactions.length > 0 && chartInstance) {
+            updateChartWithTransactions(transactions);
+        }
+    });
+}
+
+function updateChartWithTransactions(transactions) {
+    // تجميع المعاملات في فترات زمنية (مثال: كل 5 دقائق)
+    const candles = [];
+    let currentCandle = null;
+    const timeframe = 5 * 60 * 1000; // 5 دقائق
+
+    transactions.sort((a, b) => a.timestamp - b.timestamp);
+
+    transactions.forEach(tx => {
+        const candleTime = Math.floor(tx.timestamp / timeframe) * timeframe;
+
+        if (!currentCandle || currentCandle.x !== candleTime) {
+            if (currentCandle) candles.push(currentCandle);
+            currentCandle = {
+                x: new Date(candleTime),
+                y: [tx.price, tx.price, tx.price, tx.price]
+            };
+        } else {
+            // تحديث الشمعة الحالية
+            currentCandle.y[1] = Math.max(currentCandle.y[1], tx.price); // high
+            currentCandle.y[2] = Math.min(currentCandle.y[2], tx.price); // low
+            currentCandle.y[3] = tx.price; // close
+        }
+    });
+
+    if (currentCandle) candles.push(currentCandle);
+
+    if (chartInstance && candles.length > 0) {
+        chartInstance.updateSeries([{
+            data: candles.slice(-50) // عرض آخر 50 شمعة فقط
+        }]);
+    }
+}
+
+// ============================================================
+// دوال لوحة الأدمن الكاملة
+// ============================================================
+
+async function loadAdminTransferRequests() {
+    if (!me || me.role !== 'admin') return;
+    
+    const container = document.getElementById('admin-transfer-requests');
+    if (!container) return;
+    
+    db.ref('requests/transfers').orderByChild('status').equalTo('pending').on('value', snap => {
+        container.innerHTML = '';
+        
+        if (!snap.exists() || snap.numChildren() === 0) {
+            container.innerHTML = '<div class="admin-item" style="text-align:center; color:var(--text-sec); padding:20px;">لا توجد طلبات تحويل معلقة</div>';
             return;
         }
-
-        try {
-            // خصم من المرسل
-            await db.ref('users/'+fromId+'/sdmBalance').transaction(val => (val || 0) - amount);
-            // إضافة للمستلم
-            await db.ref('users/'+toId+'/sdmBalance').transaction(val => (val || 0) + amount);
-            
-            // تحديث حالة الطلب
-            await db.ref('requests/transfers/'+key).update({ status: 'completed', admin: me.n, processedAt: Date.now() });
-
-            // إشعار الطرفين
-            db.ref('alerts/'+fromId).push({ msg: `✅ تم تنفيذ تحويل ${amount} SDM بنجاح`, type: 'success', timestamp: Date.now() });
-            db.ref('alerts/'+toId).push({ msg: `💰 وصلك تحويل ${amount} SDM`, type: 'success', timestamp: Date.now() });
-            
-            // تسجيل المعاملة
-            db.ref('transactions').push({ userId: fromId, type: 'transfer_out', amount: amount, to: toId, timestamp: Date.now() });
-            db.ref('transactions').push({ userId: toId, type: 'transfer_in', amount: amount, from: fromId, timestamp: Date.now() });
-
-            Swal.fire('تم', 'تم النقل بنجاح', 'success');
-        } catch(e) {
-            Swal.fire('خطأ', e.message, 'error');
-        }
-    }
-
-    function rejectTransfer(key) {
-        db.ref('requests/transfers/'+key).update({ status: 'rejected' });
-        Swal.fire('تم', 'تم رفض الطلب', 'info');
-    }
-
-    function loadUserReports() {
-        if(!me || me.role !== 'admin') return;
-        const container = document.getElementById('admin-user-reports');
-        if(!container) return;
-
-        db.ref('reports').orderByChild('status').equalTo('open').on('value', snap => {
-            container.innerHTML = '';
-            if(!snap.exists()) {
-                container.innerHTML = '<div style="text-align:center; padding:10px; color:var(--text-sec)">لا توجد بلاغات</div>';
-                return;
-            }
-            snap.forEach(child => {
-                const rep = child.val();
-                container.innerHTML += `
-                    <div class="admin-item" style="border-color:var(--red);">
-                        <strong style="color:var(--red)">بلاغ ضد: ${rep.reportedUser}</strong>
-                        <p style="font-size:12px; margin:5px 0;">السبب: ${escapeHtml(rep.reason)}</p>
-                        <div style="font-size:10px; color:var(--text-sec)">من: ${rep.byUser}</div>
-                        <button class="btn-main" style="background:#334155; margin-top:5px; padding:5px;" onclick="closeReport('${child.key}')">إغلاق البلاغ</button>
-                    </div>`;
-            });
-        });
-    }
-
-    function closeReport(key) {
-        db.ref('reports/'+key).update({ status: 'closed' });
-    }
-
-    function initDeveloperLogic() {
-        // يمكن إضافة منطق خاص للمطورين هنا لاحقاً
-        console.log("Dev Logic Loaded");
-    }
-
-    // --- منطق السوق والشارت ---
-
-    function initMarket() {
-        // الاستماع لسعر السوق
-        db.ref('market/current_price').on('value', snap => {
-            const p = snap.val();
-            if(p) {
-                marketPrice = parseFloat(p);
-                const el = document.getElementById('m-price');
-                if(el) el.innerText = marketPrice.toFixed(4);
-            }
-        });
-
-        // تحميل دفتر الطلبات (Order Book)
-        loadOrderBookSide('buy', 'ob-bids-list');
-        loadOrderBookSide('sell', 'ob-asks-list');
-    }
-
-    function loadOrderBookSide(type, elementId) {
-        db.ref('market/orders/' + type).orderByChild('price').limitToLast(20).on('value', snap => {
-            const el = document.getElementById(elementId);
-            const listEl = document.getElementById(type === 'buy' ? 'bids' : 'asks'); // للقائمة القديمة
-            
-            if(!el) return;
-            let orders = [];
-            snap.forEach(c => orders.push(c.val()));
-
-            // ترتيب: شراء (الأعلى سعراً أولاً)، بيع (الأقل سعراً أولاً)
-            orders.sort((a,b) => type === 'buy' ? b.price - a.price : a.price - b.price);
-
-            // تحديث القائمة الجديدة
-            el.innerHTML = '';
-            orders.forEach(o => {
-                el.innerHTML += `
-                    <div class="ob-row">
-                        <span style="font-weight:bold">${o.price.toFixed(4)}</span>
-                        <span style="color:var(--text-sec)">${o.amount.toFixed(2)} MRK</span>
-                    </div>`;
-            });
-
-            // تحديث القائمة المصغرة في واجهة التداول
-            if(listEl) {
-                listEl.innerHTML = '';
-                orders.slice(0, 5).forEach(o => {
-                    const percent = Math.min((o.amount / 100) * 100, 100);
-                    listEl.innerHTML += `
-                    <div class="row">
-                        <div class="bar" style="width:${percent}%; background:${type==='buy'?'var(--trade-green)':'var(--trade-red)'}"></div>
-                        <span style="color:${type==='buy'?'var(--trade-green)':'var(--trade-red)'}">${o.price.toFixed(4)}</span>
-                        <span>${o.amount.toFixed(2)}</span>
-                    </div>`;
-                });
-            }
-        });
-
-        // تحميل طلباتي
-        if(!myOrdersListener && me) {
-             const myOrdersRef = db.ref('market/orders/buy'); // نحتاج دمج الاثنين في الواقع، هنا مثال للشراء
-             // لتحسين الكود يجب الاستماع للمسارين، ولكن للتبسيط:
-             // سيتم عرض القائمة فارغة حتى يتم ربط البوت، لكن الهيكل موجود.
-        }
-    }
-
-    function initChart() {
-        const ctx = document.getElementById('chart-container');
-        if(!ctx) return;
         
-        // بيانات تجريبية للشارت ليعطي مظهراً جمالياً حتى تتوفر بيانات حقيقية
-        const dummyData = [
-            {x: new Date().getTime() - 3600000 * 5, y: marketPrice * 0.98},
-            {x: new Date().getTime() - 3600000 * 4, y: marketPrice * 1.02},
-            {x: new Date().getTime() - 3600000 * 3, y: marketPrice * 0.95},
-            {x: new Date().getTime() - 3600000 * 2, y: marketPrice * 1.05},
-            {x: new Date().getTime() - 3600000 * 1, y: marketPrice * 0.99},
-            {x: new Date().getTime(), y: marketPrice}
-        ];
-
-        const options = {
-            series: [{ name: 'MRK Price', data: dummyData }],
-            chart: {
-                type: 'area',
-                height: '100%',
-                toolbar: { show: false },
-                background: 'transparent',
-                animations: { enabled: true }
-            },
-            colors: ['#00f3ff'],
-            stroke: { curve: 'smooth', width: 2 },
-            fill: {
-                type: 'gradient',
-                gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05, stops: [0, 100] }
-            },
-            dataLabels: { enabled: false },
-            grid: { show: false, padding: { left: 0, right: 0 } },
-            xaxis: { type: 'datetime', labels: { show: false }, axisBorder: { show: false }, axisTicks: { show: false } },
-            yaxis: { show: true, opposite: true, labels: { style: { colors: '#64748b' } } },
-            theme: { mode: 'dark' }
-        };
-
-        if(chartInstance) chartInstance.destroy();
-        chartInstance = new ApexCharts(ctx, options);
-        chartInstance.render();
-    }
-
-    // --- تفاعل المستخدمين ---
-
-    function rateUser(uid) {
-        if(isGuest) return checkGuestAccess();
-        Swal.fire({
-            title: 'تقييم المستخدم ⭐',
-            input: 'range',
-            inputLabel: 'اختر التقييم من 1 إلى 5',
-            inputAttributes: { min: 1, max: 5, step: 1 },
-            inputValue: 5,
-            background: '#1e293b', color: '#fff'
-        }).then(res => {
-            if(res.isConfirmed) {
-                // حفظ التقييم وحساب المتوسط (عملية مبسطة)
-                db.ref('users/'+uid).update({ rating: parseFloat(res.value) }); 
-                Swal.fire('شكراً', 'تم إرسال تقييمك', 'success');
-            }
+        snap.forEach(child => {
+            const request = child.val();
+            const date = new Date(request.timestamp).toLocaleString('ar-SA');
+            
+            container.innerHTML += `
+                <div class="admin-item">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <div>
+                            <strong>من: ${escapeHtml(request.from)}</strong>
+                            <br>
+                            <small style="color:var(--text-sec);">إلى: ${request.to}</small>
+                        </div>
+                        <span class="badge" style="background:var(--primary); color:white; font-weight:bold;">
+                            ${request.amount} SDM
+                        </span>
+                    </div>
+                    
+                    <div style="margin-bottom:10px;">
+                        <small style="color:var(--text-sec);">التاريخ: ${date}</small>
+                        ${request.note ? `<br><small style="color:var(--text-sec);">ملاحظة: ${escapeHtml(request.note)}</small>` : ''}
+                    </div>
+                    
+                    <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+                        <button class="btn-main" style="background:var(--green); margin:0; padding:8px 15px; flex:1;" 
+                                onclick="processTransfer('${child.key}', '${request.from}', '${request.to}', ${request.amount}, true)">
+                            <i class="fas fa-check"></i> تنفيذ التحويل
+                        </button>
+                        <button class="btn-main" style="background:var(--red); margin:0; padding:8px 15px; flex:1;" 
+                                onclick="processTransfer('${child.key}', '${request.from}', '${request.to}', ${request.amount}, false)">
+                            <i class="fas fa-times"></i> رفض الطلب
+                        </button>
+                    </div>
+                </div>
+            `;
         });
-    }
+    });
+}
 
-    function reportUser(uid) {
-        if(isGuest) return checkGuestAccess();
+async function processTransfer(requestKey, fromUserId, toUserId, amount, approve) {
+    if (me.role !== "admin") return;
+    
+    if (approve) {
+        // التحقق من رصيد المرسل
+        const fromSnap = await db.ref(`users/${fromUserId}/sdmBalance`).once('value');
+        const fromBalance = fromSnap.val() || 0;
+        
+        if (fromBalance < amount) {
+            Swal.fire('خطأ', 'رصيد المرسل غير كافي', 'error');
+            return;
+        }
+        
+        // خصم من المرسل
+        await db.ref(`users/${fromUserId}/sdmBalance`).set(fromBalance - amount);
+        
+        // إضافة للمستلم
+        await db.ref(`users/${toUserId}/sdmBalance`).transaction(bal => (bal || 0) + amount);
+        
+        // تسجيل المعاملة
+        await db.ref('transactions').push({
+            type: 'transfer',
+            from: fromUserId,
+            to: toUserId,
+            amount: amount,
+            currency: 'SDM',
+            status: 'completed',
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            admin: me.p
+        });
+        
+        // تحديث حالة الطلب
+        await db.ref(`requests/transfers/${requestKey}`).update({
+            status: 'approved',
+            processedAt: firebase.database.ServerValue.TIMESTAMP,
+            processedBy: me.p
+        });
+        
+        Swal.fire('تم', 'تم تنفيذ التحويل بنجاح', 'success');
+    } else {
+        const { value: reason } = await Swal.fire({
+            title: 'سبب الرفض',
+            input: 'text',
+            background: '#1e293b',
+            color: '#fff',
+            showCancelButton: true
+        });
+        
+        if (reason !== undefined) {
+            await db.ref(`requests/transfers/${requestKey}`).update({
+                status: 'rejected',
+                reason: reason,
+                rejectedAt: firebase.database.ServerValue.TIMESTAMP,
+                rejectedBy: me.p
+            });
+            
+            Swal.fire('تم الرفض', 'تم رفض طلب التحويل', 'info');
+        }
+    }
+}
+
+async function loadUserReports() {
+    if (!me || me.role !== 'admin') return;
+    
+    const container = document.getElementById('admin-user-reports');
+    if (!container) return;
+    
+    db.ref('user_reports').orderByChild('status').equalTo('pending').on('value', snap => {
+        container.innerHTML = '';
+        
+        if (!snap.exists() || snap.numChildren() === 0) {
+            container.innerHTML = '<div class="admin-item" style="text-align:center; color:var(--text-sec); padding:20px;">لا توجد تقارير جديدة</div>';
+            return;
+        }
+        
+        snap.forEach(child => {
+            const report = child.val();
+            const date = new Date(report.timestamp).toLocaleString('ar-SA');
+            
+            container.innerHTML += `
+                <div class="admin-item">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <div>
+                            <strong>المبلغ: ${escapeHtml(report.reporterName || 'مستخدم')}</strong>
+                            <br>
+                            <small style="color:var(--text-sec);">ضد: ${report.reportedUserId}</small>
+                        </div>
+                        <span class="badge" style="background:var(--red); color:white; font-weight:bold;">
+                            ${report.type || 'بلاغ'}
+                        </span>
+                    </div>
+                    
+                    <div style="margin-bottom:10px;">
+                        <strong>السبب:</strong> ${escapeHtml(report.reason || 'لا يوجد سبب')}
+                        <br>
+                        <small style="color:var(--text-sec);">التاريخ: ${date}</small>
+                        ${report.details ? `<br><strong>التفاصيل:</strong> ${escapeHtml(report.details)}` : ''}
+                    </div>
+                    
+                    <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+                        <button class="btn-main" style="background:var(--green); margin:0; padding:8px 15px; flex:1;" 
+                                onclick="processReport('${child.key}', '${report.reportedUserId}', '${report.reporterId}', true)">
+                            <i class="fas fa-check"></i> معالجة
+                        </button>
+                        <button class="btn-main" style="background:var(--red); margin:0; padding:8px 15px; flex:1;" 
+                                onclick="processReport('${child.key}', '${report.reportedUserId}', '${report.reporterId}', false)">
+                            <i class="fas fa-times"></i> تجاهل
+                        </button>
+                        <button class="btn-main" style="background:var(--accent); color:black; margin:0; padding:8px 15px; flex:1;" 
+                                onclick="viewUserProfile('${report.reportedUserId}')">
+                            <i class="fas fa-user"></i> عرض الملف
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+    });
+}
+
+async function processReport(reportKey, reportedUserId, reporterId, takeAction) {
+    if (me.role !== "admin") return;
+    
+    if (takeAction) {
         Swal.fire({
-            title: 'إبلاغ عن مستخدم 🚩',
-            input: 'select',
-            inputOptions: {
-                'spam': 'نشر مزعج (Spam)',
-                'fraud': 'احتيال',
-                'harassment': 'إساءة أو مضايقة',
-                'other': 'أخرى'
-            },
-            inputPlaceholder: 'اختر سبب الإبلاغ',
+            title: 'اختر الإجراء',
+            html: `
+                <select id="action-type" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;">
+                    <option value="warning">تحذير</option>
+                    <option value="temporary_ban">حظر مؤقت</option>
+                    <option value="permanent_ban">حظر دائم</option>
+                    <option value="balance_deduction">خصم رصيد</option>
+                </select>
+                <textarea id="action-details" placeholder="تفاصيل الإجراء..." style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;"></textarea>
+            `,
             showCancelButton: true,
-            background: '#1e293b', color: '#fff'
-        }).then(res => {
-            if(res.isConfirmed && res.value) {
-                db.ref('reports').push({
-                    reportedUser: uid,
-                    byUser: me.p,
-                    reason: res.value,
-                    timestamp: Date.now(),
-                    status: 'open'
-                });
-                Swal.fire('تم الإبلاغ', 'سيقوم فريق الدعم بمراجعة البلاغ', 'success');
-            }
-        });
-    }
-
-    // --- أدوات المشرف (تعديل الصور) ---
-
-    function updateCurrentSliderImg() {
-        Swal.fire({
-            title: 'تغيير صورة السلايدر',
-            input: 'url',
-            inputLabel: 'رابط الصورة الجديد',
-            inputPlaceholder: 'https://...',
-            background: '#1e293b', color: '#fff',
-            showCancelButton: true
-        }).then(res => {
-            if(res.isConfirmed && res.value) {
-                // تحديث الصورة الحالية في المصفوفة وحفظها في قاعدة البيانات
-                sliderImages[currentSliderIndex] = res.value;
-                db.ref('settings/sliderImages').set(sliderImages);
-                startSlider(); // إعادة التشغيل
-                Swal.fire('تم', 'تم تحديث الصورة', 'success');
-            }
-        });
-    }
-
-    function updateCategoryImg(catName) {
-        Swal.fire({
-            title: `تغيير أيقونة: ${catName}`,
-            input: 'url',
-            inputLabel: 'رابط الصورة (يفضل PNG شفاف)',
-            background: '#1e293b', color: '#fff',
-            showCancelButton: true
-        }).then(res => {
-            if(res.isConfirmed && res.value) {
-                db.ref('settings/categories/'+catName).update({ img: res.value });
-                Swal.fire('تم', 'سيتم تحديث القسم عند إعادة التحميل', 'success');
-            }
-        });
-    }
-
-    // دوال إضافية للسوق (الإدارة)
-    function clearOrderBook() {
-        if (me.role !== "admin") return;
-        Swal.fire({ 
-            title: 'هل أنت متأكد؟', text: "سيتم حذف جميع الطلبات!", 
-            icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', background: '#1e293b', color: '#fff' 
-        }).then((result) => {
+            confirmButtonText: 'تنفيذ',
+            background: '#1e293b',
+            color: '#fff'
+        }).then(async (result) => {
             if (result.isConfirmed) {
-                db.ref('market/orders').remove();
-                Swal.fire('تم', 'تم تنظيف دفتر الطلبات', 'success');
+                const actionType = document.getElementById('action-type').value;
+                const actionDetails = document.getElementById('action-details').value;
+                
+                // تنفيذ الإجراء
+                switch(actionType) {
+                    case 'temporary_ban':
+                        await db.ref(`users/${reportedUserId}`).update({
+                            bannedUntil: Date.now() + (7 * 24 * 60 * 60 * 1000) // 7 أيام
+                        });
+                        break;
+                    case 'permanent_ban':
+                        await db.ref(`users/${reportedUserId}`).update({
+                            banned: true
+                        });
+                        break;
+                    case 'balance_deduction':
+                        // خصم 10% من الرصيد
+                        const userSnap = await db.ref(`users/${reportedUserId}/sdmBalance`).once('value');
+                        const currentBalance = userSnap.val() || 0;
+                        const deduction = currentBalance * 0.1;
+                        await db.ref(`users/${reportedUserId}/sdmBalance`).set(currentBalance - deduction);
+                        break;
+                }
+                
+                // تحديث حالة التقرير
+                await db.ref(`user_reports/${reportKey}`).update({
+                    status: 'resolved',
+                    actionTaken: actionType,
+                    actionDetails: actionDetails,
+                    resolvedBy: me.p,
+                    resolvedAt: firebase.database.ServerValue.TIMESTAMP
+                });
+                
+                Swal.fire('تم', 'تم معالجة التقرير', 'success');
+            }
+        });
+    } else {
+        await db.ref(`user_reports/${reportKey}`).update({
+            status: 'dismissed',
+            dismissedBy: me.p,
+            dismissedAt: firebase.database.ServerValue.TIMESTAMP
+        });
+        
+        Swal.fire('تم', 'تم تجاهل التقرير', 'info');
+    }
+}
+
+function viewUserProfile(userId) {
+    nav('user_profile', userId);
+}
+
+// ============================================================
+// دوال النظام الإضافية
+// ============================================================
+
+function rateUser(uid) {
+    Swal.fire({
+        title: 'تقييم البائع',
+        html: `
+            <div style="text-align:center; margin-bottom:20px;">
+                <div id="stars-container">
+                    ${[1,2,3,4,5].map(i => `
+                        <i class="fas fa-star" style="font-size:30px; color:var(--text-sec); cursor:pointer; margin:0 5px;" 
+                           onclick="setRating(${i})" id="star-${i}"></i>
+                    `).join('')}
+                </div>
+                <div style="margin-top:10px; color:var(--text-sec); font-size:12px;" id="rating-text">اختر التقييم</div>
+            </div>
+            <textarea id="rating-comment" placeholder="اكتب تعليقاً (اختياري)..." style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px;"></textarea>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'إرسال التقييم',
+        background: '#1e293b',
+        color: '#fff',
+        didOpen: () => {
+            let selectedRating = 0;
+            window.setRating = function(rating) {
+                selectedRating = rating;
+                // تحديث النجوم
+                for (let i = 1; i <= 5; i++) {
+                    const star = document.getElementById(`star-${i}`);
+                    star.style.color = i <= rating ? 'var(--accent)' : 'var(--text-sec)';
+                }
+                // تحديث النص
+                const texts = ['سيء جداً', 'سيء', 'متوسط', 'جيد', 'ممتاز'];
+                document.getElementById('rating-text').innerText = texts[rating - 1];
+                window.selectedRating = rating;
+            };
+        },
+        preConfirm: () => {
+            const comment = document.getElementById('rating-comment').value;
+            if (!window.selectedRating || window.selectedRating < 1) {
+                Swal.showValidationMessage('الرجاء اختيار تقييم');
+                return false;
+            }
+            return { rating: window.selectedRating, comment: comment };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const { rating, comment } = result.value;
+            
+            // تحديث تقييم المستخدم
+            const userSnap = await db.ref(`users/${uid}`).once('value');
+            const user = userSnap.val();
+            const currentRating = user.rating || 5;
+            const ratingCount = user.ratingCount || 0;
+            
+            // حساب المعدل الجديد
+            const newRating = ((currentRating * ratingCount) + rating) / (ratingCount + 1);
+            
+            await db.ref(`users/${uid}`).update({
+                rating: newRating,
+                ratingCount: ratingCount + 1
+            });
+            
+            // حفظ التقييم
+            await db.ref(`user_ratings/${uid}`).push({
+                fromUserId: me.p,
+                fromUserName: me.n,
+                rating: rating,
+                comment: comment || '',
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
+            
+            Swal.fire('شكراً لك', 'تم إرسال تقييمك بنجاح', 'success');
+        }
+    });
+}
+
+function reportUser(uid) {
+    Swal.fire({
+        title: 'إبلاغ عن مستخدم',
+        html: `
+            <select id="report-type" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;">
+                <option value="scam">احتيال</option>
+                <option value="spam">محتوى مزعج</option>
+                <option value="inappropriate">محتوى غير لائق</option>
+                <option value="harassment">مضايقة</option>
+                <option value="fake">حساب وهمي</option>
+                <option value="other">سبب آخر</option>
+            </select>
+            <textarea id="report-details" placeholder="اشرح المشكلة بالتفصيل..." style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;" rows="4"></textarea>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'إرسال البلاغ',
+        background: '#1e293b',
+        color: '#fff',
+        preConfirm: () => {
+            const type = document.getElementById('report-type').value;
+            const details = document.getElementById('report-details').value;
+            
+            if (!details.trim()) {
+                Swal.showValidationMessage('الرجاء إضافة تفاصيل البلاغ');
+                return false;
+            }
+            
+            return { type: type, details: details };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const { type, details } = result.value;
+            
+            // حفظ البلاغ
+            await db.ref('user_reports').push({
+                reporterId: me.p,
+                reporterName: me.n,
+                reportedUserId: uid,
+                type: type,
+                details: details,
+                status: 'pending',
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
+            
+            // زيادة عداد البلاغات للمستخدم
+            await db.ref(`users/${uid}/reportCount`).transaction(count => (count || 0) + 1);
+            
+            Swal.fire('تم', 'تم إرسال البلاغ للمشرفين', 'success');
+        }
+    });
+}
+
+function updateCurrentSliderImg() {
+    Swal.fire({
+        title: 'تحديث صورة السلايدر',
+        html: `
+            <select id="slider-index" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;">
+                <option value="0">الصورة الأولى</option>
+                <option value="1">الصورة الثانية</option>
+                <option value="2">الصورة الثالثة</option>
+            </select>
+            <label class="btn-main" style="background:#334155; display:block; text-align:center; margin-bottom:10px;">
+                <i class="fas fa-camera"></i> اختر صورة جديدة
+                <input type="file" id="new-slider-img" hidden accept="image/*">
+            </label>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'حفظ',
+        background: '#1e293b',
+        color: '#fff',
+        didOpen: () => {
+            const fileInput = document.getElementById('new-slider-img');
+            fileInput.onchange = async function(e) {
+                try {
+                    Swal.showLoading();
+                    const compressed = await compressImage(e.target.files[0]);
+                    window.newSliderImage = compressed;
+                    Swal.hideLoading();
+                } catch(error) {
+                    Swal.fire('خطأ', 'فشل تحميل الصورة', 'error');
+                }
+            };
+        },
+        preConfirm: async () => {
+            const index = parseInt(document.getElementById('slider-index').value);
+            
+            if (!window.newSliderImage) {
+                Swal.showValidationMessage('الرجاء اختيار صورة جديدة');
+                return false;
+            }
+            
+            // تحديث الصورة في قاعدة البيانات
+            const settingsRef = db.ref('settings/sliderImages');
+            const snapshot = await settingsRef.once('value');
+            let sliderImages = snapshot.val() || [...sliderImages];
+            
+            if (!Array.isArray(sliderImages)) sliderImages = [...sliderImages];
+            sliderImages[index] = window.newSliderImage;
+            
+            await settingsRef.set(sliderImages);
+            
+            return { index: index };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            Swal.fire('تم', 'تم تحديث صورة السلايدر', 'success');
+            // تحديث العرض مباشرة
+            sliderImages = await db.ref('settings/sliderImages').once('value').then(snap => snap.val() || sliderImages);
+            const imgEl = document.getElementById('slider-img');
+            if (imgEl) {
+                imgEl.src = sliderImages[result.value.index];
+            }
+        }
+    });
+}
+
+async function updateCategoryImg(catName) {
+    Swal.fire({
+        title: `تحديث صورة قسم ${catName}`,
+        html: `
+            <label class="btn-main" style="background:#334155; display:block; text-align:center; margin-bottom:10px;">
+                <i class="fas fa-camera"></i> اختر صورة للقسم
+                <input type="file" id="new-cat-img" hidden accept="image/*">
+            </label>
+            <small style="color:var(--text-sec); display:block; text-align:center; margin-top:10px;">
+                الحجم الموصى به: 100×100 بكسل
+            </small>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'حفظ',
+        background: '#1e293b',
+        color: '#fff',
+        didOpen: () => {
+            const fileInput = document.getElementById('new-cat-img');
+            fileInput.onchange = async function(e) {
+                try {
+                    Swal.showLoading();
+                    const compressed = await compressImage(e.target.files[0]);
+                    window.newCatImage = compressed;
+                    Swal.hideLoading();
+                } catch(error) {
+                    Swal.fire('خطأ', 'فشل تحميل الصورة', 'error');
+                }
+            };
+        },
+        preConfirm: async () => {
+            if (!window.newCatImage) {
+                Swal.showValidationMessage('الرجاء اختيار صورة');
+                return false;
+            }
+            
+            // تحديث صورة القسم
+            await db.ref(`settings/categories/${catName}/img`).set(window.newCatImage);
+            
+            return true;
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            Swal.fire('تم', 'تم تحديث صورة القسم', 'success');
+            // إعادة تحميل الصفحة الحالية لتحديث الصورة
+            const currentView = hStack[hStack.length-1];
+            render(currentView);
+        }
+    });
+}
+
+// ============================================================
+// دوال نظام VIP المتقدمة
+// ============================================================
+
+async function initDeveloperLogic() {
+    if (me.role !== "admin") return;
+    
+    // تحديث الإحصائيات تلقائياً
+    setInterval(updateSystemStats, 60000);
+    updateSystemStats();
+}
+
+async function updateSystemStats() {
+    if (me.role !== "admin") return;
+    
+    // حساب عدد المستخدمين
+    const usersSnapshot = await db.ref('users').once('value');
+    const totalUsers = usersSnapshot.numChildren();
+    
+    // حساب عدد الصفقات النشطة
+    const buyOrders = await db.ref('market/orders/buy').once('value');
+    const sellOrders = await db.ref('market/orders/sell').once('value');
+    const activeOrders = buyOrders.numChildren() + sellOrders.numChildren();
+    
+    // حساب إجمالي الأرصدة
+    let totalSDMBalance = 0;
+    let totalMRKBalance = 0;
+    usersSnapshot.forEach(child => {
+        const user = child.val();
+        totalSDMBalance += user.sdmBalance || 0;
+        totalMRKBalance += user.mrkBalance || 0;
+    });
+    
+    // حفظ الإحصائيات
+    await db.ref('system/stats').update({
+        totalUsers: totalUsers,
+        activeOrders: activeOrders,
+        totalSDMBalance: totalSDMBalance,
+        totalMRKBalance: totalMRKBalance,
+        lastUpdated: firebase.database.ServerValue.TIMESTAMP
+    });
+}
+
+function showSystemStats() {
+    db.ref('system/stats').once('value').then(snap => {
+        const stats = snap.val() || {};
+        
+        Swal.fire({
+            title: 'إحصائيات النظام 📊',
+            html: `
+                <div style="text-align:right; margin-bottom:20px;">
+                    <div style="background:var(--bg-card); padding:15px; border-radius:10px; margin-bottom:10px;">
+                        <div style="color:var(--text-sec); font-size:12px;">عدد المستخدمين</div>
+                        <div style="font-size:24px; font-weight:bold; color:var(--neon-blue);">${stats.totalUsers || 0}</div>
+                    </div>
+                    
+                    <div style="background:var(--bg-card); padding:15px; border-radius:10px; margin-bottom:10px;">
+                        <div style="color:var(--text-sec); font-size:12px;">الصفقات النشطة</div>
+                        <div style="font-size:24px; font-weight:bold; color:var(--accent);">${stats.activeOrders || 0}</div>
+                    </div>
+                    
+                    <div style="background:var(--bg-card); padding:15px; border-radius:10px; margin-bottom:10px;">
+                        <div style="color:var(--text-sec); font-size:12px;">إجمالي أرصدة SDM</div>
+                        <div style="font-size:24px; font-weight:bold; color:var(--trade-green);">${(stats.totalSDMBalance || 0).toFixed(2)}</div>
+                    </div>
+                    
+                    <div style="background:var(--bg-card); padding:15px; border-radius:10px;">
+                        <div style="color:var(--text-sec); font-size:12px;">إجمالي أرصدة MRK</div>
+                        <div style="font-size:24px; font-weight:bold; color:var(--primary);">${(stats.totalMRKBalance || 0).toFixed(2)}</div>
+                    </div>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true,
+            background: '#1e293b',
+            color: '#fff'
+        });
+    });
+}
+
+async function clearOrderBook() {
+    if (me.role !== "admin") return;
+    
+    Swal.fire({
+        title: 'هل تريد مسح دفتر الطلبات؟',
+        text: 'هذا الإجراء سيحذف جميع الطلبات المعلقة',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، امسح الكل',
+        cancelButtonText: 'تراجع',
+        background: '#1e293b',
+        color: '#fff'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            // حذف جميع طلبات الشراء
+            await db.ref('market/orders/buy').remove();
+            
+            // حذف جميع طلبات البيع
+            await db.ref('market/orders/sell').remove();
+            
+            // إعادة تعيين سعر السوق
+            await db.ref('market/current_price').set(0.05);
+            
+            Swal.fire('تم', 'تم مسح دفتر الطلبات', 'success');
+        }
+    });
+}
+
+async function addLiquidity() {
+    if (me.role !== "admin") return;
+    
+    Swal.fire({
+        title: 'إضافة سيولة للسوق',
+        html: `
+            <select id="liquidity-type" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;">
+                <option value="buy">أوامر شراء</option>
+                <option value="sell">أوامر بيع</option>
+                <option value="both">الاثنين معاً</option>
+            </select>
+            <input type="number" id="liquidity-amount" placeholder="الكمية (MRK)" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;">
+            <input type="number" id="liquidity-price" placeholder="السعر (SDM لكل MRK)" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;" value="${marketPrice.toFixed(4)}">
+            <input type="number" id="liquidity-count" placeholder="عدد الأوامر" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px;" value="5">
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'إضافة السيولة',
+        background: '#1e293b',
+        color: '#fff',
+        preConfirm: () => {
+            const type = document.getElementById('liquidity-type').value;
+            const amount = parseFloat(document.getElementById('liquidity-amount').value);
+            const price = parseFloat(document.getElementById('liquidity-price').value);
+            const count = parseInt(document.getElementById('liquidity-count').value);
+            
+            if (!amount || !price || !count) {
+                Swal.showValidationMessage('الرجاء تعبئة جميع الحقول');
+                return false;
+            }
+            
+            if (amount <= 0 || price <= 0 || count <= 0) {
+                Swal.showValidationMessage('القيم يجب أن تكون أكبر من صفر');
+                return false;
+            }
+            
+            return { type: type, amount: amount, price: price, count: count };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const { type, amount, price, count } = result.value;
+            const orderAmount = amount / count;
+            
+            Swal.fire({ title: 'جاري إضافة السيولة...', didOpen: () => Swal.showLoading(), background: '#1e293b', color: '#fff' });
+            
+            try {
+                // إضافة أوامر الشراء
+                if (type === 'buy' || type === 'both') {
+                    for (let i = 0; i < count; i++) {
+                        const orderPrice = price * (1 - (i * 0.001)); // تخفيض تدريجي في السعر
+                        await db.ref('market/orders/buy').push({
+                            uP: 'system', // إشارة إلى أن الأمر من النظام
+                            uN: 'سيولة النظام',
+                            price: orderPrice,
+                            amount: orderAmount,
+                            status: 'pending',
+                            timestamp: firebase.database.ServerValue.TIMESTAMP,
+                            isLiquidity: true
+                        });
+                    }
+                }
+                
+                // إضافة أوامر البيع
+                if (type === 'sell' || type === 'both') {
+                    for (let i = 0; i < count; i++) {
+                        const orderPrice = price * (1 + (i * 0.001)); // زيادة تدريجية في السعر
+                        await db.ref('market/orders/sell').push({
+                            uP: 'system', // إشارة إلى أن الأمر من النظام
+                            uN: 'سيولة النظام',
+                            price: orderPrice,
+                            amount: orderAmount,
+                            status: 'pending',
+                            timestamp: firebase.database.ServerValue.TIMESTAMP,
+                            isLiquidity: true
+                        });
+                    }
+                }
+                
+                Swal.fire('تم', 'تم إضافة السيولة بنجاح', 'success');
+            } catch (error) {
+                Swal.fire('خطأ', error.message, 'error');
+            }
+        }
+    });
+}
+
+function searchUser() {
+    Swal.fire({
+        title: 'بحث عن مستخدم',
+        html: `
+            <input type="text" id="search-user-input" placeholder="أدخل الاسم أو البريد أو ID" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;">
+            <div id="search-results" style="max-height:200px; overflow-y:auto;"></div>
+        `,
+        background: '#1e293b',
+        color: '#fff',
+        showConfirmButton: false,
+        showCloseButton: true,
+        didOpen: () => {
+            const input = document.getElementById('search-user-input');
+            input.addEventListener('input', async function() {
+                const query = this.value.trim().toLowerCase();
+                const resultsDiv = document.getElementById('search-results');
+                
+                if (query.length < 2) {
+                    resultsDiv.innerHTML = '';
+                    return;
+                }
+                
+                const snapshot = await db.ref('users').once('value');
+                let results = [];
+                
+                snapshot.forEach(child => {
+                    const user = child.val();
+                    const userId = child.key;
+                    
+                    if (
+                        (user.n && user.n.toLowerCase().includes(query)) ||
+                        (user.email && user.email.toLowerCase().includes(query)) ||
+                        userId.toLowerCase().includes(query)
+                    ) {
+                        results.push({ id: userId, ...user });
+                    }
+                });
+                
+                if (results.length === 0) {
+                    resultsDiv.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-sec);">لا توجد نتائج</div>';
+                    return;
+                }
+                
+                resultsDiv.innerHTML = results.slice(0, 10).map(user => `
+                    <div class="admin-item" style="cursor:pointer; margin-bottom:5px;" onclick="adminViewUserDetail('${user.id}')">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <img src="${user.pic || userPic}" style="width:30px; height:30px; border-radius:50%;">
+                            <div>
+                                <div style="font-weight:bold;">${escapeHtml(user.n || 'بدون اسم')}</div>
+                                <div style="font-size:10px; color:var(--text-sec);">ID: ${user.id}</div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            });
+        }
+    });
+}
+
+function adminViewUserDetail(userId) {
+    Swal.fire({
+        title: 'تفاصيل المستخدم',
+        html: `
+            <div id="user-detail-content" style="max-height:400px; overflow-y:auto;">
+                جاري التحميل...
+            </div>
+        `,
+        background: '#1e293b',
+        color: '#fff',
+        showConfirmButton: false,
+        showCloseButton: true,
+        width: '80%',
+        didOpen: () => {
+            loadUserDetail(userId);
+        }
+    });
+}
+
+async function loadUserDetail(userId) {
+    const contentDiv = document.getElementById('user-detail-content');
+    
+    const userSnap = await db.ref(`users/${userId}`).once('value');
+    const user = userSnap.val();
+    
+    if (!user) {
+        contentDiv.innerHTML = '<div style="text-align:center; padding:20px; color:var(--red);">المستخدم غير موجود</div>';
+        return;
+    }
+    
+    const isOnline = (Date.now() - (user.lastSeen || 0)) < 300000;
+    const joinDate = new Date(user.joinDate || Date.now()).toLocaleString('ar-SA');
+    const lastSeen = new Date(user.lastSeen || Date.now()).toLocaleString('ar-SA');
+    
+    contentDiv.innerHTML = `
+        <div style="text-align:center; margin-bottom:20px;">
+            <img src="${user.pic || userPic}" style="width:80px; height:80px; border-radius:50%; border:2px solid var(--neon-blue); margin-bottom:10px;">
+            <h3 style="margin:10px 0;">${escapeHtml(user.n || 'بدون اسم')}</h3>
+            <div style="color:${isOnline ? 'var(--trade-green)' : 'var(--text-sec)'}; margin-bottom:10px;">
+                ${isOnline ? '🟢 متصل الآن' : '⚫ آخر ظهور: ' + lastSeen}
+            </div>
+        </div>
+        
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:20px;">
+            <div style="background:var(--bg-card); padding:10px; border-radius:8px; text-align:center;">
+                <div style="color:var(--text-sec); font-size:11px;">رصيد SDM</div>
+                <div style="font-size:18px; font-weight:bold; color:var(--accent);">${(user.sdmBalance || 0).toFixed(2)}</div>
+            </div>
+            <div style="background:var(--bg-card); padding:10px; border-radius:8px; text-align:center;">
+                <div style="color:var(--text-sec); font-size:11px;">رصيد MRK</div>
+                <div style="font-size:18px; font-weight:bold; color:var(--neon-blue);">${(user.mrkBalance || 0).toFixed(4)}</div>
+            </div>
+        </div>
+        
+        <div style="background:var(--bg-card); padding:15px; border-radius:10px; margin-bottom:20px;">
+            <div style="color:var(--text-sec); font-size:12px; margin-bottom:5px;">معلومات الحساب</div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; font-size:12px;">
+                <div>البريد:</div><div>${escapeHtml(user.email || 'غير متوفر')}</div>
+                <div>ID:</div><div>${userId}</div>
+                <div>الدور:</div><div style="color:${user.role === 'admin' ? 'var(--red)' : 'var(--primary)'}">${user.role || 'مستخدم'}</div>
+                <div>تاريخ الانضمام:</div><div>${joinDate}</div>
+                <div>التقييم:</div><div>⭐ ${(user.rating || 0).toFixed(1)}</div>
+                <div>عدد الصفقات:</div><div>${user.totalTrades || 0}</div>
+                <div>عدد البلاغات:</div><div style="color:${(user.reportCount || 0) > 0 ? 'var(--red)' : 'var(--text-sec)'}">${user.reportCount || 0}</div>
+                <div>حالة VIP:</div><div style="color:${user.vipStatus === 'active' ? 'var(--accent)' : 'var(--text-sec)'}">${user.vipStatus === 'active' ? '✅ نشط' : '❌ غير نشط'}</div>
+            </div>
+        </div>
+        
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn-main" style="background:var(--accent); color:black; margin:0; padding:10px; flex:1;" onclick="adminAddBalanceToUser('${userId}')">
+                <i class="fas fa-coins"></i> تعديل الرصيد
+            </button>
+            <button class="btn-main" style="background:var(--primary); margin:0; padding:10px; flex:1;" onclick="adminChangeUserRole('${userId}', '${user.role}')">
+                <i class="fas fa-user-shield"></i> تعديل الصلاحيات
+            </button>
+            <button class="btn-main" style="background:${user.banned || (user.bannedUntil && user.bannedUntil > Date.now()) ? 'var(--trade-green)' : 'var(--red)'}; margin:0; padding:10px; flex:1;" 
+                    onclick="adminToggleBan('${userId}', ${user.banned || false}, ${user.bannedUntil || 0})">
+                <i class="fas fa-ban"></i> ${user.banned || (user.bannedUntil && user.bannedUntil > Date.now()) ? 'إلغاء الحظر' : 'حظر'}
+            </button>
+            <button class="btn-main" style="background:var(--trade-green); margin:0; padding:10px; flex:1;" onclick="nav('user_profile', '${userId}')">
+                <i class="fas fa-eye"></i> عرض الملف
+            </button>
+        </div>
+    `;
+}
+
+async function adminAddBalanceToUser(userId) {
+    Swal.fire({
+        title: 'تعديل رصيد المستخدم',
+        html: `
+            <select id="balance-currency" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;">
+                <option value="sdm">SDM</option>
+                <option value="mrk">MRK</option>
+            </select>
+            <input type="number" id="balance-amount" placeholder="المبلغ (استخدم - للخصم)" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;">
+            <textarea id="balance-reason" placeholder="سبب التعديل (اختياري)" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;" rows="3"></textarea>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'تعديل الرصيد',
+        background: '#1e293b',
+        color: '#fff',
+        preConfirm: () => {
+            const currency = document.getElementById('balance-currency').value;
+            const amount = parseFloat(document.getElementById('balance-amount').value);
+            const reason = document.getElementById('balance-reason').value;
+            
+            if (!amount && amount !== 0) {
+                Swal.showValidationMessage('الرجاء إدخال المبلغ');
+                return false;
+            }
+            
+            return { currency: currency, amount: amount, reason: reason };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const { currency, amount, reason } = result.value;
+            const userSnap = await db.ref(`users/${userId}`).once('value');
+            const user = userSnap.val();
+            
+            let newBalance;
+            if (currency === 'sdm') {
+                newBalance = (user.sdmBalance || 0) + amount;
+                await db.ref(`users/${userId}/sdmBalance`).set(newBalance);
+            } else {
+                newBalance = (user.mrkBalance || 0) + amount;
+                await db.ref(`users/${userId}/mrkBalance`).set(newBalance);
+            }
+            
+            // تسجيل العملية
+            await db.ref(`admin_logs/${userId}`).push({
+                type: 'balance_adjustment',
+                admin: me.p,
+                adminName: me.n,
+                currency: currency,
+                amount: amount,
+                reason: reason || 'بدون سبب',
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                newBalance: newBalance,
+                oldBalance: currency === 'sdm' ? (user.sdmBalance || 0) : (user.mrkBalance || 0)
+            });
+            
+            // إرسال إشعار للمستخدم
+            await db.ref(`alerts/${userId}`).push({
+                msg: `تم تعديل رصيدك ${currency.toUpperCase()} بمقدار ${amount > 0 ? '+' : ''}${amount}`,
+                type: 'info',
+                timestamp: Date.now()
+            });
+            
+            Swal.fire('تم', 'تم تعديل الرصيد بنجاح', 'success');
+            loadUserDetail(userId);
+        }
+    });
+}
+
+async function adminToggleBan(userId, isBanned, bannedUntil) {
+    if (isBanned || (bannedUntil && bannedUntil > Date.now())) {
+        // إلغاء الحظر
+        await db.ref(`users/${userId}`).update({
+            banned: false,
+            bannedUntil: null
+        });
+        
+        await db.ref(`alerts/${userId}`).push({
+            msg: 'تم إلغاء حظر حسابك ✅',
+            type: 'success',
+            timestamp: Date.now()
+        });
+        
+        Swal.fire('تم', 'تم إلغاء حظر المستخدم', 'success');
+    } else {
+        // حظر المستخدم
+        Swal.fire({
+            title: 'حظر المستخدم',
+            html: `
+                <select id="ban-type" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;">
+                    <option value="temporary">حظر مؤقت</option>
+                    <option value="permanent">حظر دائم</option>
+                </select>
+                <div id="ban-duration-container" style="margin-bottom:10px;">
+                    <input type="number" id="ban-duration" placeholder="مدة الحظر (بالأيام)" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px;" value="7">
+                </div>
+                <textarea id="ban-reason" placeholder="سبب الحظر" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;" rows="3"></textarea>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'حظر',
+            background: '#1e293b',
+            color: '#fff',
+            didOpen: () => {
+                const banType = document.getElementById('ban-type');
+                const durationContainer = document.getElementById('ban-duration-container');
+                
+                banType.addEventListener('change', function() {
+                    durationContainer.style.display = this.value === 'temporary' ? 'block' : 'none';
+                });
+            },
+            preConfirm: () => {
+                const type = document.getElementById('ban-type').value;
+                const duration = type === 'temporary' ? parseInt(document.getElementById('ban-duration').value) : null;
+                const reason = document.getElementById('ban-reason').value;
+                
+                if (!reason) {
+                    Swal.showValidationMessage('الرجاء إدخال سبب الحظر');
+                    return false;
+                }
+                
+                if (type === 'temporary' && (!duration || duration <= 0)) {
+                    Swal.showValidationMessage('الرجاء إدخال مدة صحيحة');
+                    return false;
+                }
+                
+                return { type: type, duration: duration, reason: reason };
+            }
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                const { type, duration, reason } = result.value;
+                
+                const updates = {};
+                if (type === 'permanent') {
+                    updates.banned = true;
+                } else {
+                    updates.bannedUntil = Date.now() + (duration * 24 * 60 * 60 * 1000);
+                }
+                
+                await db.ref(`users/${userId}`).update(updates);
+                
+                // تسجيل عملية الحظر
+                await db.ref(`admin_logs/${userId}`).push({
+                    type: 'ban',
+                    admin: me.p,
+                    adminName: me.n,
+                    banType: type,
+                    duration: duration,
+                    reason: reason,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                });
+                
+                // إرسال إشعار للمستخدم
+                await db.ref(`alerts/${userId}`).push({
+                    msg: `تم حظر حسابك بسبب: ${reason}`,
+                    type: 'error',
+                    timestamp: Date.now()
+                });
+                
+                Swal.fire('تم', 'تم حظر المستخدم', 'success');
+                loadUserDetail(userId);
             }
         });
     }
+}
 
-    function addLiquidity() {
-        // دالة وهمية لإضافة طلبات من "صانع سوق"
-        if (me.role !== "admin") return;
-        const base = marketPrice;
-        // إضافة طلب بيع أعلى قليلاً وطلب شراء أقل قليلاً
-        db.ref('market/orders/sell').push({ uP: 'market_maker', price: base * 1.02, amount: 1000, timestamp: Date.now() });
-        db.ref('market/orders/buy').push({ uP: 'market_maker', price: base * 0.98, amount: 1000, timestamp: Date.now() });
-        Swal.fire('تم', 'تم إضافة سيولة للسوق', 'success');
+async function adminChangeUserRole(userId, currentRole) {
+    Swal.fire({
+        title: 'تغيير صلاحيات المستخدم',
+        html: `
+            <select id="new-role" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;">
+                <option value="user" ${currentRole === 'user' ? 'selected' : ''}>مستخدم عادي</option>
+                <option value="moderator" ${currentRole === 'moderator' ? 'selected' : ''}>مشرف</option>
+                <option value="admin" ${currentRole === 'admin' ? 'selected' : ''}>مدير</option>
+            </select>
+            <textarea id="role-reason" placeholder="سبب تغيير الصلاحيات (اختياري)" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid var(--border); border-radius:5px; margin-bottom:10px;" rows="3"></textarea>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'تغيير الصلاحيات',
+        background: '#1e293b',
+        color: '#fff',
+        preConfirm: () => {
+            const newRole = document.getElementById('new-role').value;
+            const reason = document.getElementById('role-reason').value;
+            
+            return { newRole: newRole, reason: reason };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const { newRole, reason } = result.value;
+            
+            await db.ref(`users/${userId}`).update({
+                role: newRole
+            });
+            
+            // تسجيل العملية
+            await db.ref(`admin_logs/${userId}`).push({
+                type: 'role_change',
+                admin: me.p,
+                adminName: me.n,
+                oldRole: currentRole,
+                newRole: newRole,
+                reason: reason || 'بدون سبب',
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
+            
+            // إرسال إشعار للمستخدم
+            await db.ref(`alerts/${userId}`).push({
+                msg: `تم تغيير صلاحيات حسابك إلى: ${newRole === 'admin' ? 'مدير' : (newRole === 'moderator' ? 'مشرف' : 'مستخدم')}`,
+                type: 'info',
+                timestamp: Date.now()
+            });
+            
+            Swal.fire('تم', 'تم تغيير صلاحيات المستخدم', 'success');
+            loadUserDetail(userId);
+        }
+    });
+}
+
+function viewBannedUsers() {
+    db.ref('users').once('value').then(snap => {
+        let bannedUsers = [];
+        
+        snap.forEach(child => {
+            const user = child.val();
+            const userId = child.key;
+            
+            if (user.banned || (user.bannedUntil && user.bannedUntil > Date.now())) {
+                bannedUsers.push({
+                    id: userId,
+                    ...user,
+                    isTempBanned: user.bannedUntil && user.bannedUntil > Date.now(),
+                    banExpiry: user.bannedUntil ? new Date(user.bannedUntil).toLocaleString('ar-SA') : null
+                });
+            }
+        });
+        
+        if (bannedUsers.length === 0) {
+            Swal.fire({
+                title: 'المستخدمين المحظورين',
+                html: '<div style="text-align:center; padding:20px; color:var(--text-sec);">لا توجد حسابات محظورة</div>',
+                background: '#1e293b',
+                color: '#fff',
+                showConfirmButton: false,
+                showCloseButton: true
+            });
+            return;
+        }
+        
+        Swal.fire({
+            title: 'المستخدمين المحظورين 🚫',
+            html: `
+                <div style="max-height:400px; overflow-y:auto;">
+                    ${bannedUsers.map(user => `
+                        <div class="admin-item" style="margin-bottom:10px;">
+                            <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                                <img src="${user.pic || userPic}" style="width:40px; height:40px; border-radius:50%;">
+                                <div>
+                                    <div style="font-weight:bold;">${escapeHtml(user.n || 'بدون اسم')}</div>
+                                    <div style="font-size:10px; color:var(--text-sec);">ID: ${user.id}</div>
+                                </div>
+                                <div style="margin-left:auto;">
+                                    <span class="badge" style="background:${user.isTempBanned ? 'var(--accent)' : 'var(--red)'}; color:${user.isTempBanned ? 'black' : 'white'}">
+                                        ${user.isTempBanned ? 'مؤقت' : 'دائم'}
+                                    </span>
+                                </div>
+                            </div>
+                            ${user.isTempBanned ? `<div style="font-size:11px; color:var(--text-sec);">ينتهي الحظر: ${user.banExpiry}</div>` : ''}
+                            <div style="display:flex; gap:10px; margin-top:10px;">
+                                <button class="btn-main" style="background:var(--trade-green); margin:0; padding:5px 10px; font-size:12px;" 
+                                        onclick="adminToggleBan('${user.id}', true, ${user.bannedUntil || 0})">
+                                    إلغاء الحظر
+                                </button>
+                                <button class="btn-main" style="background:var(--primary); margin:0; padding:5px 10px; font-size:12px;" 
+                                        onclick="nav('user_profile', '${user.id}')">
+                                    عرض الملف
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `,
+            width: '600px',
+            background: '#1e293b',
+            color: '#fff',
+            showConfirmButton: false,
+            showCloseButton: true
+        });
+    });
+}
+
+// ============================================================
+// دالة إضافية: تحديث سعر السوق بناءً على الطلبات
+// ============================================================
+
+async function updateMarketPrice() {
+    if (me.role !== "admin") return;
+    
+    // جلب آخر صفقات الشراء والبيع
+    const [buySnap, sellSnap] = await Promise.all([
+        db.ref('market/orders/buy').orderByChild('price').limitToLast(1).once('value'),
+        db.ref('market/orders/sell').orderByChild('price').limitToFirst(1).once('value')
+    ]);
+    
+    let bestBuy = 0;
+    let bestSell = Infinity;
+    
+    buySnap.forEach(child => {
+        const order = child.val();
+        if (order.status === 'pending' || order.status === 'partial') {
+            bestBuy = Math.max(bestBuy, order.price);
+        }
+    });
+    
+    sellSnap.forEach(child => {
+        const order = child.val();
+        if (order.status === 'pending' || order.status === 'partial') {
+            bestSell = Math.min(bestSell, order.price);
+        }
+    });
+    
+    // حساب السعر المتوسط
+    let newPrice;
+    if (bestBuy > 0 && bestSell < Infinity) {
+        newPrice = (bestBuy + bestSell) / 2;
+    } else if (bestBuy > 0) {
+        newPrice = bestBuy * 1.01; // زيادة 1% إذا لا يوجد بيع
+    } else if (bestSell < Infinity) {
+        newPrice = bestSell * 0.99; // خصم 1% إذا لا يوجد شراء
+    } else {
+        newPrice = marketPrice; // الحفاظ على السعر الحالي
     }
+    
+    // تحديث سعر السوق
+    await db.ref('market/current_price').set(parseFloat(newPrice.toFixed(4)));
+    
+    // تسجيل التغيير
+    await db.ref('market/price_history').push({
+        price: newPrice,
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+        updatedBy: me.p,
+        bestBuy: bestBuy,
+        bestSell: bestSell
+    });
+    
+    return newPrice;
+}
+
+// تشغيل تحديث سعر السوق تلقائياً كل دقيقة للمشرفين
+if (me && me.role === 'admin') {
+    setInterval(updateMarketPrice, 60000);
+}
+
+// ============================================================
+// تهيئة كاملة للتطبيق عند التحميل
+// ============================================================
+
+// إضافة مستمع لتحديث سعر السوق للجميع
+db.ref('market/current_price').on('value', snap => {
+    if (snap.exists()) {
+        marketPrice = parseFloat(snap.val());
+        const priceElement = document.getElementById('m-price');
+        if (priceElement) {
+            priceElement.innerText = marketPrice.toFixed(4);
+            priceElement.style.color = marketPrice > 0.05 ? 'var(--trade-green)' : 
+                                      marketPrice < 0.05 ? 'var(--trade-red)' : 'white';
+        }
+    }
+});
+
+// تحديث حالة الاتصال للخادم
+setInterval(() => {
+    db.ref('system/status/last_online').set(Date.now());
+}, 30000);
 </script>
 </body>
 </html>
