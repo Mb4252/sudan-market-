@@ -1057,14 +1057,25 @@
     // ============================================================
     // 2. تحديث التداول (إرسال للبوت market/orders)
     // ============================================================
-
-    async function placeOrder() {
+async function placeOrder() {
         if(isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول', 'error');
         
         const price = parseFloat(document.getElementById('i-price').value);
         const amount = parseFloat(document.getElementById('i-amount').value);
         
         if(!price || price <= 0 || !amount || amount <= 0) return Swal.fire('خطأ', 'البيانات غير صحيحة', 'error');
+        
+        // 🔥 هذا هو الجزء الجديد للتحقق من الحد الأدنى 4 SDM
+        const total = price * amount;
+        if (total < 4) {
+            return Swal.fire({
+                title: 'تنبيه',
+                text: 'أقل حد للطلب (بيع أو شراء) هو 4 SDM',
+                icon: 'warning',
+                background: '#1e293b',
+                color: '#fff'
+            });
+        }
         
         Swal.fire({ 
             title: 'جاري الإرسال...', 
@@ -1076,7 +1087,7 @@
         try {
             const path = currentTradeMode === 'buy' ? 'market/orders/buy' : 'market/orders/sell';
             
-            // إرسال البيانات للبوت (uP هو المفتاح)
+            // إرسال البيانات للبوت
             await db.ref(path).push({
                 uP: me.p,
                 uN: me.n,
@@ -1101,8 +1112,8 @@
         } catch(error) {
             Swal.fire('خطأ', error.message, 'error');
         }
-    }
-
+}
+    
     // ============================================================
     // 3. تحديث طلبات الألعاب (إرسال للبوت game_orders)
     // ============================================================
