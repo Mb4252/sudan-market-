@@ -1,360 +1,266 @@
-const express = require('express');
 const admin = require("firebase-admin");
+const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ============================================================
-// 1. إعدادات الاتصال (Firebase Setup)
+// 1. إعدادات الهوية (يجب تعديلها)
 // ============================================================
-let serviceAccount;
-try {
-    const envKey = process.env.FIREBASE_SERVICE_ACCOUNT;
-    if (envKey) {
-        serviceAccount = JSON.parse(envKey);
-    } else {
-        serviceAccount = require("./serviceAccountKey.json");
-    }
-} catch (error) { console.error("❌ Credentials Error:", error); }
+const ADMIN_UID = "ضع_هنا_ID_الأدمن_الخاص_بك"; // من تبويب Authentication
 
-if (serviceAccount) {
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
-    });
-}
+const serviceAccount = require("./serviceAccountKey.json");
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
+});
+
 const db = admin.database();
 
 // ============================================================
-// 2. أدوات الحماية والتحقق (Security Utils) 🛡️
+// 2. أدوات الحساب الدقيق والأمان
 // ============================================================
 
-// نظام حماية من التكرار السريع (Anti-Spam)
+// دالة لمعالجة الكسور ومنع أخطاء الجافاسكريبت (4 خانات عشرية)
+const fixFloat = (n) => parseFloat(Number(n).toFixed(4));
+
+// التحقق من صحة الأرقام
+const isValid = (n) => typeof n === 'number' && !isNaN(n) && isFinite(n) && n > 0;
+
+// نظام منع السبام (مستثنى منه الأدمن)
 const userCooldowns = {};
 function isSpam(uid) {
-    if (!uid) return true;
+    if (uid === ADMIN_UID) return false;
     const now = Date.now();
-    const lastAction = userCooldowns[uid] || 0;
-    if (now - lastAction < 1000) return true; // ثانية واحدة بين كل طلب
+    if (now - (userCooldowns[uid] || 0) < 1000) return true;
     userCooldowns[uid] = now;
     return false;
 }
 
-// التحقق الصارم من صحة الأرقام (Anti-Hack Validation)
-function isValidNumber(num) {
-    return typeof num === 'number' && !isNaN(num) && isFinite(num) && num > 0;
-}
-
-// دالة لتنظيف الأرقام العشرية الطويلة
-function fixFloat(num) {
-    return parseFloat(num.toFixed(4));
-}
-
-// تحديث السعر العام
-function updateGlobalPrice(price) {
-    if(isValidNumber(price)) {
-        db.ref('market/current_price').set(price);
+// تحديث السعر العالمي للسوق
+function updateMarketPrice(price) {
+    if (isValid(price)) {
+        db.ref('market/current_price').set(fixFloat(price));
     }
 }
 
-// تشغيل السيرفر
-app.get('/', (req, res) => { res.send('🛡️ SDM SECURE TRADING ENGINE IS ACTIVE.'); });
-app.listen(PORT, () => { console.log(`🚀 Secure Bot Active on Port: ${PORT}`); });
-
-// نبض النظام (Heartbeat)
-setInterval(() => {
-    db.ref('system/status').update({ last_online: admin.database.ServerValue.TIMESTAMP });
-}, 60000);
-
-console.log("💰 Financial Engine Started with High Security...");
-
 // ============================================================
-// 3. معالجة أوامر الشراء (Buy Orders)
+// 3. محرك أوامر الشراء (Buy Orders)
 // ============================================================
 db.ref('market/orders/buy').on('child_added', async (snap) => {
     const order = snap.val();
-    
-    // 1. التحقق الأمني (Security Check)
     if (!order || order.status !== 'pending') return;
-    
-    // التحقق من القيم السالبة أو الصفرية أو غير الرقمية
-    if (!isValidNumber(order.price) || !isValidNumber(order.amount)) {
-        console.log(`⛔ هجوم محتمل أو بيانات فاسدة من ${order.uN || 'مجهول'}`);
-        return snap.ref.remove();
-    }
 
-    if (isSpam(order.uP)) {
-        console.log(`⚠️ تم تجاهل طلب سبام من ${order.uN}`);
-        return snap.ref.remove();
-    }
-
-    const totalCost = fixFloat(order.price * order.amount);
     const uid = order.uP;
+    if (isSpam(uid)) return snap.ref.remove();
 
-    console.log(`📥 شراء: ${order.amount} MRK بسعر ${order.price} | المستخدم: ${order.uN}`);
+    const price = Number(order.price);
+    const amount = Number(order.amount);
+    const totalCost = fixFloat(price * amount);
+
+    if (!isValid(price) || !isValid(amount)) return snap.ref.remove();
 
     try {
-        // 2. خصم الرصيد (Transaction)
-        const result = await db.ref(`users/${uid}/sdmBalance`).transaction(currentBal => {
-            if ((currentBal || 0) < totalCost) return; // إلغاء إذا الرصيد غير كاف
-            return fixFloat((currentBal || 0) - totalCost);
+        // حجز الرصيد من المشتري (SDM)
+        const result = await db.ref(`users/${uid}/sdmBalance`).transaction(bal => {
+            const current = Number(bal || 0);
+            if (current < totalCost) return; // رصيد غير كافٍ
+            return fixFloat(current - totalCost);
         });
 
         if (!result.committed) {
-            console.log(`❌ فشل الشراء لـ ${order.uN}: رصيد غير كافٍ.`);
-            return snap.ref.remove();
+            console.log(`❌ فشل شراء: رصيد ${order.uN} غير كافٍ (${totalCost} SDM)`);
+            db.ref(`alerts/${uid}`).push({ msg: "❌ رصيدك لا يكفي لفتح طلب الشراء", type: "error" });
+            return snap.ref.update({ status: 'failed_insufficient_funds' });
         }
 
-        // 3. البحث عن بائع (Matching)
-        const matchSnapshot = await db.ref('market/orders/sell')
+        // البحث عن أرخص بائع (Matching)
+        const matchSnap = await db.ref('market/orders/sell')
             .orderByChild('price')
-            .endAt(order.price)
+            .endAt(price)
             .limitToFirst(1)
             .once('value');
 
-        if (matchSnapshot.exists()) {
-            const sellerKey = Object.keys(matchSnapshot.val())[0];
-            const sellerOrder = matchSnapshot.val()[sellerKey];
+        if (matchSnap.exists()) {
+            const mKey = Object.keys(matchSnap.val())[0];
+            const mOrder = matchSnap.val()[mKey];
             
-            // تجاهل التداول مع النفس (اختياري لكن مفضل)
-            if (sellerOrder.uP === uid) {
-                 console.log("⚠️ تخطي: المستخدم يحاول التداول مع نفسه.");
-                 // نترك الطلب معلقاً ولا ننفذه الآن
-                 return;
+            if (mOrder.uP === uid) return; // منع التداول مع النفس
+
+            const tAmount = Math.min(amount, mOrder.amount);
+            const tPrice = mOrder.price;
+            const tValue = fixFloat(tAmount * tPrice);
+
+            console.log(`🤝 صفقة شراء: ${tAmount} MRK بسعر ${tPrice}`);
+
+            // تنفيذ المناقلة المالية
+            await db.ref(`users/${mOrder.uP}/sdmBalance`).transaction(b => fixFloat((Number(b) || 0) + tValue));
+            await db.ref(`users/${uid}/mrkBalance`).transaction(b => fixFloat((Number(b) || 0) + tAmount));
+
+            // إرجاع فارق السعر للمشتري (Refund)
+            const refundValue = fixFloat((price - tPrice) * tAmount);
+            if (refundValue > 0) {
+                await db.ref(`users/${uid}/sdmBalance`).transaction(b => fixFloat((Number(b) || 0) + refundValue));
             }
 
-            const tradeAmount = Math.min(order.amount, sellerOrder.amount);
-            const tradePrice = sellerOrder.price; 
-            const totalTradeValue = fixFloat(tradeAmount * tradePrice);
+            updateMarketPrice(tPrice);
 
-            console.log(`🤝 تنفيذ صفقة: ${tradeAmount} وحدة بسعر ${tradePrice}`);
-
-            // تحويل الأموال
-            await db.ref(`users/${sellerOrder.uP}/sdmBalance`).transaction(b => fixFloat((b || 0) + totalTradeValue));
-            await db.ref(`users/${uid}/mrkBalance`).transaction(m => fixFloat((m || 0) + tradeAmount));
-
-            // إرجاع الفارق
-            const refund = fixFloat((order.price - tradePrice) * tradeAmount);
-            if (refund > 0) {
-                await db.ref(`users/${uid}/sdmBalance`).transaction(b => fixFloat((b || 0) + refund));
-            }
-
-            updateGlobalPrice(tradePrice);
-
-            // تسجيل المعاملة
+            // سجل الصفقات
             db.ref('market/transactions').push({
-                price: tradePrice,
-                amount: tradeAmount,
-                buyer: uid,
-                seller: sellerOrder.uP,
+                price: tPrice, amount: tAmount, buyer: uid, seller: mOrder.uP,
                 timestamp: admin.database.ServerValue.TIMESTAMP
             });
 
-            // تحديث الطلبات
-            if (order.amount > tradeAmount) {
-                await snap.ref.update({ amount: fixFloat(order.amount - tradeAmount) });
-            } else {
-                await snap.ref.remove();
-            }
+            // تحديث الطلبات (خصم الكمية المنفذة)
+            if (amount > tAmount) await snap.ref.update({ amount: fixFloat(amount - tAmount) });
+            else snap.ref.remove();
 
-            if (sellerOrder.amount > tradeAmount) {
-                await db.ref(`market/orders/sell/${sellerKey}`).update({ amount: fixFloat(sellerOrder.amount - tradeAmount) });
-            } else {
-                await db.ref(`market/orders/sell/${sellerKey}`).remove();
-            }
+            if (mOrder.amount > tAmount) await db.ref(`market/orders/sell/${mKey}`).update({ amount: fixFloat(mOrder.amount - tAmount) });
+            else await db.ref(`market/orders/sell/${mKey}`).remove();
         }
-
-    } catch (error) {
-        console.error("Critical Error in Buy Order:", error);
-    }
+    } catch (e) { console.error("Buy Error:", e); }
 });
 
 // ============================================================
-// 4. معالجة أوامر البيع (Sell Orders)
+// 4. محرك أوامر البيع (Sell Orders)
 // ============================================================
 db.ref('market/orders/sell').on('child_added', async (snap) => {
     const order = snap.val();
-    
     if (!order || order.status !== 'pending') return;
 
-    // 1. التحقق الأمني
-    if (!isValidNumber(order.price) || !isValidNumber(order.amount)) {
-        return snap.ref.remove();
-    }
-    
-    if (isSpam(order.uP)) return snap.ref.remove();
-
     const uid = order.uP;
-    console.log(`📤 بيع: ${order.amount} MRK بسعر ${order.price} | المستخدم: ${order.uN}`);
+    if (isSpam(uid)) return snap.ref.remove();
+
+    const price = Number(order.price);
+    const amount = Number(order.amount);
+
+    if (!isValid(price) || !isValid(amount)) return snap.ref.remove();
 
     try {
-        // 2. خصم الرصيد
-        const result = await db.ref(`users/${uid}/mrkBalance`).transaction(currentBal => {
-            if ((currentBal || 0) < order.amount) return;
-            return fixFloat((currentBal || 0) - order.amount);
+        // حجز رصيد العملة من البائع (MRK)
+        const result = await db.ref(`users/${uid}/mrkBalance`).transaction(bal => {
+            const current = Number(bal || 0);
+            if (current < amount) return; 
+            return fixFloat(current - amount);
         });
 
         if (!result.committed) {
-            console.log(`❌ فشل البيع لـ ${order.uN}: رصيد MRK غير كافٍ.`);
-            return snap.ref.remove();
+            console.log(`❌ فشل بيع: رصيد ${order.uN} من العملة غير كافٍ`);
+            db.ref(`alerts/${uid}`).push({ msg: "❌ رصيد MRK لا يكفي لفتح طلب البيع", type: "error" });
+            return snap.ref.update({ status: 'failed_insufficient_funds' });
         }
 
-        // 3. البحث عن مشتري
-        const matchSnapshot = await db.ref('market/orders/buy')
+        // البحث عن مشتري (أعلى سعر)
+        const matchSnap = await db.ref('market/orders/buy')
             .orderByChild('price')
-            .startAt(order.price)
+            .startAt(price)
             .limitToLast(1)
             .once('value');
 
-        if (matchSnapshot.exists()) {
-            const buyerKey = Object.keys(matchSnapshot.val())[0];
-            const buyerOrder = matchSnapshot.val()[buyerKey];
+        if (matchSnap.exists()) {
+            const mKey = Object.keys(matchSnap.val())[0];
+            const mOrder = matchSnap.val()[mKey];
 
-            if (buyerOrder.uP === uid) return; // منع التداول مع النفس
+            if (mOrder.uP === uid) return;
 
-            const tradeAmount = Math.min(order.amount, buyerOrder.amount);
-            const tradePrice = order.price;
-            const totalTradeValue = fixFloat(tradeAmount * tradePrice);
+            const tAmount = Math.min(amount, mOrder.amount);
+            const tPrice = mOrder.price;
+            const tValue = fixFloat(tAmount * tPrice);
 
-            console.log(`🤝 تنفيذ صفقة: ${tradeAmount} وحدة`);
+            console.log(`🤝 صفقة بيع: ${tAmount} MRK بسعر ${tPrice}`);
 
-            await db.ref(`users/${uid}/sdmBalance`).transaction(b => fixFloat((b || 0) + totalTradeValue));
-            await db.ref(`users/${buyerOrder.uP}/mrkBalance`).transaction(m => fixFloat((m || 0) + tradeAmount));
+            await db.ref(`users/${uid}/sdmBalance`).transaction(b => fixFloat((Number(b) || 0) + tValue));
+            await db.ref(`users/${mOrder.uP}/mrkBalance`).transaction(b => fixFloat((Number(b) || 0) + tAmount));
 
-            updateGlobalPrice(tradePrice);
-            
+            updateMarketPrice(tPrice);
+
             db.ref('market/transactions').push({
-                price: tradePrice,
-                amount: tradeAmount,
-                buyer: buyerOrder.uP,
-                seller: uid,
+                price: tPrice, amount: tAmount, buyer: mOrder.uP, seller: uid,
                 timestamp: admin.database.ServerValue.TIMESTAMP
             });
 
-            if (order.amount > tradeAmount) {
-                await snap.ref.update({ amount: fixFloat(order.amount - tradeAmount) });
-            } else {
-                await snap.ref.remove();
-            }
+            if (amount > tAmount) await snap.ref.update({ amount: fixFloat(amount - tAmount) });
+            else snap.ref.remove();
 
-            if (buyerOrder.amount > tradeAmount) {
-                await db.ref(`market/orders/buy/${buyerKey}`).update({ amount: fixFloat(buyerOrder.amount - tradeAmount) });
-            } else {
-                await db.ref(`market/orders/buy/${buyerKey}`).remove();
-            }
+            if (mOrder.amount > tAmount) await db.ref(`market/orders/buy/${mKey}`).update({ amount: fixFloat(mOrder.amount - tAmount) });
+            else await db.ref(`market/orders/buy/${mKey}`).remove();
         }
-
-    } catch (error) {
-        console.error("Critical Error in Sell Order:", error);
-    }
+    } catch (e) { console.error("Sell Error:", e); }
 });
 
 // ============================================================
-// 5. استرجاع الرصيد عند الإلغاء (Refund System)
+// 5. نظام إرجاع الرصيد عند الإلغاء (Refund)
 // ============================================================
-db.ref('market/orders/buy').on('child_changed', async (snap) => {
-    const order = snap.val();
-    if (order.status === 'cancelled') {
-        // حماية: التأكد من أن المبلغ المعاد صالح
-        if (!isValidNumber(order.price) || !isValidNumber(order.amount)) {
-            return snap.ref.remove();
+const refundOrder = (snap, type) => {
+    const o = snap.val();
+    if (o.status === 'cancelled') {
+        const uid = o.uP;
+        const amount = Number(o.amount);
+        const price = Number(o.price);
+
+        if (type === 'buy') {
+            const refundValue = fixFloat(amount * price);
+            db.ref(`users/${uid}/sdmBalance`).transaction(b => fixFloat((Number(b) || 0) + refundValue));
+        } else {
+            db.ref(`users/${uid}/mrkBalance`).transaction(b => fixFloat((Number(b) || 0) + amount));
         }
-
-        const refund = fixFloat(order.price * order.amount);
-        await db.ref(`users/${order.uP}/sdmBalance`).transaction(b => fixFloat((b || 0) + refund));
         
-        db.ref(`alerts/${order.uP}`).push({ 
-            msg: `🔄 تم إرجاع ${refund} SDM`, 
-            type: "info",
-            timestamp: admin.database.ServerValue.TIMESTAMP
-        });
-        snap.ref.remove(); 
+        db.ref(`alerts/${uid}`).push({ msg: "🔄 تم إلغاء الطلب وإعادة الرصيد لمحفظتك", type: "info" });
+        snap.ref.remove(); // حذف الطلب نهائياً بعد الإرجاع
     }
-});
+};
 
-db.ref('market/orders/sell').on('child_changed', async (snap) => {
-    const order = snap.val();
-    if (order.status === 'cancelled') {
-        if (!isValidNumber(order.amount)) return snap.ref.remove();
-
-        await db.ref(`users/${order.uP}/mrkBalance`).transaction(b => fixFloat((b || 0) + order.amount));
-        
-        db.ref(`alerts/${order.uP}`).push({ 
-            msg: `🔄 تم إرجاع ${order.amount} MRK`, 
-            type: "info",
-            timestamp: admin.database.ServerValue.TIMESTAMP
-        });
-        snap.ref.remove();
-    }
-});
+db.ref('market/orders/buy').on('child_changed', snap => refundOrder(snap, 'buy'));
+db.ref('market/orders/sell').on('child_changed', snap => refundOrder(snap, 'sell'));
 
 // ============================================================
-// 6. التحويلات (Transfers) - محصن 🛡️
+// 6. التحويلات وخدمات النظام (Transfers & Games)
 // ============================================================
+
+// معالجة التحويلات المالية بين المستخدمين
 db.ref('requests/transfers').on('child_added', async (snap) => {
     const req = snap.val();
-    
-    // التحقق الأمني
-    if (!req || req.status !== 'pending') return;
-    if (!isValidNumber(req.amount)) return snap.ref.remove();
-    if (req.from === req.to) return snap.ref.remove(); // تحويل لنفس الشخص
-    if (isSpam(req.from)) return snap.ref.remove();
+    if (!req || req.status !== 'pending' || !isValid(req.amount)) return;
 
-    try {
-        const result = await db.ref(`users/${req.from}/sdmBalance`).transaction(bal => {
-            if ((bal || 0) < req.amount) return;
-            return fixFloat((bal || 0) - req.amount);
-        });
+    const result = await db.ref(`users/${req.from}/sdmBalance`).transaction(bal => {
+        if ((Number(bal) || 0) < req.amount) return;
+        return fixFloat(Number(bal) - req.amount);
+    });
 
-        if (result.committed) {
-            await db.ref(`users/${req.to}/sdmBalance`).transaction(b => fixFloat((b || 0) + req.amount));
-            
-            // تحديث السجلات
-            snap.ref.update({ status: 'completed', processedAt: admin.database.ServerValue.TIMESTAMP });
-            
-            // الإشعارات
-            db.ref(`alerts/${req.to}`).push({ msg: `💰 استلمت ${req.amount} SDM من ${req.from}`, type: "success" });
-            db.ref(`alerts/${req.from}`).push({ msg: `✅ تم التحويل بنجاح`, type: "success" });
-            
-            // تسجيل في الأرشيف
-            db.ref('transactions').push({
-                type: 'transfer',
-                from: req.from,
-                to: req.to,
-                amount: req.amount,
-                timestamp: admin.database.ServerValue.TIMESTAMP
-            });
-
-            // حذف الطلب بعد الانتهاء لتوفير المساحة
-            setTimeout(() => snap.ref.remove(), 5000); 
-
-        } else {
-            snap.ref.update({ status: 'rejected' });
-            db.ref(`alerts/${req.from}`).push({ msg: "❌ فشل التحويل: رصيد غير كافٍ", type: "error" });
-            setTimeout(() => snap.ref.remove(), 5000);
-        }
-    } catch (e) {
-        console.error("Transfer Error:", e);
+    if (result.committed) {
+        await db.ref(`users/${req.to}/sdmBalance`).transaction(b => fixFloat((Number(b) || 0) + req.amount));
+        snap.ref.update({ status: 'completed', time: Date.now() });
+        db.ref(`alerts/${req.to}`).push({ msg: `💰 استلمت ${req.amount} SDM من مستخدم آخر`, type: "success" });
+        db.ref(`alerts/${req.from}`).push({ msg: `✅ تم التحويل بنجاح`, type: "success" });
+    } else {
+        snap.ref.update({ status: 'failed_no_funds' });
     }
 });
 
-// ============================================================
-// 7. طلبات الألعاب (Game Orders)
-// ============================================================
+// معالجة طلبات الألعاب (خصم آلي)
 db.ref('game_orders').on('child_added', async (snap) => {
     const o = snap.val();
-    if (!o || o.status !== 'pending') return;
-    if (!isValidNumber(o.cost)) return snap.ref.remove();
+    if (!o || o.status !== 'pending' || !isValid(o.cost)) return;
 
     const result = await db.ref(`users/${o.uP}/sdmBalance`).transaction(bal => {
-        if ((bal || 0) < o.cost) return;
-        return fixFloat((bal || 0) - o.cost);
+        if ((Number(bal) || 0) < o.cost) return;
+        return fixFloat(Number(bal) - o.cost);
     });
 
     if (result.committed) {
         snap.ref.update({ status: 'paid_waiting_execution' });
-        console.log(`🎮 طلب لعبة مدفوع: ${o.gameType} من ${o.uN}`);
     } else {
         snap.ref.update({ status: 'rejected_no_funds' });
-        db.ref(`alerts/${o.uP}`).push({ msg: `❌ فشل الطلب: رصيد غير كاف`, type: "error" });
+        db.ref(`alerts/${o.uP}`).push({ msg: "❌ رصيدك لا يكفي لشحن اللعبة", type: "error" });
     }
 });
+
+// ============================================================
+// 7. مراقب حالة السيرفر
+// ============================================================
+setInterval(() => {
+    db.ref('system/status').update({ last_online: admin.database.ServerValue.TIMESTAMP });
+}, 60000);
+
+app.get('/', (req, res) => res.send('🛡️ SDM Secure Engine is Running...'));
+app.listen(PORT, () => console.log(`🚀 Financial Engine Active on Port ${PORT}`));
