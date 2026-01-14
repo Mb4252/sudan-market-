@@ -131,30 +131,6 @@
         .ob-bg { position: absolute; top:0; right:0; height:100%; opacity: 0.15; z-index: 0; }
         .ob-txt { position: relative; z-index: 1; }
 
-        .trade-controls {
-            background: var(--bg-card); padding: 15px;
-            border-radius: 15px; border: 1px solid var(--border); margin-top: 10px;
-        }
-        .trade-tabs { display: flex; background: rgba(0,0,0,0.3); border-radius: 10px; padding: 3px; margin-bottom: 15px; }
-        .t-btn { flex: 1; text-align: center; padding: 10px; border-radius: 8px; cursor: pointer; transition: 0.3s; font-weight: bold; }
-        .t-btn.buy.active { background: var(--green); color: black; }
-        .t-btn.sell.active { background: var(--red); color: white; }
-        
-        .trade-input-group { margin-bottom: 10px; }
-        .trade-input-group label { display: block; font-size: 11px; color: var(--text-sec); margin-bottom: 4px; }
-        
-        .pct-bar { display: flex; gap: 5px; margin-bottom: 15px; }
-        .pct-btn { flex: 1; background: rgba(255,255,255,0.1); padding: 5px; text-align: center; border-radius: 5px; font-size: 10px; cursor: pointer; border: 1px solid var(--border); }
-
-        /* Slider */
-        .slider-container { margin: 20px; height: 180px; border-radius: 20px; overflow: hidden; position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 1px solid var(--border); }
-        #slider-img { width: 100%; height: 100%; object-fit: cover; transition: opacity 0.5s; }
-        .slider-overlay { position: absolute; bottom: 0; width: 100%; background: linear-gradient(to top, black, transparent); padding: 20px 10px 10px; text-align: center; color: white; }
-        .slider-dots { position: absolute; bottom: 10px; width: 100%; display: flex; justify-content: center; gap: 5px; z-index: 10; }
-        .dot { width: 8px; height: 8px; background: rgba(255,255,255,0.5); border-radius: 50%; }
-        .dot.active { background: var(--accent); }
-        .edit-slider-btn { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 15px; cursor: pointer; z-index: 20; font-size: 12px; color: var(--accent); border: 1px solid var(--accent); }
-
         /* Grid & Cards */
         .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; padding: 15px; }
         .card { background: var(--bg-card); border-radius: 18px; padding: 20px; text-align: center; border: 1px solid var(--border); transition: 0.3s; position: relative; overflow: hidden; backdrop-filter: blur(5px); color: var(--text-main); }
@@ -476,72 +452,6 @@
                 startSlider(); loadPosts('vip_posts', null, 'vip-home-list');
                 if(me && me.role==='admin') listenForAdminTasks();
             });
-
-        } else if (view === 'trade') {
-            area.innerHTML = `
-                <div style="padding:15px;">
-                    <!-- Ticker Info -->
-                    <div class="ticker-bar">
-                        <div class="ticker-item"><span class="t-lbl">السعر</span><span class="t-val" id="disp-price" style="color:var(--green)">${marketPrice}</span></div>
-                        <div class="ticker-item"><span class="t-lbl">تداول 24س</span><span class="t-val" id="disp-vol">0 SDM</span></div>
-                        <div class="ticker-item"><span class="t-lbl">المدى</span><span class="t-val" id="disp-hl">-- / --</span></div>
-                    </div>
-
-                    <!-- Chart -->
-                    <div id="chart-area" class="chart-box"></div>
-
-                    <!-- Order Book -->
-                    <div class="order-book-container">
-                        <div class="ob-side">
-                            <div class="ob-header">طلبات شراء (Bids)</div>
-                            <div id="ob-bids" class="ob-list"></div>
-                        </div>
-                        <div class="ob-side" style="border-right:1px solid var(--border)">
-                            <div class="ob-header">طلبات بيع (Asks)</div>
-                            <div id="ob-asks" class="ob-list"></div>
-                        </div>
-                    </div>
-
-                    <!-- Trading Controls -->
-                    <div class="trade-controls">
-                        <div class="trade-tabs">
-                            <div id="tab-buy" class="t-btn buy active" onclick="setTradeMode('buy')">شراء MRK</div>
-                            <div id="tab-sell" class="t-btn sell" onclick="setTradeMode('sell')">بيع MRK</div>
-                        </div>
-                        
-                        <div class="trade-input-group">
-                            <label>السعر (SDM)</label>
-                            <input type="number" id="trade-price" placeholder="مثلاً: 15.5">
-                        </div>
-                        <div class="trade-input-group">
-                            <label>الكمية (MRK)</label>
-                            <input type="number" id="trade-amount" placeholder="0.0">
-                        </div>
-
-                        <div class="pct-bar">
-                            <div class="pct-btn" onclick="calcPct(0.25)">25%</div>
-                            <div class="pct-btn" onclick="calcPct(0.50)">50%</div>
-                            <div class="pct-btn" onclick="calcPct(0.75)">75%</div>
-                            <div class="pct-btn" onclick="calcPct(1.0)">100%</div>
-                        </div>
-
-                        <div style="font-size:12px; margin-bottom:10px; display:flex; justify-content:space-between;">
-                            <span>المتاح: <b id="trade-balance-disp">0</b></span>
-                            <span>الإجمالي: <b id="trade-total-disp">0</b> SDM</span>
-                        </div>
-
-                        <button id="execute-trade-btn" class="btn-main" onclick="executeTrade()"> تنفيذ الشراء 🚀</button>
-                    </div>
-                </div>
-            `;
-            initChart();
-            listenToOrderBook();
-            document.getElementById('trade-amount').addEventListener('input', updateTradeTotal);
-            document.getElementById('trade-price').addEventListener('input', updateTradeTotal);
-            setTradeMode('buy');
-            updateTradeTotal();
-            listenToMarketStats();
-
         } else if(view === 'sub') {
             curC = extra || curC;
             area.innerHTML = `<div style="padding:15px;"><h2 style="color:var(--neon-blue)">${curC}</h2></div><div class="grid">${cats[curC].s.map(s=>`<div class="card" onclick="nav('feed','${s}')"><b>${s}</b></div>`).join('')}</div>`;
@@ -635,32 +545,7 @@
         }
     }
 
-    // --- Trading Engine (Matching & Chart) ---
-    function setTradeMode(mode) {
-        currentTradeMode = mode;
-        const btn = document.getElementById('execute-trade-btn');
-        document.getElementById('tab-buy').className = `t-btn buy ${mode==='buy'?'active':''}`;
-        document.getElementById('tab-sell').className = `t-btn sell ${mode==='sell'?'active':''}`;
-        
-        if (mode === 'buy') {
-            btn.className = 'btn-main';
-            btn.style.background = 'linear-gradient(90deg, var(--green), #059669)';
-            btn.innerText = 'تنفيذ الشراء 🚀';
-            if(document.getElementById('trade-balance-disp')) document.getElementById('trade-balance-disp').innerText = `${me.sdmBalance.toFixed(2)} SDM`;
-        } else {
-            btn.className = 'btn-main';
-            btn.style.background = 'linear-gradient(90deg, var(--red), #b91c1c)';
-            btn.innerText = 'تنفيذ البيع 📉';
-            if(document.getElementById('trade-balance-disp')) document.getElementById('trade-balance-disp').innerText = `${(me.mrkBalance||0).toFixed(4)} MRK`;
-        }
-        updateTradeTotal();
-    }
-
-    function updateTradeTotal() {
-        const p = parseFloat(document.getElementById('trade-price').value) || 0;
-        const a = parseFloat(document.getElementById('trade-amount').value) || 0;
-        document.getElementById('trade-total-disp').innerText = (p * a).toFixed(2);
-    }
+    // --- Tra
 
     function calcPct(pct) {
         const price = parseFloat(document.getElementById('trade-price').value);
