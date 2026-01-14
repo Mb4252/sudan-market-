@@ -190,7 +190,7 @@
 <div id="app-screen" class="hidden">
     <header>
         <div class="header-top">
-            <span onclick="goBack()" style="cursor:pointer; font-size:22px; color:var(--text-sec)"><i class="fas fa-arrow-right"></i></span>
+            <span onclick="handleBackButton()" style="cursor:pointer; font-size:22px; color:var(--text-sec)"><i class="fas fa-arrow-right"></i></span>
             <span id="head-title" style="font-weight: 800; font-size: 20px; color: var(--text-main);">الرئيسية</span>
             <div style="background:rgba(255,255,255,0.1); padding:5px 10px; border-radius:15px; display:flex; align-items:center; gap:5px;">
                 <i class="fas fa-star" style="color:var(--accent); font-size:12px;"></i>
@@ -244,6 +244,7 @@
     let isGuest = false; 
     let sliderInterval;
     const sdmCoinImage = "https://cdn-icons-png.flaticon.com/512/5501/5501360.png";
+    let isAtHomePage = true;
     
     // بيانات افتراضية
     let sliderImages = [
@@ -286,6 +287,71 @@
     db.ref('system/status/last_online').on('value', snap => {
         if (Date.now() - (snap.val() || 0) > 420000) document.getElementById('offline-guard').classList.remove('hidden');
         else document.getElementById('offline-guard').classList.add('hidden');
+    });
+
+    // --- إدارة زر الرجوع ---
+    function handleBackButton() {
+        const currentView = hStack[hStack.length - 1];
+        
+        if (hStack.length > 1) {
+            // إذا لم نكن في الصفحة الرئيسية، ارجع خطوة واحدة
+            hStack.pop();
+            render(hStack[hStack.length-1]);
+            isAtHomePage = (hStack[hStack.length-1] === 'home');
+        } else if (currentView === 'home') {
+            // إذا كنا في الصفحة الرئيسية، اعرض رسالة تأكيد
+            Swal.fire({
+                title: 'تأكيد الخروج',
+                text: 'هل تريد الخروج من التطبيق أو العودة للصفحة الرئيسية؟',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'خروج',
+                cancelButtonText: 'عودة للرئيسية',
+                background: '#1e293b',
+                color: '#fff'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // الخروج من التطبيق
+                    if (isGuest) {
+                        location.reload();
+                    } else {
+                        doLogout();
+                    }
+                } else {
+                    // تحديث الصفحة الرئيسية فقط
+                    render('home');
+                    isAtHomePage = true;
+                }
+            });
+        }
+    }
+
+    // --- معالجة زر الرجوع في الهاتف ---
+    let lastBackPress = 0;
+    document.addEventListener('backbutton', function(e) {
+        e.preventDefault();
+        const currentTime = new Date().getTime();
+        const timeDiff = currentTime - lastBackPress;
+        
+        if (timeDiff < 1000) {
+            // الضغط المزدوج - خروج
+            navigator.app.exitApp();
+        } else {
+            handleBackButton();
+            lastBackPress = currentTime;
+        }
+    }, false);
+
+    // --- تحديث الصفحة الحالية فقط ---
+    function refreshCurrentPage() {
+        const currentView = hStack[hStack.length - 1];
+        render(currentView);
+    }
+
+    // --- تحكم في تحديث الصفحة ---
+    window.addEventListener('focus', function() {
+        // عند العودة للتطبيق، تحديث الصفحة الحالية فقط
+        refreshCurrentPage();
     });
 
     auth.onAuthStateChanged(user => {
@@ -342,7 +408,28 @@
         } catch(e) { Swal.fire('خطأ', 'فشل المعالجة', 'error'); }
     }
 
-    function checkGuestAccess(view, extra) { if (isGuest) { Swal.fire({ title: 'عذراً', text: 'هذه الميزة تتطلب تسجيل دخول', icon: 'warning', confirmButtonText: 'حسناً', background: '#1e293b', color: '#fff' }); return; } nav(view, extra); }
+    function checkGuestAccess(view, extra) { 
+        if (isGuest) { 
+            Swal.fire({ 
+                title: 'تسجيل الدخول مطلوب', 
+                text: 'هذه الميزة تتطلب تسجيل دخول بالحساب', 
+                icon: 'warning', 
+                showCancelButton: true,
+                confirmButtonText: 'تسجيل الدخول',
+                cancelButtonText: 'إلغاء',
+                background: '#1e293b', 
+                color: '#fff' 
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('app-screen').classList.add('hidden');
+                    document.getElementById('auth-screen').classList.remove('hidden');
+                }
+            }); 
+            return; 
+        } 
+        nav(view, extra); 
+    }
+    
     function highlightTab(el) { document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); el.classList.add('active'); }
 
     function startApp(uid) {
@@ -376,6 +463,8 @@
         document.getElementById('head-title').innerText = (view==='wallet'?"المحفظة":(view==='games'?"الألعاب":(view==='vip'?"VIP":(view==='profile'?"الملف الشخصي":"الرئيسية"))));
         searchEl.classList.remove('search-hidden');
 
+        isAtHomePage = (view === 'home');
+
         if(view === 'home') {
             db.ref('settings').on('value', snap => {
                 const s = snap.val() || {};
@@ -403,18 +492,18 @@
                 if(me && me.role==='admin') listenForAdminTasks();
             });
 
-        } else if(view === 'sub') {
+        } else if (view === 'sub') {
             curC = extra || curC;
             area.innerHTML = `<div style="padding:15px;"><h2 style="color:var(--neon-blue)">${curC}</h2></div><div class="grid">${cats[curC].s.map(s=>`<div class="card" onclick="nav('feed','${s}')"><b>${s}</b></div>`).join('')}</div>`;
         
-        } else if(view === 'feed') {
+        } else if (view === 'feed') {
             curS = extra || curS;
             area.innerHTML = `
                 ${!isGuest ? `<div class="post" style="padding:20px;"><h4 style="margin-top:0; color:var(--primary)">📝 إضافة إعلان: ${curS}</h4><input id="pt" placeholder="اسم المنتج"><input id="pp" type="number" placeholder="السعر (SDM)"><textarea id="pd" placeholder="وصف المنتج..." rows="3"></textarea><label class="btn-main" style="background:#334155; display:block; text-align:center; margin-top:10px;"><i class="fas fa-camera"></i> إضافة صورة<input type="file" hidden onchange="encode(this, 'post')"></label><button class="btn-main" onclick="publish('posts')">نشر الإعلان</button></div>` : ''}
                 <div id="posts-list"></div>`;
             loadPosts('posts', curS, 'posts-list');
         
-        } else if(view === 'wallet') {
+        } else if (view === 'wallet') {
             db.ref('settings/coinImg').on('value', snap => {
                 const ci = snap.val() || sdmCoinImage;
                 area.innerHTML = `
@@ -444,11 +533,11 @@
                 loadTransactions();
             });
         
-        } else if(view === 'games') {
+        } else if (view === 'games') {
             area.innerHTML = `<div class="post" style="padding:20px; text-align:center;"><i class="fas fa-bolt" style="font-size:50px; color:var(--neon-blue); margin-bottom:20px;"></i><h2 style="margin:0;">شحن فوري</h2><select id="active-game" onchange="loadCorrectPacks()"><option value="pubg">ببجي (PUBG Mobile)</option><option value="ff">فري فاير (Free Fire)</option></select><input type="text" id="p-id-input" placeholder="ID اللاعب"><select id="p-pack-input" onchange="calculateGameCost(this)"></select><div class="calc-box" style="margin-top:10px;"><span style="font-size:12px; color:var(--text-sec)">التكلفة بالجنيه</span><span id="game-cost-res" class="calc-result">0 SDG</span></div><button class="btn-main" onclick="sendOrderToDeveloper()">🚀 شحن الآن</button></div><div style="padding:20px;"><h3>سجل الطلبات</h3><div id="game-history">جاري التحميل...</div></div>${(me.role === "admin") ? `<div id="developer-area" class="admin-panel"><h3>طلبات الألعاب (لوحة المطور)</h3><div id="orders-list-container"></div></div>` : ''}`;
             loadCorrectPacks(); loadGameHistory(); if(me.role === "admin") initDeveloperLogic();
 
-        } else if(view === 'vip') {
+        } else if (view === 'vip') {
             const isVip = me.vipStatus === 'active';
             area.innerHTML = `
                 <div style="text-align:center; padding:30px;">
@@ -470,7 +559,7 @@
                     <button class="btn-main" onclick="publish('vip_posts')">نشر VIP</button>
                 </div>` : ''}`;
         
-        } else if(view === 'profile') {
+        } else if (view === 'profile') {
             const uid = extra || me.p;
             db.ref('users/'+uid).once('value', snap => {
                 const u = snap.val();
