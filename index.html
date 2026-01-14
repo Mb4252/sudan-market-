@@ -8,15 +8,6 @@
     <!-- خطوط عربية -->
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;500;800&display=swap" rel="stylesheet">
     
-    <!-- OneSignal -->
-    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
-    <script>
-      window.OneSignalDeferred = window.OneSignalDeferred || [];
-      OneSignalDeferred.push(async function(OneSignal) {
-        await OneSignal.init({ appId: "74a3085c-32b9-4c35-bc32-e67c3a2506c3" });
-      });
-    </script>
-    
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script> 
@@ -270,13 +261,6 @@
             display: inline-block;
             margin-right: 5px;
             box-shadow: 0 0 5px var(--green);
-            animation: pulse-online 2s infinite;
-        }
-        
-        @keyframes pulse-online {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
         }
         
         .discount-tag {
@@ -286,7 +270,6 @@
             border-radius: 5px;
             font-size: 10px;
             font-weight: bold;
-            animation: pulse 2s infinite;
         }
         
         .old-price {
@@ -442,39 +425,45 @@
 </div>
 
 <script>
-    // --- Config & Init ---
+    // --- تهيئة Firebase ---
     const firebaseConfig = {
-      apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
-      authDomain: "sudan-market-6b122.firebaseapp.com",
-      databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
-      projectId: "sudan-market-6b122",
-      storageBucket: "sudan-market-6b122.firebasestorage.app",
-      messagingSenderId: "66729481566",
-      appId: "1:66729481566:web:93393f28dc22d32cceebcf"
+        apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
+        authDomain: "sudan-market-6b122.firebaseapp.com",
+        databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
+        projectId: "sudan-market-6b122",
+        storageBucket: "sudan-market-6b122.firebasestorage.app",
+        messagingSenderId: "66729481566",
+        appId: "1:66729481566:web:93393f28dc22d32cceebcf"
     };
     
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    // تهيئة Firebase مرة واحدة فقط
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    
     const auth = firebase.auth();
     const db = firebase.database();
 
+    // --- المتغيرات العامة ---
     const ADMIN_EMAIL = "mb425262@gmail.com";
-    const SDM_RATE = 1000; 
+    const SDM_RATE = 1000;
     let me = null;
     let hStack = ['home'];
     let curC = '', curS = '';
     let tempImg = '', tempBuyImg = '', userPic = 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
-    let isGuest = false; 
+    let isGuest = false;
     let sliderInterval;
     const sdmCoinImage = "https://cdn-icons-png.flaticon.com/512/5501/5501360.png";
     let lastRefreshTime = Date.now();
     let activePostMenu = null;
+    let listeners = {}; // لتخزين جميع المستمعات
 
     // بيانات افتراضية
     let sliderImages = [
         "https://images.unsplash.com/photo-1556742049-0cfed4f7a07d?w=800",
         "https://images.unsplash.com/photo-1534423861386-85a16f5d13fd?w=800",
         sdmCoinImage
-    ]; 
+    ];
     let currentSliderIndex = 0;
 
     const cats = {
@@ -505,6 +494,83 @@
         pubg: [ { name: "60 UC", sdm: 4 }, { name: "325 UC", sdm: 20 }, { name: "660 UC", sdm: 40 } ],
         ff: [ { name: "100 جوهرة", sdm: 4 }, { name: "530 جوهرة", sdm: 20 }, { name: "1080 جوهرة", sdm: 40 } ]
     };
+
+    // --- إدارة المستمعات ---
+    function removeAllListeners() {
+        // إزالة جميع المستمعات القديمة
+        if (listeners.settings) listeners.settings();
+        if (listeners.system) listeners.system();
+        if (listeners.user) listeners.user();
+        if (listeners.globalAlert) listeners.globalAlert();
+        if (listeners.broadcast) listeners.broadcast();
+        if (listeners.alerts) listeners.alerts();
+        if (listeners.coinImg) listeners.coinImg();
+        if (listeners.coinRequests) listeners.coinRequests();
+        if (listeners.gameOrders) listeners.gameOrders();
+        if (listeners.vipPosts) listeners.vipPosts();
+        if (listeners.posts) listeners.posts();
+        
+        listeners = {};
+        
+        // إيقاف السلايدر
+        if (sliderInterval) {
+            clearInterval(sliderInterval);
+            sliderInterval = null;
+        }
+    }
+
+    // --- بدء تشغيل النظام ---
+    function initSystem() {
+        removeAllListeners();
+        
+        // مستمع حالة النظام
+        listeners.system = db.ref('system/status/last_online').on('value', snap => {
+            const lastOnline = snap.val() || 0;
+            const isOffline = Date.now() - lastOnline > 420000;
+            const offlineGuard = document.getElementById('offline-guard');
+            
+            if (isOffline) {
+                offlineGuard.classList.remove('hidden');
+            } else {
+                offlineGuard.classList.add('hidden');
+            }
+        });
+        
+        // مستمع التنبيه العام
+        listeners.globalAlert = db.ref('settings/globalAlert').on('value', snap => {
+            const msg = snap.val();
+            const bar = document.getElementById('dev-alert-bar');
+            
+            if (msg) {
+                bar.style.display = 'block';
+                bar.innerHTML = `📢 ${escapeHtml(msg)}`;
+                if (me && me.role === 'admin') {
+                    bar.innerHTML += ' <i class="fas fa-edit" onclick="editDevAlert()" style="cursor:pointer; margin-right:10px;"></i>';
+                }
+            } else {
+                bar.style.display = 'none';
+            }
+        });
+        
+        // مستمع البث العام
+        listeners.broadcast = db.ref('settings/broadcast').on('value', snap => {
+            const data = snap.val();
+            if (data && data.text) {
+                const lastMsgId = localStorage.getItem('last_broadcast_id');
+                if (lastMsgId != data.id) {
+                    Swal.fire({
+                        title: 'رسالة من المطور 📢',
+                        text: data.text,
+                        icon: 'info',
+                        background: '#1e293b',
+                        color: '#fff'
+                    }).then(() => {
+                        localStorage.setItem('last_broadcast_id', data.id);
+                    });
+                }
+            }
+        });
+    }
 
     // --- إدارة زر الرجوع ---
     function handleBackButton() {
@@ -542,106 +608,117 @@
         }
     }
 
-    // --- معالجة زر الرجوع في الهاتف ---
-    document.addEventListener('DOMContentLoaded', function() {
-        // إغلاق القوائم المنبثقة عند الضغط خارجها
-        document.addEventListener('click', function(e) {
-            if (activePostMenu && !activePostMenu.contains(e.target)) {
-                activePostMenu.classList.remove('active');
-                activePostMenu = null;
-            }
-        });
-    });
-
-    // --- تحديث الصفحة الحالية فقط ---
+    // --- التحديث الآمن للصفحة ---
     function refreshCurrentPage() {
         const currentView = hStack[hStack.length - 1];
-        // منع التحديث السريع المتكرر
         const now = Date.now();
-        if (now - lastRefreshTime > 1000) { // تحديث كل ثانية كحد أدنى
+        
+        if (now - lastRefreshTime > 1000) {
             render(currentView);
             lastRefreshTime = now;
         }
     }
 
-    // --- تحكم في تحديث الصفحة عند العودة للتطبيق ---
-    document.addEventListener('visibilitychange', function() {
-        if (!document.hidden) {
-            // عند العودة للتطبيق، تحديث الصفحة الحالية فقط
-            setTimeout(refreshCurrentPage, 100);
-        }
-    });
-
-    // --- بدء تشغيل النظام ---
-    db.ref('system/status/last_online').on('value', snap => {
-        if (Date.now() - (snap.val() || 0) > 420000) {
-            document.getElementById('offline-guard').classList.remove('hidden');
-        } else {
-            document.getElementById('offline-guard').classList.add('hidden');
-        }
-    });
-
+    // --- مصادقة المستخدم ---
     auth.onAuthStateChanged(user => {
         if (user) {
-            const uid = user.uid;
-            db.ref('users/' + uid).on('value', snap => {
-                if(snap.exists()) {
-                    let u = snap.val();
-                    if (user.email === ADMIN_EMAIL && u.role !== 'admin') {
-                        u.role = 'admin';
-                        db.ref('users/' + uid).update({ role: 'admin' });
-                    }
-                    if (u.bannedUntil && u.bannedUntil > Date.now()) {
-                        Swal.fire('محظور', 'حسابك محظور مؤقتاً.', 'error').then(() => auth.signOut());
-                        return;
-                    }
-                    me = u;
-                    me.p = uid;
-                    startApp(uid);
-                } else {
-                    const newUser = {
-                        n: user.displayName || 'مستخدم جديد',
-                        p: uid,
-                        email: user.email,
-                        pic: user.photoURL,
-                        sdmBalance: 0,
-                        rating: 5.0,
-                        role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
-                        wa: '',
-                        vipStatus: 'none',
-                        vipExpiry: 0,
-                        reportCount: 0,
-                        verified: true,
-                        lastSeen: Date.now()
-                    };
-                    db.ref('users/' + uid).set(newUser).then(() => {
-                        me = newUser;
-                        startApp(uid);
-                    });
-                }
-            });
-            
-            // تحديث حالة الاتصال كل دقيقة
-            setInterval(() => {
-                if(me && !isGuest) {
-                    db.ref('users/' + uid).update({ lastSeen: Date.now() });
-                }
-            }, 60000);
+            handleUserLogin(user);
         } else {
-            if(!isGuest) {
-                document.getElementById('auth-screen').classList.remove('hidden');
-                document.getElementById('app-screen').classList.add('hidden');
-            }
+            showAuthScreen();
         }
     });
 
+    function handleUserLogin(user) {
+        const uid = user.uid;
+        
+        // إزالة أي مستمعات قديمة
+        if (listeners.user) listeners.user();
+        
+        // مستمع بيانات المستخدم
+        listeners.user = db.ref('users/' + uid).on('value', snap => {
+            if (!snap.exists()) {
+                createNewUser(user, uid);
+                return;
+            }
+            
+            let userData = snap.val();
+            
+            // تحديث دور الأدمن إذا لزم الأمر
+            if (user.email === ADMIN_EMAIL && userData.role !== 'admin') {
+                userData.role = 'admin';
+                db.ref('users/' + uid).update({ role: 'admin' });
+            }
+            
+            // التحقق من الحظر
+            if (userData.bannedUntil && userData.bannedUntil > Date.now()) {
+                Swal.fire({
+                    title: 'محظور',
+                    text: 'حسابك محظور مؤقتاً.',
+                    icon: 'error',
+                    background: '#1e293b',
+                    color: '#fff'
+                }).then(() => {
+                    auth.signOut();
+                });
+                return;
+            }
+            
+            me = userData;
+            me.p = uid;
+            
+            startApp(uid);
+        });
+    }
+
+    function createNewUser(user, uid) {
+        const newUser = {
+            n: user.displayName || 'مستخدم جديد',
+            p: uid,
+            email: user.email,
+            pic: user.photoURL || userPic,
+            sdmBalance: 0,
+            rating: 5.0,
+            role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
+            wa: '',
+            vipStatus: 'none',
+            vipExpiry: 0,
+            reportCount: 0,
+            verified: true,
+            lastSeen: Date.now()
+        };
+        
+        db.ref('users/' + uid).set(newUser).then(() => {
+            me = newUser;
+            startApp(uid);
+        });
+    }
+
+    function showAuthScreen() {
+        if (!isGuest) {
+            removeAllListeners();
+            document.getElementById('auth-screen').classList.remove('hidden');
+            document.getElementById('app-screen').classList.add('hidden');
+        }
+    }
+
     function loginWithGoogle() {
-        auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())
-            .catch(error => Swal.fire('خطأ', error.message, 'error'));
+        const provider = new firebase.auth.GoogleAuthProvider();
+        auth.signInWithPopup(provider)
+            .catch(error => {
+                Swal.fire({
+                    title: 'خطأ',
+                    text: error.message,
+                    icon: 'error',
+                    background: '#1e293b',
+                    color: '#fff'
+                });
+            });
     }
 
     function doLogout() {
-        auth.signOut().then(() => location.reload());
+        auth.signOut().then(() => {
+            location.reload();
+        });
     }
 
     function enterGuestMode() {
@@ -653,74 +730,120 @@
             sdmBalance: 0,
             lastSeen: Date.now()
         };
+        
         document.getElementById('auth-screen').classList.add('hidden');
         document.getElementById('app-screen').classList.remove('hidden');
         document.getElementById('u-stars').innerText = "زائر";
+        
+        initSystem();
         render('home');
     }
 
+    // --- ضغط الصور ---
     function compressImage(file) {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
+            if (!file) {
+                reject('لا يوجد ملف');
+                return;
+            }
+            
             const reader = new FileReader();
             reader.readAsDataURL(file);
+            
             reader.onload = (event) => {
                 const img = new Image();
                 img.src = event.target.result;
+                
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
-                    const scaleSize = 800 / img.width;
-                    if (scaleSize >= 1) {
-                        resolve(event.target.result);
-                        return;
+                    const maxWidth = 800;
+                    const maxHeight = 800;
+                    
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > height) {
+                        if (width > maxWidth) {
+                            height = Math.round((height * maxWidth) / width);
+                            width = maxWidth;
+                        }
+                    } else {
+                        if (height > maxHeight) {
+                            width = Math.round((width * maxHeight) / height);
+                            height = maxHeight;
+                        }
                     }
-                    canvas.width = 800;
-                    canvas.height = img.height * scaleSize;
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    
                     const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
                     resolve(canvas.toDataURL('image/jpeg', 0.7));
-                }
+                };
+                
+                img.onerror = () => {
+                    reject('فشل تحميل الصورة');
+                };
+            };
+            
+            reader.onerror = () => {
+                reject('فشل قراءة الملف');
             };
         });
     }
 
-    async function encode(i, t) {
-        if(!i.files[0]) return;
+    async function encode(input, type) {
+        if (!input.files || !input.files[0]) return;
+        
         try {
             Swal.fire({
-                title: 'معالجة...',
+                title: 'معالجة الصورة...',
                 didOpen: () => Swal.showLoading(),
                 background: '#1e293b',
-                color: '#fff'
+                color: '#fff',
+                allowOutsideClick: false
             });
-            const compressed = await compressImage(i.files[0]);
-            if(t === 'user') {
+            
+            const compressed = await compressImage(input.files[0]);
+            
+            if (type === 'user') {
                 userPic = compressed;
-                if(me && !isGuest) {
-                    db.ref('users/'+me.p).update({ pic: userPic });
+                if (me && !isGuest) {
+                    db.ref('users/' + me.p).update({ pic: userPic });
                     const profileImg = document.getElementById('profile-img-view');
-                    if(profileImg) profileImg.src = userPic;
+                    if (profileImg) profileImg.src = userPic;
                 }
-            } else if(t === 'buy') {
+            } else if (type === 'buy') {
                 tempBuyImg = compressed;
             } else {
                 tempImg = compressed;
             }
+            
             Swal.close();
-        } catch(e) {
-            Swal.fire('خطأ', 'فشل معالجة الصورة', 'error');
+        } catch (error) {
+            Swal.fire({
+                title: 'خطأ',
+                text: 'فشل معالجة الصورة',
+                icon: 'error',
+                background: '#1e293b',
+                color: '#fff'
+            });
         }
     }
 
-    function checkGuestAccess(view, extra) { 
-        if (isGuest) { 
-            Swal.fire({ 
-                title: 'تسجيل الدخول مطلوب', 
-                text: 'هذه الميزة تتطلب تسجيل دخول بالحساب', 
-                icon: 'warning', 
+    // --- التنقل ---
+    function checkGuestAccess(view, extra) {
+        if (isGuest) {
+            Swal.fire({
+                title: 'تسجيل الدخول مطلوب',
+                text: 'هذه الميزة تتطلب تسجيل دخول بالحساب',
+                icon: 'warning',
                 showCancelButton: true,
                 confirmButtonText: 'تسجيل الدخول',
                 cancelButtonText: 'إلغاء',
-                background: '#1e293b', 
+                background: '#1e293b',
                 color: '#fff',
                 reverseButtons: true
             }).then((result) => {
@@ -728,12 +851,13 @@
                     document.getElementById('app-screen').classList.add('hidden');
                     document.getElementById('auth-screen').classList.remove('hidden');
                 }
-            }); 
-            return; 
-        } 
-        nav(view, extra); 
+            });
+            return;
+        }
+        
+        nav(view, extra);
     }
-    
+
     function highlightTab(el) {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         el.classList.add('active');
@@ -742,87 +866,36 @@
     function startApp(uid) {
         isGuest = false;
         hStack = ['home'];
-        listenForUserAlerts();
-        listenForDevAlerts();
-        checkForBroadcastMessage();
+        
+        initSystem();
+        
+        if (me && !me.wa) {
+            requestWhatsAppNumber();
+        }
+        
         document.getElementById('auth-screen').classList.add('hidden');
         document.getElementById('app-screen').classList.remove('hidden');
         
-        // طلب رقم الواتساب إذا لم يكن موجود
-        if (me && !me.wa) {
-            Swal.fire({
-                title: 'رقم الواتساب',
-                input: 'tel',
-                inputPlaceholder: 'مثال: 249123456789',
-                background: '#1e293b',
-                color: '#fff',
-                showCancelButton: true,
-                confirmButtonText: 'حفظ',
-                cancelButtonText: 'لاحقاً',
-                reverseButtons: true
-            }).then(r => {
-                if(r.value) {
-                    db.ref('users/' + me.p).update({ wa: r.value });
-                }
-            });
-        }
-        
-        if(me && me.role === "admin") {
-            setTimeout(initDeveloperLogic, 1000);
-        }
-        
         render('home');
+        
+        // تحديث حالة الاتصال
         db.ref('users/' + uid).update({ lastSeen: Date.now() });
     }
 
-    function checkForBroadcastMessage() {
-        db.ref('settings/broadcast').on('value', snap => {
-            const data = snap.val();
-            if (data && data.text) {
-                const lastMsgId = localStorage.getItem('last_broadcast_id');
-                if (lastMsgId != data.id) {
-                    Swal.fire({
-                        title: 'رسالة من المطور 📢',
-                        text: data.text,
-                        icon: 'info',
-                        background: '#1e293b',
-                        color: '#fff'
-                    }).then(() => {
-                        localStorage.setItem('last_broadcast_id', data.id);
-                    });
-                }
-            }
-        });
-    }
-
-    function listenForDevAlerts() {
-        const bar = document.getElementById('dev-alert-bar');
-        db.ref('settings/globalAlert').on('value', snap => {
-            const msg = snap.val();
-            if(msg) {
-                bar.style.display = 'block';
-                bar.innerHTML = `📢 ${escapeHtml(msg)} ${(!isGuest && me && me.role === 'admin') ? '<i class="fas fa-edit" onclick="editDevAlert()" style="cursor:pointer; margin-right:10px;"></i>' : ''}`;
-            } else {
-                bar.style.display = 'none';
-            }
-        });
-    }
-
-    function editDevAlert() {
-        if (!me || me.role !== "admin") return;
+    function requestWhatsAppNumber() {
         Swal.fire({
-            title: 'تعديل التنبيه',
-            input: 'text',
-            inputValue: document.getElementById('dev-alert-bar').innerText.replace('📢 ', '').replace(' ✏️', ''),
+            title: 'رقم الواتساب',
+            input: 'tel',
+            inputPlaceholder: 'مثال: 249123456789',
             background: '#1e293b',
             color: '#fff',
             showCancelButton: true,
             confirmButtonText: 'حفظ',
-            cancelButtonText: 'إلغاء',
+            cancelButtonText: 'لاحقاً',
             reverseButtons: true
-        }).then(res => {
-            if(res.isConfirmed) {
-                db.ref('settings/globalAlert').set(res.value);
+        }).then(result => {
+            if (result.value) {
+                db.ref('users/' + me.p).update({ wa: result.value });
             }
         });
     }
@@ -834,7 +907,9 @@
                 item.classList.add('search-hidden');
                 return;
             }
-            if (item.innerText.toLowerCase().includes(query)) {
+            
+            const text = item.innerText.toLowerCase();
+            if (text.includes(query)) {
                 item.classList.remove('hidden', 'search-hidden');
             } else {
                 item.classList.add('hidden');
@@ -843,63 +918,58 @@
     }
 
     function escapeHtml(text) {
-        if (!text) return text;
-        return String(text)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
-    function nav(v, e) {
-        hStack.push(v);
-        render(v, e);
-    }
-
-    function goBack() {
-        if(hStack.length > 1) {
-            hStack.pop();
-            render(hStack[hStack.length-1]);
-        }
+    function nav(view, extra) {
+        hStack.push(view);
+        render(view, extra);
     }
 
     function formatDate(timestamp) {
+        if (!timestamp) return '';
+        
         const date = new Date(timestamp);
         const now = new Date();
         const diff = now - date;
         
-        // إذا كان اليوم نفسه
-        if (diff < 24 * 60 * 60 * 1000 && date.getDate() === now.getDate()) {
-            return `اليوم ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-        }
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor(diff / (1000 * 60));
         
-        // إذا كان الأمس
-        if (diff < 48 * 60 * 60 * 1000 && date.getDate() === now.getDate() - 1) {
-            return `أمس ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+        if (days > 7) {
+            return date.toLocaleDateString('ar-SA');
+        } else if (days > 1) {
+            return `قبل ${days} أيام`;
+        } else if (days === 1) {
+            return 'أمس';
+        } else if (hours > 1) {
+            return `قبل ${hours} ساعة`;
+        } else if (minutes > 1) {
+            return `قبل ${minutes} دقيقة`;
+        } else {
+            return 'الآن';
         }
-        
-        // أكثر من يومين
-        return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
     }
 
     function showPostMenu(postId, isVipPost, event) {
         event.stopPropagation();
         
-        // إغلاق القائمة النشطة إذا كانت موجودة
         if (activePostMenu) {
             activePostMenu.classList.remove('active');
         }
         
         const menu = document.getElementById(`post-menu-${postId}`);
         if (menu) {
-            menu.classList.toggle('active');
+            menu.classList.add('active');
             activePostMenu = menu;
         }
     }
 
     async function handlePostAction(action, postId, isVipPost) {
-        // إغلاق القائمة
         if (activePostMenu) {
             activePostMenu.classList.remove('active');
             activePostMenu = null;
@@ -910,474 +980,530 @@
         const post = postSnap.val();
         
         if (!post) {
-            Swal.fire('خطأ', 'الإعلان غير موجود', 'error');
+            Swal.fire({
+                title: 'خطأ',
+                text: 'الإعلان غير موجود',
+                icon: 'error',
+                background: '#1e293b',
+                color: '#fff'
+            });
             return;
         }
         
-        // التحقق من ملكية الإعلان
         if (post.uP !== me.p && me.role !== 'admin') {
-            Swal.fire('خطأ', 'ليس لديك صلاحية التعديل على هذا الإعلان', 'error');
+            Swal.fire({
+                title: 'خطأ',
+                text: 'ليس لديك صلاحية التعديل على هذا الإعلان',
+                icon: 'error',
+                background: '#1e293b',
+                color: '#fff'
+            });
             return;
         }
         
         switch(action) {
             case 'edit':
-                Swal.fire({
-                    title: 'تعديل الإعلان',
-                    html: `
-                        <input id="edit-title" placeholder="العنوان" value="${escapeHtml(post.t)}" style="margin-bottom:10px;">
-                        <input id="edit-price" type="number" placeholder="السعر (SDM)" value="${post.pr}" style="margin-bottom:10px;">
-                        <textarea id="edit-desc" placeholder="الوصف" rows="3" style="margin-bottom:10px;">${escapeHtml(post.d)}</textarea>
-                    `,
-                    background: '#1e293b',
-                    color: '#fff',
-                    showCancelButton: true,
-                    confirmButtonText: 'حفظ',
-                    cancelButtonText: 'إلغاء',
-                    reverseButtons: true,
-                    preConfirm: () => {
-                        const title = document.getElementById('edit-title').value;
-                        const price = document.getElementById('edit-price').value;
-                        const desc = document.getElementById('edit-desc').value;
-                        
-                        if (!title || !price) {
-                            Swal.showValidationMessage('يرجى ملء جميع الحقول المطلوبة');
-                            return false;
-                        }
-                        
-                        return { title, price, desc };
-                    }
-                }).then(async (result) => {
-                    if (result.isConfirmed) {
-                        const { title, price, desc } = result.value;
-                        await postRef.update({
-                            t: title,
-                            pr: parseFloat(price),
-                            d: desc,
-                            updatedAt: Date.now()
-                        });
-                        Swal.fire('تم', 'تم تعديل الإعلان بنجاح', 'success');
-                        refreshCurrentPage();
-                    }
-                });
+                editPost(postRef, post);
                 break;
                 
             case 'delete':
-                Swal.fire({
-                    title: 'تأكيد الحذف',
-                    text: 'هل أنت متأكد من حذف هذا الإعلان؟',
-                    icon: 'warning',
-                    background: '#1e293b',
-                    color: '#fff',
-                    showCancelButton: true,
-                    confirmButtonText: 'نعم، احذف',
-                    cancelButtonText: 'إلغاء',
-                    reverseButtons: true,
-                    confirmButtonColor: '#ef4444'
-                }).then(async (result) => {
-                    if (result.isConfirmed) {
-                        await postRef.remove();
-                        Swal.fire('تم', 'تم حذف الإعلان بنجاح', 'success');
-                        refreshCurrentPage();
-                    }
-                });
+                deletePost(postRef);
                 break;
                 
             case 'sold':
-                Swal.fire({
-                    title: 'تم البيع',
-                    text: 'هل تريد وضع علامة "تم البيع" على هذا الإعلان؟',
-                    icon: 'question',
-                    background: '#1e293b',
-                    color: '#fff',
-                    showCancelButton: true,
-                    confirmButtonText: 'نعم',
-                    cancelButtonText: 'إلغاء',
-                    reverseButtons: true
-                }).then(async (result) => {
-                    if (result.isConfirmed) {
-                        await postRef.update({
-                            status: 'sold',
-                            soldAt: Date.now()
-                        });
-                        Swal.fire('تم', 'تم وضع علامة "تم البيع"', 'success');
-                        refreshCurrentPage();
-                    }
-                });
+                markAsSold(postRef);
                 break;
         }
     }
 
-    async function checkAndRemoveExpiredVipPosts() {
-        if (!me || me.role !== 'admin') return;
+    async function editPost(postRef, post) {
+        const { value: formData } = await Swal.fire({
+            title: 'تعديل الإعلان',
+            html: `
+                <input id="edit-title" class="swal2-input" placeholder="العنوان" value="${escapeHtml(post.t)}">
+                <input id="edit-price" class="swal2-input" type="number" placeholder="السعر (SDM)" value="${post.pr}">
+                <textarea id="edit-desc" class="swal2-textarea" placeholder="الوصف" rows="3">${escapeHtml(post.d)}</textarea>
+            `,
+            background: '#1e293b',
+            color: '#fff',
+            showCancelButton: true,
+            confirmButtonText: 'حفظ',
+            cancelButtonText: 'إلغاء',
+            reverseButtons: true,
+            focusConfirm: false,
+            preConfirm: () => {
+                const title = document.getElementById('edit-title').value;
+                const price = document.getElementById('edit-price').value;
+                const desc = document.getElementById('edit-desc').value;
+                
+                if (!title || !price) {
+                    Swal.showValidationMessage('يرجى ملء جميع الحقول المطلوبة');
+                    return false;
+                }
+                
+                return { title, price: parseFloat(price), desc };
+            }
+        });
         
-        try {
-            const vipPostsSnap = await db.ref('vip_posts').once('value');
-            const vipPosts = vipPostsSnap.val();
-            
-            if (!vipPosts) return;
-            
-            const now = Date.now();
-            Object.keys(vipPosts).forEach(async (postId) => {
-                const post = vipPosts[postId];
-                if (post.vExpiry && post.vExpiry < now) {
-                    // حذف المنشور VIP المنتهي
-                    await db.ref('vip_posts').child(postId).remove();
-                }
+        if (formData) {
+            await postRef.update({
+                t: formData.title,
+                pr: formData.price,
+                d: formData.desc,
+                updatedAt: Date.now()
             });
-        } catch (error) {
-            console.error('خطأ في فحص المنشورات VIP المنتهية:', error);
+            
+            Swal.fire({
+                title: 'تم',
+                text: 'تم تعديل الإعلان بنجاح',
+                icon: 'success',
+                background: '#1e293b',
+                color: '#fff'
+            });
+            
+            refreshCurrentPage();
         }
     }
 
-    async function checkAndExpireVipSubscriptions() {
-        try {
-            const usersSnap = await db.ref('users').once('value');
-            const users = usersSnap.val();
+    async function deletePost(postRef) {
+        const { isConfirmed } = await Swal.fire({
+            title: 'تأكيد الحذف',
+            text: 'هل أنت متأكد من حذف هذا الإعلان؟',
+            icon: 'warning',
+            background: '#1e293b',
+            color: '#fff',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، احذف',
+            cancelButtonText: 'إلغاء',
+            reverseButtons: true,
+            confirmButtonColor: '#ef4444'
+        });
+        
+        if (isConfirmed) {
+            await postRef.remove();
             
-            if (!users) return;
-            
-            const now = Date.now();
-            Object.keys(users).forEach(async (userId) => {
-                const user = users[userId];
-                if (user.vipStatus === 'active' && user.vipExpiry && user.vipExpiry < now) {
-                    // إنهاء الاشتراك VIP
-                    await db.ref('users').child(userId).update({
-                        vipStatus: 'none',
-                        vipExpiry: 0
-                    });
-                }
+            Swal.fire({
+                title: 'تم',
+                text: 'تم حذف الإعلان بنجاح',
+                icon: 'success',
+                background: '#1e293b',
+                color: '#fff'
             });
-        } catch (error) {
-            console.error('خطأ في فحص انتهاء اشتراكات VIP:', error);
+            
+            refreshCurrentPage();
         }
     }
 
+    async function markAsSold(postRef) {
+        const { isConfirmed } = await Swal.fire({
+            title: 'تم البيع',
+            text: 'هل تريد وضع علامة "تم البيع" على هذا الإعلان؟',
+            icon: 'question',
+            background: '#1e293b',
+            color: '#fff',
+            showCancelButton: true,
+            confirmButtonText: 'نعم',
+            cancelButtonText: 'إلغاء',
+            reverseButtons: true
+        });
+        
+        if (isConfirmed) {
+            await postRef.update({
+                status: 'sold',
+                soldAt: Date.now()
+            });
+            
+            Swal.fire({
+                title: 'تم',
+                text: 'تم وضع علامة "تم البيع"',
+                icon: 'success',
+                background: '#1e293b',
+                color: '#fff'
+            });
+            
+            refreshCurrentPage();
+        }
+    }
+
+    // --- التقديم ---
     function render(view, extra) {
         const area = document.getElementById('content-area');
         const adminArea = document.getElementById('admin-notifications-area');
         const searchEl = document.getElementById('main-search');
         
-        if (sliderInterval) clearInterval(sliderInterval);
-        if(view !== 'home') adminArea.innerHTML = "";
+        // تنظيف المستمعات القديمة
+        removeAllListeners();
+        
+        // إيقاف السلايدر
+        if (sliderInterval) {
+            clearInterval(sliderInterval);
+            sliderInterval = null;
+        }
+        
+        if (view !== 'home') {
+            adminArea.innerHTML = "";
+        }
         
         showWelcome();
-        if(me) {
+        
+        if (me) {
             document.getElementById('u-stars').innerText = isGuest ? "زائر" : (me.rating || 0).toFixed(1);
         }
         
-        document.getElementById('head-title').innerText = 
-            view === 'wallet' ? "المحفظة" :
-            view === 'games' ? "الألعاب" :
-            view === 'vip' ? "VIP" :
-            view === 'profile' ? "الملف الشخصي" : "الرئيسية";
+        const titles = {
+            'home': 'الرئيسية',
+            'wallet': 'المحفظة',
+            'games': 'الألعاب',
+            'vip': 'VIP',
+            'profile': 'الملف الشخصي'
+        };
         
+        document.getElementById('head-title').innerText = titles[view] || 'الرئيسية';
         searchEl.classList.remove('search-hidden');
-
-        // تحديث وقت التحديث الأخير
+        
         lastRefreshTime = Date.now();
 
-        if(view === 'home') {
-            db.ref('settings').on('value', snap => {
-                const s = snap.val() || {};
-                const finalSliderImages = (s.sliderImages && s.sliderImages.length >= 3) ? s.sliderImages : sliderImages;
-                area.innerHTML = `
-                    <div class="slider-container">
-                        <img id="slider-img" src="${finalSliderImages[0]}">
-                        <div class="slider-overlay"><h3 style="margin:0; color:white;">SDM Market المستقبل</h3></div>
-                        <div class="slider-dots">
-                            <div class="dot active" id="dot-0"></div>
-                            <div class="dot" id="dot-1"></div>
-                            <div class="dot" id="dot-2"></div>
-                        </div>
-                        ${(!isGuest && me && me.role === 'admin') ? `<div class="edit-slider-btn" onclick="updateCurrentSliderImg()">✏️ تعديل</div>` : ''}
-                    </div>
-                    ${(!isGuest && me && me.role === 'admin') ? `
-                    <button class="btn-main" style="background:#6f42c1; margin:10px 20px; width:calc(100% - 40px);" onclick="sendBroadcastMessage()">
-                        📢 نشر رسالة عامة
-                    </button>` : ''}
-                    <h3 style="padding:0 20px; margin-bottom:0;">الأقسام</h3>
-                    <div class="grid">
-                        ${Object.keys(cats).map(k=> {
-                            const ci = (s.categories && s.categories[k]) ? s.categories[k].img : null;
-                            const editBtn = (!isGuest && me && me.role === 'admin') ? 
-                                `<div class="edit-cat-btn" onclick="event.stopPropagation(); updateCategoryImg('${k}')">
-                                    <i class="fas fa-edit"></i>
-                                </div>` : '';
-                            return `
-                                <div class="card" onclick="nav('sub','${k}')">
-                                    ${editBtn}
-                                    ${ci ? `<img src="${ci}" class="cat-custom-img">` : `<i class="fas fa-${cats[k].i}"></i>`}
-                                    <b>${k}</b>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                    <h3 style="padding:0 20px; margin-top:10px;">أحدث VIP المميزة 💎</h3>
-                    <div id="vip-home-list" style="padding-bottom:20px; display:flex; overflow-x:auto; padding:10px;"></div>`;
-                
-                if(s.sliderImages && s.sliderImages.length >= 3) {
-                    sliderImages = s.sliderImages;
-                }
-                
-                startSlider();
-                loadPosts('vip_posts', null, 'vip-home-list', true);
-                
-                if(me && me.role === 'admin') {
-                    listenForAdminTasks();
-                    // فحص وإزالة المنشورات VIP المنتهية
-                    checkAndRemoveExpiredVipPosts();
-                    // فحص انتهاء اشتراكات VIP
-                    checkAndExpireVipSubscriptions();
-                }
-            });
-
-        } else if (view === 'sub') {
-            curC = extra || curC;
-            area.innerHTML = `
-                <div style="padding:15px;">
-                    <h2 style="color:var(--neon-blue)">${curC}</h2>
-                </div>
-                <div class="grid">
-                    ${cats[curC].s.map(s => `
-                        <div class="card" onclick="nav('feed','${s}')">
-                            <b>${s}</b>
-                        </div>
-                    `).join('')}
-                </div>`;
-        
-        } else if (view === 'feed') {
-            curS = extra || curS;
-            area.innerHTML = `
-                ${!isGuest ? `
-                <div class="post" style="padding:20px;">
-                    <h4 style="margin-top:0; color:var(--primary)">📝 إضافة إعلان: ${curS}</h4>
-                    <input id="pt" placeholder="اسم المنتج">
-                    <input id="pp" type="number" placeholder="السعر (SDM)">
-                    <textarea id="pd" placeholder="وصف المنتج..." rows="3"></textarea>
-                    <label class="btn-main" style="background:#334155; display:block; text-align:center; margin-top:10px;">
-                        <i class="fas fa-camera"></i> إضافة صورة
-                        <input type="file" hidden onchange="encode(this, 'post')">
-                    </label>
-                    <button class="btn-main" onclick="publish('posts')">نشر الإعلان</button>
-                </div>` : ''}
-                <div id="posts-list"></div>`;
-            loadPosts('posts', curS, 'posts-list', false);
-        
-        } else if (view === 'wallet') {
-            db.ref('settings/coinImg').on('value', snap => {
-                const ci = snap.val() || sdmCoinImage;
-                area.innerHTML = `
-                    <div class="wallet-card">
-                        <img src="${ci}" class="sdm-logo">
-                        <h1 style="font-size:36px; margin:15px 0;">
-                            ${me ? me.sdmBalance.toFixed(2) : '0.00'} 
-                            <span style="font-size:16px; color:var(--text-sec)">SDM</span>
-                        </h1>
-                        <p style="font-size:12px; color:var(--accent);">1 SDM = ${SDM_RATE} جنيه</p>
-                        <div style="display:flex; gap:10px; justify-content:center;">
-                            <button class="btn-main" style="background:var(--neon-blue); color:black; width:auto; padding:10px 30px;" onclick="showTransfer()">
-                                إرسال <i class="fas fa-paper-plane"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div style="padding:20px;">
-                        <h3>شراء عملة من المطور</h3>
-                        <div class="post" style="padding:20px;">
-                            <p style="color:var(--text-sec)">بنك الخرطوم: <b style="color:white; font-size:18px;">4426148</b> (محمد)</p>
-                            <label style="font-size:12px;">أدخل الكمية (SDM)</label>
-                            <input id="buy-qty" type="number" placeholder="مثلاً: 5" oninput="calcBuyCost(this.value)">
-                            <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; margin:10px 0; text-align:center;">
-                                المطلوب دفعه: <b id="buy-cost-display" style="color:var(--green); font-size:18px;">0</b> جنيه
-                            </div>
-                            <label class="btn-main" style="background:#334155; display:block; text-align:center;">
-                                <i class="fas fa-receipt"></i> إرفاق الإشعار
-                                <input type="file" hidden onchange="encode(this, 'buy')">
-                            </label>
-                            <button class="btn-main" onclick="requestCoins()">إرسال الطلب</button>
-                        </div>
-                        <h3>سجل المعاملات</h3>
-                        <div id="transactions-history" style="background:var(--bg-card); padding:10px; border-radius:15px; max-height:200px; overflow-y:auto;">
-                            جاري التحميل...
-                        </div>
-                    </div>`;
-                loadTransactions();
-            });
-        
-        } else if (view === 'games') {
-            area.innerHTML = `
-                <div class="post" style="padding:20px; text-align:center;">
-                    <i class="fas fa-bolt" style="font-size:50px; color:var(--neon-blue); margin-bottom:20px;"></i>
-                    <h2 style="margin:0;">شحن فوري</h2>
-                    <select id="active-game" onchange="loadCorrectPacks()">
-                        <option value="pubg">ببجي (PUBG Mobile)</option>
-                        <option value="ff">فري فاير (Free Fire)</option>
-                    </select>
-                    <input type="text" id="p-id-input" placeholder="ID اللاعب">
-                    <select id="p-pack-input" onchange="calculateGameCost(this)"></select>
-                    <div class="calc-box" style="margin-top:10px;">
-                        <span style="font-size:12px; color:var(--text-sec)">التكلفة بالجنيه</span>
-                        <span id="game-cost-res" class="calc-result">0 SDG</span>
-                    </div>
-                    <button class="btn-main" onclick="sendOrderToDeveloper()">🚀 شحن الآن</button>
-                </div>
-                <div style="padding:20px;">
-                    <h3>سجل الطلبات</h3>
-                    <div id="game-history">جاري التحميل...</div>
-                </div>
-                ${(me && me.role === "admin") ? `
-                <div id="developer-area" class="admin-panel">
-                    <h3>طلبات الألعاب (لوحة المطور)</h3>
-                    <div id="orders-list-container"></div>
-                </div>` : ''}`;
-            
-            loadCorrectPacks();
-            loadGameHistory();
-            if(me && me.role === "admin") {
-                initDeveloperLogic();
-            }
-
-        } else if (view === 'vip') {
-            const isVip = me && me.vipStatus === 'active';
-            const vipExpiry = me && me.vipExpiry ? new Date(me.vipExpiry) : null;
-            
-            area.innerHTML = `
-                <div style="text-align:center; padding:30px;">
-                    <i class="fas fa-crown" style="font-size:60px; color:var(--accent); margin-bottom:20px;"></i>
-                    <h2>اشتراك VIP</h2>
-                    <p style="color:var(--text-sec)">
-                        ${isVip && vipExpiry ? 
-                            `أنت مشترك حتى: ${vipExpiry.toLocaleDateString('ar-SA')}` : 
-                            'تميز واحصل على علامة التاج ونشر غير محدود'}
-                    </p>
-                    ${!isVip ? `
-                    <div class="grid">
-                        <div class="card" onclick="buyVip(1, 1)" style="border-color:var(--text-sec)">
-                            <h1 style="color:white">1</h1>
-                            <p>يوم</p>
-                            <b>1 SDM</b>
-                        </div>
-                        <div class="card" onclick="buyVip(7, 7)" style="border-color:var(--neon-blue)">
-                            <h1 style="color:var(--neon-blue)">7</h1>
-                            <p>أيام</p>
-                            <b>7 SDM</b>
-                        </div>
-                        <div class="card" onclick="buyVip(30, 30)" style="border-color:var(--accent)">
-                            <h1 style="color:var(--accent)">30</h1>
-                            <p>يوم</p>
-                            <b>30 SDM</b>
-                        </div>
-                    </div>` : 
-                    '<div class="card" style="border-color:var(--accent); color:var(--accent)"><h3>الاشتراك نشط ✅</h3></div>'}
-                </div>
-                ${isVip ? `
-                <div class="post" style="padding:20px;">
-                    <h4>نشر VIP مميز مع تخفيض</h4>
-                    <input id="v-t" placeholder="العنوان">
-                    <input id="v-pr" type="number" placeholder="السعر الأصلي (SDM)">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <input id="v-dis" type="number" placeholder="نسبة التخفيض % (اختياري)" style="border:1px solid var(--accent)">
-                    </div>
-                    <textarea id="v-d" placeholder="الوصف"></textarea>
-                    <input type="file" onchange="encode(this,'post')">
-                    <button class="btn-main" onclick="publish('vip_posts')">نشر VIP</button>
-                </div>` : ''}`;
-        
-        } else if (view === 'profile') {
-            const uid = extra || (me ? me.p : '');
-            if (!uid) return;
-            
-            db.ref('users/' + uid).once('value', snap => {
-                const u = snap.val();
-                if (!u) return;
-                
-                const isMe = (me && me.p === uid);
-                const isOnline = (Date.now() - (u.lastSeen || 0)) < 300000;
-                
-                area.innerHTML = `
-                <div style="text-align:center; padding:40px 20px;">
-                    <div style="position:relative; display:inline-block;">
-                        <img src="${u.pic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" 
-                             id="profile-img-view" 
-                             style="width:120px; height:120px; border-radius:50%; border:3px solid var(--neon-blue); padding:3px; object-fit:cover;">
-                        ${isOnline ? 
-                            '<div style="position:absolute; bottom:5px; right:5px; width:20px; height:20px; background:#10b981; border:3px solid #0f172a; border-radius:50%;"></div>' : 
-                            ''}
-                    </div>
-                    ${isMe ? '<br><label style="color:var(--accent); cursor:pointer; font-size:12px;">تغيير الصورة <input type="file" onchange="encode(this, \'user\')" style="display:none"></label>' : ''}
-                    <h2 style="margin:10px 0;">
-                        ${escapeHtml(u.n)} 
-                        ${u.vipStatus === 'active' ? '<i class="fas fa-crown" style="color:var(--accent)"></i>' : ''}
-                    </h2>
-                    <p style="font-size:12px; color:var(--text-sec);">
-                        ${isOnline ? '<span class="online-dot"></span> متصل الآن' : 'غير متصل'}
-                    </p>
-                    <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;">
-                        <span class="badge badge-gold">⭐ ${(u.rating||5).toFixed(1)}</span>
-                        ${u.role === 'admin' ? '<span class="badge badge-admin">Admin</span>' : ''}
-                    </div>
-                    ${isMe ? `
-                    <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; margin-bottom:20px;">
-                        <p style="margin:0; font-size:12px; color:var(--text-sec)">ID المستخدم</p>
-                        <code style="font-size:16px; display:block; margin:5px 0;">${u.p}</code>
-                        <button onclick="navigator.clipboard.writeText('${u.p}'); Swal.fire('تم النسخ','','success')" 
-                                style="background:transparent; border:1px solid var(--border); color:white; border-radius:5px; padding:5px 10px;">
-                            نسخ
-                        </button>
-                    </div>
-                    <button class="btn-main" style="background:rgba(239, 68, 68, 0.2); color:#ef4444; border:1px solid #ef4444;" onclick="doLogout()">
-                        تسجيل خروج
-                    </button>` : 
-                    `<button class="btn-main" style="background:var(--accent); color:black;" onclick="rateUser('${uid}')">
-                        ⭐ تقييم البائع
-                    </button>
-                    <button class="btn-main" style="background:var(--red); color:white; margin-top:5px;" onclick="reportUser('${uid}')">
-                        🚩 إبلاغ
-                    </button>`}
-                </div>`;
-            });
+        switch(view) {
+            case 'home':
+                renderHome(area);
+                break;
+            case 'sub':
+                renderSub(area, extra);
+                break;
+            case 'feed':
+                renderFeed(area, extra);
+                break;
+            case 'wallet':
+                renderWallet(area);
+                break;
+            case 'games':
+                renderGames(area);
+                break;
+            case 'vip':
+                renderVip(area);
+                break;
+            case 'profile':
+                renderProfile(area, extra);
+                break;
         }
     }
 
+    function renderHome(area) {
+        // مستمع الإعدادات
+        listeners.settings = db.ref('settings').on('value', snap => {
+            const s = snap.val() || {};
+            const finalSliderImages = (s.sliderImages && s.sliderImages.length >= 3) ? s.sliderImages : sliderImages;
+            
+            area.innerHTML = `
+                <div class="slider-container">
+                    <img id="slider-img" src="${finalSliderImages[0]}" alt="سلايدر">
+                    <div class="slider-overlay">
+                        <h3 style="margin:0; color:white;">SDM Market المستقبل</h3>
+                    </div>
+                    <div class="slider-dots">
+                        <div class="dot active" id="dot-0"></div>
+                        <div class="dot" id="dot-1"></div>
+                        <div class="dot" id="dot-2"></div>
+                    </div>
+                    ${(!isGuest && me && me.role === 'admin') ? 
+                        `<div class="edit-slider-btn" onclick="updateCurrentSliderImg()">✏️ تعديل</div>` : ''}
+                </div>
+                ${(!isGuest && me && me.role === 'admin') ? `
+                <button class="btn-main" style="background:#6f42c1; margin:10px 20px; width:calc(100% - 40px);" onclick="sendBroadcastMessage()">
+                    📢 نشر رسالة عامة
+                </button>` : ''}
+                <h3 style="padding:0 20px; margin-bottom:0;">الأقسام</h3>
+                <div class="grid">
+                    ${Object.keys(cats).map(k => {
+                        const ci = (s.categories && s.categories[k]) ? s.categories[k].img : null;
+                        const editBtn = (!isGuest && me && me.role === 'admin') ? 
+                            `<div class="edit-cat-btn" onclick="event.stopPropagation(); updateCategoryImg('${k}')">
+                                <i class="fas fa-edit"></i>
+                            </div>` : '';
+                        return `
+                            <div class="card" onclick="nav('sub','${k}')">
+                                ${editBtn}
+                                ${ci ? `<img src="${ci}" class="cat-custom-img" alt="${k}">` : `<i class="fas fa-${cats[k].i}"></i>`}
+                                <b>${k}</b>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                <h3 style="padding:0 20px; margin-top:10px;">أحدث VIP المميزة 💎</h3>
+                <div id="vip-home-list" style="padding-bottom:20px;"></div>`;
+            
+            if (s.sliderImages && s.sliderImages.length >= 3) {
+                sliderImages = s.sliderImages;
+            }
+            
+            startSlider();
+            loadPosts('vip_posts', null, 'vip-home-list', true);
+            
+            if (me && me.role === 'admin') {
+                listenForAdminTasks();
+            }
+        });
+    }
+
+    function renderSub(area, extra) {
+        curC = extra || curC;
+        area.innerHTML = `
+            <div style="padding:15px;">
+                <h2 style="color:var(--neon-blue)">${curC}</h2>
+            </div>
+            <div class="grid">
+                ${cats[curC].s.map(s => `
+                    <div class="card" onclick="nav('feed','${s}')">
+                        <b>${s}</b>
+                    </div>
+                `).join('')}
+            </div>`;
+    }
+
+    function renderFeed(area, extra) {
+        curS = extra || curS;
+        area.innerHTML = `
+            ${!isGuest ? `
+            <div class="post" style="padding:20px;">
+                <h4 style="margin-top:0; color:var(--primary)">📝 إضافة إعلان: ${curS}</h4>
+                <input id="pt" placeholder="اسم المنتج">
+                <input id="pp" type="number" placeholder="السعر (SDM)">
+                <textarea id="pd" placeholder="وصف المنتج..." rows="3"></textarea>
+                <label class="btn-main" style="background:#334155; display:block; text-align:center; margin-top:10px;">
+                    <i class="fas fa-camera"></i> إضافة صورة
+                    <input type="file" hidden accept="image/*" onchange="encode(this, 'post')">
+                </label>
+                <button class="btn-main" onclick="publish('posts')">نشر الإعلان</button>
+            </div>` : ''}
+            <div id="posts-list"></div>`;
+        
+        loadPosts('posts', curS, 'posts-list', false);
+    }
+
+    function renderWallet(area) {
+        // مستمع صورة العملة
+        listeners.coinImg = db.ref('settings/coinImg').on('value', snap => {
+            const ci = snap.val() || sdmCoinImage;
+            
+            area.innerHTML = `
+                <div class="wallet-card">
+                    <img src="${ci}" class="sdm-logo" alt="SDM Coin">
+                    <h1 style="font-size:36px; margin:15px 0;">
+                        ${me ? me.sdmBalance.toFixed(2) : '0.00'} 
+                        <span style="font-size:16px; color:var(--text-sec)">SDM</span>
+                    </h1>
+                    <p style="font-size:12px; color:var(--accent);">1 SDM = ${SDM_RATE} جنيه</p>
+                    <div style="display:flex; gap:10px; justify-content:center;">
+                        <button class="btn-main" style="background:var(--neon-blue); color:black; width:auto; padding:10px 30px;" onclick="showTransfer()">
+                            إرسال <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+                <div style="padding:20px;">
+                    <h3>شراء عملة من المطور</h3>
+                    <div class="post" style="padding:20px;">
+                        <p style="color:var(--text-sec)">بنك الخرطوم: <b style="color:white; font-size:18px;">4426148</b> (محمد)</p>
+                        <label style="font-size:12px;">أدخل الكمية (SDM)</label>
+                        <input id="buy-qty" type="number" placeholder="مثلاً: 5" oninput="calcBuyCost(this.value)">
+                        <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; margin:10px 0; text-align:center;">
+                            المطلوب دفعه: <b id="buy-cost-display" style="color:var(--green); font-size:18px;">0</b> جنيه
+                        </div>
+                        <label class="btn-main" style="background:#334155; display:block; text-align:center;">
+                            <i class="fas fa-receipt"></i> إرفاق الإشعار
+                            <input type="file" hidden accept="image/*" onchange="encode(this, 'buy')">
+                        </label>
+                        <button class="btn-main" onclick="requestCoins()">إرسال الطلب</button>
+                    </div>
+                    <h3>سجل المعاملات</h3>
+                    <div id="transactions-history" style="background:var(--bg-card); padding:10px; border-radius:15px; max-height:200px; overflow-y:auto;">
+                        جاري التحميل...
+                    </div>
+                </div>`;
+            
+            loadTransactions();
+        });
+    }
+
+    function renderGames(area) {
+        area.innerHTML = `
+            <div class="post" style="padding:20px; text-align:center;">
+                <i class="fas fa-bolt" style="font-size:50px; color:var(--neon-blue); margin-bottom:20px;"></i>
+                <h2 style="margin:0;">شحن فوري</h2>
+                <select id="active-game" onchange="loadCorrectPacks()">
+                    <option value="pubg">ببجي (PUBG Mobile)</option>
+                    <option value="ff">فري فاير (Free Fire)</option>
+                </select>
+                <input type="text" id="p-id-input" placeholder="ID اللاعب">
+                <select id="p-pack-input" onchange="calculateGameCost(this)"></select>
+                <div class="calc-box" style="margin-top:10px;">
+                    <span style="font-size:12px; color:var(--text-sec)">التكلفة بالجنيه</span>
+                    <span id="game-cost-res" class="calc-result">0 SDG</span>
+                </div>
+                <button class="btn-main" onclick="sendOrderToDeveloper()">🚀 شحن الآن</button>
+            </div>
+            <div style="padding:20px;">
+                <h3>سجل الطلبات</h3>
+                <div id="game-history">جاري التحميل...</div>
+            </div>
+            ${(me && me.role === "admin") ? `
+            <div id="developer-area" class="admin-panel">
+                <h3>طلبات الألعاب (لوحة المطور)</h3>
+                <div id="orders-list-container"></div>
+            </div>` : ''}`;
+        
+        loadCorrectPacks();
+        loadGameHistory();
+        
+        if (me && me.role === "admin") {
+            initDeveloperLogic();
+        }
+    }
+
+    function renderVip(area) {
+        const isVip = me && me.vipStatus === 'active';
+        const vipExpiry = me && me.vipExpiry ? new Date(me.vipExpiry) : null;
+        
+        area.innerHTML = `
+            <div style="text-align:center; padding:30px;">
+                <i class="fas fa-crown" style="font-size:60px; color:var(--accent); margin-bottom:20px;"></i>
+                <h2>اشتراك VIP</h2>
+                <p style="color:var(--text-sec)">
+                    ${isVip && vipExpiry ? 
+                        `أنت مشترك حتى: ${vipExpiry.toLocaleDateString('ar-SA')}` : 
+                        'تميز واحصل على علامة التاج ونشر غير محدود'}
+                </p>
+                ${!isVip ? `
+                <div class="grid">
+                    <div class="card" onclick="buyVip(1, 1)" style="border-color:var(--text-sec)">
+                        <h1 style="color:white">1</h1>
+                        <p>يوم</p>
+                        <b>1 SDM</b>
+                    </div>
+                    <div class="card" onclick="buyVip(7, 7)" style="border-color:var(--neon-blue)">
+                        <h1 style="color:var(--neon-blue)">7</h1>
+                        <p>أيام</p>
+                        <b>7 SDM</b>
+                    </div>
+                    <div class="card" onclick="buyVip(30, 30)" style="border-color:var(--accent)">
+                        <h1 style="color:var(--accent)">30</h1>
+                        <p>يوم</p>
+                        <b>30 SDM</b>
+                    </div>
+                </div>` : 
+                '<div class="card" style="border-color:var(--accent); color:var(--accent)"><h3>الاشتراك نشط ✅</h3></div>'}
+            </div>
+            ${isVip ? `
+            <div class="post" style="padding:20px;">
+                <h4>نشر VIP مميز مع تخفيض</h4>
+                <input id="v-t" placeholder="العنوان">
+                <input id="v-pr" type="number" placeholder="السعر الأصلي (SDM)">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <input id="v-dis" type="number" placeholder="نسبة التخفيض % (اختياري)" style="border:1px solid var(--accent)">
+                </div>
+                <textarea id="v-d" placeholder="الوصف"></textarea>
+                <label class="btn-main" style="background:#334155; display:block; text-align:center; margin-top:10px;">
+                    <i class="fas fa-camera"></i> إضافة صورة
+                    <input type="file" hidden accept="image/*" onchange="encode(this, 'post')">
+                </label>
+                <button class="btn-main" onclick="publish('vip_posts')">نشر VIP</button>
+            </div>` : ''}`;
+    }
+
+    function renderProfile(area, extra) {
+        const uid = extra || (me ? me.p : '');
+        if (!uid) return;
+        
+        db.ref('users/' + uid).once('value', snap => {
+            const u = snap.val();
+            if (!u) return;
+            
+            const isMe = (me && me.p === uid);
+            const isOnline = (Date.now() - (u.lastSeen || 0)) < 300000;
+            
+            area.innerHTML = `
+            <div style="text-align:center; padding:40px 20px;">
+                <div style="position:relative; display:inline-block;">
+                    <img src="${u.pic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" 
+                         id="profile-img-view" 
+                         style="width:120px; height:120px; border-radius:50%; border:3px solid var(--neon-blue); padding:3px; object-fit:cover;">
+                    ${isOnline ? 
+                        '<div style="position:absolute; bottom:5px; right:5px; width:20px; height:20px; background:#10b981; border:3px solid #0f172a; border-radius:50%;"></div>' : 
+                        ''}
+                </div>
+                ${isMe ? '<br><label style="color:var(--accent); cursor:pointer; font-size:12px;">تغيير الصورة <input type="file" accept="image/*" onchange="encode(this, \'user\')" style="display:none"></label>' : ''}
+                <h2 style="margin:10px 0;">
+                    ${escapeHtml(u.n)} 
+                    ${u.vipStatus === 'active' ? '<i class="fas fa-crown" style="color:var(--accent)"></i>' : ''}
+                </h2>
+                <p style="font-size:12px; color:var(--text-sec);">
+                    ${isOnline ? '<span class="online-dot"></span> متصل الآن' : 'غير متصل'}
+                </p>
+                <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;">
+                    <span class="badge badge-gold">⭐ ${(u.rating||5).toFixed(1)}</span>
+                    ${u.role === 'admin' ? '<span class="badge badge-admin">Admin</span>' : ''}
+                </div>
+                ${isMe ? `
+                <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; margin-bottom:20px;">
+                    <p style="margin:0; font-size:12px; color:var(--text-sec)">ID المستخدم</p>
+                    <code style="font-size:16px; display:block; margin:5px 0;">${u.p}</code>
+                    <button onclick="navigator.clipboard.writeText('${u.p}'); Swal.fire({title: \'تم النسخ\', icon: \'success\', background: \'#1e293b\', color: \'#fff\'})" 
+                            style="background:transparent; border:1px solid var(--border); color:white; border-radius:5px; padding:5px 10px;">
+                        نسخ
+                    </button>
+                </div>
+                <button class="btn-main" style="background:rgba(239, 68, 68, 0.2); color:#ef4444; border:1px solid #ef4444;" onclick="doLogout()">
+                    تسجيل خروج
+                </button>` : 
+                `<button class="btn-main" style="background:var(--accent); color:black;" onclick="rateUser('${uid}')">
+                    ⭐ تقييم البائع
+                </button>
+                <button class="btn-main" style="background:var(--red); color:white; margin-top:5px;" onclick="reportUser('${uid}')">
+                    🚩 إبلاغ
+                </button>`}
+            </div>`;
+        });
+    }
+
+    // --- تحميل المنشورات ---
     function loadPosts(path, subFilter, containerId, isVipList = false) {
-        db.ref(path).limitToLast(30).on('value', snap => {
+        // إزالة المستمع القديم إذا كان موجوداً
+        if (listeners[path]) listeners[path]();
+        
+        listeners[path] = db.ref(path).limitToLast(30).on('value', snap => {
             const list = document.getElementById(containerId);
-            if(!list) return;
+            if (!list) return;
             
             list.innerHTML = "";
-            let posts = [];
+            const posts = [];
             
-            snap.forEach(c => {
-                const post = c.val();
-                post.id = c.key;
-                posts.unshift(post);
+            snap.forEach(child => {
+                const post = child.val();
+                post.id = child.key;
+                posts.unshift(post); // الأحدث أولاً
             });
             
             posts.forEach(p => {
-                if(subFilter && p.sub !== subFilter) return;
+                if (subFilter && p.sub !== subFilter) return;
                 
-                let priceDisplay = `${p.pr} SDM`;
-                if(p.discount > 0) {
-                    const discountedPrice = p.pr - (p.pr * (p.discount/100));
-                    priceDisplay = `
-                        <span class="discount-tag">خصم ${p.discount}%</span> 
-                        <b>${discountedPrice.toFixed(1)} SDM</b> 
-                        <span class="old-price">${p.pr}</span>
-                    `;
+                // تخطي منشورات VIP المنتهية
+                if (isVipList && p.vExpiry && p.vExpiry < Date.now()) {
+                    return;
                 }
+                
+                const priceDisplay = p.discount > 0 ? 
+                    `<span class="discount-tag">خصم ${p.discount}%</span> 
+                     <b>${(p.pr - (p.pr * (p.discount/100))).toFixed(1)} SDM</b> 
+                     <span class="old-price">${p.pr}</span>` :
+                    `<b>${p.pr} SDM</b>`;
                 
                 const isOnline = (Date.now() - (p.uLastSeen || 0)) < 300000;
                 const showMenu = !isGuest && me && (me.p === p.uP || me.role === 'admin');
-                const isExpiredVip = isVipList && p.vExpiry && p.vExpiry < Date.now();
-                
-                // تخطي المنشورات VIP المنتهية
-                if (isExpiredVip) return;
                 
                 list.innerHTML += `
                     <div class="post" id="post-${p.id}">
                         ${p.status === 'sold' ? '<div class="sold-overlay">تم البيع</div>' : ''}
                         <div class="post-img-container">
-                            <img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">
+                            <img src="${p.img || sdmCoinImage}" style="width:100%; height:100%; object-fit:cover;" alt="${escapeHtml(p.t)}">
                             ${showMenu ? `
                             <button class="post-menu-btn" onclick="showPostMenu('${p.id}', ${isVipList}, event)">
                                 <i class="fas fa-ellipsis-v"></i>
@@ -1405,26 +1531,28 @@
                             </div>
                             <h3 style="margin:5px 0;">${escapeHtml(p.t)}</h3>
                             <div style="font-size:16px; margin-bottom:5px;">${priceDisplay}</div>
-                            <p style="font-size:13px; color:var(--text-sec);">${escapeHtml(p.d)}</p>
+                            <p style="font-size:13px; color:var(--text-sec);">${escapeHtml(p.d || '')}</p>
                             <div style="display:flex; align-items:center; gap:10px; margin-top:10px; border-top:1px solid var(--border); padding-top:10px;">
                                 <img src="${p.uPic || userPic}" 
                                      style="width:30px; height:30px; border-radius:50%; cursor:pointer;" 
-                                     onclick="nav('profile','${p.uP}')">
+                                     onclick="nav('profile','${p.uP}')"
+                                     alt="${escapeHtml(p.uN)}">
                                 <span style="font-size:12px; cursor:pointer;" onclick="nav('profile','${p.uP}')">
                                     ${escapeHtml(p.uN)} 
                                     ${isOnline ? '<span class="online-dot"></span>' : ''}
                                 </span>
                                 <div style="flex:1"></div>
+                                ${p.wa ? `
                                 <a href="https://wa.me/${p.wa}" target="_blank" style="color:#25d366; font-size:20px;">
                                     <i class="fab fa-whatsapp"></i>
-                                </a>
+                                </a>` : ''}
                             </div>
                         </div>
                     </div>
                 `;
             });
             
-            if(list.innerHTML === "") {
+            if (list.innerHTML === "") {
                 list.innerHTML = `
                     <div style="text-align:center; padding:20px; color:var(--text-sec);">
                         <i class="fas fa-box-open" style="font-size:40px; margin-bottom:10px;"></i>
@@ -1435,215 +1563,355 @@
         });
     }
 
+    // --- نشر المنشورات ---
     function publish(path) {
-        if(isGuest) return checkGuestAccess();
+        if (isGuest) return checkGuestAccess();
         
-        const t = document.getElementById(path === 'vip_posts' ? 'v-t' : 'pt').value;
-        const pr = document.getElementById(path === 'vip_posts' ? 'v-pr' : 'pp').value;
-        const d = document.getElementById(path === 'vip_posts' ? 'v-d' : 'pd').value;
-        const discount = (path === 'vip_posts' && document.getElementById('v-dis')) ? 
-                         document.getElementById('v-dis').value : 0;
+        let titleInput, priceInput, descInput, discountInput;
         
-        if(!t || !pr || !tempImg) {
-            Swal.fire('تنبيه', 'يرجى تعبئة البيانات والصورة', 'warning');
+        if (path === 'vip_posts') {
+            titleInput = document.getElementById('v-t');
+            priceInput = document.getElementById('v-pr');
+            descInput = document.getElementById('v-d');
+            discountInput = document.getElementById('v-dis');
+        } else {
+            titleInput = document.getElementById('pt');
+            priceInput = document.getElementById('pp');
+            descInput = document.getElementById('pd');
+        }
+        
+        const title = titleInput ? titleInput.value.trim() : '';
+        const price = priceInput ? parseFloat(priceInput.value) : 0;
+        const desc = descInput ? descInput.value.trim() : '';
+        const discount = discountInput ? parseFloat(discountInput.value) || 0 : 0;
+        
+        if (!title || !price || !tempImg) {
+            Swal.fire({
+                title: 'تنبيه',
+                text: 'يرجى تعبئة البيانات والصورة',
+                icon: 'warning',
+                background: '#1e293b',
+                color: '#fff'
+            });
             return;
         }
         
-        const data = {
-            t,
-            pr: parseFloat(pr),
-            d,
-            discount: Number(discount),
+        if (price <= 0) {
+            Swal.fire({
+                title: 'خطأ',
+                text: 'السعر يجب أن يكون أكبر من صفر',
+                icon: 'error',
+                background: '#1e293b',
+                color: '#fff'
+            });
+            return;
+        }
+        
+        const postData = {
+            t: title,
+            pr: price,
+            d: desc,
+            discount: discount,
             img: tempImg,
             uP: me.p,
             uN: me.n,
             uPic: me.pic || userPic,
-            wa: me.wa,
-            uStars: me.rating || 0,
+            wa: me.wa || '',
+            uStars: me.rating || 5.0,
             date: Date.now(),
             status: 'active',
             uLastSeen: me.lastSeen || Date.now()
         };
         
-        if(path === 'posts') {
-            data.sub = curS;
+        if (path === 'posts') {
+            postData.sub = curS;
         } else if (path === 'vip_posts') {
-            data.vExpiry = me.vipExpiry || Date.now() + (30 * 24 * 60 * 60 * 1000);
+            postData.vExpiry = me.vipExpiry || Date.now() + (30 * 24 * 60 * 60 * 1000);
         }
         
-        db.ref(path).push(data).then(() => {
-            Swal.fire('تم النشر', 'إعلانك أصبح متاحاً الآن', 'success');
-            tempImg = "";
-            if(path === 'vip_posts') {
-                nav('home');
-            } else {
-                render('feed', curS);
-            }
-        }).catch(error => {
-            Swal.fire('خطأ', 'فشل نشر الإعلان', 'error');
-        });
+        db.ref(path).push(postData)
+            .then(() => {
+                Swal.fire({
+                    title: 'تم النشر',
+                    text: 'إعلانك أصبح متاحاً الآن',
+                    icon: 'success',
+                    background: '#1e293b',
+                    color: '#fff'
+                });
+                
+                // تنظيف الحقول
+                tempImg = '';
+                if (titleInput) titleInput.value = '';
+                if (priceInput) priceInput.value = '';
+                if (descInput) descInput.value = '';
+                if (discountInput) discountInput.value = '';
+                
+                if (path === 'vip_posts') {
+                    nav('home');
+                } else {
+                    render('feed', curS);
+                }
+            })
+            .catch(error => {
+                Swal.fire({
+                    title: 'خطأ',
+                    text: 'فشل نشر الإعلان: ' + error.message,
+                    icon: 'error',
+                    background: '#1e293b',
+                    color: '#fff'
+                });
+            });
     }
 
+    // --- المحفظة ---
     function requestCoins() {
-        const qty = document.getElementById('buy-qty').value;
-        if(!qty || !tempBuyImg) {
-            Swal.fire('تنبيه', 'مطلوب الكمية وصورة الإشعار', 'warning');
+        const qtyInput = document.getElementById('buy-qty');
+        const qty = parseFloat(qtyInput ? qtyInput.value : 0);
+        
+        if (!qty || qty <= 0 || !tempBuyImg) {
+            Swal.fire({
+                title: 'تنبيه',
+                text: 'مطلوب الكمية وصورة الإشعار',
+                icon: 'warning',
+                background: '#1e293b',
+                color: '#fff'
+            });
             return;
         }
         
         db.ref('coin_requests').push({
             uP: me.p,
             uN: me.n,
-            qty: parseFloat(qty),
+            qty: qty,
             img: tempBuyImg,
             status: 'pending',
             date: Date.now()
         });
         
-        Swal.fire('تم الإرسال', 'سيقوم المشرف بالمراجعة', 'success');
-        tempBuyImg = "";
-        document.getElementById('buy-qty').value = '';
+        Swal.fire({
+            title: 'تم الإرسال',
+            text: 'سيقوم المشرف بالمراجعة',
+            icon: 'success',
+            background: '#1e293b',
+            color: '#fff'
+        });
+        
+        tempBuyImg = '';
+        if (qtyInput) qtyInput.value = '';
         document.getElementById('buy-cost-display').innerText = '0';
     }
 
     function loadTransactions() {
-        if (!me) return;
+        if (!me || isGuest) return;
         
-        db.ref('transactions').orderByChild('from').equalTo(me.p).limitToLast(20).on('value', snap => {
-            processTxn(snap, 'from');
-        });
+        const historyDiv = document.getElementById('transactions-history');
+        if (!historyDiv) return;
         
-        db.ref('transactions').orderByChild('to').equalTo(me.p).limitToLast(20).on('value', snap => {
-            processTxn(snap, 'to');
-        });
+        // مسح المستمعات القديمة
+        if (listeners.transactionsFrom) listeners.transactionsFrom();
+        if (listeners.transactionsTo) listeners.transactionsTo();
+        
+        historyDiv.innerHTML = '<div style="text-align:center; padding:10px; color:var(--text-sec)">جاري التحميل...</div>';
+        
+        // تحميل المعاملات المرسلة
+        listeners.transactionsFrom = db.ref('transactions')
+            .orderByChild('from')
+            .equalTo(me.p)
+            .limitToLast(10)
+            .on('value', snap => {
+                updateTransactionList(snap, 'from');
+            });
+        
+        // تحميل المعاملات المستلمة
+        listeners.transactionsTo = db.ref('transactions')
+            .orderByChild('to')
+            .equalTo(me.p)
+            .limitToLast(10)
+            .on('value', snap => {
+                updateTransactionList(snap, 'to');
+            });
     }
 
-    function processTxn(snap, role) {
-        const l = document.getElementById('transactions-history');
-        if(!l) return;
+    function updateTransactionList(snap, type) {
+        const historyDiv = document.getElementById('transactions-history');
+        if (!historyDiv) return;
         
-        let transactions = [];
-        snap.forEach(c => {
-            const t = c.val();
-            t.id = c.key;
-            transactions.push(t);
+        let html = '';
+        const transactions = [];
+        
+        snap.forEach(child => {
+            const txn = child.val();
+            txn.id = child.key;
+            txn.type = type;
+            transactions.push(txn);
         });
         
-        // ترتيب من الأحدث إلى الأقدم
+        // ترتيب من الأحدث للأقدم
         transactions.sort((a, b) => b.date - a.date);
         
-        l.innerHTML = '';
-        transactions.forEach(t => {
-            const color = (role === 'from' || t.type === 'buy') ? 'var(--red)' : 'var(--green)';
-            const sign = (role === 'from') ? '-' : '+';
-            const date = formatDate(t.date);
+        transactions.forEach(txn => {
+            const amount = txn.amount || 0;
+            const date = formatDate(txn.date);
+            const isOutgoing = txn.type === 'from';
+            const color = isOutgoing ? 'var(--red)' : 'var(--green)';
+            const sign = isOutgoing ? '-' : '+';
+            const description = txn.description || (isOutgoing ? 'تحويل' : 'استلام');
             
-            l.innerHTML += `
+            html += `
                 <div style="padding:10px; border-bottom:1px solid var(--border); font-size:12px; display:flex; justify-content:space-between; align-items:center;">
                     <div>
-                        <div>${t.type || 'تحويل'}</div>
+                        <div>${description}</div>
                         <div style="color:var(--text-sec); font-size:10px;">${date}</div>
                     </div>
-                    <span style="color:${color}; font-weight:bold;">${sign}${t.amount}</span>
+                    <span style="color:${color}; font-weight:bold;">${sign}${amount.toFixed(2)}</span>
                 </div>
             `;
         });
         
-        if (l.innerHTML === '') {
-            l.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-sec)">لا توجد معاملات</div>';
+        if (historyDiv.innerHTML.includes('جاري التحميل')) {
+            historyDiv.innerHTML = html || '<div style="text-align:center; padding:20px; color:var(--text-sec)">لا توجد معاملات</div>';
+        } else if (html) {
+            historyDiv.innerHTML += html;
         }
     }
 
+    // --- الألعاب ---
     function loadCorrectPacks() {
-        const g = document.getElementById('active-game').value;
-        const p = document.getElementById('p-pack-input');
-        p.innerHTML = officialRates[g].map(r => 
-            `<option value="${r.sdm}">${r.name} (${r.sdm} SDM)</option>`
+        const gameSelect = document.getElementById('active-game');
+        const packSelect = document.getElementById('p-pack-input');
+        
+        if (!gameSelect || !packSelect) return;
+        
+        const game = gameSelect.value;
+        const rates = officialRates[game] || [];
+        
+        packSelect.innerHTML = rates.map(rate => 
+            `<option value="${rate.sdm}">${rate.name} (${rate.sdm} SDM)</option>`
         ).join('');
-        calculateGameCost(p);
+        
+        calculateGameCost(packSelect);
     }
 
-    async function sendOrderToDeveloper() {
+    function sendOrderToDeveloper() {
         if (isGuest) return checkGuestAccess('games');
         
-        const game = document.getElementById('active-game').value;
-        const pid = document.getElementById('p-id-input').value;
-        const packEl = document.getElementById('p-pack-input');
-        const cost = parseFloat(packEl.value);
+        const gameSelect = document.getElementById('active-game');
+        const playerIdInput = document.getElementById('p-id-input');
+        const packSelect = document.getElementById('p-pack-input');
         
-        if(!pid) {
-            Swal.fire('خطأ', 'أدخل الآيدي', 'error');
+        if (!gameSelect || !playerIdInput || !packSelect) return;
+        
+        const game = gameSelect.value;
+        const playerId = playerIdInput.value.trim();
+        const cost = parseFloat(packSelect.value);
+        const packageName = packSelect.options[packSelect.selectedIndex].text;
+        
+        if (!playerId) {
+            Swal.fire({
+                title: 'خطأ',
+                text: 'أدخل الآيدي',
+                icon: 'error',
+                background: '#1e293b',
+                color: '#fff'
+            });
             return;
         }
         
-        if(me.sdmBalance < cost) {
-            Swal.fire('خطأ', 'رصيدك غير كاف', 'error');
+        if (me.sdmBalance < cost) {
+            Swal.fire({
+                title: 'خطأ',
+                text: 'رصيدك غير كاف',
+                icon: 'error',
+                background: '#1e293b',
+                color: '#fff'
+            });
             return;
         }
         
-        await db.ref('game_orders').push({
+        db.ref('game_orders').push({
             uP: me.p,
             uN: me.n,
             gameType: game,
-            playerId: pid,
-            package: packEl.options[packEl.selectedIndex].text,
+            playerId: playerId,
+            package: packageName,
             cost: cost,
             status: 'pending',
             date: Date.now()
         });
         
-        Swal.fire('تم الطلب', 'جاري المعالجة...', 'success');
-        document.getElementById('p-id-input').value = '';
+        Swal.fire({
+            title: 'تم الطلب',
+            text: 'جاري المعالجة...',
+            icon: 'success',
+            background: '#1e293b',
+            color: '#fff'
+        });
+        
+        playerIdInput.value = '';
     }
 
     function loadGameHistory() {
         if (isGuest || !me) return;
         
-        db.ref('game_orders').orderByChild('uP').equalTo(me.p).limitToLast(5).on('value', snap => {
-            const div = document.getElementById('game-history');
-            if(!div) return;
-            
-            div.innerHTML = "";
-            let orders = [];
-            
-            snap.forEach(c => {
-                const o = c.val();
-                o.id = c.key;
-                orders.unshift(o);
-            });
-            
-            orders.forEach(o => {
-                const statusIcon = o.status === 'done' ? '✅' : (o.status === 'rejected' ? '❌' : '⏳');
-                const date = formatDate(o.date);
+        const historyDiv = document.getElementById('game-history');
+        if (!historyDiv) return;
+        
+        // مسح المستمع القديم
+        if (listeners.gameHistory) listeners.gameHistory();
+        
+        listeners.gameHistory = db.ref('game_orders')
+            .orderByChild('uP')
+            .equalTo(me.p)
+            .limitToLast(5)
+            .on('value', snap => {
+                historyDiv.innerHTML = '';
+                const orders = [];
                 
-                div.innerHTML += `
-                    <div style="background:rgba(255,255,255,0.05); padding:10px; margin-bottom:5px; border-radius:10px;">
-                        <div style="display:flex; justify-content:space-between;">
-                            <span>${o.gameType}</span>
-                            <span>${statusIcon}</span>
+                snap.forEach(child => {
+                    const order = child.val();
+                    order.id = child.key;
+                    orders.unshift(order); // الأحدث أولاً
+                });
+                
+                orders.forEach(order => {
+                    const statusIcon = order.status === 'done' ? '✅' : 
+                                     order.status === 'rejected' ? '❌' : '⏳';
+                    const date = formatDate(order.date);
+                    
+                    historyDiv.innerHTML += `
+                        <div style="background:rgba(255,255,255,0.05); padding:10px; margin-bottom:5px; border-radius:10px;">
+                            <div style="display:flex; justify-content:space-between;">
+                                <span>${order.gameType}</span>
+                                <span>${statusIcon}</span>
+                            </div>
+                            <div style="color:var(--text-sec); font-size:11px; margin-top:5px;">
+                                ${order.package} | ${date}
+                            </div>
                         </div>
-                        <div style="color:var(--text-sec); font-size:11px; margin-top:5px;">
-                            ${o.package} | ${date}
-                        </div>
-                    </div>
-                `;
+                    `;
+                });
+                
+                if (orders.length === 0) {
+                    historyDiv.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-sec)">لا توجد طلبات</div>';
+                }
             });
-            
-            if (div.innerHTML === "") {
-                div.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-sec)">لا توجد طلبات</div>';
-            }
-        });
     }
 
-    async function buyVip(days, cost) {
+    function buyVip(days, cost) {
         if (isGuest) return checkGuestAccess('vip');
         
-        if(me.sdmBalance < cost) {
-            Swal.fire('فشل', 'رصيدك غير كاف', 'error');
+        if (me.sdmBalance < cost) {
+            Swal.fire({
+                title: 'فشل',
+                text: 'رصيدك غير كاف',
+                icon: 'error',
+                background: '#1e293b',
+                color: '#fff'
+            });
             return;
         }
         
-        await db.ref('game_orders').push({
+        db.ref('game_orders').push({
             uP: me.p,
             uN: me.n,
             gameType: 'VIP_SUB',
@@ -1654,36 +1922,42 @@
             date: Date.now()
         });
         
-        Swal.fire('تم الطلب', 'انتظر تفعيل الأدمن', 'success');
+        Swal.fire({
+            title: 'تم الطلب',
+            text: 'انتظر تفعيل الأدمن',
+            icon: 'success',
+            background: '#1e293b',
+            color: '#fff'
+        });
     }
 
     function calculateGameCost(selectElement) {
-        const val = parseFloat(selectElement.value);
-        const resElement = document.getElementById('game-cost-res');
-        if (isNaN(val) || val < 0) {
-            resElement.innerText = "0 SDG";
-        } else {
-            const sdg = val * SDM_RATE;
-            resElement.innerText = sdg.toLocaleString() + " SDG";
-        }
+        const resultElement = document.getElementById('game-cost-res');
+        if (!resultElement || !selectElement) return;
+        
+        const val = parseFloat(selectElement.value) || 0;
+        const sdg = val * SDM_RATE;
+        resultElement.innerText = sdg.toLocaleString() + " SDG";
     }
 
     function calcBuyCost(val) {
         const display = document.getElementById('buy-cost-display');
-        const cost = parseFloat(val || 0) * SDM_RATE;
+        if (!display) return;
+        
+        const cost = (parseFloat(val) || 0) * SDM_RATE;
         display.innerText = cost.toLocaleString();
     }
 
-    // --- Secure Transfer Logic ---
+    // --- التحويل الآمن ---
     function showTransfer() {
         if (isGuest) return checkGuestAccess('wallet');
         
         Swal.fire({
             title: 'تحويل رصيد 💸',
             html: `
-                <input id="tr-id" placeholder="ID المستلم" style="background:#0f172a; color:white; width:100%; padding:10px; border-radius:5px; border:1px solid #334155;">
+                <input id="tr-id" class="swal2-input" placeholder="ID المستلم">
                 <div id="tr-name-disp" style="height:20px; font-size:12px; color:var(--neon-blue); margin:5px 0; font-weight:bold;"></div>
-                <input id="tr-amount" type="number" placeholder="المبلغ (SDM)" style="background:#0f172a; color:white; width:100%; padding:10px; border-radius:5px; border:1px solid #334155;">
+                <input id="tr-amount" class="swal2-input" type="number" placeholder="المبلغ (SDM)">
             `,
             background: '#1e293b',
             color: '#fff',
@@ -1692,21 +1966,22 @@
             cancelButtonText: 'إلغاء',
             reverseButtons: true,
             didOpen: () => {
-                const idInp = document.getElementById('tr-id');
-                const nameDisp = document.getElementById('tr-name-disp');
-                idInp.addEventListener('input', () => {
-                    const val = idInp.value.trim();
-                    if(val.length > 5) {
-                        db.ref('users/' + val).once('value').then(s => {
-                            if(s.exists()) {
-                                const user = s.val();
-                                nameDisp.innerHTML = `<i class="fas fa-check-circle"></i> ${escapeHtml(user.n)}`;
+                const idInput = document.getElementById('tr-id');
+                const nameDisplay = document.getElementById('tr-name-disp');
+                
+                idInput.addEventListener('input', () => {
+                    const userId = idInput.value.trim();
+                    if (userId.length >= 5) {
+                        db.ref('users/' + userId).once('value').then(snap => {
+                            if (snap.exists()) {
+                                const user = snap.val();
+                                nameDisplay.innerHTML = `<i class="fas fa-check-circle"></i> ${escapeHtml(user.n)}`;
                             } else {
-                                nameDisp.innerHTML = `<span style="color:var(--red)">مستخدم غير موجود</span>`;
+                                nameDisplay.innerHTML = `<span style="color:var(--red)">مستخدم غير موجود</span>`;
                             }
                         });
                     } else {
-                        nameDisp.innerHTML = "";
+                        nameDisplay.innerHTML = '';
                     }
                 });
             },
@@ -1714,7 +1989,7 @@
                 const id = document.getElementById('tr-id').value.trim();
                 const amount = parseFloat(document.getElementById('tr-amount').value);
                 
-                if(!id || !amount) {
+                if (!id || !amount) {
                     Swal.showValidationMessage('البيانات ناقصة');
                     return false;
                 }
@@ -1736,11 +2011,10 @@
                 
                 return { id, amount };
             }
-        }).then(async res => {
-            if(res.isConfirmed) {
-                const {id, amount} = res.value;
+        }).then(result => {
+            if (result.isConfirmed) {
+                const { id, amount } = result.value;
                 
-                // إرسال الطلب للسيرفر فقط (بدون تعديل الرصيد محلياً)
                 db.ref('requests/transfers').push({
                     from: me.p,
                     to: id,
@@ -1748,195 +2022,301 @@
                     date: Date.now(),
                     status: 'pending'
                 }).then(() => {
-                    Swal.fire('تم الإرسال', 'جاري معالجة الطلب بواسطة النظام...', 'success');
-                }).catch(err => {
-                    Swal.fire('خطأ', 'فشل الاتصال', 'error');
+                    Swal.fire({
+                        title: 'تم الإرسال',
+                        text: 'جاري معالجة الطلب بواسطة النظام...',
+                        icon: 'success',
+                        background: '#1e293b',
+                        color: '#fff'
+                    });
+                }).catch(error => {
+                    Swal.fire({
+                        title: 'خطأ',
+                        text: 'فشل الاتصال',
+                        icon: 'error',
+                        background: '#1e293b',
+                        color: '#fff'
+                    });
                 });
             }
         });
     }
 
-    // Admin Functions
+    // --- وظائف الأدمن ---
     function listenForAdminTasks() {
         if (!me || me.role !== "admin") return;
         
-        db.ref('coin_requests').orderByChild('status').equalTo('pending').on('value', snap => {
-            const area = document.getElementById('admin-notifications-area');
-            if(!area) return;
-            
-            area.innerHTML = "";
-            snap.forEach(child => {
-                const req = child.val();
-                area.innerHTML += `
-                    <div class="admin-notify-bar">
-                        <p><b>🔔 طلب شراء</b>: ${escapeHtml(req.uN)} | ${req.qty} SDM</p>
-                        <img src="${req.img}" style="width:100%; border-radius:10px; cursor:pointer;" onclick="Swal.fire({imageUrl:'${req.img}', background:'#1e293b', color:'#fff'})">
-                        <div style="display:flex; gap:10px; margin-top:5px;">
-                            <button class="btn-main" style="background:var(--green); margin:0;" onclick="approvePurchase('${child.key}', '${req.uP}', ${req.qty})">
-                                موافق
-                            </button>
-                            <button class="btn-main" style="background:var(--red); margin:0;" onclick="rejectPurchase('${child.key}', '${req.uP}')">
-                                رفض
-                            </button>
+        // مسح المستمع القديم
+        if (listeners.coinRequests) listeners.coinRequests();
+        
+        listeners.coinRequests = db.ref('coin_requests')
+            .orderByChild('status')
+            .equalTo('pending')
+            .on('value', snap => {
+                const area = document.getElementById('admin-notifications-area');
+                if (!area) return;
+                
+                area.innerHTML = "";
+                snap.forEach(child => {
+                    const req = child.val();
+                    area.innerHTML += `
+                        <div class="admin-notify-bar">
+                            <p><b>🔔 طلب شراء</b>: ${escapeHtml(req.uN)} | ${req.qty} SDM</p>
+                            <img src="${req.img}" style="width:100%; border-radius:10px; cursor:pointer;" 
+                                 onclick="Swal.fire({imageUrl:'${req.img}', background:'#1e293b', color:'#fff'})">
+                            <div style="display:flex; gap:10px; margin-top:5px;">
+                                <button class="btn-main" style="background:var(--green); margin:0;" 
+                                        onclick="approvePurchase('${child.key}', '${req.uP}', ${req.qty})">
+                                    موافق
+                                </button>
+                                <button class="btn-main" style="background:var(--red); margin:0;" 
+                                        onclick="rejectPurchase('${child.key}', '${req.uP}')">
+                                    رفض
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                });
             });
-        });
     }
 
     function initDeveloperLogic() {
         if (!me || me.role !== "admin") return;
         
-        db.ref('game_orders').orderByChild('status').equalTo('pending').on('value', snap => {
-            const container = document.getElementById('orders-list-container');
-            if(!container) return;
-            
-            container.innerHTML = "";
-            snap.forEach(child => {
-                const o = child.val();
-                container.innerHTML += `
-                    <div class="admin-item">
-                        <b>العميل:</b> ${escapeHtml(o.uN)}<br>
-                        <b>${o.gameType}</b> (${o.package}) <br>
-                        ID: ${o.playerId}<br>
-                        <div style="color:var(--accent)">التكلفة: ${o.cost} SDM</div>
-                        <div style="display:flex; gap:10px; margin-top:5px;">
-                            <button class="btn-main" style="background:var(--green); margin:0; padding:5px;" 
-                                    onclick="confirmOrder('${child.key}', '${o.uP}', ${o.cost}, '${o.gameType}', '${o.package}')">
-                                قبول
-                            </button>
-                            <button class="btn-main" style="background:var(--red); margin:0; padding:5px;" 
-                                    onclick="rejectOrder('${child.key}', '${o.uP}')">
-                                رفض
-                            </button>
+        // مسح المستمع القديم
+        if (listeners.gameOrders) listeners.gameOrders();
+        
+        listeners.gameOrders = db.ref('game_orders')
+            .orderByChild('status')
+            .equalTo('pending')
+            .on('value', snap => {
+                const container = document.getElementById('orders-list-container');
+                if (!container) return;
+                
+                container.innerHTML = "";
+                snap.forEach(child => {
+                    const o = child.val();
+                    container.innerHTML += `
+                        <div class="admin-item">
+                            <b>العميل:</b> ${escapeHtml(o.uN)}<br>
+                            <b>${o.gameType}</b> (${o.package}) <br>
+                            ID: ${o.playerId}<br>
+                            <div style="color:var(--accent)">التكلفة: ${o.cost} SDM</div>
+                            <div style="display:flex; gap:10px; margin-top:5px;">
+                                <button class="btn-main" style="background:var(--green); margin:0; padding:5px;" 
+                                        onclick="confirmOrder('${child.key}', '${o.uP}', ${o.cost}, '${o.gameType}', '${o.package}')">
+                                    قبول
+                                </button>
+                                <button class="btn-main" style="background:var(--red); margin:0; padding:5px;" 
+                                        onclick="rejectOrder('${child.key}', '${o.uP}')">
+                                    رفض
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                });
+                
+                if (container.innerHTML === "") {
+                    container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-sec)">لا توجد طلبات جديدة</div>';
+                }
+            });
+    }
+
+    async function approvePurchase(id, userId, qty) {
+        if (!me || me.role !== "admin") return;
+        
+        try {
+            const userSnap = await db.ref('users/' + userId).once('value');
+            const user = userSnap.val();
+            const balance = user.sdmBalance || 0;
+            
+            await db.ref('users/' + userId).update({ sdmBalance: balance + Number(qty) });
+            await db.ref('coin_requests/' + id).update({ 
+                status: 'approved', 
+                approvedBy: me.p,
+                approvedAt: Date.now() 
             });
             
-            if (container.innerHTML === "") {
-                container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-sec)">لا توجد طلبات جديدة</div>';
-            }
-        });
-    }
-
-    async function approvePurchase(id, up, qty) {
-        if (!me || me.role !== "admin") return;
-        
-        const uSnap = await db.ref('users/' + up).once('value');
-        const u = uSnap.val();
-        const bal = u.sdmBalance || 0;
-        
-        await db.ref('users/' + up).update({ sdmBalance: bal + Number(qty) });
-        await db.ref('coin_requests/' + id).update({ 
-            status: 'approved', 
-            approvedBy: me.p,
-            approvedAt: Date.now() 
-        });
-        
-        await db.ref('alerts/' + up).push({ 
-            msg: `✅ تم شراء ${qty} SDM`, 
-            type: 'success',
-            date: Date.now()
-        });
-        
-        await db.ref('transactions').push({
-            type: 'deposit',
-            userId: up,
-            amount: Number(qty),
-            date: Date.now(),
-            description: 'شراء عملات'
-        });
-        
-        Swal.fire('تم','تمت الموافقة على الشراء','success');
-    }
-
-    async function rejectPurchase(id, up) {
-        if (!me || me.role !== "admin") return;
-        
-        await db.ref('coin_requests/' + id).update({ 
-            status: 'rejected',
-            rejectedBy: me.p,
-            rejectedAt: Date.now()
-        });
-        
-        await db.ref('alerts/' + up).push({ 
-            msg: `❌ تم رفض طلب الشراء`, 
-            type: 'error',
-            date: Date.now()
-        });
-        
-        Swal.fire('تم الرفض','','info');
-    }
-
-    async function confirmOrder(key, uid, cost, type, packDetails) {
-        if (!me || me.role !== "admin") return;
-        
-        const uSnap = await db.ref('users/' + uid).once('value');
-        if(!uSnap.exists()) return;
-        
-        const u = uSnap.val();
-        if((u.sdmBalance || 0) < cost) {
-            Swal.fire('فشل', 'رصيد العميل غير كاف', 'error');
-            return;
-        }
-        
-        // خصم المبلغ من رصيد العميل
-        await db.ref('users/' + uid).update({ sdmBalance: u.sdmBalance - cost });
-        
-        if(type === 'VIP_SUB') {
-            const days = parseInt(packDetails);
-            const expiryDate = Date.now() + (days * 86400000);
-            await db.ref('users/' + uid).update({ 
-                vipStatus: 'active', 
-                vipExpiry: expiryDate 
+            await db.ref('alerts/' + userId).push({ 
+                msg: `✅ تم شراء ${qty} SDM`, 
+                type: 'success',
+                date: Date.now()
+            });
+            
+            await db.ref('transactions').push({
+                type: 'deposit',
+                userId: userId,
+                amount: Number(qty),
+                date: Date.now(),
+                description: 'شراء عملات'
+            });
+            
+            Swal.fire({
+                title: 'تم',
+                text: 'تمت الموافقة على الشراء',
+                icon: 'success',
+                background: '#1e293b',
+                color: '#fff'
+            });
+        } catch (error) {
+            Swal.fire({
+                title: 'خطأ',
+                text: 'فشل المعالجة',
+                icon: 'error',
+                background: '#1e293b',
+                color: '#fff'
             });
         }
-        
-        await db.ref('game_orders/' + key).update({ 
-            status: 'done',
-            processedBy: me.p,
-            processedAt: Date.now()
-        });
-        
-        await db.ref('alerts/' + uid).push({ 
-            msg: type === 'VIP_SUB' ? "💎 تم تفعيل VIP" : "✅ تم شحن اللعبة", 
-            type: "success",
-            date: Date.now()
-        });
-        
-        await db.ref('transactions').push({
-            type: type === 'VIP_SUB' ? 'vip_purchase' : 'game_purchase',
-            userId: uid,
-            amount: cost,
-            date: Date.now(),
-            description: type === 'VIP_SUB' ? `اشتراك VIP ${packDetails}` : `شحن ${type}`
-        });
-        
-        Swal.fire("نجاح", "", "success");
     }
 
-    async function rejectOrder(key, uid) {
+    async function rejectPurchase(id, userId) {
         if (!me || me.role !== "admin") return;
         
-        await db.ref('game_orders/' + key).update({ 
-            status: 'rejected',
-            rejectedBy: me.p,
-            rejectedAt: Date.now()
-        });
+        try {
+            await db.ref('coin_requests/' + id).update({ 
+                status: 'rejected',
+                rejectedBy: me.p,
+                rejectedAt: Date.now()
+            });
+            
+            await db.ref('alerts/' + userId).push({ 
+                msg: `❌ تم رفض طلب الشراء`, 
+                type: 'error',
+                date: Date.now()
+            });
+            
+            Swal.fire({
+                title: 'تم الرفض',
+                text: '',
+                icon: 'info',
+                background: '#1e293b',
+                color: '#fff'
+            });
+        } catch (error) {
+            Swal.fire({
+                title: 'خطأ',
+                text: 'فشل المعالجة',
+                icon: 'error',
+                background: '#1e293b',
+                color: '#fff'
+            });
+        }
+    }
+
+    async function confirmOrder(key, userId, cost, type, packDetails) {
+        if (!me || me.role !== "admin") return;
         
-        db.ref('alerts/' + uid).push({ 
-            msg: "❌ تم رفض الطلب", 
-            type: "error",
-            date: Date.now()
-        });
+        try {
+            const userSnap = await db.ref('users/' + userId).once('value');
+            if (!userSnap.exists()) {
+                Swal.fire({
+                    title: 'خطأ',
+                    text: 'المستخدم غير موجود',
+                    icon: 'error',
+                    background: '#1e293b',
+                    color: '#fff'
+                });
+                return;
+            }
+            
+            const user = userSnap.val();
+            if ((user.sdmBalance || 0) < cost) {
+                Swal.fire({
+                    title: 'فشل',
+                    text: 'رصيد العميل غير كاف',
+                    icon: 'error',
+                    background: '#1e293b',
+                    color: '#fff'
+                });
+                return;
+            }
+            
+            // خصم المبلغ
+            await db.ref('users/' + userId).update({ sdmBalance: user.sdmBalance - cost });
+            
+            if (type === 'VIP_SUB') {
+                const days = parseInt(packDetails);
+                const expiryDate = Date.now() + (days * 86400000);
+                await db.ref('users/' + userId).update({ 
+                    vipStatus: 'active', 
+                    vipExpiry: expiryDate 
+                });
+            }
+            
+            await db.ref('game_orders/' + key).update({ 
+                status: 'done',
+                processedBy: me.p,
+                processedAt: Date.now()
+            });
+            
+            await db.ref('alerts/' + userId).push({ 
+                msg: type === 'VIP_SUB' ? "💎 تم تفعيل VIP" : "✅ تم شحن اللعبة", 
+                type: "success",
+                date: Date.now()
+            });
+            
+            await db.ref('transactions').push({
+                type: type === 'VIP_SUB' ? 'vip_purchase' : 'game_purchase',
+                userId: userId,
+                amount: cost,
+                date: Date.now(),
+                description: type === 'VIP_SUB' ? `اشتراك VIP ${packDetails}` : `شحن ${type}`
+            });
+            
+            Swal.fire({
+                title: "نجاح",
+                text: "",
+                icon: "success",
+                background: '#1e293b',
+                color: '#fff'
+            });
+        } catch (error) {
+            Swal.fire({
+                title: "خطأ",
+                text: "فشل المعالجة",
+                icon: "error",
+                background: '#1e293b',
+                color: '#fff'
+            });
+        }
+    }
+
+    async function rejectOrder(key, userId) {
+        if (!me || me.role !== "admin") return;
         
-        Swal.fire("تم الرفض", "", "info");
+        try {
+            await db.ref('game_orders/' + key).update({ 
+                status: 'rejected',
+                rejectedBy: me.p,
+                rejectedAt: Date.now()
+            });
+            
+            db.ref('alerts/' + userId).push({ 
+                msg: "❌ تم رفض الطلب", 
+                type: "error",
+                date: Date.now()
+            });
+            
+            Swal.fire({
+                title: "تم الرفض",
+                text: "",
+                icon: "info",
+                background: '#1e293b',
+                color: '#fff'
+            });
+        } catch (error) {
+            Swal.fire({
+                title: "خطأ",
+                text: "فشل المعالجة",
+                icon: "error",
+                background: '#1e293b',
+                color: '#fff'
+            });
+        }
     }
 
     function sendBroadcastMessage() {
-        if(!me || me.role !== 'admin') return;
+        if (!me || me.role !== 'admin') return;
         
         Swal.fire({
             title: 'نشر رسالة',
@@ -1949,14 +2329,21 @@
             cancelButtonText: 'إلغاء',
             reverseButtons: true
         }).then(res => {
-            if(res.value) {
+            if (res.value) {
                 db.ref('settings/broadcast').set({ 
                     text: res.value, 
                     id: Date.now(),
                     sentBy: me.p,
                     sentAt: Date.now()
                 });
-                Swal.fire('تم','تم نشر الرسالة','success');
+                
+                Swal.fire({
+                    title: 'تم',
+                    text: 'تم نشر الرسالة',
+                    icon: 'success',
+                    background: '#1e293b',
+                    color: '#fff'
+                });
             }
         });
     }
@@ -1965,9 +2352,13 @@
         if (!me || me.role !== 'admin') return;
         
         event.stopPropagation();
-        clearInterval(sliderInterval);
         
-        Swal.fire({
+        if (sliderInterval) {
+            clearInterval(sliderInterval);
+            sliderInterval = null;
+        }
+        
+        const { value: imageData } = await Swal.fire({
             title: `تعديل صورة ${currentSliderIndex + 1}`,
             html: '<input type="file" id="single-slider-input" class="swal2-file" accept="image/*">',
             background: '#1e293b',
@@ -1977,25 +2368,35 @@
             cancelButtonText: 'إلغاء',
             reverseButtons: true,
             preConfirm: () => {
-                const f = document.getElementById('single-slider-input').files[0];
-                return f ? compressImage(f) : null;
+                const fileInput = document.getElementById('single-slider-input');
+                const file = fileInput.files[0];
+                return file ? compressImage(file) : null;
             }
-        }).then((res) => {
-            if (res.value) {
-                let newImages = [...sliderImages];
-                while(newImages.length < 3) newImages.push(sdmCoinImage);
-                newImages[currentSliderIndex] = res.value;
-                db.ref('settings/sliderImages').set(newImages);
-                Swal.fire('تم','تم تحديث الصورة','success');
-            }
-            startSlider();
         });
+        
+        if (imageData) {
+            const newImages = [...sliderImages];
+            while (newImages.length < 3) newImages.push(sdmCoinImage);
+            newImages[currentSliderIndex] = imageData;
+            
+            await db.ref('settings/sliderImages').set(newImages);
+            
+            Swal.fire({
+                title: 'تم',
+                text: 'تم تحديث الصورة',
+                icon: 'success',
+                background: '#1e293b',
+                color: '#fff'
+            });
+        }
+        
+        startSlider();
     }
 
     async function updateCategoryImg(catName) {
         if (!me || me.role !== 'admin') return;
         
-        Swal.fire({
+        const { value: imageData } = await Swal.fire({
             title: `صورة: ${catName}`,
             html: '<input type="file" id="cat-img-input" accept="image/*" class="swal2-file">',
             background: '#1e293b',
@@ -2005,22 +2406,59 @@
             cancelButtonText: 'إلغاء',
             reverseButtons: true,
             preConfirm: () => {
-                const f = document.getElementById('cat-img-input').files[0];
-                return f ? compressImage(f) : null;
+                const fileInput = document.getElementById('cat-img-input');
+                const file = fileInput.files[0];
+                return file ? compressImage(file) : null;
             }
-        }).then((res) => {
-            if (res.value) {
-                db.ref(`settings/categories/${catName}`).set({ img: res.value });
-                Swal.fire('تم','تم تحديث صورة القسم','success');
+        });
+        
+        if (imageData) {
+            await db.ref(`settings/categories/${catName}`).set({ img: imageData });
+            
+            Swal.fire({
+                title: 'تم',
+                text: 'تم تحديث صورة القسم',
+                icon: 'success',
+                background: '#1e293b',
+                color: '#fff'
+            });
+        }
+    }
+
+    function editDevAlert() {
+        if (!me || me.role !== "admin") return;
+        
+        const currentAlert = document.getElementById('dev-alert-bar').innerText
+            .replace('📢 ', '')
+            .replace(' ✏️', '');
+        
+        Swal.fire({
+            title: 'تعديل التنبيه',
+            input: 'text',
+            inputValue: currentAlert,
+            background: '#1e293b',
+            color: '#fff',
+            showCancelButton: true,
+            confirmButtonText: 'حفظ',
+            cancelButtonText: 'إلغاء',
+            reverseButtons: true
+        }).then(res => {
+            if (res.isConfirmed) {
+                db.ref('settings/globalAlert').set(res.value);
             }
         });
     }
 
+    // --- التنبيهات ---
     function listenForUserAlerts() {
-        if(isGuest || !me) return;
+        if (isGuest || !me) return;
         
-        db.ref('alerts/' + me.p).on('child_added', snap => {
+        // مسح المستمع القديم
+        if (listeners.alerts) listeners.alerts();
+        
+        listeners.alerts = db.ref('alerts/' + me.p).on('child_added', snap => {
             const data = snap.val();
+            
             Swal.fire({
                 title: 'تنبيه',
                 text: escapeHtml(data.msg),
@@ -2028,16 +2466,20 @@
                 background: '#1e293b',
                 color: '#fff'
             });
+            
             snap.ref.remove();
         });
     }
 
+    // --- الرسالة الترحيبية ---
     function showWelcome() {
         const hour = new Date().getHours();
         const container = document.getElementById('welcome-container');
         
-        if(hStack[hStack.length-1] === 'home' && me && !isGuest) {
-            const greeting = hour < 12 ? "صباح الخير" : (hour < 18 ? "مساء الخير" : "مساء الخير");
+        if (hStack[hStack.length-1] === 'home' && me && !isGuest) {
+            const greeting = hour < 12 ? "صباح الخير" : 
+                           hour < 18 ? "مساء الخير" : "مساء الخير";
+            
             container.innerHTML = `
                 <div style="background:rgba(59, 130, 246, 0.2); color:var(--neon-blue); padding:10px; border-radius:15px; margin:15px 0; border:1px solid var(--primary); font-size:12px;">
                     ${greeting}، ${escapeHtml(me.n)} ✨
@@ -2049,38 +2491,51 @@
         }
     }
 
+    // --- السلايدر ---
     function startSlider() {
         const imgEl = document.getElementById('slider-img');
-        if(!imgEl) return;
+        if (!imgEl) return;
         
         currentSliderIndex = 0;
-        imgEl.src = sliderImages[0];
+        imgEl.src = sliderImages[0] || sdmCoinImage;
         updateDots(0);
         
         sliderInterval = setInterval(() => {
             const el = document.getElementById('slider-img');
-            if(!el) return;
+            if (!el) return;
             
             currentSliderIndex = (currentSliderIndex + 1) % sliderImages.length;
             el.style.opacity = 0;
+            
             setTimeout(() => {
-                el.src = sliderImages[currentSliderIndex];
+                el.src = sliderImages[currentSliderIndex] || sdmCoinImage;
                 el.style.opacity = 1;
                 updateDots(currentSliderIndex);
             }, 300);
         }, 5000);
     }
 
-    function updateDots(idx) {
-        document.querySelectorAll('.dot').forEach(d => d.classList.remove('active'));
-        const ad = document.getElementById(`dot-${idx}`);
-        if(ad) ad.classList.add('active');
+    function updateDots(index) {
+        document.querySelectorAll('.dot').forEach((dot, i) => {
+            if (i === index) {
+                dot.classList.add('active');
+            } else {
+                dot.classList.remove('active');
+            }
+        });
     }
 
-    async function rateUser(uid) {
-        if(isGuest) return checkGuestAccess('profile');
-        if(uid === me.p) {
-            Swal.fire('خطأ', 'لا يمكنك تقييم نفسك', 'error');
+    // --- تقييم المستخدم ---
+    async function rateUser(userId) {
+        if (isGuest) return checkGuestAccess('profile');
+        if (userId === me.p) {
+            Swal.fire({
+                title: 'خطأ',
+                text: 'لا يمكنك تقييم نفسك',
+                icon: 'error',
+                background: '#1e293b',
+                color: '#fff'
+            });
             return;
         }
         
@@ -2102,19 +2557,26 @@
             reverseButtons: true
         });
         
-        if(stars) {
+        if (stars) {
             await db.ref('rating_queue').push({
                 rater: me.p,
-                target: uid,
+                target: userId,
                 stars: Number(stars),
                 date: Date.now()
             });
-            Swal.fire('تم', 'تم إرسال تقييمك للاعتماد', 'success');
+            
+            Swal.fire({
+                title: 'تم',
+                text: 'تم إرسال تقييمك للاعتماد',
+                icon: 'success',
+                background: '#1e293b',
+                color: '#fff'
+            });
         }
     }
 
-    async function reportUser(uid) {
-        if(isGuest) return checkGuestAccess('profile');
+    async function reportUser(userId) {
+        if (isGuest) return checkGuestAccess('profile');
         
         const { value: reason } = await Swal.fire({
             title: 'سبب الإبلاغ',
@@ -2134,36 +2596,53 @@
             reverseButtons: true
         });
         
-        if(reason) {
+        if (reason) {
             db.ref('user_reports').push({
-                offender: uid,
+                offender: userId,
                 reporter: me.p,
                 reason: reason,
                 date: Date.now()
             });
-            Swal.fire('تم الإبلاغ','شكراً لتقريرك','success');
+            
+            Swal.fire({
+                title: 'تم الإبلاغ',
+                text: 'شكراً لتقريرك',
+                icon: 'success',
+                background: '#1e293b',
+                color: '#fff'
+            });
         }
     }
 
-    // إضافة دالة للحفاظ على تفاعل المستخدم عند تحديث الصفحة
-    function maintainUserInteraction() {
-        if (me && !isGuest) {
-            db.ref('users/' + me.p).update({ lastInteraction: Date.now() });
+    // --- إغلاق القوائم عند الضغط خارجها ---
+    document.addEventListener('click', function(event) {
+        if (activePostMenu && !activePostMenu.contains(event.target)) {
+            const menuBtn = document.querySelector('.post-menu-btn');
+            if (!menuBtn || !menuBtn.contains(event.target)) {
+                activePostMenu.classList.remove('active');
+                activePostMenu = null;
+            }
         }
-    }
-
-    // تحديث تفاعل المستخدم كل 30 ثانية
-    setInterval(maintainUserInteraction, 30000);
-
-    // إضافة مستمع لتفاعلات المستخدم
-    document.addEventListener('click', maintainUserInteraction);
-    document.addEventListener('touchstart', maintainUserInteraction);
-    document.addEventListener('keypress', maintainUserInteraction);
-
-    // تهيئة التطبيق
-    document.addEventListener('DOMContentLoaded', function() {
-        console.log('SDM Market Secure - Loaded Successfully');
     });
+
+    // --- تهيئة النظام عند التحميل ---
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('SDM Market Secure - Initialized');
+        initSystem();
+        
+        // تحديث حالة الاتصال كل دقيقة
+        setInterval(() => {
+            if (me && !isGuest) {
+                db.ref('users/' + me.p).update({ lastSeen: Date.now() });
+            }
+        }, 60000);
+    });
+
+    // --- منع التحديث المفاجئ ---
+    window.addEventListener('beforeunload', function() {
+        removeAllListeners();
+    });
+
 </script>
 </body>
 </html>
