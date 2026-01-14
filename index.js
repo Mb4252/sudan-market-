@@ -1,180 +1,104 @@
 const admin = require('firebase-admin');
 const functions = require('firebase-functions');
 
-// تهيئة Firebase
-const serviceAccount = require('./service-account-key.json');
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
-});
-
+admin.initializeApp();
 const db = admin.database();
 
-// البوت الأساسي لتداول MRK
-exports.processTradeOrders = functions.database
-  .ref('/trade_orders/{orderId}')
-  .onCreate(async (snapshot, context) => {
-    const order = snapshot.val();
-    const orderId = context.params.orderId;
-    
-    if (order.status !== 'pending') return null;
-    
-    try {
-      // تحديث الحالة إلى جاري المعالجة
-      await snapshot.ref.update({ status: 'processing' });
-      
-      // البحث عن مطابقة في الطلبات المعاكسة
-      const oppositeType = order.type === 'buy' ? 'sell' : 'buy';
-      const ordersRef = db.ref(`market/orders/${oppositeType}`);
-      
-      const oppositeOrders = await ordersRef
-        .orderByChild('price')
-        .once('value');
-      
-      let matched = false;
-      let remainingAmount = order.amount;
-      let executedTrades = [];
-      
-      oppositeOrders.forEach(async (oppositeSnap) => {
-        if (matched || remainingAmount <= 0) return;
+/**
+ * 1. معالجة التحويلات المالية (من محفظة لمحفظة)
+ * يتميز بالأمان العالي ومنع الإنفاق المزدوج
+ */
+exports.handleTransfers = functions.database.ref('/requests/transfers/{id}')
+    .onCreate(async (snapshot) => {
+        const { from, to, amount } = snapshot.val();
         
-        const oppositeOrder = oppositeSnap.val();
-        const oppositeOrderId = oppositeSnap.key;
-        
-        // التحقق من المطابقة
-        if (
-          (order.type === 'buy' && order.price >= oppositeOrder.price) ||
-          (order.type === 'sell' && order.price <= oppositeOrder.price)
-        ) {
-          // حساب الكمية القابلة للتنفيذ
-          const tradeAmount = Math.min(remainingAmount, oppositeOrder.amount);
-          const tradePrice = oppositeOrder.price;
-          
-          // تحديث أرصدة المستخدمين
-          if (order.type === 'buy') {
-            // المشتري يحصل على MRK، البائع يحصل على SDM
-            await updateUserBalance(order.userId, 'mrkBalance', tradeAmount, '+');
-            await updateUserBalance(oppositeOrder.userId, 'sdmBalance', tradeAmount * tradePrice, '+');
-          } else {
-            // البائع يحصل على SDM، المشتري يحصل على MRK
-            await updateUserBalance(order.userId, 'sdmBalance', tradeAmount * tradePrice, '+');
-            await updateUserBalance(oppositeOrder.userId, 'mrkBalance', tradeAmount, '+');
-          }
-          
-          // تسجيل الصفقة في التاريخ
-          await db.ref('market/history').push({
-            price: tradePrice,
-            amount: tradeAmount,
-            buyer: order.type === 'buy' ? order.userId : oppositeOrder.userId,
-            seller: order.type === 'sell' ? order.userId : oppositeOrder.userId,
-            timestamp: Date.now()
-          });
-          
-          // تحديث سعر السوق الأخير
-          await db.ref('market/current_price').set(tradePrice);
-          
-          // تحديث كمية الطلب المقابل
-          const newOppositeAmount = oppositeOrder.amount - tradeAmount;
-          if (newOppositeAmount > 0) {
-            await oppositeSnap.ref.update({ amount: newOppositeAmount });
-          } else {
-            await oppositeSnap.ref.remove();
-          }
-          
-          remainingAmount -= tradeAmount;
-          executedTrades.push({
-            price: tradePrice,
-            amount: tradeAmount,
-            withUser: oppositeOrder.userId
-          });
-          
-          if (remainingAmount <= 0) {
-            matched = true;
-          }
+        try {
+            // التأكد من وجود حساب المستلم أولاً
+            const recipientSnap = await db.ref(`users/${to}`).once('value');
+            if (!recipientSnap.exists()) {
+                await sendNotification(from, "❌ فشل: حساب المستلم غير موجود");
+                return snapshot.ref.remove();
+            }
+
+            // تنفيذ الخصم من المرسل (Transaction لضمان الدقة)
+            const fromRef = db.ref(`users/${from}`);
+            const result = await fromRef.transaction(user => {
+                if (user && (user.sdmBalance || 0) >= amount) {
+                    user.sdmBalance -= amount;
+                    return user;
+                }
+                return; // إلغاء إذا كان الرصيد غير كافٍ
+            });
+
+            if (result.committed) {
+                // إضافة الرصيد للمستلم
+                await db.ref(`users/${to}/sdmBalance`).transaction(b => (b || 0) + amount);
+                
+                // تسجيل المعاملة في السجل التاريخي
+                await db.ref('transactions').push({
+                    from, to, amount, type: 'transfer', date: Date.now()
+                });
+
+                await sendNotification(from, `✅ تم تحويل ${amount} SDM بنجاح`);
+                await sendNotification(to, `💰 استلمت تحويل بمبلغ ${amount} SDM`);
+            } else {
+                await sendNotification(from, "❌ فشل التحويل: رصيدك غير كافٍ");
+            }
+            // حذف الطلب من قائمة الانتظار بعد الانتهاء
+            return snapshot.ref.remove();
+        } catch (e) {
+            console.error("Transfer Error:", e);
         }
-      });
-      
-      // تحديث حالة الطلب
-      if (matched) {
-        await snapshot.ref.update({
-          status: 'completed',
-          executedTrades: executedTrades,
-          completedAt: Date.now()
-        });
-        
-        // إذا بقي جزء من الطلب غير منفذ، تضعه في دفتر الطلبات
-        if (remainingAmount > 0) {
-          await db.ref(`market/orders/${order.type}`).push({
-            userId: order.userId,
-            price: order.price,
-            amount: remainingAmount,
-            timestamp: Date.now()
-          });
-        }
-      } else {
-        // إذا لم توجد مطابقة، يضاف الطلب لدفتر الطلبات
-        await db.ref(`market/orders/${order.type}`).push({
-          userId: order.userId,
-          price: order.price,
-          amount: order.amount,
-          timestamp: Date.now()
-        });
-        
-        await snapshot.ref.update({
-          status: 'queued',
-          queuedAt: Date.now()
-        });
-      }
-      
-      // إرسال إشعارات للمستخدمين
-      await sendNotification(order.userId, 'تم معالجة طلبك');
-      
-    } catch (error) {
-      console.error('Error processing order:', error);
-      await snapshot.ref.update({
-        status: 'failed',
-        error: error.message
-      });
-    }
-    
-    return null;
-  });
+    });
 
-// دالة مساعدة لتحديث أرصدة المستخدمين
-async function updateUserBalance(userId, balanceType, amount, operation) {
-  const userRef = db.ref(`users/${userId}/${balanceType}`);
-  const snapshot = await userRef.once('value');
-  const currentBalance = snapshot.val() || 0;
-  
-  let newBalance;
-  if (operation === '+') {
-    newBalance = currentBalance + amount;
-  } else {
-    newBalance = currentBalance - amount;
-  }
-  
-  await userRef.set(newBalance);
-  return newBalance;
+/**
+ * 2. معالجة التقييمات (حساب المتوسط الحسابي)
+ */
+exports.processRatings = functions.database.ref('/rating_queue/{id}')
+    .onCreate(async (snapshot) => {
+        const { target, stars } = snapshot.val();
+        try {
+            const userRef = db.ref(`users/${target}`);
+            await userRef.transaction(u => {
+                if (u) {
+                    let oldRating = u.rating || 5.0;
+                    // معادلة تحديث التقييم المتوسط
+                    u.rating = Number(((oldRating + stars) / 2).toFixed(1));
+                    return u;
+                }
+            });
+            await sendNotification(target, `⭐ حصلت على تقييم جديد: ${stars} نجوم`);
+            return snapshot.ref.remove();
+        } catch (e) { console.error(e); }
+    });
+
+/**
+ * 3. معالجة البلاغات والحظر التلقائي
+ */
+exports.processReports = functions.database.ref('/user_reports/{id}')
+    .onCreate(async (snapshot) => {
+        const { offender } = snapshot.val();
+        try {
+            const userRef = db.ref(`users/${offender}`);
+            await userRef.transaction(u => {
+                if (u) {
+                    u.reportCount = (u.reportCount || 0) + 1;
+                    // إذا وصل لـ 5 بلاغات يتم حظره تلقائياً لمدة 24 ساعة
+                    if (u.reportCount >= 5) {
+                        u.bannedUntil = Date.now() + 86400000;
+                    }
+                    return u;
+                }
+            });
+            return snapshot.ref.remove();
+        } catch (e) { console.error(e); }
+    });
+
+// دالة مساعدة لإرسال الإشعارات للمستخدمين داخل التطبيق
+async function sendNotification(uid, msg) {
+    await db.ref(`alerts/${uid}`).push({
+        msg: msg,
+        date: Date.now(),
+        type: msg.includes('✅') || msg.includes('💰') ? 'success' : 'info'
+    });
 }
-
-// دالة إرسال الإشعارات
-async function sendNotification(userId, message) {
-  await db.ref(`alerts/${userId}`).push({
-    msg: message,
-    type: 'info',
-    timestamp: Date.now()
-  });
-}
-
-// بوت للمهام الأخرى (شراء SDM، طلبات الألعاب، VIP)
-exports.processOtherRequests = functions.database
-  .ref('/pending_requests/{requestId}')
-  .onCreate(async (snapshot, context) => {
-    const request = snapshot.val();
-    const requestId = context.params.requestId;
-    
-    // هنا يمكنك إضافة منطق معالجة الطلبات الأخرى
-    // مثل: طلبات شراء SDM، شحن الألعاب، تفعيل VIP
-    
-    return null;
-  });
