@@ -973,89 +973,53 @@
     }
 
     // --- المحفظة والعملات ---
+// --- Secure Transfer Logic ---
     function showTransfer() {
         Swal.fire({
             title: 'تحويل رصيد 💸',
-            html: '<input id="tr-id" placeholder="ID المستلم" style="background:#0f172a; color:white"><input id="tr-amount" type="number" placeholder="المبلغ" style="background:#0f172a; color:white">',
+            html: `
+                <input id="tr-id" placeholder="ID المستلم" style="background:#0f172a; color:white; width:100%; padding:10px; border-radius:5px; border:1px solid #334155;">
+                <div id="tr-name-disp" style="height:20px; font-size:12px; color:var(--neon-blue); margin:5px 0; font-weight:bold;"></div>
+                <input id="tr-amount" type="number" placeholder="المبلغ (SDM)" style="background:#0f172a; color:white; width:100%; padding:10px; border-radius:5px; border:1px solid #334155;">
+            `,
             background: '#1e293b', color: '#fff',
             showCancelButton: true, confirmButtonText: 'إرسال',
+            didOpen: () => {
+                const idInp = document.getElementById('tr-id');
+                const nameDisp = document.getElementById('tr-name-disp');
+                idInp.addEventListener('input', () => {
+                    const val = idInp.value.trim();
+                    if(val.length > 5) {
+                        db.ref('users/'+val).once('value').then(s => {
+                            if(s.exists()) nameDisp.innerHTML = `<i class="fas fa-check-circle"></i> ${s.val().n}`;
+                            else nameDisp.innerHTML = `<span style="color:var(--red)">مستخدم غير موجود</span>`;
+                        });
+                    } else nameDisp.innerHTML = "";
+                });
+            },
             preConfirm: () => {
-                return { id: document.getElementById('tr-id').value.trim(), amount: document.getElementById('tr-amount').value };
+                const id = document.getElementById('tr-id').value.trim();
+                const amount = document.getElementById('tr-amount').value;
+                if(!id || !amount) return Swal.showValidationMessage('البيانات ناقصة');
+                return { id, amount: Number(amount) };
             }
         }).then(async res => {
             if(res.isConfirmed) {
                 const {id, amount} = res.value;
                 if (id === me.p) return Swal.fire('خطأ', 'لا يمكن التحويل لنفسك', 'error');
-                if(Number(amount) > me.sdmBalance) return Swal.fire('خطأ', 'رصيدك غير كاف', 'error');
                 
-                const uSnap = await db.ref('users/'+id).once('value');
-                if(!uSnap.exists()) return Swal.fire('خطأ', 'كود المستخدم غير صحيح', 'error');
-
-                db.ref('transfer_queue').push({ sender: me.p, receiver: id, amount: Number(amount), timestamp: Date.now() });
-                Swal.fire('تم الإرسال', 'جاري المعالجة...', 'success');
+                // إرسال الطلب للسيرفر فقط (بدون تعديل الرصيد محلياً)
+                db.ref('requests/transfers').push({
+                    from: me.p,
+                    to: id,
+                    amount: amount,
+                    date: Date.now()
+                }).then(() => {
+                    Swal.fire('تم الإرسال', 'جاري معالجة الطلب بواسطة النظام...', 'success');
+                }).catch(err => Swal.fire('خطأ', 'فشل الاتصال', 'error'));
             }
         });
     }
-
-    function requestCoins() {
-        const qty = document.getElementById('buy-qty').value;
-        if(!qty || !tempBuyImg) return Swal.fire('تنبيه', 'مطلوب الكمية وصورة الإشعار', 'warning');
-        db.ref('coin_requests').push({ uP: me.p, uN: me.n, qty, img: tempBuyImg, status: 'pending', date: Date.now() });
-        Swal.fire('تم الإرسال', 'سيقوم المشرف بالمراجعة', 'success');
-    }
-
-    function loadTransactions() {
-        db.ref('transactions').orderByChild('involves').on('value', snap => {
-            const l = document.getElementById('transactions-history'); if(!l) return;
-            let i = []; snap.forEach(c => { let v=c.val(); if(v.involves && v.involves.includes(me.p)) i.unshift(v); });
-            l.innerHTML = i.length ? "" : "<p style='color:gray; text-align:center;'>لا يوجد سجل</p>";
-            i.forEach(t => {
-                const s = t.sender === me.p;
-                l.innerHTML += `<div style="padding:10px; border-bottom:1px solid var(--border); font-size:12px;">
-                    <b>${t.type==='purchase'?'📥 شحن':'🔁 تحويل'}</b>: ${s?`إلى ${escapeHtml(t.receiverName)}`:`من ${escapeHtml(t.senderName)}`}
-                    <span style="float:left; color:${s?'var(--red)':'var(--green)'}">${s?'-':'+'}${t.amount}</span>
-                </div>`;
-            });
-        });
-    }
-
-    // --- الألعاب VIP ---
-    function loadCorrectPacks() {
-        const g = document.getElementById('active-game').value;
-        const p = document.getElementById('p-pack-input');
-        p.innerHTML = officialRates[g].map(r => `<option value="${r.sdm}">${r.name} (${r.sdm} SDM)</option>`).join('');
-        calculateGameCost(p);
-    }
-
-    async function sendOrderToDeveloper() {
-        const game = document.getElementById('active-game').value;
-        const pid = document.getElementById('p-id-input').value;
-        const packEl = document.getElementById('p-pack-input');
-        const cost = parseInt(packEl.value);
-        if(!pid) return Swal.fire('خطأ', 'أدخل الآيدي', 'error');
-        if(me.sdmBalance < cost) return Swal.fire('خطأ', 'رصيدك غير كاف', 'error');
-        
-        await db.ref('game_orders').push({
-            uP: me.p, uN: me.n, gameType: game, playerId: pid, package: packEl.options[packEl.selectedIndex].text,
-            cost: cost, status: 'pending', date: Date.now() 
-        });
-        Swal.fire('تم الطلب', 'جاري المعالجة...', 'success');
-    }
-
-    function loadGameHistory() {
-        db.ref('game_orders').orderByChild('uP').equalTo(me.p).limitToLast(5).on('value', snap => {
-            const div = document.getElementById('game-history');
-            if(!div) return; div.innerHTML = "";
-            snap.forEach(c => {
-                const o = c.val();
-                div.innerHTML += `<div style="background:rgba(255,255,255,0.05); padding:10px; margin-bottom:5px; border-radius:10px; display:flex; justify-content:space-between;">
-                    <span>${o.gameType==='VIP_SUB'?'VIP':o.gameType}</span>
-                    <span>${o.status==='done'?'✅':(o.status==='rejected'?'❌':'⏳')}</span>
-                </div>`;
-            });
-        });
-    }
-
     async function buyVip(days, cost) {
         if(me.sdmBalance < cost) return Swal.fire('فشل', 'رصيدك غير كاف', 'error');
         // تفعيل فوري للاشتراك (أو يمكن جعله عبر طلب للأدمن) - هنا سنجعله عبر طلب
