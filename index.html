@@ -180,6 +180,17 @@
         
         /* Date style */
         .post-date { font-size: 11px; color: var(--text-sec); margin-top: 5px; display: flex; align-items: center; gap: 5px; }
+        
+        /* Deposit image style */
+        .deposit-img { 
+            width: 100%; 
+            max-height: 200px; 
+            object-fit: contain; 
+            border-radius: 10px; 
+            margin: 10px 0; 
+            cursor: pointer; 
+            border: 1px solid var(--border);
+        }
     </style>
 </head>
 <body>
@@ -900,16 +911,103 @@
     }
     function calculateGameCost(selectElement) { const val = parseFloat(selectElement.value); const resElement = document.getElementById('game-cost-res'); if (isNaN(val) || val < 0) { resElement.innerText = "0 SDG"; } else { const sdg = val * SDM_RATE; resElement.innerText = sdg.toLocaleString() + " SDG"; } }
 
-    // Admin
+    // Admin - تم تعديل هذه الدالة لإصلاح مشكلة عرض الصور
     function listenForAdminTasks() {
         if (me.role !== "admin") return;
-        db.ref('coin_requests').orderByChild('status').equalTo('pending').on('value', snap => { const area = document.getElementById('admin-notifications-area'); if(!area) return; area.innerHTML = ""; snap.forEach(child => { const req = child.val(); area.innerHTML += `<div class="admin-notify-bar"><p><b>🔔 طلب شراء</b>: ${escapeHtml(req.uN)} | ${req.qty} SDM</p><img src="${req.img}" style="width:100%; border-radius:10px; cursor:pointer;" onclick="Swal.fire({imageUrl:'${req.img}'})"><div style="display:flex; gap:10px; margin-top:5px;"><button class="btn-main" style="background:var(--green); margin:0;" onclick="approvePurchase('${child.key}', '${req.uP}', ${req.qty})">موافق</button><button class="btn-main" style="background:var(--red); margin:0;" onclick="rejectPurchase('${child.key}', '${req.uP}')">رفض</button></div></div>`; }); });
+        db.ref('coin_requests').orderByChild('status').equalTo('pending').on('value', snap => { 
+            const area = document.getElementById('admin-notifications-area'); 
+            if(!area) return; 
+            area.innerHTML = ""; 
+            snap.forEach(child => { 
+                const req = child.val();
+                // استخدام كود HTML صحيح لعرض الصور
+                area.innerHTML += `
+                    <div class="admin-notify-bar">
+                        <p><b>🔔 طلب شراء</b>: ${escapeHtml(req.uN)} | ${req.qty} SDM</p>
+                        <img src="${req.img}" class="deposit-img" onclick="showLargeImage('${req.img}')">
+                        <div style="display:flex; gap:10px; margin-top:5px;">
+                            <button class="btn-main" style="background:var(--green); margin:0;" onclick="approvePurchase('${child.key}', '${req.uP}', ${req.qty})">موافق</button>
+                            <button class="btn-main" style="background:var(--red); margin:0;" onclick="rejectPurchase('${child.key}', '${req.uP}')">رفض</button>
+                        </div>
+                    </div>`;
+            }); 
+        });
     }
-    function initDeveloperLogic() { if (me.role !== "admin") return; db.ref('game_orders').orderByChild('status').equalTo('pending').on('value', snap => { const container = document.getElementById('orders-list-container'); if(!container) return; container.innerHTML = ""; snap.forEach(child => { const o = child.val(); container.innerHTML += `<div class="admin-item"><b>العميل:</b> ${escapeHtml(o.uN)}<br><b>${o.gameType}</b> (${o.package}) <br> ID: ${o.playerId}<br><div style="color:var(--accent)">التكلفة: ${o.cost} SDM</div><div style="display:flex; gap:10px; margin-top:5px;"><button class="btn-main" style="background:var(--green); margin:0; padding:5px;" onclick="confirmOrder('${child.key}', '${o.uP}', ${o.cost}, '${o.gameType}', '${o.package}')">قبول</button><button class="btn-main" style="background:var(--red); margin:0; padding:5px;" onclick="rejectOrder('${child.key}', '${o.uP}')">رفض</button></div></div>`; }); }); }
-    async function approvePurchase(id, up, qty) { if (me.role !== "admin") return; const uSnap = await db.ref('users/'+up).once('value'); const bal = uSnap.val().sdmBalance || 0; await db.ref('users/'+up).update({ sdmBalance: bal + Number(qty) }); await db.ref('coin_requests/'+id).update({ status: 'approved', date: Date.now() }); await db.ref('alerts/'+up).push({ msg: `✅ تم شراء ${qty} SDM`, type: 'success' }); Swal.fire('تم','','success'); }
-    async function rejectPurchase(id, up) { if (me.role !== "admin") return; await db.ref('coin_requests/'+id).update({ status: 'rejected' }); await db.ref('alerts/'+up).push({ msg: `❌ تم رفض طلب الشراء`, type: 'error' }); Swal.fire('تم الرفض','','info'); }
-    async function confirmOrder(key, uid, cost, type, packDetails) { if (me.role !== "admin") return; const uSnap = await db.ref('users/'+uid).once('value'); if(!uSnap.exists()) return; const u = uSnap.val(); if((u.sdmBalance || 0) < cost) { Swal.fire('فشل', 'رصيد العميل غير كاف', 'error'); return; } await db.ref('users/'+uid).update({ sdmBalance: u.sdmBalance - cost }); if(type === 'VIP_SUB') await db.ref('users/'+uid).update({ vipStatus: 'active', vipExpiry: Date.now() + (parseInt(packDetails) * 86400000) }); await db.ref('game_orders/' + key).update({ status: 'done' }); db.ref('alerts/' + uid).push({ msg: type === 'VIP_SUB' ? "💎 تم تفعيل VIP" : "✅ تم شحن اللعبة", type: "success" }); Swal.fire("نجاح", "", "success"); }
-    async function rejectOrder(key, uid) { if (me.role !== "admin") return; await db.ref('game_orders/' + key).update({ status: 'rejected' }); db.ref('alerts/' + uid).push({ msg: "❌ تم رفض الطلب", type: "error" }); Swal.fire("تم الرفض", "", "info"); }
+    
+    function showLargeImage(imgUrl) {
+        Swal.fire({
+            imageUrl: imgUrl,
+            imageAlt: 'صورة الإشعار',
+            showConfirmButton: false,
+            showCloseButton: true,
+            background: '#1e293b',
+            color: '#fff'
+        });
+    }
+    
+    function initDeveloperLogic() { 
+        if (me.role !== "admin") return; 
+        db.ref('game_orders').orderByChild('status').equalTo('pending').on('value', snap => { 
+            const container = document.getElementById('orders-list-container'); 
+            if(!container) return; 
+            container.innerHTML = ""; 
+            snap.forEach(child => { 
+                const o = child.val(); 
+                container.innerHTML += `
+                    <div class="admin-item">
+                        <b>العميل:</b> ${escapeHtml(o.uN)}<br>
+                        <b>${o.gameType}</b> (${o.package}) <br> 
+                        ID: ${o.playerId}<br>
+                        <div style="color:var(--accent)">التكلفة: ${o.cost} SDM</div>
+                        <div style="display:flex; gap:10px; margin-top:5px;">
+                            <button class="btn-main" style="background:var(--green); margin:0; padding:5px;" onclick="confirmOrder('${child.key}', '${o.uP}', ${o.cost}, '${o.gameType}', '${o.package}')">قبول</button>
+                            <button class="btn-main" style="background:var(--red); margin:0; padding:5px;" onclick="rejectOrder('${child.key}', '${o.uP}')">رفض</button>
+                        </div>
+                    </div>`; 
+            }); 
+        }); 
+    }
+    
+    async function approvePurchase(id, up, qty) { 
+        if (me.role !== "admin") return; 
+        const uSnap = await db.ref('users/'+up).once('value'); 
+        const bal = uSnap.val().sdmBalance || 0; 
+        await db.ref('users/'+up).update({ sdmBalance: bal + Number(qty) }); 
+        await db.ref('coin_requests/'+id).update({ status: 'approved', date: Date.now() }); 
+        await db.ref('alerts/'+up).push({ msg: `✅ تم شراء ${qty} SDM`, type: 'success' }); 
+        Swal.fire('تم','','success'); 
+    }
+    
+    async function rejectPurchase(id, up) { 
+        if (me.role !== "admin") return; 
+        await db.ref('coin_requests/'+id).update({ status: 'rejected' }); 
+        await db.ref('alerts/'+up).push({ msg: `❌ تم رفض طلب الشراء`, type: 'error' }); 
+        Swal.fire('تم الرفض','','info'); 
+    }
+    
+    async function confirmOrder(key, uid, cost, type, packDetails) { 
+        if (me.role !== "admin") return; 
+        const uSnap = await db.ref('users/'+uid).once('value'); 
+        if(!uSnap.exists()) return; 
+        const u = uSnap.val(); 
+        if((u.sdmBalance || 0) < cost) { 
+            Swal.fire('فشل', 'رصيد العميل غير كاف', 'error'); 
+            return; 
+        } 
+        await db.ref('users/'+uid).update({ sdmBalance: u.sdmBalance - cost }); 
+        if(type === 'VIP_SUB') await db.ref('users/'+uid).update({ vipStatus: 'active', vipExpiry: Date.now() + (parseInt(packDetails) * 86400000) }); 
+        await db.ref('game_orders/' + key).update({ status: 'done' }); 
+        db.ref('alerts/' + uid).push({ msg: type === 'VIP_SUB' ? "💎 تم تفعيل VIP" : "✅ تم شحن اللعبة", type: "success" }); 
+        Swal.fire("نجاح", "", "success"); 
+    }
+    
+    async function rejectOrder(key, uid) { 
+        if (me.role !== "admin") return; 
+        await db.ref('game_orders/' + key).update({ status: 'rejected' }); 
+        db.ref('alerts/' + uid).push({ msg: "❌ تم رفض الطلب", type: "error" }); 
+        Swal.fire("تم الرفض", "", "info"); 
+    }
+    
     function sendBroadcastMessage() { if(me.role !== 'admin') return; Swal.fire({ title: 'نشر رسالة', input: 'textarea', background: '#1e293b', color: '#fff', showCancelButton: true }).then(res => { if(res.value) { db.ref('settings/broadcast').set({ text: res.value, id: Date.now() }); Swal.fire('تم','','success'); } }); }
     async function updateCurrentSliderImg() { if (me.role !== 'admin') return; event.stopPropagation(); clearInterval(sliderInterval); Swal.fire({ title: `تعديل صورة ${currentSliderIndex + 1}`, html: '<input type="file" id="single-slider-input" class="swal2-file" accept="image/*">', background: '#1e293b', color: '#fff', showCancelButton: true, confirmButtonText: 'حفظ', preConfirm: () => { const f = document.getElementById('single-slider-input').files[0]; return f ? compressImage(f) : null; }}).then((res) => { if (res.value) { let newImages = [...sliderImages]; while(newImages.length < 3) newImages.push(sdmCoinImage); newImages[currentSliderIndex] = res.value; db.ref('settings/sliderImages').set(newImages); Swal.fire('تم','','success'); } startSlider(); }); }
     async function updateCategoryImg(catName) { if (me.role !== 'admin') return; Swal.fire({ title: `صورة: ${catName}`, html: '<input type="file" id="cat-img-input" accept="image/*" class="swal2-file">', background: '#1e293b', color: '#fff', showCancelButton: true, preConfirm: () => { const f = document.getElementById('cat-img-input').files[0]; return f ? compressImage(f) : null; }}).then((res) => { if (res.value) db.ref(`settings/categories/${catName}`).set({ img: res.value }); }); }
