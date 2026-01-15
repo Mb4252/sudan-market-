@@ -191,6 +191,38 @@
             cursor: pointer; 
             border: 1px solid var(--border);
         }
+        
+        /* File input style */
+        .file-input-container {
+            position: relative;
+            margin: 10px 0;
+        }
+        
+        .file-input-label {
+            display: block;
+            background: #334155;
+            color: white;
+            padding: 12px;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            border: 1px solid var(--border);
+        }
+        
+        .file-input-label i {
+            margin-left: 8px;
+        }
+        
+        .file-input {
+            display: none;
+        }
+        
+        .file-name {
+            font-size: 12px;
+            color: var(--text-sec);
+            margin-top: 5px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -433,11 +465,28 @@
         try {
             Swal.fire({ title: 'معالجة...', didOpen: () => Swal.showLoading(), background: '#1e293b', color: '#fff' });
             const compressed = await compressImage(i.files[0]);
-            if(t === 'user') { userPic = compressed; if(me && !isGuest) { db.ref('users/'+me.p).update({ pic: userPic }); document.getElementById('profile-img-view').src = userPic; } }
-            else if(t === 'buy') { tempBuyImg = compressed; }
-            else { tempImg = compressed; }
+            if(t === 'user') { 
+                userPic = compressed; 
+                if(me && !isGuest) { 
+                    db.ref('users/'+me.p).update({ pic: userPic }); 
+                    document.getElementById('profile-img-view').src = userPic; 
+                } 
+            }
+            else if(t === 'buy') { 
+                tempBuyImg = compressed; 
+                // عرض اسم الملف
+                const fileName = i.files[0].name;
+                const fileDisplay = document.getElementById('file-name-display');
+                if (fileDisplay) {
+                    fileDisplay.textContent = `تم اختيار: ${fileName}`;
+                    fileDisplay.style.color = 'var(--green)';
+                }
+            }
+            else { 
+                tempImg = compressed; 
+            }
             Swal.close();
-        } catch(e) { Swal.fire('خطأ', 'فشل المعالجة', 'error'); }
+        } catch(e) { Swal.fire('خطأ', 'فشل معالجة الصورة', 'error'); }
     }
 
     function checkGuestAccess(view, extra) { 
@@ -469,7 +518,10 @@
         listenForUserAlerts(); listenForDevAlerts(); checkForBroadcastMessage();
         document.getElementById('auth-screen').classList.add('hidden'); document.getElementById('app-screen').classList.remove('hidden');
         if (!me.wa) Swal.fire({title:'رقم الواتساب', input:'tel', background:'#1e293b', color:'#fff'}).then(r => {if(r.value) db.ref('users/'+me.p).update({wa:r.value})});
-        if(me.role === "admin") setTimeout(initDeveloperLogic, 1000);
+        if(me.role === "admin") {
+            setTimeout(initDeveloperLogic, 1000);
+            listenForAdminTasks(); // تحميل طلبات الإيداع للمطور
+        }
         render('home');
         db.ref('users/' + uid).update({ lastSeen: Date.now() });
     }
@@ -556,7 +608,13 @@
                             <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; margin:10px 0; text-align:center;">
                                 المطلوب دفعه: <b id="buy-cost-display" style="color:var(--up-color); font-size:18px;">0</b> جنيه
                             </div>
-                            <label class="btn-main" style="background:#334155; display:block; text-align:center;"><i class="fas fa-receipt"></i> إرفاق الإشعار<input type="file" hidden onchange="encode(this, 'buy')"></label>
+                            <div class="file-input-container">
+                                <label class="file-input-label">
+                                    <i class="fas fa-receipt"></i> إرفاق إشعار الدفع
+                                    <input type="file" class="file-input" onchange="encode(this, 'buy')" accept="image/*">
+                                </label>
+                                <div id="file-name-display" class="file-name">لم يتم اختيار صورة</div>
+                            </div>
                             <button class="btn-main" onclick="requestCoins()">إرسال الطلب</button>
                         </div>
                         <h3>سجل المعاملات</h3>
@@ -665,7 +723,11 @@
     }
 
     // --- Helper Functions ---
-    function calcBuyCost(val) { document.getElementById('buy-cost-display').innerText = (parseFloat(val||0) * SDM_RATE).toLocaleString(); }
+    function calcBuyCost(val) { 
+        const cost = parseFloat(val||0) * SDM_RATE;
+        document.getElementById('buy-cost-display').innerText = isNaN(cost) ? "0" : cost.toLocaleString(); 
+    }
+    
     function loadPosts(path, subFilter, containerId) {
         db.ref(path).limitToLast(30).on('value', snap => {
             const list = document.getElementById(containerId); if(!list) return; list.innerHTML = "";
@@ -856,33 +918,164 @@
     }
 
     function requestCoins() {
-        const qty = document.getElementById('buy-qty').value;
-        if(!qty || !tempBuyImg) return Swal.fire('تنبيه', 'مطلوب الكمية وصورة الإشعار', 'warning');
-        db.ref('coin_requests').push({ uP: me.p, uN: me.n, qty, img: tempBuyImg, status: 'pending', date: Date.now() });
-        Swal.fire('تم الإرسال', 'سيقوم المشرف بالمراجعة', 'success');
+        const qtyInput = document.getElementById('buy-qty');
+        const qty = qtyInput ? qtyInput.value : null;
+        
+        if(!qty || qty <= 0) {
+            Swal.fire('تنبيه', 'يرجى إدخال كمية صحيحة', 'warning');
+            return;
+        }
+        
+        if(!tempBuyImg) {
+            Swal.fire('تنبيه', 'مطلوب اختيار صورة إشعار الدفع', 'warning');
+            return;
+        }
+        
+        // إرسال الطلب
+        db.ref('coin_requests').push({ 
+            uP: me.p, 
+            uN: me.n, 
+            qty: parseFloat(qty), 
+            img: tempBuyImg, 
+            status: 'pending', 
+            date: Date.now() 
+        }).then(() => {
+            Swal.fire('تم الإرسال', 'سيقوم المشرف بالمراجعة', 'success');
+            // إعادة تعيين الحقول
+            tempBuyImg = '';
+            if (qtyInput) qtyInput.value = '';
+            const fileDisplay = document.getElementById('file-name-display');
+            if (fileDisplay) {
+                fileDisplay.textContent = 'لم يتم اختيار صورة';
+                fileDisplay.style.color = 'var(--text-sec)';
+            }
+        }).catch(error => {
+            Swal.fire('خطأ', 'فشل في إرسال الطلب: ' + error.message, 'error');
+        });
     }
 
     function loadTransactions() {
         db.ref('transactions').orderByChild('from').equalTo(me.p).limitToLast(20).on('value', snap => { processTxn(snap, 'from'); });
         db.ref('transactions').orderByChild('to').equalTo(me.p).limitToLast(20).on('value', snap => { processTxn(snap, 'to'); });
     }
+    
     function processTxn(snap, role) {
-        const l = document.getElementById('transactions-history'); if(!l) return;
+        const l = document.getElementById('transactions-history'); 
+        if(!l) return;
+        l.innerHTML = ""; // مسح المحتوى القديم
+        
+        const transactions = [];
         snap.forEach(c => {
             const t = c.val();
-            if(!l.innerHTML.includes(c.key)) {
-                const color = (role === 'from' || t.type === 'buy') ? 'var(--red)' : 'var(--green)';
-                const sign = (role === 'from') ? '-' : '+';
-                l.innerHTML += `<div style="padding:10px; border-bottom:1px solid var(--border); font-size:12px; display:flex; justify-content:space-between;"><span>${t.type.toUpperCase()}</span><span style="color:${color}">${sign}${t.amount}</span></div>`;
-            }
+            transactions.push({
+                key: c.key,
+                type: t.type || 'unknown',
+                amount: t.amount || 0,
+                date: t.date || Date.now(),
+                details: t.details || ''
+            });
         });
+        
+        // ترتيب حسب التاريخ (الأحدث أولاً)
+        transactions.sort((a, b) => b.date - a.date);
+        
+        transactions.forEach(t => {
+            const color = (role === 'from' || t.type === 'buy') ? 'var(--red)' : 'var(--green)';
+            const sign = (role === 'from') ? '-' : '+';
+            const dateStr = new Date(t.date).toLocaleDateString('ar-SA');
+            l.innerHTML += `
+                <div style="padding:10px; border-bottom:1px solid var(--border); font-size:12px; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div>${t.type.toUpperCase()}</div>
+                        <div style="font-size:10px; color:var(--text-sec)">${dateStr}</div>
+                    </div>
+                    <span style="color:${color}; font-weight:bold;">${sign}${t.amount} SDM</span>
+                </div>`;
+        });
+        
+        if (transactions.length === 0) {
+            l.innerHTML = "<div style='text-align:center; padding:20px; color:var(--text-sec)'>لا توجد معاملات</div>";
+        }
     }
 
-    function loadCorrectPacks() { const g = document.getElementById('active-game').value; const p = document.getElementById('p-pack-input'); p.innerHTML = officialRates[g].map(r => `<option value="${r.sdm}">${r.name} (${r.sdm} SDM)</option>`).join(''); calculateGameCost(p); }
-    async function sendOrderToDeveloper() { const game = document.getElementById('active-game').value; const pid = document.getElementById('p-id-input').value; const packEl = document.getElementById('p-pack-input'); const cost = parseInt(packEl.value); if(!pid) return Swal.fire('خطأ', 'أدخل الآيدي', 'error'); if(me.sdmBalance < cost) return Swal.fire('خطأ', 'رصيدك غير كاف', 'error'); await db.ref('game_orders').push({ uP: me.p, uN: me.n, gameType: game, playerId: pid, package: packEl.options[packEl.selectedIndex].text, cost: cost, status: 'pending', date: Date.now() }); Swal.fire('تم الطلب', 'جاري المعالجة...', 'success'); }
-    function loadGameHistory() { db.ref('game_orders').orderByChild('uP').equalTo(me.p).limitToLast(5).on('value', snap => { const div = document.getElementById('game-history'); if(!div) return; div.innerHTML = ""; snap.forEach(c => { const o = c.val(); div.innerHTML += `<div style="background:rgba(255,255,255,0.05); padding:10px; margin-bottom:5px; border-radius:10px; display:flex; justify-content:space-between;"><span>${o.gameType}</span><span>${o.status==='done'?'✅':(o.status==='rejected'?'❌':'⏳')}</span></div>`; }); }); }
+    function loadCorrectPacks() { 
+        const g = document.getElementById('active-game').value; 
+        const p = document.getElementById('p-pack-input'); 
+        p.innerHTML = officialRates[g].map(r => `<option value="${r.sdm}">${r.name} (${r.sdm} SDM)</option>`).join(''); 
+        calculateGameCost(p); 
+    }
+    
+    async function sendOrderToDeveloper() { 
+        const game = document.getElementById('active-game').value; 
+        const pid = document.getElementById('p-id-input').value; 
+        const packEl = document.getElementById('p-pack-input'); 
+        const cost = parseFloat(packEl.value); 
+        
+        if(!pid) {
+            Swal.fire('خطأ', 'أدخل الآيدي الخاص باللاعب', 'error');
+            return; 
+        }
+        
+        if(me.sdmBalance < cost) {
+            Swal.fire('خطأ', 'رصيدك غير كاف', 'error');
+            return; 
+        }
+        
+        await db.ref('game_orders').push({ 
+            uP: me.p, 
+            uN: me.n, 
+            gameType: game, 
+            playerId: pid, 
+            package: packEl.options[packEl.selectedIndex].text, 
+            cost: cost, 
+            status: 'pending', 
+            date: Date.now() 
+        }); 
+        
+        Swal.fire('تم الطلب', 'جاري المعالجة...', 'success');
+    }
+    
+    function loadGameHistory() { 
+        db.ref('game_orders').orderByChild('uP').equalTo(me.p).limitToLast(5).on('value', snap => { 
+            const div = document.getElementById('game-history'); 
+            if(!div) return; 
+            div.innerHTML = ""; 
+            const orders = [];
+            snap.forEach(c => { 
+                const o = c.val();
+                orders.push({...o, key: c.key});
+            });
+            
+            // ترتيب حسب التاريخ (الأحدث أولاً)
+            orders.sort((a, b) => b.date - a.date);
+            
+            orders.forEach(o => {
+                const statusIcon = o.status==='done'?'✅':(o.status==='rejected'?'❌':'⏳');
+                const dateStr = new Date(o.date).toLocaleDateString('ar-SA');
+                div.innerHTML += `
+                    <div style="background:rgba(255,255,255,0.05); padding:10px; margin-bottom:5px; border-radius:10px;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <span>${o.gameType} - ${o.package}</span>
+                            <span>${statusIcon}</span>
+                        </div>
+                        <div style="font-size:11px; color:var(--text-sec); margin-top:5px;">
+                            ${dateStr} | ${o.cost} SDM
+                        </div>
+                    </div>`;
+            });
+            
+            if (orders.length === 0) {
+                div.innerHTML = "<div style='text-align:center; padding:20px; color:var(--text-sec)'>لا توجد طلبات</div>";
+            }
+        }); 
+    }
+    
     async function buyVip(days, cost) { 
-        if(me.sdmBalance < cost) return Swal.fire('فشل', 'رصيدك غير كاف', 'error'); 
+        if(me.sdmBalance < cost) {
+            Swal.fire('فشل', 'رصيدك غير كاف', 'error'); 
+            return;
+        } 
+        
         // خصم الرصيد فوراً
         const newBalance = me.sdmBalance - cost;
         await db.ref('users/' + me.p).update({ sdmBalance: newBalance });
@@ -909,25 +1102,53 @@
         Swal.fire('تم الاشتراك', `تم تفعيل الاشتراك VIP لمدة ${days} يوم`, 'success');
         nav('vip');
     }
-    function calculateGameCost(selectElement) { const val = parseFloat(selectElement.value); const resElement = document.getElementById('game-cost-res'); if (isNaN(val) || val < 0) { resElement.innerText = "0 SDG"; } else { const sdg = val * SDM_RATE; resElement.innerText = sdg.toLocaleString() + " SDG"; } }
+    
+    function calculateGameCost(selectElement) { 
+        const val = parseFloat(selectElement.value); 
+        const resElement = document.getElementById('game-cost-res'); 
+        if (isNaN(val) || val < 0) { 
+            resElement.innerText = "0 SDG"; 
+        } else { 
+            const sdg = val * SDM_RATE; 
+            resElement.innerText = sdg.toLocaleString() + " SDG"; 
+        } 
+    }
 
     // Admin - تم تعديل هذه الدالة لإصلاح مشكلة عرض الصور
     function listenForAdminTasks() {
         if (me.role !== "admin") return;
+        
         db.ref('coin_requests').orderByChild('status').equalTo('pending').on('value', snap => { 
             const area = document.getElementById('admin-notifications-area'); 
             if(!area) return; 
             area.innerHTML = ""; 
+            
+            const requests = [];
             snap.forEach(child => { 
                 const req = child.val();
+                requests.push({...req, key: child.key});
+            });
+            
+            // ترتيب حسب التاريخ (الأحدث أولاً)
+            requests.sort((a, b) => b.date - a.date);
+            
+            if (requests.length === 0) {
+                area.innerHTML = `<div class="admin-notify-bar" style="text-align:center;">
+                    <p>لا توجد طلبات إيداع جديدة</p>
+                </div>`;
+                return;
+            }
+            
+            requests.forEach(req => {
                 // استخدام كود HTML صحيح لعرض الصور
                 area.innerHTML += `
                     <div class="admin-notify-bar">
-                        <p><b>🔔 طلب شراء</b>: ${escapeHtml(req.uN)} | ${req.qty} SDM</p>
-                        <img src="${req.img}" class="deposit-img" onclick="showLargeImage('${req.img}')">
-                        <div style="display:flex; gap:10px; margin-top:5px;">
-                            <button class="btn-main" style="background:var(--green); margin:0;" onclick="approvePurchase('${child.key}', '${req.uP}', ${req.qty})">موافق</button>
-                            <button class="btn-main" style="background:var(--red); margin:0;" onclick="rejectPurchase('${child.key}', '${req.uP}')">رفض</button>
+                        <p><b>🔔 طلب إيداع</b>: ${escapeHtml(req.uN)} | ${req.qty} SDM</p>
+                        <p style="font-size:12px; color:var(--text-sec)">ID: ${req.uP}</p>
+                        ${req.img ? `<img src="${req.img}" class="deposit-img" onclick="showLargeImage('${req.img}')">` : '<p style="color:var(--red)">لا توجد صورة مرفقة</p>'}
+                        <div style="display:flex; gap:10px; margin-top:10px;">
+                            <button class="btn-main" style="background:var(--green); margin:0; flex:1;" onclick="approvePurchase('${req.key}', '${req.uP}', ${req.qty})">✅ قبول</button>
+                            <button class="btn-main" style="background:var(--red); margin:0; flex:1;" onclick="rejectPurchase('${req.key}', '${req.uP}')">❌ رفض</button>
                         </div>
                     </div>`;
             }); 
@@ -941,7 +1162,10 @@
             showConfirmButton: false,
             showCloseButton: true,
             background: '#1e293b',
-            color: '#fff'
+            color: '#fff',
+            width: '90%',
+            imageWidth: '100%',
+            imageHeight: 'auto'
         });
     }
     
@@ -951,17 +1175,35 @@
             const container = document.getElementById('orders-list-container'); 
             if(!container) return; 
             container.innerHTML = ""; 
+            
+            const orders = [];
             snap.forEach(child => { 
                 const o = child.val(); 
+                orders.push({...o, key: child.key});
+            });
+            
+            // ترتيب حسب التاريخ (الأحدث أولاً)
+            orders.sort((a, b) => b.date - a.date);
+            
+            if (orders.length === 0) {
+                container.innerHTML = `<div style="text-align:center; color:var(--text-sec); padding:20px;">
+                    لا توجد طلبات ألعاب جديدة
+                </div>`;
+                return;
+            }
+            
+            orders.forEach(o => { 
+                const dateStr = new Date(o.date).toLocaleDateString('ar-SA');
                 container.innerHTML += `
                     <div class="admin-item">
-                        <b>العميل:</b> ${escapeHtml(o.uN)}<br>
-                        <b>${o.gameType}</b> (${o.package}) <br> 
-                        ID: ${o.playerId}<br>
-                        <div style="color:var(--accent)">التكلفة: ${o.cost} SDM</div>
+                        <b>👤 العميل:</b> ${escapeHtml(o.uN)}<br>
+                        <b>🎮 ${o.gameType}</b> (${o.package}) <br> 
+                        <b>🆔 ID:</b> ${o.playerId}<br>
+                        <div style="color:var(--accent); margin:5px 0;"><b>💰 التكلفة:</b> ${o.cost} SDM</div>
+                        <div style="font-size:11px; color:var(--text-sec); margin-bottom:10px;">${dateStr}</div>
                         <div style="display:flex; gap:10px; margin-top:5px;">
-                            <button class="btn-main" style="background:var(--green); margin:0; padding:5px;" onclick="confirmOrder('${child.key}', '${o.uP}', ${o.cost}, '${o.gameType}', '${o.package}')">قبول</button>
-                            <button class="btn-main" style="background:var(--red); margin:0; padding:5px;" onclick="rejectOrder('${child.key}', '${o.uP}')">رفض</button>
+                            <button class="btn-main" style="background:var(--green); margin:0; padding:8px 12px; flex:1;" onclick="confirmOrder('${o.key}', '${o.uP}', ${o.cost}, '${o.gameType}', '${o.package}')">✅ قبول</button>
+                            <button class="btn-main" style="background:var(--red); margin:0; padding:8px 12px; flex:1;" onclick="rejectOrder('${o.key}', '${o.uP}')">❌ رفض</button>
                         </div>
                     </div>`; 
             }); 
@@ -970,53 +1212,358 @@
     
     async function approvePurchase(id, up, qty) { 
         if (me.role !== "admin") return; 
-        const uSnap = await db.ref('users/'+up).once('value'); 
-        const bal = uSnap.val().sdmBalance || 0; 
-        await db.ref('users/'+up).update({ sdmBalance: bal + Number(qty) }); 
-        await db.ref('coin_requests/'+id).update({ status: 'approved', date: Date.now() }); 
-        await db.ref('alerts/'+up).push({ msg: `✅ تم شراء ${qty} SDM`, type: 'success' }); 
-        Swal.fire('تم','','success'); 
+        
+        // تأكيد من الأدمن
+        Swal.fire({
+            title: 'تأكيد الإيداع',
+            text: `هل تريد الموافقة على إيداع ${qty} SDM لهذا المستخدم؟`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، موافق',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    const uSnap = await db.ref('users/'+up).once('value'); 
+                    const bal = uSnap.val().sdmBalance || 0; 
+                    
+                    // تحديث رصيد المستخدم
+                    await db.ref('users/'+up).update({ sdmBalance: bal + Number(qty) }); 
+                    
+                    // تحديث حالة الطلب
+                    await db.ref('coin_requests/'+id).update({ 
+                        status: 'approved', 
+                        approvedDate: Date.now(),
+                        approvedBy: me.p 
+                    }); 
+                    
+                    // إرسال تنبيه للمستخدم
+                    await db.ref('alerts/'+up).push({ 
+                        msg: `✅ تم إيداع ${qty} SDM في حسابك`, 
+                        type: 'success',
+                        date: Date.now()
+                    }); 
+                    
+                    // تسجيل المعاملة
+                    await db.ref('transactions').push({
+                        type: 'deposit',
+                        to: up,
+                        amount: Number(qty),
+                        date: Date.now(),
+                        details: `إيداع عملة - معتمد من الأدمن`
+                    });
+                    
+                    Swal.fire('تمت الموافقة', `تم إضافة ${qty} SDM لحساب المستخدم`, 'success');
+                } catch (error) {
+                    Swal.fire('خطأ', 'فشل في تنفيذ العملية: ' + error.message, 'error');
+                }
+            }
+        });
     }
     
     async function rejectPurchase(id, up) { 
         if (me.role !== "admin") return; 
-        await db.ref('coin_requests/'+id).update({ status: 'rejected' }); 
-        await db.ref('alerts/'+up).push({ msg: `❌ تم رفض طلب الشراء`, type: 'error' }); 
-        Swal.fire('تم الرفض','','info'); 
+        
+        Swal.fire({
+            title: 'تأكيد الرفض',
+            text: 'هل تريد رفض طلب الإيداع هذا؟',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، ارفض',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                await db.ref('coin_requests/'+id).update({ 
+                    status: 'rejected',
+                    rejectedDate: Date.now(),
+                    rejectedBy: me.p 
+                }); 
+                await db.ref('alerts/'+up).push({ 
+                    msg: `❌ تم رفض طلب الإيداع الخاص بك`, 
+                    type: 'error',
+                    date: Date.now()
+                }); 
+                Swal.fire('تم الرفض', 'تم رفض طلب الإيداع', 'info'); 
+            }
+        });
     }
     
     async function confirmOrder(key, uid, cost, type, packDetails) { 
         if (me.role !== "admin") return; 
-        const uSnap = await db.ref('users/'+uid).once('value'); 
-        if(!uSnap.exists()) return; 
-        const u = uSnap.val(); 
-        if((u.sdmBalance || 0) < cost) { 
-            Swal.fire('فشل', 'رصيد العميل غير كاف', 'error'); 
-            return; 
-        } 
-        await db.ref('users/'+uid).update({ sdmBalance: u.sdmBalance - cost }); 
-        if(type === 'VIP_SUB') await db.ref('users/'+uid).update({ vipStatus: 'active', vipExpiry: Date.now() + (parseInt(packDetails) * 86400000) }); 
-        await db.ref('game_orders/' + key).update({ status: 'done' }); 
-        db.ref('alerts/' + uid).push({ msg: type === 'VIP_SUB' ? "💎 تم تفعيل VIP" : "✅ تم شحن اللعبة", type: "success" }); 
-        Swal.fire("نجاح", "", "success"); 
+        
+        Swal.fire({
+            title: 'تأكيد الطلب',
+            text: `هل تريد قبول طلب ${type} بتكلفة ${cost} SDM؟`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، أقبل',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    const uSnap = await db.ref('users/'+uid).once('value'); 
+                    if(!uSnap.exists()) {
+                        Swal.fire('فشل', 'المستخدم غير موجود', 'error');
+                        return; 
+                    }
+                    
+                    const u = uSnap.val(); 
+                    if((u.sdmBalance || 0) < cost) { 
+                        Swal.fire('فشل', 'رصيد العميل غير كاف', 'error'); 
+                        return; 
+                    } 
+                    
+                    // خصم التكلفة
+                    await db.ref('users/'+uid).update({ sdmBalance: u.sdmBalance - cost }); 
+                    
+                    if(type === 'VIP_SUB') {
+                        const days = parseInt(packDetails);
+                        await db.ref('users/'+uid).update({ 
+                            vipStatus: 'active', 
+                            vipExpiry: Date.now() + (days * 86400000) 
+                        }); 
+                    }
+                    
+                    await db.ref('game_orders/' + key).update({ 
+                        status: 'done',
+                        completedDate: Date.now(),
+                        completedBy: me.p
+                    }); 
+                    
+                    db.ref('alerts/' + uid).push({ 
+                        msg: type === 'VIP_SUB' ? "💎 تم تفعيل الاشتراك VIP بنجاح" : "✅ تم شحن اللعبة بنجاح", 
+                        type: "success",
+                        date: Date.now()
+                    }); 
+                    
+                    // تسجيل المعاملة
+                    await db.ref('transactions').push({
+                        type: type === 'VIP_SUB' ? 'vip_purchase' : 'game_charge',
+                        from: uid,
+                        amount: cost,
+                        date: Date.now(),
+                        details: `${type === 'VIP_SUB' ? 'اشتراك VIP' : 'شحن لعبة'}: ${packDetails}`
+                    });
+                    
+                    Swal.fire("نجاح", "تم تنفيذ الطلب بنجاح", "success"); 
+                } catch (error) {
+                    Swal.fire('خطأ', 'فشل في تنفيذ العملية: ' + error.message, 'error');
+                }
+            }
+        });
     }
     
     async function rejectOrder(key, uid) { 
         if (me.role !== "admin") return; 
-        await db.ref('game_orders/' + key).update({ status: 'rejected' }); 
-        db.ref('alerts/' + uid).push({ msg: "❌ تم رفض الطلب", type: "error" }); 
-        Swal.fire("تم الرفض", "", "info"); 
+        
+        Swal.fire({
+            title: 'تأكيد الرفض',
+            text: 'هل تريد رفض طلب اللعبة هذا؟',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، ارفض',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                await db.ref('game_orders/' + key).update({ 
+                    status: 'rejected',
+                    rejectedDate: Date.now(),
+                    rejectedBy: me.p
+                }); 
+                db.ref('alerts/' + uid).push({ 
+                    msg: "❌ تم رفض طلب اللعبة الخاص بك", 
+                    type: "error",
+                    date: Date.now()
+                }); 
+                Swal.fire("تم الرفض", "تم رفض الطلب", "info"); 
+            }
+        });
     }
     
-    function sendBroadcastMessage() { if(me.role !== 'admin') return; Swal.fire({ title: 'نشر رسالة', input: 'textarea', background: '#1e293b', color: '#fff', showCancelButton: true }).then(res => { if(res.value) { db.ref('settings/broadcast').set({ text: res.value, id: Date.now() }); Swal.fire('تم','','success'); } }); }
-    async function updateCurrentSliderImg() { if (me.role !== 'admin') return; event.stopPropagation(); clearInterval(sliderInterval); Swal.fire({ title: `تعديل صورة ${currentSliderIndex + 1}`, html: '<input type="file" id="single-slider-input" class="swal2-file" accept="image/*">', background: '#1e293b', color: '#fff', showCancelButton: true, confirmButtonText: 'حفظ', preConfirm: () => { const f = document.getElementById('single-slider-input').files[0]; return f ? compressImage(f) : null; }}).then((res) => { if (res.value) { let newImages = [...sliderImages]; while(newImages.length < 3) newImages.push(sdmCoinImage); newImages[currentSliderIndex] = res.value; db.ref('settings/sliderImages').set(newImages); Swal.fire('تم','','success'); } startSlider(); }); }
-    async function updateCategoryImg(catName) { if (me.role !== 'admin') return; Swal.fire({ title: `صورة: ${catName}`, html: '<input type="file" id="cat-img-input" accept="image/*" class="swal2-file">', background: '#1e293b', color: '#fff', showCancelButton: true, preConfirm: () => { const f = document.getElementById('cat-img-input').files[0]; return f ? compressImage(f) : null; }}).then((res) => { if (res.value) db.ref(`settings/categories/${catName}`).set({ img: res.value }); }); }
-    function listenForUserAlerts() { if(isGuest) return; db.ref('alerts/'+me.p).on('child_added', snap => { const data = snap.val(); Swal.fire({ title: 'تنبيه', text: escapeHtml(data.msg), icon: data.type, background: '#1e293b', color: '#fff' }); snap.ref.remove(); }); }
-    function showWelcome() { const hour = new Date().getHours(); const container = document.getElementById('welcome-container'); if(hStack[hStack.length-1] === 'home' && me && !isGuest) { container.innerHTML = `<div style="background:rgba(59, 130, 246, 0.2); color:var(--neon-blue); padding:10px; border-radius:15px; margin:15px 0; border:1px solid var(--primary); font-size:12px;">${hour < 12 ? "صباح الخير" : "مساء الخير"}، ${escapeHtml(me.n)} ✨</div>`; } else { container.innerHTML = ""; } }
-    function startSlider() { const imgEl = document.getElementById('slider-img'); if(!imgEl) return; currentSliderIndex = 0; imgEl.src = sliderImages[0]; updateDots(0); sliderInterval = setInterval(() => { const el = document.getElementById('slider-img'); if(!el) return; currentSliderIndex = (currentSliderIndex + 1) % sliderImages.length; el.style.opacity = 0; setTimeout(() => { el.src = sliderImages[currentSliderIndex]; el.style.opacity = 1; updateDots(currentSliderIndex); }, 300); }, 5000); }
-    function updateDots(idx) { document.querySelectorAll('.dot').forEach(d => d.classList.remove('active')); const ad = document.getElementById(`dot-${idx}`); if(ad) ad.classList.add('active'); }
-    async function rateUser(uid) { if(isGuest) return checkGuestAccess('profile'); if(uid === me.p) return Swal.fire('خطأ', 'لا يمكنك تقييم نفسك', 'error'); const { value: stars } = await Swal.fire({ title: 'تقييم', input: 'select', inputOptions: { '1':'⭐','2':'⭐⭐','3':'⭐⭐⭐','4':'⭐⭐⭐⭐','5':'⭐⭐⭐⭐⭐' }, background: '#1e293b', color: '#fff', showCancelButton: true }); if(stars) { await db.ref('rating_queue').push({ rater: me.p, target: uid, stars: Number(stars) }); Swal.fire('تم', 'تم إرسال تقييمك للاعتماد', 'success'); } }
-    async function reportUser(uid) { if(isGuest) return checkGuestAccess('profile'); if(confirm('إبلاغ عن الحساب؟')) { db.ref('user_reports').push({ offender: uid, reporter: me.p, date: Date.now() }); Swal.fire('تم الإبلاغ','','success'); } }
+    function sendBroadcastMessage() { 
+        if(me.role !== 'admin') return; 
+        Swal.fire({ 
+            title: 'نشر رسالة عامة', 
+            input: 'textarea', 
+            background: '#1e293b', 
+            color: '#fff', 
+            showCancelButton: true,
+            inputPlaceholder: 'أدخل الرسالة هنا...'
+        }).then(res => { 
+            if(res.isConfirmed && res.value) { 
+                db.ref('settings/broadcast').set({ 
+                    text: res.value, 
+                    id: Date.now(),
+                    sentBy: me.p,
+                    sentDate: Date.now()
+                }); 
+                Swal.fire('تم النشر','تم إرسال الرسالة لجميع المستخدمين','success'); 
+            } 
+        }); 
+    }
+    
+    async function updateCurrentSliderImg() { 
+        if (me.role !== 'admin') return; 
+        event.stopPropagation(); 
+        clearInterval(sliderInterval); 
+        Swal.fire({ 
+            title: `تعديل صورة ${currentSliderIndex + 1}`, 
+            html: '<input type="file" id="single-slider-input" class="swal2-file" accept="image/*">', 
+            background: '#1e293b', 
+            color: '#fff', 
+            showCancelButton: true, 
+            confirmButtonText: 'حفظ', 
+            preConfirm: () => { 
+                const f = document.getElementById('single-slider-input').files[0]; 
+                return f ? compressImage(f) : null; 
+            }
+        }).then((res) => { 
+            if (res.value) { 
+                let newImages = [...sliderImages]; 
+                while(newImages.length < 3) newImages.push(sdmCoinImage); 
+                newImages[currentSliderIndex] = res.value; 
+                db.ref('settings/sliderImages').set(newImages); 
+                Swal.fire('تم','تم تحديث الصورة','success'); 
+            } 
+            startSlider(); 
+        }); 
+    }
+    
+    async function updateCategoryImg(catName) { 
+        if (me.role !== 'admin') return; 
+        Swal.fire({ 
+            title: `صورة: ${catName}`, 
+            html: '<input type="file" id="cat-img-input" accept="image/*" class="swal2-file">', 
+            background: '#1e293b', 
+            color: '#fff', 
+            showCancelButton: true, 
+            preConfirm: () => { 
+                const f = document.getElementById('cat-img-input').files[0]; 
+                return f ? compressImage(f) : null; 
+            }
+        }).then((res) => { 
+            if (res.value) db.ref(`settings/categories/${catName}`).set({ img: res.value }); 
+        }); 
+    }
+    
+    function listenForUserAlerts() { 
+        if(isGuest) return; 
+        db.ref('alerts/'+me.p).on('child_added', snap => { 
+            const data = snap.val(); 
+            Swal.fire({ 
+                title: 'تنبيه', 
+                text: escapeHtml(data.msg), 
+                icon: data.type === 'success' ? 'success' : 'error', 
+                background: '#1e293b', 
+                color: '#fff' 
+            }); 
+            snap.ref.remove(); 
+        }); 
+    }
+    
+    function showWelcome() { 
+        const hour = new Date().getHours(); 
+        const container = document.getElementById('welcome-container'); 
+        if(hStack[hStack.length-1] === 'home' && me && !isGuest) { 
+            const greeting = hour < 12 ? "صباح الخير" : (hour < 18 ? "مساء الخير" : "مساء الخير");
+            container.innerHTML = `
+                <div style="background:rgba(59, 130, 246, 0.2); color:var(--neon-blue); padding:15px; border-radius:15px; margin:15px 0; border:1px solid var(--primary); display:flex; align-items:center; gap:10px;">
+                    <i class="fas fa-hand-sparkles" style="font-size:20px;"></i>
+                    <div>
+                        <div style="font-size:14px; font-weight:bold;">${greeting}، ${escapeHtml(me.n)} ✨</div>
+                        <div style="font-size:12px; color:var(--text-sec);">رصيدك: ${me.sdmBalance.toFixed(2)} SDM</div>
+                    </div>
+                </div>`; 
+        } else { 
+            container.innerHTML = ""; 
+        } 
+    }
+    
+    function startSlider() { 
+        const imgEl = document.getElementById('slider-img'); 
+        if(!imgEl) return; 
+        currentSliderIndex = 0; 
+        imgEl.src = sliderImages[0]; 
+        updateDots(0); 
+        sliderInterval = setInterval(() => { 
+            const el = document.getElementById('slider-img'); 
+            if(!el) return; 
+            currentSliderIndex = (currentSliderIndex + 1) % sliderImages.length; 
+            el.style.opacity = 0; 
+            setTimeout(() => { 
+                el.src = sliderImages[currentSliderIndex]; 
+                el.style.opacity = 1; 
+                updateDots(currentSliderIndex); 
+            }, 300); 
+        }, 5000); 
+    }
+    
+    function updateDots(idx) { 
+        document.querySelectorAll('.dot').forEach(d => d.classList.remove('active')); 
+        const ad = document.getElementById(`dot-${idx}`); 
+        if(ad) ad.classList.add('active'); 
+    }
+    
+    async function rateUser(uid) { 
+        if(isGuest) return checkGuestAccess('profile'); 
+        if(uid === me.p) return Swal.fire('خطأ', 'لا يمكنك تقييم نفسك', 'error'); 
+        const { value: stars } = await Swal.fire({ 
+            title: 'تقييم البائع', 
+            input: 'select', 
+            inputOptions: { 
+                '1':'⭐ نجمة واحدة',
+                '2':'⭐⭐ نجمتين',
+                '3':'⭐⭐⭐ ثلاث نجوم', 
+                '4':'⭐⭐⭐⭐ أربع نجوم', 
+                '5':'⭐⭐⭐⭐⭐ خمس نجوم'
+            }, 
+            background: '#1e293b', 
+            color: '#fff', 
+            showCancelButton: true,
+            inputPlaceholder: 'اختر التقييم'
+        }); 
+        if(stars) { 
+            await db.ref('rating_queue').push({ 
+                rater: me.p, 
+                target: uid, 
+                stars: Number(stars), 
+                date: Date.now() 
+            }); 
+            Swal.fire('تم التقييم', 'شكراً لتقييمك، سيتم اعتماد التقييم من قبل النظام', 'success'); 
+        } 
+    }
+    
+    async function reportUser(uid) { 
+        if(isGuest) return checkGuestAccess('profile'); 
+        Swal.fire({
+            title: 'الإبلاغ عن مستخدم',
+            input: 'textarea',
+            inputPlaceholder: 'أدخل سبب الإبلاغ...',
+            showCancelButton: true,
+            confirmButtonText: 'إرسال الإبلاغ',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        }).then((result) => {
+            if (result.isConfirmed && result.value) {
+                db.ref('user_reports').push({ 
+                    offender: uid, 
+                    reporter: me.p, 
+                    reason: result.value,
+                    date: Date.now() 
+                }); 
+                Swal.fire('تم الإبلاغ', 'شكراً لإبلاغك، سيتم مراجعة البلاغ من قبل الإدارة', 'success'); 
+            }
+        });
+    }
 </script>
 </body>
 </html>
