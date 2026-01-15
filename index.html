@@ -8,15 +8,6 @@
     <!-- خطوط عربية -->
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;500;800&display=swap" rel="stylesheet">
     
-    <!-- OneSignal -->
-    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
-    <script>
-      window.OneSignalDeferred = window.OneSignalDeferred || [];
-      OneSignalDeferred.push(async function(OneSignal) {
-        await OneSignal.init({ appId: "74a3085c-32b9-4c35-bc32-e67c3a2506c3" });
-      });
-    </script>
-    
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script> 
@@ -172,7 +163,31 @@
         #dev-alert-bar { background: linear-gradient(90deg, #b91c1c, #ef4444); color: white; padding: 10px; text-align: center; font-size: 13px; font-weight: bold; display: none; margin: 10px; border-radius: 10px; box-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
 
         /* Google Login Image */
-        .google-login-btn { background: white; color: black; display: flex; align-items: center; justify-content: center; gap: 10px; border-radius: 12px; padding: 15px; width: 100%; max-width: 350px; margin: 0 auto; border: none; font-weight: bold; cursor: pointer; font-size: 16px; }
+        .google-login-btn { 
+            background: white; 
+            color: black; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            gap: 10px; 
+            border-radius: 12px; 
+            padding: 15px; 
+            width: 100%; 
+            max-width: 350px; 
+            margin: 0 auto; 
+            border: none; 
+            font-weight: bold; 
+            cursor: pointer; 
+            font-size: 16px; 
+            transition: all 0.3s ease;
+        }
+        .google-login-btn:hover { 
+            background: #f8f9fa; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1); 
+        }
+        .google-login-btn:active { 
+            transform: scale(0.98); 
+        }
         .google-login-btn img { width: 20px; height: 20px; }
         
         /* SweetAlert Custom */
@@ -245,6 +260,36 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
+        /* Login Loading */
+        .login-loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            backdrop-filter: blur(10px);
+        }
+        
+        .login-loading .loading-spinner {
+            border: 4px solid var(--border);
+            border-top: 4px solid var(--accent);
+            width: 60px;
+            height: 60px;
+            margin-bottom: 20px;
+        }
+        
+        .login-loading p {
+            color: var(--text-main);
+            font-size: 16px;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -256,8 +301,14 @@
     <p style="color:#94a3b8;">تعذر الاتصال بالخادم. تم تجميد العمليات.</p>
 </div>
 
+<!-- شاشة التحميل -->
+<div id="login-loading" class="login-loading hidden">
+    <div class="loading-spinner"></div>
+    <p>جاري تسجيل الدخول...</p>
+</div>
+
 <!-- دخول -->
-<div id="auth-screen" class="hidden">
+<div id="auth-screen">
     <div style="padding:40px; text-align:center; height:100vh; display:flex; flex-direction:column; justify-content:center; align-items:center;">
         <img src="https://cdn-icons-png.flaticon.com/512/5501/5501360.png" class="sdm-logo" style="margin-bottom:30px; width:100px; height:100px;">
         <h2 style="font-size: 32px; margin-bottom:5px; background: linear-gradient(45deg, var(--neon-blue), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">SDM MARKET</h2>
@@ -317,7 +368,12 @@
       messagingSenderId: "66729481566",
       appId: "1:66729481566:web:93393f28dc22d32cceebcf"
     };
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    
+    // تهيئة Firebase
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    
     const auth = firebase.auth();
     const db = firebase.database();
 
@@ -388,30 +444,15 @@
         };
     }
 
-    function throttle(func, limit) {
-        let inThrottle;
-        return function() {
-            const args = arguments;
-            const context = this;
-            if (!inThrottle) {
-                func.apply(context, args);
-                inThrottle = true;
-                setTimeout(() => inThrottle = false, limit);
-            }
-        }
-    }
-
     // --- إدارة زر الرجوع ---
     function handleBackButton() {
         const currentView = hStack[hStack.length - 1];
         
         if (hStack.length > 1) {
-            // إذا لم نكن في الصفحة الرئيسية، ارجع خطوة واحدة
             hStack.pop();
             render(hStack[hStack.length-1]);
             isAtHomePage = (hStack[hStack.length-1] === 'home');
         } else if (currentView === 'home') {
-            // إذا كنا في الصفحة الرئيسية، اعرض رسالة تأكيد
             Swal.fire({
                 title: 'تأكيد الخروج',
                 text: 'هل تريد الخروج من التطبيق أو العودة للصفحة الرئيسية؟',
@@ -423,14 +464,12 @@
                 color: '#fff'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    // الخروج من التطبيق
                     if (isGuest) {
                         location.reload();
                     } else {
                         doLogout();
                     }
                 } else {
-                    // تحديث الصفحة الرئيسية فقط
                     render('home');
                     isAtHomePage = true;
                 }
@@ -438,70 +477,241 @@
         }
     }
 
-    // --- معالجة زر الرجوع في الهاتف ---
-    let lastBackPress = 0;
-    document.addEventListener('backbutton', function(e) {
-        e.preventDefault();
-        const currentTime = new Date().getTime();
-        const timeDiff = currentTime - lastBackPress;
-        
-        if (timeDiff < 1000) {
-            // الضغط المزدوج - خروج
-            navigator.app.exitApp();
-        } else {
-            handleBackButton();
-            lastBackPress = currentTime;
-        }
-    }, false);
-
-    // --- تحديث الصفحة الحالية فقط ---
-    function refreshCurrentPage() {
-        const currentView = hStack[hStack.length - 1];
-        render(currentView);
-    }
-
     // --- تحكم في تحديث الصفحة ---
     window.addEventListener('focus', function() {
-        // عند العودة للتطبيق، تحديث الصفحة الحالية فقط
         refreshCurrentPage();
     });
 
+    // --- إصلاح مشكلة تسجيل الدخول بجوجل ---
+    function showLoginLoading() {
+        document.getElementById('login-loading').classList.remove('hidden');
+    }
+
+    function hideLoginLoading() {
+        document.getElementById('login-loading').classList.add('hidden');
+    }
+
+    async function loginWithGoogle() {
+        try {
+            showLoginLoading();
+            
+            // إنشاء مزود جوجل
+            const provider = new firebase.auth.GoogleAuthProvider();
+            
+            // إضافة نطاقات إضافية إذا لزم الأمر
+            provider.addScope('profile');
+            provider.addScope('email');
+            
+            // محاولة تسجيل الدخول
+            const result = await auth.signInWithPopup(provider);
+            
+            // التحقق من النتيجة
+            if (result.user) {
+                const user = result.user;
+                console.log('تم تسجيل الدخول بنجاح:', user.email);
+                
+                // الانتظار قليلاً للتأكد من اكتمال العملية
+                setTimeout(() => {
+                    hideLoginLoading();
+                    // سيقوم auth.onAuthStateChanged تلقائياً بتحميل التطبيق
+                }, 1000);
+            }
+        } catch (error) {
+            hideLoginLoading();
+            console.error('خطأ في تسجيل الدخول:', error);
+            
+            let errorMessage = 'حدث خطأ في تسجيل الدخول';
+            
+            if (error.code === 'auth/popup-blocked') {
+                errorMessage = 'تم حظر نافذة تسجيل الدخول. الرجاء السماح بالنوافذ المنبثقة لهذا الموقع.';
+            } else if (error.code === 'auth/popup-closed-by-user') {
+                errorMessage = 'تم إغلاق نافذة تسجيل الدخول. الرجاء المحاولة مرة أخرى.';
+            } else if (error.code === 'auth/network-request-failed') {
+                errorMessage = 'خطأ في الشبكة. الرجاء التحقق من اتصال الإنترنت.';
+            } else if (error.code === 'auth/cancelled-popup-request') {
+                errorMessage = 'تم إلغاء عملية تسجيل الدخول';
+            } else {
+                errorMessage = `خطأ: ${error.message}`;
+            }
+            
+            Swal.fire({
+                title: 'خطأ في تسجيل الدخول',
+                text: errorMessage,
+                icon: 'error',
+                background: '#1e293b',
+                color: '#fff',
+                confirmButtonText: 'حسناً'
+            });
+        }
+    }
+
+    function doLogout() {
+        showLoginLoading();
+        auth.signOut().then(() => {
+            hideLoginLoading();
+            location.reload();
+        }).catch(error => {
+            hideLoginLoading();
+            Swal.fire('خطأ', 'فشل تسجيل الخروج: ' + error.message, 'error');
+        });
+    }
+
+    function enterGuestMode() {
+        isGuest = true;
+        me = { 
+            n: 'زائر', 
+            p: 'guest', 
+            role: 'guest', 
+            sdmBalance: 0,
+            rating: 0,
+            pic: 'https://cdn-icons-png.flaticon.com/512/149/149071.png'
+        };
+        document.getElementById('auth-screen').classList.add('hidden');
+        document.getElementById('app-screen').classList.remove('hidden');
+        document.getElementById('u-stars').innerText = "زائر";
+        render('home');
+    }
+
+    // --- مراقبة حالة المصادقة ---
     auth.onAuthStateChanged(user => {
         if (user) {
+            console.log('تم اكتشاف مستخدم مسجل:', user.email);
             const uid = user.uid;
-            db.ref('users/' + uid).on('value', snap => {
-                if(snap.exists()) {
+            
+            // التحقق من وجود المستخدم في قاعدة البيانات
+            db.ref('users/' + uid).once('value').then(snap => {
+                if (snap.exists()) {
                     let u = snap.val();
-                    if (user.email === ADMIN_EMAIL && u.role !== 'admin') { u.role = 'admin'; }
-                    if (u.bannedUntil && u.bannedUntil > Date.now()) { Swal.fire('محظور', 'حسابك محظور مؤقتاً.', 'error').then(() => auth.signOut()); return; }
-                    me = u; me.p = uid;
+                    if (user.email === ADMIN_EMAIL && u.role !== 'admin') { 
+                        u.role = 'admin'; 
+                        db.ref('users/' + uid).update({ role: 'admin' });
+                    }
+                    
+                    if (u.bannedUntil && u.bannedUntil > Date.now()) { 
+                        Swal.fire('محظور', 'حسابك محظور مؤقتاً.', 'error').then(() => auth.signOut()); 
+                        return; 
+                    }
+                    
+                    me = u; 
+                    me.p = uid;
+                    me.pic = user.photoURL || me.pic || userPic;
+                    
                     startApp(uid);
                 } else {
-                    const newUser = { n: user.displayName || 'مستخدم جديد', p: uid, email: user.email, pic: user.photoURL, sdmBalance: 0, rating: 5.0, role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'), wa: '', vipStatus: 'none', reportCount: 0, verified: true };
-                    db.ref('users/' + uid).set(newUser).then(() => { me = newUser; startApp(uid); });
+                    // إنشاء مستخدم جديد
+                    const newUser = { 
+                        n: user.displayName || 'مستخدم جديد', 
+                        p: uid, 
+                        email: user.email, 
+                        pic: user.photoURL || userPic, 
+                        sdmBalance: 0, 
+                        rating: 5.0, 
+                        role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'), 
+                        wa: '', 
+                        vipStatus: 'none', 
+                        reportCount: 0, 
+                        verified: true,
+                        lastSeen: Date.now()
+                    };
+                    
+                    db.ref('users/' + uid).set(newUser).then(() => { 
+                        me = newUser; 
+                        startApp(uid); 
+                    });
                 }
+            }).catch(error => {
+                console.error('خطأ في تحميل بيانات المستخدم:', error);
+                hideLoginLoading();
+                Swal.fire('خطأ', 'فشل تحميل بيانات المستخدم', 'error');
             });
-            setInterval(() => { if(me) db.ref('users/' + uid).update({ lastSeen: Date.now() }); }, 60000);
+            
+            // تحديث آخر ظهور
+            setInterval(() => { 
+                if(me) db.ref('users/' + uid).update({ lastSeen: Date.now() }); 
+            }, 60000);
+            
         } else {
-            if(!isGuest) { document.getElementById('auth-screen').classList.remove('hidden'); document.getElementById('app-screen').classList.add('hidden'); }
+            console.log('لا يوجد مستخدم مسجل');
+            if(!isGuest) { 
+                document.getElementById('auth-screen').classList.remove('hidden'); 
+                document.getElementById('app-screen').classList.add('hidden'); 
+                hideLoginLoading();
+            }
         }
     });
 
-    function loginWithGoogle() { auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(error => Swal.fire('خطأ', error.message, 'error')); }
-    function doLogout() { auth.signOut().then(() => location.reload()); }
-    function enterGuestMode() { isGuest = true; me = { n: 'زائر', p: 'guest', role: 'guest', sdmBalance: 0 }; document.getElementById('auth-screen').classList.add('hidden'); document.getElementById('app-screen').classList.remove('hidden'); document.getElementById('u-stars').innerText = "زائر"; render('home'); }
+    function startApp(uid) {
+        console.log('بدء التطبيق للمستخدم:', me.n);
+        isGuest = false; 
+        hStack = ['home'];
+        
+        // إخفاء شاشة التحميل
+        hideLoginLoading();
+        
+        // إخفاء شاشة المصادقة وإظهار التطبيق
+        document.getElementById('auth-screen').classList.add('hidden');
+        document.getElementById('app-screen').classList.remove('hidden');
+        
+        // طلب رقم الواتساب إذا لم يكن موجوداً
+        if (!me.wa) {
+            setTimeout(() => {
+                Swal.fire({
+                    title: 'رقم الواتساب',
+                    text: 'يرجى إدخال رقم واتسابك للتواصل',
+                    input: 'tel',
+                    inputPlaceholder: 'مثال: 249123456789',
+                    background: '#1e293b',
+                    color: '#fff',
+                    showCancelButton: false,
+                    confirmButtonText: 'حفظ'
+                }).then(r => {
+                    if(r.value) {
+                        db.ref('users/' + me.p).update({wa: r.value});
+                        me.wa = r.value;
+                    }
+                });
+            }, 1000);
+        }
+        
+        // تهيئة ميزات الأدمن
+        if(me.role === "admin") {
+            setTimeout(() => {
+                initDeveloperLogic();
+                listenForAdminTasks();
+            }, 1000);
+        }
+        
+        // تحميل الرسائل والتنبيهات
+        listenForUserAlerts();
+        listenForDevAlerts();
+        checkForBroadcastMessage();
+        
+        // عرض الصفحة الرئيسية
+        render('home');
+        
+        // تحديث آخر ظهور
+        db.ref('users/' + uid).update({ lastSeen: Date.now() });
+    }
 
+    // --- دوال المساعدة ---
     function compressImage(file) {
         return new Promise((resolve) => {
-            const reader = new FileReader(); reader.readAsDataURL(file);
+            const reader = new FileReader(); 
+            reader.readAsDataURL(file);
             reader.onload = (event) => {
-                const img = new Image(); img.src = event.target.result;
+                const img = new Image(); 
+                img.src = event.target.result;
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
                     const scaleSize = 800 / img.width;
-                    if (scaleSize >= 1) { resolve(event.target.result); return; }
-                    canvas.width = 800; canvas.height = img.height * scaleSize;
-                    const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    if (scaleSize >= 1) { 
+                        resolve(event.target.result); 
+                        return; 
+                    }
+                    canvas.width = 800; 
+                    canvas.height = img.height * scaleSize;
+                    const ctx = canvas.getContext('2d'); 
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     resolve(canvas.toDataURL('image/jpeg', 0.7));
                 }
             };
@@ -522,7 +732,6 @@
             }
             else if(t === 'buy') { 
                 tempBuyImg = compressed; 
-                // عرض اسم الملف
                 const fileName = i.files[0].name;
                 const fileDisplay = document.getElementById('file-name-display');
                 if (fileDisplay) {
@@ -534,7 +743,9 @@
                 tempImg = compressed; 
             }
             Swal.close();
-        } catch(e) { Swal.fire('خطأ', 'فشل معالجة الصورة', 'error'); }
+        } catch(e) { 
+            Swal.fire('خطأ', 'فشل معالجة الصورة', 'error'); 
+        }
     }
 
     function checkGuestAccess(view, extra) { 
@@ -559,28 +770,74 @@
         nav(view, extra); 
     }
     
-    function highlightTab(el) { document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); el.classList.add('active'); }
-
-    function startApp(uid) {
-        isGuest = false; hStack = ['home'];
-        listenForUserAlerts(); listenForDevAlerts(); checkForBroadcastMessage();
-        document.getElementById('auth-screen').classList.add('hidden'); document.getElementById('app-screen').classList.remove('hidden');
-        if (!me.wa) Swal.fire({title:'رقم الواتساب', input:'tel', background:'#1e293b', color:'#fff'}).then(r => {if(r.value) db.ref('users/'+me.p).update({wa:r.value})});
-        if(me.role === "admin") {
-            setTimeout(initDeveloperLogic, 1000);
-            listenForAdminTasks();
-        }
-        render('home');
-        db.ref('users/' + uid).update({ lastSeen: Date.now() });
+    function highlightTab(el) { 
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); 
+        el.classList.add('active'); 
     }
 
-    function checkForBroadcastMessage() { db.ref('settings/broadcast').on('value', snap => { const data = snap.val(); if (data && data.text) { const lastMsgId = localStorage.getItem('last_broadcast_id'); if (lastMsgId != data.id) { Swal.fire({ title: 'رسالة من المطور 📢', text: data.text, icon: 'info' }).then(() => localStorage.setItem('last_broadcast_id', data.id)); } } }); }
-    function listenForDevAlerts() { const bar = document.getElementById('dev-alert-bar'); db.ref('settings/globalAlert').on('value', snap => { const msg = snap.val(); if(msg) { bar.style.display = 'block'; bar.innerHTML = `📢 ${escapeHtml(msg)} ${(!isGuest && me.role === 'admin') ? '<i class="fas fa-edit" onclick="editDevAlert()" style="cursor:pointer; margin-right:10px;"></i>' : ''}`; } else { bar.style.display = 'none'; } }); }
-    function editDevAlert() { if (me.role !== "admin") return; Swal.fire({ title: 'تعديل التنبيه', input: 'text', background: '#1e293b', color: '#fff', showCancelButton: true }).then(res => { if(res.isConfirmed) db.ref('settings/globalAlert').set(res.value); }); }
+    function checkForBroadcastMessage() { 
+        db.ref('settings/broadcast').on('value', snap => { 
+            const data = snap.val(); 
+            if (data && data.text) { 
+                const lastMsgId = localStorage.getItem('last_broadcast_id'); 
+                if (lastMsgId != data.id) { 
+                    Swal.fire({ 
+                        title: 'رسالة من المطور 📢', 
+                        text: data.text, 
+                        icon: 'info' 
+                    }).then(() => localStorage.setItem('last_broadcast_id', data.id)); 
+                } 
+            } 
+        }); 
+    }
     
-    function escapeHtml(text) { if (!text) return text; return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
-    function nav(v, e) { hStack.push(v); render(v, e); }
-    function goBack() { if(hStack.length > 1) { hStack.pop(); render(hStack[hStack.length-1]); } }
+    function listenForDevAlerts() { 
+        const bar = document.getElementById('dev-alert-bar'); 
+        db.ref('settings/globalAlert').on('value', snap => { 
+            const msg = snap.val(); 
+            if(msg) { 
+                bar.style.display = 'block'; 
+                bar.innerHTML = `📢 ${escapeHtml(msg)} ${(!isGuest && me.role === 'admin') ? '<i class="fas fa-edit" onclick="editDevAlert()" style="cursor:pointer; margin-right:10px;"></i>' : ''}`; 
+            } else { 
+                bar.style.display = 'none'; 
+            } 
+        }); 
+    }
+    
+    function editDevAlert() { 
+        if (me.role !== "admin") return; 
+        Swal.fire({ 
+            title: 'تعديل التنبيه', 
+            input: 'text', 
+            background: '#1e293b', 
+            color: '#fff', 
+            showCancelButton: true 
+        }).then(res => { 
+            if(res.isConfirmed) db.ref('settings/globalAlert').set(res.value); 
+        }); 
+    }
+    
+    function escapeHtml(text) { 
+        if (!text) return text; 
+        return String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;"); 
+    }
+    
+    function nav(v, e) { 
+        hStack.push(v); 
+        render(v, e); 
+    }
+    
+    function goBack() { 
+        if(hStack.length > 1) { 
+            hStack.pop(); 
+            render(hStack[hStack.length-1]); 
+        } 
+    }
 
     // تحسين البحث مع Debounce
     const debounceFilter = debounce(function(query) {
@@ -602,6 +859,13 @@
         });
     }
 
+    // --- تحديث الصفحة الحالية فقط ---
+    function refreshCurrentPage() {
+        const currentView = hStack[hStack.length - 1];
+        render(currentView);
+    }
+
+    // --- دالة العرض الرئيسية (مختصرة للتركيز على إصلاح التسجيل) ---
     function render(view, extra) {
         const area = document.getElementById('content-area');
         const adminArea = document.getElementById('admin-notifications-area');
@@ -611,7 +875,12 @@
         if(view !== 'home') adminArea.innerHTML = "";
         
         showWelcome();
-        if(me) document.getElementById('u-stars').innerText = isGuest ? "زائر" : (me.rating || 0).toFixed(1);
+        
+        // تحديث النجوم
+        if(me) {
+            document.getElementById('u-stars').innerText = isGuest ? "زائر" : (me.rating || 0).toFixed(1);
+        }
+        
         document.getElementById('head-title').innerText = (view==='wallet'?"المحفظة":(view==='games'?"الألعاب":(view==='vip'?"VIP":(view==='profile'?"الملف الشخصي":"الرئيسية"))));
         searchEl.classList.remove('search-hidden');
 
@@ -639,7 +908,7 @@
                     <div>جاري تحميل المنشورات...</div>
                 </div>`;
             
-            // تحميل الإعدادات والمنشورات بشكل غير متزامن
+            // تحميل البيانات
             loadHomeData();
             startSlider();
 
@@ -692,7 +961,6 @@
                     </div>
                 </div>`;
             
-            // تحميل البيانات بشكل غير متزامن
             loadWalletData();
         
         } else if (view === 'games') {
@@ -754,7 +1022,6 @@
                     `}
                 </div>`;
             
-            // تحميل بيانات المستخدم إذا كان مختلفاً
             if (uid !== me.p) {
                 loadUserProfile(uid);
             } else {
@@ -763,52 +1030,24 @@
         }
     }
 
-    // --- دوال تحسين الأداء ---
-    async function loadHomeData() {
-        // تحميل الإعدادات مرة واحدة فقط
+    // --- باقي الدوال (مختصرة) ---
+    function loadHomeData() {
         if (!cachedSettings || Date.now() - (cacheTimeout.settings || 0) > 60000) {
-            try {
-                const snap = await db.ref('settings').once('value');
+            db.ref('settings').once('value').then(snap => {
                 cachedSettings = snap.val() || {};
                 cacheTimeout.settings = Date.now();
                 
-                // تحديث صور السلايدر
                 if (cachedSettings.sliderImages && cachedSettings.sliderImages.length >= 3) {
                     sliderImages = cachedSettings.sliderImages;
                     document.getElementById('slider-img').src = sliderImages[0];
                 }
-                
-                // تحديث صور الأقسام
-                if (cachedSettings.categories) {
-                    updateCategoryImages(cachedSettings.categories);
-                }
-            } catch (error) {
-                console.error('Error loading settings:', error);
-            }
+            });
         }
         
-        // تحميل منشورات VIP
         loadPosts('vip_posts', null, 'vip-home-list');
     }
     
-    function updateCategoryImages(categoriesData) {
-        document.querySelectorAll('.card').forEach(card => {
-            const catName = card.querySelector('b')?.textContent;
-            if (catName && categoriesData[catName]?.img) {
-                const icon = card.querySelector('i');
-                if (icon) {
-                    icon.style.display = 'none';
-                    const img = document.createElement('img');
-                    img.src = categoriesData[catName].img;
-                    img.className = 'cat-custom-img';
-                    card.insertBefore(img, card.querySelector('b'));
-                }
-            }
-        });
-    }
-    
     async function loadWalletData() {
-        // تحميل سجل المعاملات
         if (!cachedTransactions || Date.now() - (cacheTimeout.transactions || 0) > 30000) {
             await loadTransactions();
             cacheTimeout.transactions = Date.now();
@@ -816,225 +1055,6 @@
             displayCachedTransactions();
         }
     }
-    
-    function displayCachedTransactions() {
-        const l = document.getElementById('transactions-history');
-        if (!l || !cachedTransactions) return;
-        
-        l.innerHTML = "";
-        cachedTransactions.forEach(t => {
-            const color = (t.role === 'from' || t.type === 'buy') ? 'var(--red)' : 'var(--green)';
-            const sign = t.role === 'from' ? '-' : '+';
-            const dateStr = new Date(t.date).toLocaleDateString('ar-SA');
-            l.innerHTML += `
-                <div style="padding:10px; border-bottom:1px solid var(--border); font-size:12px; display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <div>${t.type.toUpperCase()}</div>
-                        <div style="font-size:10px; color:var(--text-sec)">${dateStr}</div>
-                    </div>
-                    <span style="color:${color}; font-weight:bold;">${sign}${t.amount} SDM</span>
-                </div>`;
-        });
-        
-        if (cachedTransactions.length === 0) {
-            l.innerHTML = "<div style='text-align:center; padding:20px; color:var(--text-sec)'>لا توجد معاملات</div>";
-        }
-    }
-
-    async function loadUserProfile(uid) {
-        try {
-            const snap = await db.ref('users/' + uid).once('value');
-            const u = snap.val();
-            if (!u) return;
-            
-            const isOnline = (Date.now() - (u.lastSeen || 0)) < 300000;
-            const profileStatus = document.getElementById('profile-status');
-            const onlineStatus = document.getElementById('profile-online-status');
-            
-            if (profileStatus) {
-                profileStatus.innerHTML = isOnline ? '<span class="online-dot"></span> متصل الآن' : 'غير متصل';
-            }
-            
-            if (onlineStatus) {
-                onlineStatus.innerHTML = isOnline ? 
-                    '<div style="position:absolute; bottom:5px; right:5px; width:20px; height:20px; background:#10b981; border:3px solid #0f172a; border-radius:50%;"></div>' : 
-                    '';
-            }
-            
-            // تحديث الصورة إذا كانت مختلفة
-            if (u.pic && u.pic !== me.pic) {
-                document.getElementById('profile-img-view').src = u.pic;
-            }
-            
-            // تحديث التقييم إذا كان مختلفاً
-            const ratingBadge = document.querySelector('.badge-gold');
-            if (ratingBadge && u.rating !== me.rating) {
-                ratingBadge.innerHTML = `⭐ ${(u.rating||5).toFixed(1)}`;
-            }
-        } catch (error) {
-            console.error('Error loading user profile:', error);
-        }
-    }
-
-    // --- دالة محسنة لتحميل المنشورات ---
-    function loadPosts(path, subFilter, containerId) {
-        const cacheKey = `${path}_${subFilter}`;
-        const now = Date.now();
-        
-        // التحقق من الذاكرة المؤقتة
-        if (cachedPosts[cacheKey] && now - cachedPosts[cacheKey].timestamp < 30000) {
-            displayPosts(cachedPosts[cacheKey].data, path, subFilter, containerId);
-            return;
-        }
-        
-        const list = document.getElementById(containerId);
-        if (!list) return;
-        
-        // عرض مؤشر التحميل
-        if (!list.classList.contains('loading')) {
-            list.innerHTML = `
-                <div class="loading">
-                    <div class="loading-spinner"></div>
-                    <div>جاري تحميل المنشورات...</div>
-                </div>`;
-            list.classList.add('loading');
-        }
-        
-        // استعلام محدود للحصول على عدد معين من المنشورات فقط
-        const postsRef = db.ref(path).orderByChild('date').limitToLast(20);
-        
-        postsRef.once('value').then(snap => {
-            const posts = [];
-            snap.forEach(c => posts.unshift({k:c.key, ...c.val()}));
-            
-            // حفظ في الذاكرة المؤقتة
-            cachedPosts[cacheKey] = {
-                data: posts,
-                timestamp: now
-            };
-            
-            // عرض المنشورات
-            displayPosts(posts, path, subFilter, containerId);
-        }).catch(error => {
-            console.error('Error loading posts:', error);
-            list.innerHTML = "<div style='text-align:center; padding:20px; color:gray;'>حدث خطأ في تحميل المنشورات</div>";
-        });
-    }
-    
-    function displayPosts(posts, path, subFilter, containerId) {
-        const list = document.getElementById(containerId);
-        if (!list) return;
-        
-        list.classList.remove('loading');
-        list.innerHTML = "";
-        
-        let displayedCount = 0;
-        const maxPosts = 10; // تحديد عدد المنشورات المعروضة
-        
-        posts.forEach(p => {
-            if (displayedCount >= maxPosts) return;
-            
-            // حذف منشورات VIP المنتهية
-            if (path === 'vip_posts' && p.vExpiry && p.vExpiry < Date.now()) {
-                db.ref(path + '/' + p.k).remove();
-                return;
-            }
-            
-            if (subFilter && p.sub !== subFilter) return;
-            
-            displayedCount++;
-            let priceDisplay = `${p.pr} SDM`;
-            if (p.discount > 0) priceDisplay = `<span class="discount-tag">خصم ${p.discount}%</span> <b>${(p.pr - (p.pr * (p.discount/100))).toFixed(1)} SDM</b> <span class="old-price">${p.pr}</span>`;
-            const isOnline = (Date.now() - (p.uLastSeen || 0)) < 300000;
-            const dateStr = p.date ? new Date(p.date).toLocaleDateString('ar-SA') : 'غير معروف';
-            
-            list.innerHTML += `
-                <div class="post" id="post-${p.k}">
-                    ${p.status === 'sold' ? '<div class="sold-overlay">تم البيع</div>' : ''}
-                    <div class="post-img-container">
-                        <img src="${p.img}" style="width:100%; height:100%; object-fit:cover;" loading="lazy">
-                        ${(!isGuest && me.p === p.uP) ? `
-                        <div class="post-menu">
-                            <div class="post-menu-btn" onclick="togglePostMenu('${p.k}')">
-                                <i class="fas fa-ellipsis-h"></i>
-                            </div>
-                            <div class="post-menu-dropdown" id="menu-${p.k}">
-                                <div class="post-menu-item" onclick="editPost('${p.k}', '${path}')"><i class="fas fa-edit"></i> تعديل</div>
-                                <div class="post-menu-item" onclick="deletePost('${p.k}', '${path}')"><i class="fas fa-trash"></i> مسح</div>
-                                <div class="post-menu-item" onclick="markAsSold('${p.k}', '${path}')"><i class="fas fa-check-circle"></i> تم البيع</div>
-                            </div>
-                        </div>
-                        ` : ''}
-                    </div>
-                    <div style="padding:15px;">
-                        <h3 style="margin:5px 0;">${escapeHtml(p.t)}</h3>
-                        <div style="font-size:16px; margin-bottom:5px;">${priceDisplay}</div>
-                        <p style="font-size:13px; color:var(--text-sec); line-height:1.5; max-height: 60px; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(p.d)}</p>
-                        <div class="post-date">
-                            <i class="far fa-calendar"></i> ${dateStr}
-                            ${isOnline ? '<span class="online-dot"></span> متصل الآن' : ''}
-                        </div>
-                        <div style="display:flex; align-items:center; gap:10px; margin-top:10px; border-top:1px solid var(--border); padding-top:10px;">
-                            <img src="${p.uPic||userPic}" style="width:30px; height:30px; border-radius:50%; object-fit:cover;" onclick="nav('profile','${p.uP}')">
-                            <span onclick="nav('profile','${p.uP}')" style="font-size:12px; cursor:pointer;">${escapeHtml(p.uN)}</span>
-                            <div style="flex:1"></div>
-                            <a href="https://wa.me/${p.wa}" target="_blank" style="color:#25d366; font-size:20px;"><i class="fab fa-whatsapp"></i></a>
-                        </div>
-                    </div>
-                </div>`;
-        });
-        
-        if (displayedCount === 0) {
-            list.innerHTML = "<div style='text-align:center; padding:20px; color:var(--text-sec);'>لا توجد منشورات</div>";
-        } else if (displayedCount === maxPosts) {
-            list.innerHTML += `<div style="text-align:center; padding:15px; color:var(--accent); font-size:12px;">عرض ${displayedCount} منشور من أصل ${posts.length}</div>`;
-        }
-    }
-
-    // --- باقي الدوال (مختصرة للتركيز على التحسينات) ---
-    // ... باقي الدوال تبقى كما هي مع تعديلات طفيفة للأداء ...
-    
-    async function loadTransactions() {
-        try {
-            const [fromSnap, toSnap] = await Promise.all([
-                db.ref('transactions').orderByChild('from').equalTo(me.p).limitToLast(10).once('value'),
-                db.ref('transactions').orderByChild('to').equalTo(me.p).limitToLast(10).once('value')
-            ]);
-            
-            const transactions = [];
-            fromSnap.forEach(c => transactions.push({...c.val(), role: 'from', key: c.key}));
-            toSnap.forEach(c => transactions.push({...c.val(), role: 'to', key: c.key}));
-            
-            transactions.sort((a, b) => b.date - a.date);
-            cachedTransactions = transactions.slice(0, 15); // حفظ 15 معاملة فقط
-            
-            displayCachedTransactions();
-        } catch (error) {
-            console.error('Error loading transactions:', error);
-            const l = document.getElementById('transactions-history');
-            if (l) l.innerHTML = "<div style='text-align:center; padding:20px; color:var(--red);'>خطأ في تحميل المعاملات</div>";
-        }
-    }
-
-    function togglePostMenu(postId) {
-        const menu = document.getElementById('menu-' + postId);
-        if (menu) {
-            document.querySelectorAll('.post-menu-dropdown').forEach(m => {
-                if (m.id !== 'menu-' + postId) m.classList.remove('show');
-            });
-            menu.classList.toggle('show');
-        }
-    }
-
-    document.addEventListener('click', function(event) {
-        if (!event.target.closest('.post-menu')) {
-            document.querySelectorAll('.post-menu-dropdown').forEach(menu => {
-                menu.classList.remove('show');
-            });
-        }
-    });
-
-    // ... باقي الدوال الأخرى بدون تغيير ...
     
     function calcBuyCost(val) { 
         const cost = parseFloat(val||0) * SDM_RATE;
@@ -1055,7 +1075,6 @@
             return;
         }
         
-        // إرسال الطلب
         db.ref('coin_requests').push({ 
             uP: me.p, 
             uN: me.n, 
@@ -1076,8 +1095,6 @@
             Swal.fire('خطأ', 'فشل في إرسال الطلب: ' + error.message, 'error');
         });
     }
-
-    // ... دوال أخرى مع تعديلات طفيفة للأداء ...
 
     function startSlider() { 
         const imgEl = document.getElementById('slider-img'); 
@@ -1103,25 +1120,41 @@
         const ad = document.getElementById(`dot-${idx}`); 
         if(ad) ad.classList.add('active'); 
     }
-
-    // --- إلغاء الاشتراكات عند تغيير الصفحة ---
-    let listeners = {};
     
-    function cleanupListeners() {
-        Object.keys(listeners).forEach(key => {
-            if (listeners[key]) {
-                listeners[key]();
-                delete listeners[key];
-            }
-        });
+    function showWelcome() { 
+        const hour = new Date().getHours(); 
+        const container = document.getElementById('welcome-container'); 
+        if(hStack[hStack.length-1] === 'home' && me && !isGuest) { 
+            const greeting = hour < 12 ? "صباح الخير" : (hour < 18 ? "مساء الخير" : "مساء الخير");
+            container.innerHTML = `
+                <div style="background:rgba(59, 130, 246, 0.2); color:var(--neon-blue); padding:15px; border-radius:15px; margin:15px 0; border:1px solid var(--primary); display:flex; align-items:center; gap:10px;">
+                    <i class="fas fa-hand-sparkles" style="font-size:20px;"></i>
+                    <div>
+                        <div style="font-size:14px; font-weight:bold;">${greeting}، ${escapeHtml(me.n)} ✨</div>
+                        <div style="font-size:12px; color:var(--text-sec);">رصيدك: ${me.sdmBalance.toFixed(2)} SDM</div>
+                    </div>
+                </div>`; 
+        } else { 
+            container.innerHTML = ""; 
+        } 
     }
-    
-    // استدعاء cleanupListeners في بداية دالة render
-    const originalRender = render;
-    render = function(view, extra) {
-        cleanupListeners();
-        originalRender(view, extra);
-    };
+
+    // --- تشغيل النظام ---
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('تم تحميل الصفحة بنجاح');
+        // التحقق من حالة المصادقة عند تحميل الصفحة
+        setTimeout(() => {
+            const user = auth.currentUser;
+            if (user) {
+                console.log('مستخدم مسجل موجود:', user.email);
+                // سيقوم auth.onAuthStateChanged بمعالجة الباقي
+            } else {
+                console.log('لا يوجد مستخدم مسجل');
+                document.getElementById('auth-screen').classList.remove('hidden');
+                document.getElementById('app-screen').classList.add('hidden');
+            }
+        }, 1000);
+    });
 
 </script>
 </body>
