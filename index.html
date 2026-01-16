@@ -437,9 +437,18 @@
         "جملة": {i:"boxes", s:["مواد غذائية","ملابس","كهرباء"]}
     };
 
+    // ============== باقات الألعاب المحدثة ==============
     const officialRates = {
-        pubg: [ { name: "60 UC", sdm: 4 }, { name: "325 UC", sdm: 20 }, { name: "660 UC", sdm: 40 } ],
-        ff: [ { name: "100 جوهرة", sdm: 4 }, { name: "530 جوهرة", sdm: 20 }, { name: "1080 جوهرة", sdm: 40 } ]
+        pubg: [
+            { name: "60 UC", sdm: 4 },
+            { name: "325 UC", sdm: 20 },
+            { name: "660 UC", sdm: 40 }
+        ],
+        ff: [
+            { name: "100 جوهرة", sdm: 4 },
+            { name: "530 جوهرة", sdm: 20 },
+            { name: "1080 جوهرة", sdm: 40 }
+        ]
     };
 
     // --- دوال مساعدة لتحسين الأداء ---
@@ -699,7 +708,7 @@
             setTimeout(() => {
                 Swal.fire({
                     title: 'رقم الواتساب',
-                    text: 'يرجى إدخال رقم واتسابك للتواصل',
+                    text: 'يرجاء إدخال رقم واتسابك للتواصل',
                     input: 'tel',
                     inputPlaceholder: 'مثال: 249123456789',
                     background: '#1e293b',
@@ -1308,7 +1317,357 @@
     }
 
     // ======================================================
-    // 3. دوال التعامل مع البوت (تحويلات، تقييمات، بلاغات)
+    // 3. نظام الألعاب المحدث (ببجي وفري فاير)
+    // ======================================================
+
+    // دالة عرض الألعاب
+    function renderGames() {
+        return `
+            <div style="padding:20px;">
+                <h3 style="color:var(--neon-blue); margin-bottom:15px;">🎮 الألعاب المتاحة</h3>
+                <div class="grid">
+                    <div class="card" onclick="selectGame('pubg')" style="border:2px solid var(--primary);">
+                        <i class="fas fa-mobile-alt" style="color:var(--primary)"></i>
+                        <h4>ببجي موبايل</h4>
+                        <p style="font-size:12px; color:var(--text-sec)">شحن UC فوري</p>
+                    </div>
+                    <div class="card" onclick="selectGame('ff')" style="border:2px solid var(--accent);">
+                        <i class="fas fa-fire" style="color:var(--accent)"></i>
+                        <h4>فري فاير</h4>
+                        <p style="font-size:12px; color:var(--text-sec)">شحن جواهر</p>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    // دالة تحميل الباقات الصحيحة حسب اللعبة
+    function loadCorrectPacks() {
+        const game = document.getElementById('active-game').value;
+        const packSelect = document.getElementById('p-pack-input');
+        
+        if (!packSelect) return;
+        
+        packSelect.innerHTML = '<option value="">اختر الباقة</option>';
+        
+        const packs = officialRates[game];
+        if (packs) {
+            packs.forEach(pack => {
+                const option = document.createElement('option');
+                option.value = pack.sdm;
+                option.textContent = `${pack.name} - ${pack.sdm} SDM`;
+                packSelect.appendChild(option);
+            });
+        }
+        
+        // إعادة حساب التكلفة
+        calculateGameCost(packSelect);
+    }
+
+    // دالة حساب تكلفة اللعبة
+    function calculateGameCost(selectElement) {
+        const selectedValue = selectElement.value;
+        const costElement = document.getElementById('game-cost-res');
+        
+        if (selectedValue && costElement) {
+            const costSDG = parseFloat(selectedValue) * SDM_RATE;
+            costElement.textContent = costSDG.toLocaleString() + ' SDG';
+        } else if (costElement) {
+            costElement.textContent = '0 SDG';
+        }
+    }
+
+    // دالة اختيار لعبة
+    function selectGame(game) {
+        document.getElementById('active-game').value = game;
+        loadCorrectPacks();
+    }
+
+    // دالة طلب شحن اللعبة
+    function orderGame() {
+        if (isGuest) {
+            Swal.fire('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
+            return;
+        }
+
+        const game = document.getElementById('active-game').value;
+        const playerId = document.getElementById('p-id-input').value.trim();
+        const packSelect = document.getElementById('p-pack-input');
+        const selectedPack = packSelect.options[packSelect.selectedIndex];
+        
+        if (!playerId) {
+            Swal.fire('تنبيه', 'أدخل ID اللاعب', 'warning');
+            return;
+        }
+        
+        if (!selectedPack.value) {
+            Swal.fire('تنبيه', 'اختر باقة', 'warning');
+            return;
+        }
+
+        const packCost = parseFloat(selectedPack.value);
+        const gameName = game === 'pubg' ? 'ببجي موبايل' : 'فري فاير';
+        const packName = selectedPack.textContent.split(' - ')[0];
+
+        Swal.fire({
+            title: 'تأكيد طلب الشحن',
+            html: `
+                <div style="text-align:right;">
+                    <p><b>اللعبة:</b> ${gameName}</p>
+                    <p><b>ID اللاعب:</b> ${playerId}</p>
+                    <p><b>الباقة:</b> ${packName}</p>
+                    <p><b>التكلفة:</b> ${packCost} SDM (${packCost * SDM_RATE} جنيه)</p>
+                    <p style="color:var(--accent); font-size:12px;">سيتم خصم ${packCost} SDM من رصيدك</p>
+                </div>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'تأكيد الطلب',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // التحقق من الرصيد
+                if (me.sdmBalance < packCost) {
+                    Swal.fire('خطأ', 'رصيدك غير كافٍ', 'error');
+                    return;
+                }
+
+                Swal.fire({ title: 'جاري معالجة الطلب...', didOpen: () => Swal.showLoading() });
+
+                // خصم المبلغ
+                const newBalance = me.sdmBalance - packCost;
+                db.ref('users/' + me.p).update({ sdmBalance: newBalance }).then(() => {
+                    // تسجيل العملية
+                    const transactionData = {
+                        type: 'game_recharge',
+                        game: game,
+                        playerId: playerId,
+                        pack: packName,
+                        cost: packCost,
+                        userId: me.p,
+                        userName: me.n,
+                        status: 'pending',
+                        date: Date.now()
+                    };
+
+                    // حفظ طلب اللعبة
+                    db.ref('game_orders').push(transactionData).then(() => {
+                        // تسجيل المعاملة
+                        db.ref('transactions').push({
+                            type: 'game_purchase',
+                            from: me.p,
+                            to: 'SYSTEM',
+                            amount: packCost,
+                            details: `${gameName} - ${packName}`,
+                            date: Date.now()
+                        }).then(() => {
+                            // تحديث رصيد المستخدم محلياً
+                            me.sdmBalance = newBalance;
+                            
+                            // إرسال إشعار للإدارة
+                            if (me.role !== 'admin') {
+                                db.ref('admin_notifications').push({
+                                    type: 'new_game_order',
+                                    userId: me.p,
+                                    userName: me.n,
+                                    game: gameName,
+                                    playerId: playerId,
+                                    pack: packName,
+                                    date: Date.now(),
+                                    read: false
+                                });
+                            }
+
+                            Swal.fire('نجاح', 'تم إرسال طلب الشحن بنجاح', 'success');
+                            
+                            // تفريغ الحقول
+                            document.getElementById('p-id-input').value = '';
+                            packSelect.selectedIndex = 0;
+                            calculateGameCost(packSelect);
+                            
+                            // تحديث سجل الطلبات
+                            loadGameHistory();
+                        });
+                    });
+                }).catch(error => {
+                    Swal.fire('خطأ', 'فشل معالجة الطلب: ' + error.message, 'error');
+                });
+            }
+        });
+    }
+
+    // دالة تحميل سجل طلبات الألعاب
+    function loadGameHistory() {
+        const container = document.getElementById('game-history');
+        if (!container) return;
+
+        container.innerHTML = '<div class="loading"><div class="loading-spinner"></div><div>جاري تحميل السجل...</div></div>';
+
+        db.ref('game_orders').orderByChild('date').limitToLast(20).on('value', snap => {
+            const data = snap.val();
+            if (!data) {
+                container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-sec)">لا توجد طلبات سابقة</div>';
+                return;
+            }
+
+            let html = '';
+            const orders = Object.values(data).reverse();
+            
+            orders.forEach(order => {
+                if (order.userId === me.p) {
+                    const gameName = order.game === 'pubg' ? 'ببجي' : 'فري فاير';
+                    const statusColor = order.status === 'completed' ? 'var(--green)' : 
+                                      order.status === 'failed' ? 'var(--red)' : 'var(--accent)';
+                    const statusText = order.status === 'completed' ? 'مكتمل' : 
+                                     order.status === 'failed' ? 'فاشل' : 'قيد الانتظار';
+                    
+                    html += `
+                        <div style="background:rgba(255,255,255,0.05); padding:12px; border-radius:10px; margin-bottom:10px; border-right:4px solid ${statusColor}">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <div style="font-weight:bold; font-size:14px;">${gameName} - ${order.pack}</div>
+                                    <div style="font-size:11px; color:var(--text-sec); margin-top:3px;">ID: ${order.playerId}</div>
+                                </div>
+                                <div style="text-align:left;">
+                                    <div style="font-size:12px; color:${statusColor}">${statusText}</div>
+                                    <div style="font-size:11px; color:var(--text-sec);">${order.cost} SDM</div>
+                                </div>
+                            </div>
+                            <div style="font-size:10px; color:var(--text-sec); margin-top:5px;">
+                                ${new Date(order.date).toLocaleString('ar-EG')}
+                            </div>
+                        </div>`;
+                }
+            });
+
+            container.innerHTML = html || '<div style="text-align:center; padding:20px; color:var(--text-sec)">لا توجد طلبات سابقة</div>';
+        });
+    }
+
+    // دالة تهيئة لوحة المطور للألعاب
+    function initDeveloperLogic() {
+        if (me.role !== 'admin') return;
+        
+        const container = document.getElementById('orders-list-container');
+        if (!container) return;
+
+        container.innerHTML = '<div class="loading"><div class="loading-spinner"></div><div>جاري تحميل الطلبات...</div></div>';
+
+        // استماع لطلبات الألعاب
+        db.ref('game_orders').orderByChild('date').on('value', snap => {
+            const data = snap.val();
+            if (!data) {
+                container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-sec)">لا توجد طلبات</div>';
+                return;
+            }
+
+            let html = '';
+            const orders = Object.entries(data).reverse();
+            
+            orders.forEach(([orderId, order]) => {
+                const gameName = order.game === 'pubg' ? 'ببجي موبايل' : 'فري فاير';
+                const statusColor = order.status === 'completed' ? 'var(--green)' : 
+                                  order.status === 'failed' ? 'var(--red)' : 'var(--accent)';
+                const statusText = order.status === 'completed' ? 'مكتمل' : 
+                                 order.status === 'failed' ? 'فاشل' : 'قيد الانتظار';
+                
+                html += `
+                    <div class="admin-item" style="border-left:4px solid ${statusColor}">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                            <div>
+                                <div style="font-weight:bold;">${gameName}</div>
+                                <div style="font-size:12px; color:var(--text-sec)">${order.pack}</div>
+                            </div>
+                            <div>
+                                <span style="color:${statusColor}; font-weight:bold;">${statusText}</span>
+                                <div style="font-size:12px; color:var(--neon-blue)">${order.cost} SDM</div>
+                            </div>
+                        </div>
+                        
+                        <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:8px; margin-bottom:10px;">
+                            <div><b>المستخدم:</b> ${order.userName || 'مستخدم'}</div>
+                            <div><b>ID اللاعب:</b> ${order.playerId}</div>
+                            <div style="font-size:11px; color:var(--text-sec); margin-top:5px;">
+                                ${new Date(order.date).toLocaleString('ar-EG')}
+                            </div>
+                        </div>
+                        
+                        ${order.status === 'pending' ? `
+                            <div style="display:flex; gap:10px;">
+                                <button class="btn-main" style="background:var(--green); flex:1; padding:8px;" onclick="updateGameOrderStatus('${orderId}', 'completed', '${order.userId}', ${order.cost})">
+                                    ✅ تم التنفيذ
+                                </button>
+                                <button class="btn-main" style="background:var(--red); flex:1; padding:8px;" onclick="updateGameOrderStatus('${orderId}', 'failed', '${order.userId}', ${order.cost})">
+                                    ❌ فشل
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>`;
+            });
+
+            container.innerHTML = html || '<div style="text-align:center; padding:20px; color:var(--text-sec)">لا توجد طلبات</div>';
+        });
+    }
+
+    // دالة تحديث حالة طلب اللعبة
+    function updateGameOrderStatus(orderId, status, userId, amount) {
+        let message = '';
+        
+        if (status === 'completed') {
+            message = 'هل تم شحن الباقة بنجاح؟';
+        } else {
+            message = 'هل فشل تنفيذ الطلب؟ سيتم إرجاع الرصيد للمستخدم';
+        }
+
+        Swal.fire({
+            title: 'تأكيد',
+            text: message,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'نعم',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // تحديث حالة الطلب
+                db.ref('game_orders/' + orderId).update({ 
+                    status: status,
+                    processedAt: Date.now(),
+                    processedBy: me.n
+                }).then(() => {
+                    // إذا كان الفشل، قم بإرجاع الرصيد
+                    if (status === 'failed') {
+                        db.ref('users/' + userId + '/sdmBalance').transaction(current => {
+                            return (current || 0) + amount;
+                        }).then(() => {
+                            // إرسال إشعار للمستخدم
+                            db.ref('alerts/' + userId).push({
+                                msg: `❌ تم إلغاء طلب شحن الألعاب وتم إرجاع ${amount} SDM إلى رصيدك`,
+                                type: 'info',
+                                date: Date.now()
+                            });
+                            
+                            Swal.fire('تم', 'تم تحديث الحالة وإرجاع الرصيد', 'success');
+                        });
+                    } else {
+                        // إرسال إشعار للمستخدم
+                        db.ref('alerts/' + userId).push({
+                            msg: `✅ تم تنفيذ طلب شحن الألعاب بنجاح`,
+                            type: 'success',
+                            date: Date.now()
+                        });
+                        
+                        Swal.fire('تم', 'تم تحديث الحالة', 'success');
+                    }
+                });
+            }
+        });
+    }
+
+    // ======================================================
+    // 4. دوال التعامل مع البوت (تحويلات، تقييمات، بلاغات)
     // ======================================================
 
     // 1. دالة تحويل الرصيد (ترسل الطلب للبوت للمعالجة)
@@ -1526,7 +1885,10 @@
         });
     }
 
-    // --- باقي الدوال ---
+    // ======================================================
+    // 5. باقي الدوال الأساسية
+    // ======================================================
+
     function render(view, extra) {
         const area = document.getElementById('content-area');
         const adminArea = document.getElementById('admin-notifications-area');
@@ -1622,7 +1984,29 @@
             if(me.role === 'admin') loadAdminCoinRequests(); 
         
         } else if (view === 'games') {
-            area.innerHTML = `<div class="post" style="padding:20px; text-align:center;"><i class="fas fa-bolt" style="font-size:50px; color:var(--neon-blue); margin-bottom:20px;"></i><h2 style="margin:0;">شحن فوري</h2><select id="active-game" onchange="loadCorrectPacks()"><option value="pubg">ببجي (PUBG Mobile)</option><option value="ff">فري فاير (Free Fire)</option></select><input type="text" id="p-id-input" placeholder="ID اللاعب"><select id="p-pack-input" onchange="calculateGameCost(this)"></select><div class="calc-box" style="margin-top:10px;"><span style="font-size:12px; color:var(--text-sec)">التكلفة بالجنيه</span><span id="game-cost-res" class="calc-result">0 SDG</span></div><button class="btn-main" onclick="sendOrderToDeveloper()">🚀 شحن الآن</button></div><div style="padding:20px;"><h3>سجل الطلبات</h3><div id="game-history" class="loading">جاري التحميل...</div></div>${(me.role === "admin") ? `<div id="developer-area" class="admin-panel"><h3>طلبات الألعاب (لوحة المطور)</h3><div id="orders-list-container"></div></div>` : ''}`;
+            const gamesHTML = renderGames();
+            area.innerHTML = `
+                ${gamesHTML}
+                <div class="post" style="padding:20px; text-align:center; margin:20px;">
+                    <i class="fas fa-bolt" style="font-size:50px; color:var(--neon-blue); margin-bottom:20px;"></i>
+                    <h2 style="margin:0;">شحن فوري</h2>
+                    <select id="active-game" onchange="loadCorrectPacks()" class="inp-field">
+                        <option value="pubg">ببجي (PUBG Mobile)</option>
+                        <option value="ff">فري فاير (Free Fire)</option>
+                    </select>
+                    <input type="text" id="p-id-input" placeholder="ID اللاعب" class="inp-field" style="margin-top:10px;">
+                    <select id="p-pack-input" onchange="calculateGameCost(this)" class="inp-field" style="margin-top:10px;"></select>
+                    <div class="calc-box" style="margin-top:10px;">
+                        <span style="font-size:12px; color:var(--text-sec)">التكلفة بالجنيه</span>
+                        <span id="game-cost-res" class="calc-result">0 SDG</span>
+                    </div>
+                    <button class="btn-main" onclick="orderGame()" style="margin-top:15px;">🚀 شحن الآن</button>
+                </div>
+                <div style="padding:20px;">
+                    <h3>سجل الطلبات</h3>
+                    <div id="game-history">جاري التحميل...</div>
+                </div>
+                ${(me.role === "admin") ? `<div id="developer-area" class="admin-panel"><h3>طلبات الألعاب (لوحة المطور)</h3><div id="orders-list-container"></div></div>` : ''}`;
             loadCorrectPacks(); 
             loadGameHistory(); 
             if(me.role === "admin") initDeveloperLogic();
@@ -1797,6 +2181,101 @@
         } else { 
             container.innerHTML = ""; 
         } 
+    }
+
+    // --- دوال الأدمن الإضافية ---
+    function updateCurrentSliderImg() {
+        if (me.role !== "admin") return;
+        
+        Swal.fire({
+            title: 'تحديث صورة السلايدر',
+            input: 'url',
+            inputPlaceholder: 'أدخل رابط الصورة',
+            showCancelButton: true,
+            background: '#1e293b',
+            color: '#fff'
+        }).then(res => {
+            if (res.isConfirmed && res.value) {
+                // حفظ في الإعدادات
+                db.ref('settings/sliderImages').once('value').then(snap => {
+                    let images = snap.val() || [...sliderImages];
+                    images[0] = res.value; // تحديث الصورة الأولى
+                    db.ref('settings/sliderImages').set(images).then(() => {
+                        sliderImages = images;
+                        document.getElementById('slider-img').src = res.value;
+                        Swal.fire('تم', 'تم تحديث صورة السلايدر', 'success');
+                    });
+                });
+            }
+        });
+    }
+    
+    function updateCategoryImg(category) {
+        if (me.role !== "admin") return;
+        
+        Swal.fire({
+            title: `تحديث صورة قسم ${category}`,
+            input: 'url',
+            inputPlaceholder: 'أدخل رابط الصورة',
+            showCancelButton: true,
+            background: '#1e293b',
+            color: '#fff'
+        }).then(res => {
+            if (res.isConfirmed && res.value) {
+                // حفظ في الإعدادات
+                db.ref('settings/categoryImages/' + category).set(res.value).then(() => {
+                    Swal.fire('تم', 'تم تحديث صورة القسم', 'success');
+                });
+            }
+        });
+    }
+    
+    function sendBroadcastMessage() {
+        if (me.role !== "admin") return;
+        
+        Swal.fire({
+            title: 'رسالة عامة',
+            input: 'textarea',
+            inputPlaceholder: 'أدخل الرسالة...',
+            showCancelButton: true,
+            background: '#1e293b',
+            color: '#fff'
+        }).then(res => {
+            if (res.isConfirmed && res.value) {
+                db.ref('settings/broadcast').set({
+                    text: res.value,
+                    date: Date.now(),
+                    id: Date.now().toString()
+                }).then(() => {
+                    Swal.fire('تم', 'تم نشر الرسالة', 'success');
+                });
+            }
+        });
+    }
+    
+    function loadUserProfile(uid) {
+        const statusEl = document.getElementById('profile-status');
+        if (!statusEl) return;
+        
+        db.ref('users/' + uid).on('value', snap => {
+            const user = snap.val();
+            if (user) {
+                const lastSeen = user.lastSeen || 0;
+                const now = Date.now();
+                const diff = now - lastSeen;
+                const isOnline = diff < 300000; // 5 دقائق
+                
+                statusEl.innerHTML = isOnline ? 
+                    '<span class="online-dot"></span> متصل الآن' : 
+                    `آخر ظهور: ${new Date(lastSeen).toLocaleTimeString('ar-EG')}`;
+                
+                // تحديث معلومات الملف الشخصي
+                if (uid !== me.p) {
+                    const vipIcon = user.vipStatus === 'active' ? ' <i class="fas fa-crown" style="color:var(--accent)"></i>' : '';
+                    document.querySelector('#content-area h2').innerHTML = `${escapeHtml(user.n)}${vipIcon}`;
+                }
+            }
+        });
     }
 
     // --- تشغيل النظام ---
