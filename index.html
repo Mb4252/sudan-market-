@@ -336,7 +336,7 @@
         </div>
         <div class="search-container" id="main-search">
             <i class="fas fa-search"></i>
-            <input type="text" id="store-search" placeholder="ابحق في السوق..." oninput="debounceFilter(this.value)">
+            <input type="text" id="store-search" placeholder="ابحث في السوق..." oninput="debounceFilter(this.value)">
         </div>
     </header>
 
@@ -865,7 +865,157 @@
         render(currentView);
     }
 
-    // --- دالات التعامل مع البوت ---
+    // ======================================================
+    // 1. نظام المنشورات (جلب، عرض، ونشر)
+    // ======================================================
+
+    function loadPosts(path, sub, containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        db.ref(path).on('value', snap => {
+            container.innerHTML = "";
+            const data = snap.val();
+            if (!data) {
+                container.innerHTML = `<div style="text-align:center; padding:20px; color:gray;">لا توجد منشورات حالياً</div>`;
+                return;
+            }
+
+            const postsArray = Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse();
+            postsArray.forEach(p => {
+                if (path === 'posts' && sub && p.sub !== sub) return;
+
+                const postHtml = `
+                    <div class="post">
+                        <div class="post-img-container">
+                            ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="height:100%; background:#2d3748; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image" style="font-size:40px; color:#4a5568;"></i></div>`}
+                            ${p.sold ? '<div class="sold-overlay">تم البيع</div>' : ''}
+                            ${p.discount ? `<div class="discount-tag" style="position:absolute; top:10px; left:10px;">-${p.discount}%</div>` : ''}
+                        </div>
+                        <div style="padding:15px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <h3 style="margin:0;">${escapeHtml(p.title)}</h3>
+                                <b style="color:var(--neon-blue);">${p.price} SDM</b>
+                            </div>
+                            <p style="font-size:13px; color:var(--text-sec); margin:10px 0;">${escapeHtml(p.desc)}</p>
+                            <div style="display:flex; align-items:center; gap:8px; margin-bottom:15px;">
+                                <img src="${p.userPic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" style="width:25px; height:25px; border-radius:50%; object-fit:cover;">
+                                <span style="font-size:12px; color:var(--accent); cursor:pointer;" onclick="nav('profile', '${p.userId}')">${escapeHtml(p.userName)}</span>
+                            </div>
+                            <button class="btn-main" onclick="window.open('https://wa.me/${p.userWa}?text=بخصوص إعلانك: ${p.title}')"><i class="fab fa-whatsapp"></i> تواصل عبر واتساب</button>
+                        </div>
+                    </div>`;
+                container.innerHTML += postHtml;
+            });
+        });
+    }
+
+    function publish(path) {
+        if (isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
+        const title = document.getElementById(path === 'posts' ? 'pt' : 'v-t').value;
+        const price = document.getElementById(path === 'posts' ? 'pp' : 'v-pr').value;
+        const desc = document.getElementById(path === 'posts' ? 'pd' : 'v-d').value;
+        let disc = (path === 'vip_posts') ? (document.getElementById('v-dis').value || 0) : 0;
+
+        if (!title || !price || !desc) return Swal.fire('تنبيه', 'أكمل جميع الحقول', 'warning');
+
+        const postData = {
+            title, price: parseFloat(price), desc, img: tempImg,
+            userId: me.p, userName: me.n, userPic: me.pic, userWa: me.wa,
+            sub: curS, discount: disc, date: Date.now(), sold: false
+        };
+
+        Swal.fire({ title: 'جاري النشر...', didOpen: () => Swal.showLoading() });
+        db.ref(path).push(postData).then(() => {
+            Swal.fire('تم بنجاح', 'تم النشر بنجاح', 'success');
+            tempImg = ""; goBack();
+        }).catch(e => Swal.fire('خطأ', e.message, 'error'));
+    }
+
+    // ======================================================
+    // 2. نظام المحفظة والعمليات (للمستخدم والآدمن)
+    // ======================================================
+
+    async function loadTransactions() {
+        const container = document.getElementById('transactions-history');
+        if (!container) return;
+        db.ref('transactions').orderByChild('date').limitToLast(15).on('value', snap => {
+            container.innerHTML = "";
+            const data = snap.val();
+            if (!data) return container.innerHTML = "<p style='color:gray; text-align:center;'>لا توجد عمليات</p>";
+            
+            Object.values(data).reverse().forEach(t => {
+                if (t.from === me.p || t.to === me.p) {
+                    const isOut = t.from === me.p;
+                    container.innerHTML += `
+                        <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; margin-bottom:8px; border-right:4px solid ${isOut?'#ef4444':'#10b981'}; display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <div style="font-size:13px; font-weight:bold;">${isOut?'إرسال إلى: '+t.to.substring(0,8):'استلام من: '+t.from.substring(0,8)}...</div>
+                                <div style="font-size:10px; color:gray;">${new Date(t.date).toLocaleString('ar-EG')}</div>
+                            </div>
+                            <b style="color:${isOut?'#ef4444':'#10b981'}">${isOut?'-':'+'}${t.amount} SDM</b>
+                        </div>`;
+                }
+            });
+        });
+    }
+
+    // لوحة التحكم للآدمن بمراجعة الإيداع
+    function loadAdminCoinRequests() {
+        if (me.role !== 'admin') return;
+        const container = document.getElementById('admin-coin-requests-list');
+        if (!container) return;
+
+        db.ref('coin_requests').on('value', snap => {
+            container.innerHTML = "";
+            const requests = snap.val();
+            if (!requests) return container.innerHTML = "<p style='color:gray; text-align:center;'>لا توجد طلبات</p>";
+
+            Object.keys(requests).forEach(reqId => {
+                const req = requests[reqId];
+                if (req.status !== 'pending') return;
+                container.innerHTML += `
+                    <div class="admin-item" style="border:1px solid var(--accent); padding:10px; margin-bottom:10px; background:rgba(0,0,0,0.2);">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <b>${escapeHtml(req.uN)}</b>
+                            <span class="badge badge-gold">${req.qty} SDM</span>
+                        </div>
+                        <img src="${req.img}" style="width:100%; max-height:150px; object-fit:contain; margin:10px 0; border-radius:5px; cursor:pointer;" onclick="Swal.fire({imageUrl:'${req.img}', background:'#1e293b'})">
+                        <div style="display:flex; gap:5px;">
+                            <button class="btn-main" style="background:var(--green); flex:1; padding:8px;" onclick="approveCoins('${reqId}', '${req.uP}', ${req.qty})">تأكيد ✅</button>
+                            <button class="btn-main" style="background:var(--red); flex:1; padding:8px;" onclick="rejectCoins('${reqId}', '${req.uP}')">رفض ❌</button>
+                        </div>
+                    </div>`;
+            });
+        });
+    }
+
+    async function approveCoins(reqId, userId, qty) {
+        Swal.fire({ title: 'جاري المعالجة...', didOpen: () => Swal.showLoading() });
+        const userRef = db.ref(`users/${userId}/sdmBalance`);
+        const snap = await userRef.once('value');
+        const newBal = (snap.val() || 0) + qty;
+        
+        await userRef.set(newBal);
+        await db.ref(`coin_requests/${reqId}`).update({ status: 'approved' });
+        await db.ref('transactions').push({ type: 'deposit', to: userId, from: 'SYSTEM', amount: qty, date: Date.now() });
+        await db.ref(`alerts/${userId}`).push({ msg: `✅ تم تأكيد إيداع ${qty} SDM في حسابك`, type: 'success', date: Date.now() });
+        
+        Swal.fire('نجاح', 'تم شحن الرصيد للمستخدم', 'success');
+    }
+
+    async function rejectCoins(reqId, userId) {
+        const { value: reason } = await Swal.fire({ title: 'سبب الرفض؟', input: 'text', showCancelButton: true });
+        if (reason) {
+            await db.ref(`coin_requests/${reqId}`).update({ status: 'rejected', reason: reason });
+            await db.ref(`alerts/${userId}`).push({ msg: `❌ تم رفض طلب الإيداع: ${reason}`, type: 'error', date: Date.now() });
+            Swal.fire('تم الرفض', 'أرسلنا تنبيه للمستخدم', 'info');
+        }
+    }
+
+    // ======================================================
+    // 3. دوال التعامل مع البوت (تحويلات، تقييمات، بلاغات)
+    // ======================================================
 
     // 1. دالة تحويل الرصيد (ترسل الطلب للبوت للمعالجة)
     function showTransfer() {
@@ -1035,32 +1185,29 @@
                         <button class="btn-main" style="background:var(--neon-blue); color:black; width:auto; padding:10px 30px;" onclick="showTransfer()">إرسال <i class="fas fa-paper-plane"></i></button>
                     </div>
                 </div>
+
+                ${(me.role === 'admin') ? `
+                <div style="padding:15px; background:rgba(245, 158, 11, 0.1); border:1px solid var(--accent); border-radius:15px; margin:15px;">
+                    <h3 style="margin-top:0; color:var(--accent);"><i class="fas fa-shield-alt"></i> طلبات الإيداع (للإدارة)</h3>
+                    <div id="admin-coin-requests-list">جاري التحميل...</div>
+                </div>
+                ` : ''}
+
                 <div style="padding:20px;">
                     <h3>شراء عملة من المطور</h3>
                     <div class="post" style="padding:20px;">
                         <p style="color:var(--text-sec)">بنك الخرطوم: <b style="color:white; font-size:18px;">4426148</b> (محمد)</p>
-                        <label style="font-size:12px;">أدخل الكمية (SDM)</label>
-                        <input id="buy-qty" type="number" placeholder="مثلاً: 5" oninput="calcBuyCost(this.value)">
-                        <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; margin:10px 0; text-align:center;">
-                            المطلوب دفعه: <b id="buy-cost-display" style="color:var(--up-color); font-size:18px;">0</b> جنيه
-                        </div>
-                        <div class="file-input-container">
-                            <label class="file-input-label">
-                                <i class="fas fa-receipt"></i> إرفاق إشعار الدفع
-                                <input type="file" class="file-input" onchange="encode(this, 'buy')" accept="image/*">
-                            </label>
-                            <div id="file-name-display" class="file-name">لم يتم اختيار صورة</div>
-                        </div>
+                        <input id="buy-qty" type="number" placeholder="أدخل الكمية (SDM)" oninput="calcBuyCost(this.value)">
+                        <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; margin:10px 0; text-align:center;">المطلوب: <b id="buy-cost-display" style="color:var(--accent);">0</b> جنيه</div>
+                        <label class="btn-main" style="background:#334155; text-align:center; display:block;"><i class="fas fa-receipt"></i> إرفاق الإشعار<input type="file" hidden onchange="encode(this, 'buy')"></label>
                         <button class="btn-main" onclick="requestCoins()">إرسال الطلب</button>
                     </div>
                     <h3>سجل المعاملات</h3>
-                    <div id="transactions-history" class="loading">
-                        <div class="loading-spinner"></div>
-                        <div>جاري تحميل المعاملات...</div>
-                    </div>
+                    <div id="transactions-history">جاري التحميل...</div>
                 </div>`;
             
-            loadWalletData();
+            loadTransactions(); 
+            if(me.role === 'admin') loadAdminCoinRequests(); 
         
         } else if (view === 'games') {
             area.innerHTML = `<div class="post" style="padding:20px; text-align:center;"><i class="fas fa-bolt" style="font-size:50px; color:var(--neon-blue); margin-bottom:20px;"></i><h2 style="margin:0;">شحن فوري</h2><select id="active-game" onchange="loadCorrectPacks()"><option value="pubg">ببجي (PUBG Mobile)</option><option value="ff">فري فاير (Free Fire)</option></select><input type="text" id="p-id-input" placeholder="ID اللاعب"><select id="p-pack-input" onchange="calculateGameCost(this)"></select><div class="calc-box" style="margin-top:10px;"><span style="font-size:12px; color:var(--text-sec)">التكلفة بالجنيه</span><span id="game-cost-res" class="calc-result">0 SDG</span></div><button class="btn-main" onclick="sendOrderToDeveloper()">🚀 شحن الآن</button></div><div style="padding:20px;"><h3>سجل الطلبات</h3><div id="game-history" class="loading">جاري التحميل...</div></div>${(me.role === "admin") ? `<div id="developer-area" class="admin-panel"><h3>طلبات الألعاب (لوحة المطور)</h3><div id="orders-list-container"></div></div>` : ''}`;
@@ -1129,7 +1276,7 @@
         }
     }
 
-    // --- دالة العرض الرئيسية (مختصرة) ---
+    // --- دوال المساعدة الإضافية ---
     function loadHomeData() {
         if (!cachedSettings || Date.now() - (cacheTimeout.settings || 0) > 60000) {
             db.ref('settings').once('value').then(snap => {
@@ -1144,15 +1291,6 @@
         }
         
         loadPosts('vip_posts', null, 'vip-home-list');
-    }
-    
-    async function loadWalletData() {
-        if (!cachedTransactions || Date.now() - (cacheTimeout.transactions || 0) > 30000) {
-            await loadTransactions();
-            cacheTimeout.transactions = Date.now();
-        } else {
-            displayCachedTransactions();
-        }
     }
     
     function calcBuyCost(val) { 
@@ -1254,134 +1392,7 @@
             }
         }, 1000);
     });
-// ==========================================
-// وظائف إضافية لتشغيل الواجهة (المنشورات، النشر، المحفظة)
-// ==========================================
 
-// 1. وظيفة جلب وعرض المنشورات (الرئيسية والأقسام)
-function loadPosts(path, sub, containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-
-    db.ref(path).on('value', snap => {
-        container.innerHTML = "";
-        const data = snap.val();
-        
-        if (!data) {
-            container.innerHTML = `<div style="text-align:center; padding:20px; color:gray;">
-                <i class="fas fa-box-open" style="font-size:40px; display:block; margin-bottom:10px;"></i>
-                لا توجد إعلانات هنا بعد
-            </div>`;
-            return;
-        }
-
-        const postsArray = Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse();
-
-        postsArray.forEach(p => {
-            if (path === 'posts' && sub && p.sub !== sub) return;
-
-            const postHtml = `
-                <div class="post">
-                    <div class="post-img-container">
-                        ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="display:flex; align-items:center; justify-content:center; height:100%; background:#2d3748;"><i class="fas fa-image" style="font-size:50px; color:#4a5568;"></i></div>`}
-                        ${p.sold ? '<div class="sold-overlay">تم البيع</div>' : ''}
-                        ${p.discount ? `<div style="position:absolute; top:10px; left:10px;" class="discount-tag">تخفيض ${p.discount}%</div>` : ''}
-                    </div>
-                    <div style="padding:15px;">
-                        <div style="display:flex; justify-content:space-between; align-items:start;">
-                            <h3 style="margin:0; font-size:18px;">${escapeHtml(p.title)}</h3>
-                            <b style="color:var(--neon-blue); font-size:18px;">${p.price} <span style="font-size:12px;">SDM</span></b>
-                        </div>
-                        <p style="font-size:13px; color:var(--text-sec); margin:10px 0;">${escapeHtml(p.desc)}</p>
-                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
-                            <img src="${p.userPic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" style="width:30px; height:30px; border-radius:50%; object-fit:cover;">
-                            <span style="font-size:12px; color:var(--accent); cursor:pointer;" onclick="nav('profile', '${p.userId}')">${escapeHtml(p.userName)}</span>
-                        </div>
-                        <button class="btn-main" onclick="window.open('https://wa.me/${p.userWa}?text=بخصوص إعلانك: ${p.title}')">
-                            <i class="fab fa-whatsapp"></i> تواصل مع البائع
-                        </button>
-                    </div>
-                </div>`;
-            container.innerHTML += postHtml;
-        });
-    });
-}
-
-// 2. وظيفة نشر إعلان جديد
-function publish(path) {
-    if (isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول للنشر', 'error');
-
-    const title = document.getElementById(path === 'posts' ? 'pt' : 'v-t').value;
-    const price = document.getElementById(path === 'posts' ? 'pp' : 'v-pr').value;
-    const desc = document.getElementById(path === 'posts' ? 'pd' : 'v-d').value;
-    let discount = 0;
-
-    if (path === 'vip_posts') {
-        const discEl = document.getElementById('v-dis');
-        discount = discEl ? discEl.value : 0;
-    }
-
-    if (!title || !price || !desc) {
-        return Swal.fire('تنبيه', 'يرجى إكمال جميع الحقول', 'warning');
-    }
-
-    const postData = {
-        title: title,
-        price: parseFloat(price),
-        desc: desc,
-        img: tempImg,
-        userId: me.p,
-        userName: me.n,
-        userPic: me.pic || "",
-        userWa: me.wa || "",
-        sub: curS,
-        discount: discount,
-        date: Date.now(),
-        sold: false
-    };
-
-    Swal.fire({ title: 'جاري النشر...', didOpen: () => Swal.showLoading(), background: '#1e293b', color: '#fff' });
-
-    db.ref(path).push(postData).then(() => {
-        Swal.fire('تم بنجاح', 'تم نشر إعلانك وهو متاح للجميع الآن', 'success');
-        tempImg = ""; 
-        goBack(); 
-    }).catch(e => Swal.fire('خطأ', e.message, 'error'));
-}
-
-// 3. وظيفة عرض سجل المعاملات في المحفظة
-async function loadTransactions() {
-    const container = document.getElementById('transactions-history');
-    if (!container) return;
-
-    db.ref('transactions').orderByChild('date').limitToLast(20).on('value', snap => {
-        container.innerHTML = "";
-        const data = snap.val();
-        
-        if (!data) {
-            container.innerHTML = "<p style='color:gray; text-align:center;'>لا توجد عمليات سابقة</p>";
-            return;
-        }
-
-        const trans = Object.values(data).reverse();
-        trans.forEach(t => {
-            if (t.from === me.p || t.to === me.p) {
-                const isOut = t.from === me.p;
-                const html = `
-                    <div style="background:rgba(255,255,255,0.05); padding:12px; border-radius:12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; border-right: 4px solid ${isOut ? '#ef4444' : '#10b981'}">
-                        <div>
-                            <div style="font-weight:bold; font-size:13px;">${isOut ? 'إرسال إلى: ' + (t.to.substring(0,8)+'...') : 'استلام من: ' + (t.from.substring(0,8)+'...')}</div>
-                            <div style="font-size:10px; color:gray;">${new Date(t.date).toLocaleString('ar-EG')}</div>
-                        </div>
-                        <div style="font-weight:800; color:${isOut ? '#ef4444' : '#10b981'}">
-                            ${isOut ? '-' : '+'}${t.amount} SDM
-                        </div>
-                    </div>`;
-                container.innerHTML += html;
-            }
-        });
-    });
-}
 </script>
 </body>
 </html>
