@@ -379,6 +379,7 @@
 
     const ADMIN_EMAIL = "mb425262@gmail.com";
     const SDM_RATE = 1000; 
+    const BOT_WEBHOOK_URL = "https://your-bot-webhook-url.com/webhook"; // استبدل هذا برابط البوت
     let me = null;
     let hStack = ['home'];
     let curC = '', curS = '';
@@ -678,6 +679,21 @@
             setTimeout(() => {
                 initDeveloperLogic();
                 listenForAdminTasks();
+                
+                // إضافة زر إرسال البيانات للبوت في لوحة الأدمن
+                const adminArea = document.getElementById('admin-notifications-area');
+                if (adminArea) {
+                    adminArea.innerHTML += `
+                        <div class="admin-notify-bar">
+                            <h4><i class="fas fa-robot"></i> إرسال البيانات للبوت</h4>
+                            <button class="btn-main" onclick="sendAllDataToBot()" style="background:var(--neon-blue); color:black; margin-top:10px;">
+                                <i class="fas fa-paper-plane"></i> إرسال جميع البيانات للبوت
+                            </button>
+                            <button class="btn-main" onclick="autoSendToBot()" style="background:var(--accent); color:black; margin-top:10px;">
+                                <i class="fas fa-sync-alt"></i> تفعيل الإرسال التلقائي
+                            </button>
+                        </div>`;
+                }
             }, 1000);
         }
         
@@ -865,7 +881,353 @@
         render(currentView);
     }
 
-    // --- دالة العرض الرئيسية (مختصرة للتركيز على إصلاح التسجيل) ---
+    // --- دوال إرسال البيانات للبوت ---
+    async function sendAllDataToBot() {
+        if (!me || isGuest) {
+            Swal.fire('تحذير', 'يجب تسجيل الدخول لاستخدام هذه الميزة', 'warning');
+            return;
+        }
+
+        Swal.fire({
+            title: 'إرسال البيانات للبوت',
+            text: 'هل تريد إرسال جميع البيانات (التحويلات، التقييمات، البلاغات) للبوت؟',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، إرسال',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                showLoginLoading();
+                
+                try {
+                    // جمع جميع البيانات
+                    const allData = await gatherAllBotData();
+                    
+                    // إرسال البيانات إلى البوت
+                    const success = await sendToBotWebhook(allData);
+                    
+                    hideLoginLoading();
+                    
+                    if (success) {
+                        Swal.fire({
+                            title: 'تم الإرسال بنجاح',
+                            text: 'تم إرسال جميع البيانات للبوت بنجاح',
+                            icon: 'success',
+                            background: '#1e293b',
+                            color: '#fff'
+                        });
+                        
+                        // حفظ سجل الإرسال
+                        saveBotLog(allData);
+                    } else {
+                        Swal.fire('خطأ', 'فشل إرسال البيانات للبوت', 'error');
+                    }
+                } catch (error) {
+                    hideLoginLoading();
+                    Swal.fire('خطأ', 'فشل في جمع البيانات: ' + error.message, 'error');
+                }
+            }
+        });
+    }
+
+    async function gatherAllBotData() {
+        const dataPromises = [
+            fetchAllTransactions(),
+            fetchAllRatings(),
+            fetchAllReports(),
+            fetchAllCoinRequests(),
+            fetchAllGameOrders(),
+            fetchAllUsers(),
+            fetchAllPosts()
+        ];
+
+        const results = await Promise.all(dataPromises);
+
+        return {
+            timestamp: Date.now(),
+            date: new Date().toISOString(),
+            sender: {
+                uid: me.p,
+                name: me.n,
+                email: me.email || '',
+                role: me.role
+            },
+            data: {
+                transactions: results[0],
+                ratings: results[1],
+                reports: results[2],
+                coinRequests: results[3],
+                gameOrders: results[4],
+                users: results[5],
+                posts: results[6]
+            },
+            summary: {
+                totalTransactions: results[0].length,
+                totalRatings: results[1].length,
+                totalReports: results[2].length,
+                pendingCoinRequests: results[3].filter(r => r.status === 'pending').length,
+                pendingGameOrders: results[4].filter(o => o.status === 'pending').length,
+                totalUsers: results[5].length,
+                totalPosts: results[6].length
+            }
+        };
+    }
+
+    async function fetchAllTransactions() {
+        try {
+            const snapshot = await db.ref('transactions').once('value');
+            const data = snapshot.val();
+            const transactions = [];
+            
+            if (data) {
+                Object.keys(data).forEach(key => {
+                    transactions.push({
+                        id: key,
+                        ...data[key]
+                    });
+                });
+            }
+            
+            return transactions.sort((a, b) => (b.timestamp || b.date || 0) - (a.timestamp || a.date || 0));
+        } catch (error) {
+            console.error('خطأ في جلب التحويلات:', error);
+            return [];
+        }
+    }
+
+    async function fetchAllRatings() {
+        try {
+            const snapshot = await db.ref('ratings').once('value');
+            const data = snapshot.val();
+            const ratings = [];
+            
+            if (data) {
+                Object.keys(data).forEach(key => {
+                    ratings.push({
+                        id: key,
+                        ...data[key]
+                    });
+                });
+            }
+            
+            return ratings;
+        } catch (error) {
+            console.error('خطأ في جلب التقييمات:', error);
+            return [];
+        }
+    }
+
+    async function fetchAllReports() {
+        try {
+            const snapshot = await db.ref('reports').once('value');
+            const data = snapshot.val();
+            const reports = [];
+            
+            if (data) {
+                Object.keys(data).forEach(key => {
+                    reports.push({
+                        id: key,
+                        ...data[key]
+                    });
+                });
+            }
+            
+            return reports;
+        } catch (error) {
+            console.error('خطأ في جلب البلاغات:', error);
+            return [];
+        }
+    }
+
+    async function fetchAllCoinRequests() {
+        try {
+            const snapshot = await db.ref('coin_requests').once('value');
+            const data = snapshot.val();
+            const requests = [];
+            
+            if (data) {
+                Object.keys(data).forEach(key => {
+                    requests.push({
+                        id: key,
+                        ...data[key]
+                    });
+                });
+            }
+            
+            return requests.sort((a, b) => (b.date || 0) - (a.date || 0));
+        } catch (error) {
+            console.error('خطأ في جلب طلبات العملة:', error);
+            return [];
+        }
+    }
+
+    async function fetchAllGameOrders() {
+        try {
+            const snapshot = await db.ref('game_orders').once('value');
+            const data = snapshot.val();
+            const orders = [];
+            
+            if (data) {
+                Object.keys(data).forEach(key => {
+                    orders.push({
+                        id: key,
+                        ...data[key]
+                    });
+                });
+            }
+            
+            return orders.sort((a, b) => (b.date || 0) - (a.date || 0));
+        } catch (error) {
+            console.error('خطأ في جلب طلبات الألعاب:', error);
+            return [];
+        }
+    }
+
+    async function fetchAllUsers() {
+        try {
+            const snapshot = await db.ref('users').once('value');
+            const data = snapshot.val();
+            const users = [];
+            
+            if (data) {
+                Object.keys(data).forEach(key => {
+                    if (key !== 'guest') { // استبعاد حساب الزائر
+                        users.push({
+                            id: key,
+                            ...data[key]
+                        });
+                    }
+                });
+            }
+            
+            return users;
+        } catch (error) {
+            console.error('خطأ في جلب المستخدمين:', error);
+            return [];
+        }
+    }
+
+    async function fetchAllPosts() {
+        try {
+            const snapshot = await db.ref('posts').once('value');
+            const postsData = snapshot.val();
+            const posts = [];
+            
+            if (postsData) {
+                Object.keys(postsData).forEach(key => {
+                    posts.push({
+                        id: key,
+                        ...postsData[key]
+                    });
+                });
+            }
+            
+            // جلب منشورات VIP أيضًا
+            const vipSnapshot = await db.ref('vip_posts').once('value');
+            const vipData = vipSnapshot.val();
+            
+            if (vipData) {
+                Object.keys(vipData).forEach(key => {
+                    posts.push({
+                        id: key,
+                        ...vipData[key],
+                        isVip: true
+                    });
+                });
+            }
+            
+            return posts.sort((a, b) => (b.date || 0) - (a.date || 0));
+        } catch (error) {
+            console.error('خطأ في جلب المنشورات:', error);
+            return [];
+        }
+    }
+
+    async function sendToBotWebhook(data) {
+        try {
+            const response = await fetch(BOT_WEBHOOK_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            });
+            
+            return response.ok;
+        } catch (error) {
+            console.error('خطأ في إرسال البيانات للبوت:', error);
+            return false;
+        }
+    }
+
+    function saveBotLog(data) {
+        const logData = {
+            timestamp: Date.now(),
+            date: new Date().toISOString(),
+            sender: me.p,
+            dataSize: JSON.stringify(data).length,
+            summary: data.summary
+        };
+        
+        db.ref('bot_logs').push(logData);
+    }
+
+    function autoSendToBot() {
+        Swal.fire({
+            title: 'الإرسال التلقائي',
+            input: 'select',
+            inputOptions: {
+                'hourly': 'كل ساعة',
+                'daily': 'يومياً',
+                'weekly': 'أسبوعياً',
+                'manual': 'يدوي فقط'
+            },
+            inputPlaceholder: 'اختر الفترة',
+            showCancelButton: true,
+            confirmButtonText: 'تفعيل',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        }).then((result) => {
+            if (result.isConfirmed && result.value !== 'manual') {
+                localStorage.setItem('auto_bot_send', result.value);
+                
+                // بدء الإرسال التلقائي
+                startAutoSend(result.value);
+                
+                Swal.fire('تم', 'تم تفعيل الإرسال التلقائي', 'success');
+            }
+        });
+    }
+
+    function startAutoSend(interval) {
+        let intervalMs;
+        
+        switch(interval) {
+            case 'hourly': intervalMs = 60 * 60 * 1000; break;
+            case 'daily': intervalMs = 24 * 60 * 60 * 1000; break;
+            case 'weekly': intervalMs = 7 * 24 * 60 * 60 * 1000; break;
+            default: return;
+        }
+        
+        // إرسال أول مرة فوراً
+        setTimeout(() => {
+            if (me && me.role === 'admin') {
+                sendAllDataToBot();
+            }
+        }, 5000);
+        
+        // إعداد الإرسال الدوري
+        setInterval(() => {
+            if (me && me.role === 'admin') {
+                sendAllDataToBot();
+            }
+        }, intervalMs);
+    }
+
+    // --- باقي الدوال ---
     function render(view, extra) {
         const area = document.getElementById('content-area');
         const adminArea = document.getElementById('admin-notifications-area');
@@ -894,7 +1256,15 @@
                     <div class="slider-dots"><div class="dot active" id="dot-0"></div><div class="dot" id="dot-1"></div><div class="dot" id="dot-2"></div></div>
                     ${(!isGuest && me.role === 'admin') ? `<div class="edit-slider-btn" onclick="updateCurrentSliderImg()">✏️ تعديل</div>` : ''}
                 </div>
-                ${(!isGuest && me.role === 'admin') ? `<button class="btn-main" style="background:#6f42c1; margin:10px 20px; width:calc(100% - 40px);" onclick="sendBroadcastMessage()">📢 نشر رسالة عامة</button>` : ''}
+                ${(!isGuest && me.role === 'admin') ? `
+                    <div class="admin-notify-bar">
+                        <h4><i class="fas fa-robot"></i> إرسال البيانات للبوت</h4>
+                        <button class="btn-main" onclick="sendAllDataToBot()" style="background:var(--neon-blue); color:black; margin-top:10px;">
+                            <i class="fas fa-paper-plane"></i> إرسال جميع البيانات للبوت
+                        </button>
+                    </div>
+                    <button class="btn-main" style="background:#6f42c1; margin:10px 20px; width:calc(100% - 40px);" onclick="sendBroadcastMessage()">📢 نشر رسالة عامة</button>
+                ` : ''}
                 <h3 style="padding:0 20px; margin-bottom:0;">الأقسام</h3>
                 <div class="grid">
                     ${Object.keys(cats).map(k=> {
@@ -1030,7 +1400,7 @@
         }
     }
 
-    // --- باقي الدوال (مختصرة) ---
+    // --- دالة العرض الرئيسية (مختصرة) ---
     function loadHomeData() {
         if (!cachedSettings || Date.now() - (cacheTimeout.settings || 0) > 60000) {
             db.ref('settings').once('value').then(snap => {
