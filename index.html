@@ -607,6 +607,9 @@
                     me.p = uid;
                     me.pic = user.photoURL || me.pic || userPic;
                     
+                    // إنشاء/تحديث الرقم المكون من 6 أرقام
+                    updateUserNumericId(uid);
+                    
                     startApp(uid);
                 } else {
                     // إنشاء مستخدم جديد
@@ -622,7 +625,8 @@
                         vipStatus: 'none', 
                         reportCount: 0, 
                         verified: true,
-                        lastSeen: Date.now()
+                        lastSeen: Date.now(),
+                        numericId: generate6DigitNumericId(uid)
                     };
                     
                     db.ref('users/' + uid).set(newUser).then(() => { 
@@ -650,6 +654,33 @@
             }
         }
     });
+
+    // دالة إنشاء/تحديث الرقم المكون من 6 أرقام
+    function updateUserNumericId(uid) {
+        db.ref('users/' + uid).once('value').then(snap => {
+            const userData = snap.val();
+            if (!userData.numericId) {
+                const numericId = generate6DigitNumericId(uid);
+                db.ref('users/' + uid).update({ numericId: numericId });
+                me.numericId = numericId;
+            } else {
+                me.numericId = userData.numericId;
+            }
+        });
+    }
+
+    // دالة إنشاء رقم مكون من 6 أرقام من UID
+    function generate6DigitNumericId(uid) {
+        if (!uid) return '000000';
+        // تحويل UID إلى عدد باستخدام hash بسيط
+        let hash = 0;
+        for (let i = 0; i < uid.length; i++) {
+            hash = ((hash << 5) - hash) + uid.charCodeAt(i);
+            hash = hash & hash; // تحويل إلى 32-bit integer
+        }
+        // جعله 6 أرقام وإيجابي
+        return String(Math.abs(hash) % 1000000).padStart(6, '0');
+    }
 
     function startApp(uid) {
         console.log('بدء التطبيق للمستخدم:', me.n);
@@ -896,32 +927,32 @@
             postsArray.forEach(p => {
                 if (path === 'posts' && sub && p.sub !== sub) return;
 
-                const numericUid = p.userId ? generateNumericUid(p.userId) : '0000';
                 const isOwner = me && me.p === p.userId;
+                const isAdmin = me && me.role === 'admin';
+                const showMenu = isOwner || isAdmin;
                 
                 const postHtml = `
                     <div class="post" id="post-${p.id}">
-                        <div class="post-menu">
-                            <div class="post-menu-btn" onclick="togglePostMenu('${p.id}')">
-                                <i class="fas fa-ellipsis-v"></i>
-                            </div>
-                            <div class="post-menu-dropdown" id="menu-${p.id}">
-                                ${isOwner ? `
-                                    <div class="post-menu-item" onclick="markAsSold('${path}', '${p.id}')">
-                                        <i class="fas fa-check-circle"></i> تم البيع
+                        ${showMenu ? `
+                            <div class="post-menu">
+                                <div class="post-menu-btn" onclick="togglePostMenu('${p.id}')">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </div>
+                                <div class="post-menu-dropdown" id="menu-${p.id}">
+                                    ${isOwner ? `
+                                        <div class="post-menu-item" onclick="markAsSold('${path}', '${p.id}')">
+                                            <i class="fas fa-check-circle"></i> تم البيع
+                                        </div>
+                                        <div class="post-menu-item" onclick="editPost('${path}', '${p.id}')">
+                                            <i class="fas fa-edit"></i> تعديل المنشور
+                                        </div>
+                                    ` : ''}
+                                    <div class="post-menu-item" onclick="deletePost('${path}', '${p.id}', ${isAdmin})" style="color:var(--red)">
+                                        <i class="fas fa-trash"></i> ${isAdmin ? 'حذف (أدمن)' : 'حذف المنشور'}
                                     </div>
-                                    <div class="post-menu-item" onclick="editPost('${path}', '${p.id}')">
-                                        <i class="fas fa-edit"></i> تعديل المنشور
-                                    </div>
-                                    <div class="post-menu-item" onclick="deletePost('${path}', '${p.id}')" style="color:var(--red)">
-                                        <i class="fas fa-trash"></i> حذف المنشور
-                                    </div>
-                                ` : ''}
-                                <div class="post-menu-item" onclick="navigator.clipboard.writeText('${numericUid}'); Swal.fire({title: 'تم النسخ', text: 'تم نسخ الرقم: ${numericUid}', icon: 'success', toast: true, timer: 2000})">
-                                    <i class="fas fa-copy"></i> نسخ الرقم (${numericUid})
                                 </div>
                             </div>
-                        </div>
+                        ` : ''}
                         <div class="post-img-container">
                             ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="height:100%; background:#2d3748; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image" style="font-size:40px; color:#4a5568;"></i></div>`}
                             ${p.sold ? '<div class="sold-overlay">تم البيع</div>' : ''}
@@ -933,10 +964,15 @@
                                 <b style="color:var(--neon-blue);">${p.price} SDM</b>
                             </div>
                             <p style="font-size:13px; color:var(--text-sec); margin:10px 0;">${escapeHtml(p.desc)}</p>
-                            <div style="display:flex; align-items:center; gap:8px; margin-bottom:15px;">
+                            <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
                                 <img src="${p.userPic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" style="width:25px; height:25px; border-radius:50%; object-fit:cover;">
                                 <span style="font-size:12px; color:var(--accent); cursor:pointer;" onclick="nav('profile', '${p.userId}')">${escapeHtml(p.userName)}</span>
-                                <span style="font-size:10px; color:var(--text-sec); background:rgba(255,255,255,0.1); padding:2px 8px; border-radius:10px;">${numericUid}</span>
+                                <span style="font-size:10px; color:var(--text-sec);">${p.numericId || '000000'}</span>
+                            </div>
+                            <div class="post-date">
+                                <i class="far fa-clock"></i>
+                                ${new Date(p.date).toLocaleDateString('ar-EG')} - 
+                                ${new Date(p.date).toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'})}
                             </div>
                             <button class="btn-main" onclick="window.open('https://wa.me/${p.userWa}?text=بخصوص إعلانك: ${p.title}')"><i class="fab fa-whatsapp"></i> تواصل عبر واتساب</button>
                             
@@ -965,18 +1001,6 @@
                 loadComments(path, p.id);
             });
         });
-    }
-
-    // دالة لتحويل UID إلى أرقام فقط
-    function generateNumericUid(uid) {
-        if (!uid) return '0000';
-        // تحويل الأحرف إلى أرقام باستخدام charCodeAt
-        let numeric = 0;
-        for (let i = 0; i < Math.min(uid.length, 8); i++) {
-            numeric += uid.charCodeAt(i);
-        }
-        // جعله 4 أرقام فقط
-        return String(numeric % 10000).padStart(4, '0');
     }
 
     // دالة التبديل بين قوائم المنشورات
@@ -1078,10 +1102,15 @@
     }
 
     // دالة حذف المنشور
-    function deletePost(path, postId) {
+    function deletePost(path, postId, isAdmin = false) {
+        let confirmText = 'هل أنت متأكد من حذف هذا المنشور؟';
+        if (isAdmin) {
+            confirmText = 'أنت كأدمن تريد حذف هذا المنشور. هل أنت متأكد؟';
+        }
+        
         Swal.fire({
             title: 'تأكيد الحذف',
-            text: 'هل أنت متأكد من حذف هذا المنشور؟',
+            text: confirmText,
             icon: 'warning',
             showCancelButton: true,
             confirmButtonText: 'نعم، احذف',
@@ -1187,7 +1216,7 @@
             title, price: parseFloat(price), desc, img: tempImg,
             userId: me.p, userName: me.n, userPic: me.pic, userWa: me.wa,
             sub: curS, discount: disc, date: Date.now(), sold: false,
-            numericUid: generateNumericUid(me.p)
+            numericId: me.numericId || generate6DigitNumericId(me.p)
         };
 
         Swal.fire({ title: 'جاري النشر...', didOpen: () => Swal.showLoading() });
@@ -1287,11 +1316,11 @@
         Swal.fire({
             title: 'تحويل رصيد SDM',
             html: `
-                <input id="swal-input1" class="swal2-input" placeholder="الرقم المكون من 4 أرقام">
+                <input id="swal-input1" class="swal2-input" placeholder="رقم التعريف المكون من 6 أرقام">
                 <input id="swal-input2" class="swal2-input" type="number" placeholder="الكمية">
                 <div id="receiver-info" style="display:none; background:rgba(0,0,0,0.2); padding:10px; border-radius:10px; margin-top:10px;">
                     <div id="receiver-name" style="color:var(--neon-blue); font-weight:bold;"></div>
-                    <div id="receiver-uid" style="font-size:11px; color:var(--text-sec);"></div>
+                    <div id="receiver-status" style="font-size:11px; color:var(--text-sec);"></div>
                 </div>`,
             confirmButtonText: 'إرسال طلب التحويل',
             showCancelButton: true,
@@ -1303,48 +1332,112 @@
                     const numericId = this.value.trim();
                     const infoDiv = document.getElementById('receiver-info');
                     
-                    if (numericId.length === 4) {
-                        // البحث عن المستخدم باستخدام الرقم المكون من 4 أرقام
-                        findUserByNumericId(numericId);
+                    if (numericId.length === 6) {
+                        // البحث عن المستخدم باستخدام الرقم المكون من 6 أرقام
+                        findUserBy6DigitId(numericId);
                     } else {
                         infoDiv.style.display = 'none';
                     }
                 });
             }
-        }).then((result) => {
+        }).then(async (result) => {
             if (result.isConfirmed) {
-                const toUid = document.getElementById('swal-input1').value.trim();
+                const numericId = document.getElementById('swal-input1').value.trim();
                 const amount = parseFloat(document.getElementById('swal-input2').value);
                 
-                if (!toUid || isNaN(amount) || amount <= 0) return Swal.fire('خطأ', 'بيانات غير صحيحة', 'error');
+                if (!numericId || isNaN(amount) || amount <= 0) return Swal.fire('خطأ', 'بيانات غير صحيحة', 'error');
                 if (amount > me.sdmBalance) return Swal.fire('خطأ', 'رصيدك غير كافٍ', 'error');
 
                 // البحث عن المستخدم باستخدام الرقم
-                findUserByNumericId(toUid).then(foundUid => {
-                    if (!foundUid) {
-                        Swal.fire('خطأ', 'لم يتم العثور على مستخدم بهذا الرقم', 'error');
-                        return;
-                    }
+                const receiverData = await findUserBy6DigitIdForTransfer(numericId);
+                
+                if (!receiverData) {
+                    Swal.fire('خطأ', 'لم يتم العثور على مستخدم بهذا الرقم', 'error');
+                    return;
+                }
 
-                    // إرسال الطلب لمسار البوت
-                    db.ref('requests/transfers').push({
-                        from: me.p,
-                        to: foundUid,
-                        amount: amount,
-                        status: 'pending',
-                        date: Date.now(),
-                        fromName: me.n,
-                        toNumericId: toUid
-                    }).then(() => {
-                        Swal.fire('تم الإرسال', 'جاري معالجة التحويل آلياً بواسطة البوت...', 'info');
-                    });
+                // منع إرسال العملة لنفسك
+                if (receiverData.uid === me.p) {
+                    Swal.fire('خطأ', 'لا يمكن إرسال العملة لنفسك', 'error');
+                    return;
+                }
+
+                // إرسال الطلب لمسار البوت
+                db.ref('requests/transfers').push({
+                    from: me.p,
+                    fromName: me.n,
+                    fromNumericId: me.numericId,
+                    to: receiverData.uid,
+                    toName: receiverData.name,
+                    toNumericId: numericId,
+                    amount: amount,
+                    status: 'pending',
+                    date: Date.now()
+                }).then(() => {
+                    Swal.fire('تم الإرسال', 'جاري معالجة التحويل آلياً بواسطة البوت...', 'info');
                 });
             }
         });
     }
 
-    // دالة للبحث عن المستخدم باستخدام الرقم المكون من 4 أرقام
-    async function findUserByNumericId(numericId) {
+    // دالة للبحث عن المستخدم باستخدام الرقم المكون من 6 أرقام (لواجهة التحويل)
+    async function findUserBy6DigitId(numericId) {
+        try {
+            const usersSnapshot = await db.ref('users').once('value');
+            const users = usersSnapshot.val();
+            
+            if (!users) {
+                const infoDiv = document.getElementById('receiver-info');
+                if (infoDiv) {
+                    infoDiv.style.display = 'block';
+                    document.getElementById('receiver-name').textContent = '⚠️ لم يتم العثور على المستخدم';
+                    document.getElementById('receiver-status').textContent = 'الرقم غير صحيح';
+                }
+                return null;
+            }
+            
+            for (const [uid, userData] of Object.entries(users)) {
+                if (uid === 'guest') continue;
+                
+                if (userData.numericId === numericId) {
+                    // عرض معلومات المستخدم في واجهة التحويل
+                    const infoDiv = document.getElementById('receiver-info');
+                    const nameDiv = document.getElementById('receiver-name');
+                    const statusDiv = document.getElementById('receiver-status');
+                    
+                    if (infoDiv && nameDiv && statusDiv) {
+                        infoDiv.style.display = 'block';
+                        nameDiv.textContent = userData.n || 'مستخدم';
+                        if (uid === me.p) {
+                            statusDiv.textContent = '⚠️ لا يمكن إرسال العملة لنفسك';
+                            statusDiv.style.color = 'var(--red)';
+                        } else {
+                            statusDiv.textContent = '✓ تم التحقق من المستخدم';
+                            statusDiv.style.color = 'var(--green)';
+                        }
+                    }
+                    
+                    return { uid, name: userData.n };
+                }
+            }
+            
+            // إذا لم يتم العثور على المستخدم
+            const infoDiv = document.getElementById('receiver-info');
+            if (infoDiv) {
+                infoDiv.style.display = 'block';
+                document.getElementById('receiver-name').textContent = '⚠️ لم يتم العثور على المستخدم';
+                document.getElementById('receiver-status').textContent = 'الرقم غير صحيح';
+            }
+            
+            return null;
+        } catch (error) {
+            console.error('خطأ في البحث عن المستخدم:', error);
+            return null;
+        }
+    }
+
+    // دالة للبحث عن المستخدم باستخدام الرقم المكون من 6 أرقام (لعملية التحويل)
+    async function findUserBy6DigitIdForTransfer(numericId) {
         try {
             const usersSnapshot = await db.ref('users').once('value');
             const users = usersSnapshot.val();
@@ -1354,29 +1447,12 @@
             for (const [uid, userData] of Object.entries(users)) {
                 if (uid === 'guest') continue;
                 
-                const userNumericId = generateNumericUid(uid);
-                if (userNumericId === numericId) {
-                    // عرض معلومات المستخدم في واجهة التحويل
-                    const infoDiv = document.getElementById('receiver-info');
-                    const nameDiv = document.getElementById('receiver-name');
-                    const uidDiv = document.getElementById('receiver-uid');
-                    
-                    if (infoDiv && nameDiv && uidDiv) {
-                        infoDiv.style.display = 'block';
-                        nameDiv.textContent = userData.n || 'مستخدم';
-                        uidDiv.textContent = `ID: ${uid.substring(0, 8)}...`;
-                    }
-                    
-                    return uid;
+                if (userData.numericId === numericId) {
+                    return {
+                        uid: uid,
+                        name: userData.n || 'مستخدم'
+                    };
                 }
-            }
-            
-            // إذا لم يتم العثور على المستخدم
-            const infoDiv = document.getElementById('receiver-info');
-            if (infoDiv) {
-                infoDiv.style.display = 'block';
-                document.getElementById('receiver-name').textContent = '⚠️ لم يتم العثور على المستخدم';
-                document.getElementById('receiver-uid').textContent = 'الرقم غير صحيح';
             }
             
             return null;
@@ -1575,7 +1651,6 @@
         
         } else if (view === 'profile') {
             const uid = extra || me.p;
-            const numericUid = generateNumericUid(uid);
             area.innerHTML = `
                 <div style="text-align:center; padding:40px 20px;">
                     <div style="position:relative; display:inline-block;">
@@ -1586,8 +1661,8 @@
                     <h2 style="margin:10px 0;">${escapeHtml(me.n)} ${me.vipStatus==='active'?'<i class="fas fa-crown" style="color:var(--accent)"></i>':''}</h2>
                     <div style="background:rgba(255,255,255,0.1); padding:10px; border-radius:10px; margin:10px auto; max-width:200px;">
                         <div style="font-size:11px; color:var(--text-sec);">رقم التعريف</div>
-                        <div style="font-size:18px; font-weight:bold; color:var(--neon-blue); letter-spacing:2px;">${numericUid}</div>
-                        <button onclick="navigator.clipboard.writeText('${numericUid}'); Swal.fire({title: 'تم النسخ', text: 'تم نسخ الرقم: ${numericUid}', icon: 'success', toast: true, timer: 2000})" style="background:transparent; border:1px solid var(--border); color:white; border-radius:5px; padding:3px 10px; margin-top:5px; font-size:11px;">نسخ الرقم</button>
+                        <div style="font-size:18px; font-weight:bold; color:var(--neon-blue); letter-spacing:2px;">${me.numericId || '000000'}</div>
+                        <button onclick="navigator.clipboard.writeText('${me.numericId || '000000'}'); Swal.fire({title: 'تم النسخ', text: 'تم نسخ الرقم: ${me.numericId || '000000'}', icon: 'success', toast: true, timer: 2000})" style="background:transparent; border:1px solid var(--border); color:white; border-radius:5px; padding:3px 10px; margin-top:5px; font-size:11px;">نسخ الرقم</button>
                     </div>
                     <div id="profile-status" class="loading" style="font-size:12px; margin:5px 0;">
                         <div class="loading-spinner" style="width:15px; height:15px; display:inline-block;"></div>
@@ -1705,7 +1780,6 @@
         const container = document.getElementById('welcome-container'); 
         if(hStack[hStack.length-1] === 'home' && me && !isGuest) { 
             const greeting = hour < 12 ? "صباح الخير" : (hour < 18 ? "مساء الخير" : "مساء الخير");
-            const numericUid = generateNumericUid(me.p);
             container.innerHTML = `
                 <div style="background:rgba(59, 130, 246, 0.2); color:var(--neon-blue); padding:15px; border-radius:15px; margin:15px 0; border:1px solid var(--primary); display:flex; align-items:center; gap:10px;">
                     <i class="fas fa-hand-sparkles" style="font-size:20px;"></i>
@@ -1713,8 +1787,8 @@
                         <div style="font-size:14px; font-weight:bold;">${greeting}، ${escapeHtml(me.n)} ✨</div>
                         <div style="font-size:12px; color:var(--text-sec);">رصيدك: ${me.sdmBalance.toFixed(2)} SDM</div>
                         <div style="font-size:11px; color:var(--accent); margin-top:3px;">
-                            <i class="fas fa-id-card"></i> رقم التعريف: <b>${numericUid}</b>
-                            <button onclick="navigator.clipboard.writeText('${numericUid}'); Swal.fire({title: 'تم النسخ', text: 'تم نسخ الرقم', icon: 'success', toast: true, timer: 2000})" style="background:transparent; border:none; color:white; margin-right:5px; cursor:pointer;">
+                            <i class="fas fa-id-card"></i> رقم التعريف: <b>${me.numericId || '000000'}</b>
+                            <button onclick="navigator.clipboard.writeText('${me.numericId || '000000'}'); Swal.fire({title: 'تم النسخ', text: 'تم نسخ الرقم', icon: 'success', toast: true, timer: 2000})" style="background:transparent; border:none; color:white; margin-right:5px; cursor:pointer;">
                                 <i class="fas fa-copy"></i>
                             </button>
                         </div>
