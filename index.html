@@ -363,7 +363,7 @@
         <div class="tab-btn active" onclick="nav('home'); highlightTab(this)"><i class="fas fa-home"></i>الرئيسية</div>
         <div class="tab-btn" onclick="checkGuestAccess('wallet'); highlightTab(this)"><i class="fas fa-wallet"></i>المحفظة</div>
         <div class="tab-btn" onclick="checkGuestAccess('games'); highlightTab(this)"><i class="fas fa-gamepad"></i>الألعاب</div>
-        <div class="tab-btn" onclick="checkGuestAccess('vip'); highlightTab(this)"><i class="fas fa-crown" style="color:var(--accent)"></i>VIP</div>
+        <div class="tab-btn" onclick="checkVIPAccess(); highlightTab(this)"><i class="fas fa-crown" style="color:var(--accent)"></i>VIP</div>
         <div class="tab-btn" onclick="checkGuestAccess('profile'); highlightTab(this)"><i class="fas fa-user-astronaut"></i>ملفي</div>
     </div>
 </div>
@@ -398,6 +398,7 @@
     let sliderInterval;
     const sdmCoinImage = "https://cdn-icons-png.flaticon.com/512/5501/5501360.png";
     let isAtHomePage = true;
+    let isLoading = false; // إضافة متغير لمنع التحديث السريع
     
     // ذاكرة مؤقتة
     let cachedPosts = {};
@@ -499,19 +500,23 @@
 
     // --- تحكم في تحديث الصفحة ---
     window.addEventListener('focus', function() {
-        refreshCurrentPage();
+        if (!isLoading) {
+            refreshCurrentPage();
+        }
     });
 
     // --- إصلاح مشكلة تسجيل الدخول بجوجل ---
     function showLoginLoading() {
+        isLoading = true;
         document.getElementById('login-loading').classList.remove('hidden');
     }
 
     function hideLoginLoading() {
+        isLoading = false;
         document.getElementById('login-loading').classList.add('hidden');
     }
 
-    // دالة إنشاء رقم مكون من 6 أرقام من UID (معدلة)
+    // دالة إنشاء رقم مكون من 6 أرقام من UID
     function generate6DigitNumericId(uid) {
         if (!uid) return '000000';
         
@@ -528,26 +533,30 @@
         return numericId.padStart(6, '0');
     }
 
+    // دالة للتحقق من رقم تعريف المستخدم
+    function validateNumericId(numericId) {
+        if (!numericId || numericId.length !== 6) return false;
+        return /^\d{6}$/.test(numericId);
+    }
+
     async function loginWithGoogle() {
         try {
             showLoginLoading();
             
-            // إنشاء مزود جوجل
             const provider = new firebase.auth.GoogleAuthProvider();
             provider.addScope('profile');
             provider.addScope('email');
             
-            // محاولة تسجيل الدخول
             const result = await auth.signInWithPopup(provider);
             
             if (result.user) {
                 const user = result.user;
                 console.log('تم تسجيل الدخول بنجاح:', user.email);
                 
-                // تأخير بسيط للتأكد من اكتمال العملية
+                // التأخير لمنع الوميض
                 setTimeout(() => {
                     hideLoginLoading();
-                }, 500);
+                }, 1000);
             }
         } catch (error) {
             hideLoginLoading();
@@ -635,29 +644,30 @@
                     me.p = uid;
                     me.pic = user.photoURL || me.pic || userPic;
                     
-                    // التأكد من وجود sdmBalance - الإصلاح هنا!
+                    // التأكد من وجود sdmBalance
                     if (typeof me.sdmBalance === 'undefined' || me.sdmBalance === null) {
                         me.sdmBalance = 0;
                         await db.ref('users/' + uid).update({ sdmBalance: 0 });
                         console.log('تم ضبط رصيد المستخدم على 0');
                     }
                     
-                    // تحديث الرقم التعريفي (6 أرقام)
-                    if (!me.numericId) {
+                    // التأكد من وجود numericId - الإصلاح هنا
+                    if (!me.numericId || me.numericId === '000000' || !validateNumericId(me.numericId)) {
                         me.numericId = generate6DigitNumericId(uid);
                         await db.ref('users/' + uid).update({ numericId: me.numericId });
+                        console.log('تم إنشاء رقم تعريف جديد للمستخدم:', me.numericId);
                     }
                     
                     startApp(uid);
                 } else {
-                    // إنشاء مستخدم جديد - الإصلاح هنا!
+                    // إنشاء مستخدم جديد
                     const numericId = generate6DigitNumericId(uid);
                     const newUser = { 
                         n: user.displayName || 'مستخدم جديد', 
                         p: uid, 
                         email: user.email, 
                         pic: user.photoURL || userPic, 
-                        sdmBalance: 0, // ← هنا ضبط الرصيد على صفر
+                        sdmBalance: 0,
                         rating: 5.0, 
                         role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'), 
                         wa: '', 
@@ -666,12 +676,12 @@
                         verified: true,
                         lastSeen: Date.now(),
                         numericId: numericId,
-                        joinDate: Date.now() // تاريخ الانضمام
+                        joinDate: Date.now()
                     };
                     
                     await db.ref('users/' + uid).set(newUser); 
                     me = newUser; 
-                    console.log('تم إنشاء مستخدم جديد برصيد 0');
+                    console.log('تم إنشاء مستخدم جديد برصيد 0 ورقم تعريف:', numericId);
                     startApp(uid); 
                 }
             } catch (error) {
@@ -700,6 +710,7 @@
     function startApp(uid) {
         console.log('بدء التطبيق للمستخدم:', me.n);
         console.log('رصيد المستخدم:', me.sdmBalance);
+        console.log('رقم تعريف المستخدم:', me.numericId);
         
         isGuest = false; 
         hStack = ['home'];
@@ -708,7 +719,7 @@
         hideLoginLoading();
         
         // التأكد من وجود جميع الحقول الأساسية
-        if (!me.numericId) {
+        if (!me.numericId || !validateNumericId(me.numericId)) {
             me.numericId = generate6DigitNumericId(uid);
             db.ref('users/' + uid).update({ numericId: me.numericId });
         }
@@ -820,6 +831,44 @@
         } catch(e) { 
             Swal.fire('خطأ', 'فشل معالجة الصورة', 'error'); 
         }
+    }
+
+    // إصلاح: دالة للتحقق من الـ VIP
+    function checkVIPAccess() {
+        if (isGuest) { 
+            Swal.fire({ 
+                title: 'تسجيل الدخول مطلوب', 
+                text: 'هذه الميزة تتطلب تسجيل دخول بالحساب', 
+                icon: 'warning', 
+                showCancelButton: true,
+                confirmButtonText: 'تسجيل الدخول',
+                cancelButtonText: 'إلغاء',
+                background: '#1e293b', 
+                color: '#fff' 
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('app-screen').classList.add('hidden');
+                    document.getElementById('auth-screen').classList.remove('hidden');
+                }
+            }); 
+            return; 
+        }
+        
+        // التحقق من الرصيد
+        if (me.sdmBalance <= 0) {
+            Swal.fire({
+                title: 'رصيد غير كافي',
+                text: 'ليس لديك رصيد كافي لشراء VIP. يرجى شحن رصيدك أولاً.',
+                icon: 'warning',
+                background: '#1e293b',
+                color: '#fff',
+                confirmButtonText: 'حسناً'
+            });
+            return;
+        }
+        
+        nav('vip');
+        highlightTab(document.querySelector('.tab-btn:nth-child(4)'));
     }
 
     function checkGuestAccess(view, extra) { 
@@ -935,6 +984,7 @@
 
     // --- تحديث الصفحة الحالية فقط ---
     function refreshCurrentPage() {
+        if (isLoading) return;
         const currentView = hStack[hStack.length - 1];
         render(currentView);
     }
@@ -1685,13 +1735,13 @@
     // 4. تحويل الرصيد مع إصلاح عرض اسم المستخدم
     // ======================================================
 
-    // دالة التحويل المعدلة
+    // دالة التحويل المعدلة - الإصلاح هنا
     async function showTransfer() {
         const { value: formValues } = await Swal.fire({
             title: 'تحويل عملات SDM',
             html: `
-                <div style="text-align:right; font-size:14px; margin-bottom:5px;">رقم تعريف المستلم (6 أرقام):</div>
-                <input id="target-id" class="swal2-input" placeholder="أدخل الرقم هنا" style="margin-top:0;" maxlength="6">
+                <div style="text-align:right; font-size:14px; margin-bottom:5px;">رقم تعريف المستلم (6 أرقام فقط):</div>
+                <input id="target-id" class="swal2-input" placeholder="أدخل الرقم هنا" style="margin-top:0;" maxlength="6" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
                 <div id="target-name-info" style="margin-top:10px; font-weight:bold; color:var(--accent); min-height:20px; font-size:14px;"></div>
                 <div style="text-align:right; font-size:14px; margin-top:15px; margin-bottom:5px;">الكمية (SDM):</div>
                 <input id="transfer-amt" class="swal2-input" type="number" placeholder="0.00" style="margin-top:0;">
@@ -1711,77 +1761,140 @@
                         nameInfo.innerText = "جاري البحث عن صاحب الرقم...";
                         nameInfo.style.color = "var(--accent)";
                         
+                        // البحث في قاعدة البيانات عن المستخدم باستخدام الرقم التعريفي
                         db.ref('users').orderByChild('numericId').equalTo(val).once('value', snap => {
                             if (snap.exists()) {
-                                const userId = Object.keys(snap.val())[0];
-                                const userData = snap.val()[userId];
-                                nameInfo.innerText = "✅ المستلم: " + userData.n;
-                                nameInfo.style.color = "#10b981";
-                                idInput.dataset.realUid = userId;
-                                idInput.dataset.realName = userData.n;
+                                const users = snap.val();
+                                // البحث عن أول مستخدم يطابق الرقم التعريفي
+                                let foundUserId = null;
+                                let foundUserName = null;
+                                
+                                for (const [userId, userData] of Object.entries(users)) {
+                                    if (userData.numericId === val) {
+                                        foundUserId = userId;
+                                        foundUserName = userData.n;
+                                        break;
+                                    }
+                                }
+                                
+                                if (foundUserId && foundUserName) {
+                                    nameInfo.innerText = "✅ المستلم: " + foundUserName;
+                                    nameInfo.style.color = "#10b981";
+                                    idInput.dataset.realUid = foundUserId;
+                                    idInput.dataset.realName = foundUserName;
+                                } else {
+                                    nameInfo.innerText = "❌ رقم تعريف غير صحيح!";
+                                    nameInfo.style.color = "#ef4444";
+                                    idInput.dataset.realUid = "";
+                                }
                             } else {
-                                nameInfo.innerText = "❌ رقم تعريف غير صحيح!";
+                                nameInfo.innerText = "❌ لم يتم العثور على مستخدم بهذا الرقم";
                                 nameInfo.style.color = "#ef4444";
                                 idInput.dataset.realUid = "";
                             }
                         });
+                    } else if (val.length > 0) {
+                        nameInfo.innerText = "⚠️ يجب أن يكون الرقم 6 أرقام";
+                        nameInfo.style.color = "var(--accent)";
+                        idInput.dataset.realUid = "";
                     } else {
                         nameInfo.innerText = "";
+                        idInput.dataset.realUid = "";
                     }
                 });
             },
             preConfirm: () => {
                 const targetId = document.getElementById('target-id').dataset.realUid;
                 const targetName = document.getElementById('target-id').dataset.realName;
-                const amount = document.getElementById('transfer-amt').value;
+                const amount = parseFloat(document.getElementById('transfer-amt').value);
                 
                 if (!targetId) {
                     Swal.showValidationMessage('يرجى إدخال رقم تعريف صحيح أولاً');
                     return false;
                 }
-                if (!amount || parseFloat(amount) <= 0) {
+                if (!amount || amount <= 0) {
                     Swal.showValidationMessage('يرجى إدخال كمية صالحة');
                     return false;
                 }
-                return { targetId, targetName, amount: parseFloat(amount) };
+                if (amount > me.sdmBalance) {
+                    Swal.showValidationMessage('رصيدك غير كافٍ');
+                    return false;
+                }
+                return { targetId, targetName, amount };
             }
         });
 
         if (formValues) {
             const { targetId, targetName, amount } = formValues;
             
-            if (amount > me.sdmBalance) return Swal.fire('خطأ', 'رصيدك غير كافٍ', 'error');
-            if (targetId === me.p) return Swal.fire('تنبيه', 'لا يمكنك التحويل لنفسك', 'warning');
-
-            showLoginLoading();
+            if (amount > me.sdmBalance) {
+                Swal.fire('خطأ', 'رصيدك غير كافٍ', 'error');
+                return;
+            }
             
-            db.ref('users/' + targetId + '/sdmBalance').transaction(current => (current || 0) + amount, (error, committed) => {
-                if (committed) {
-                    db.ref('/users/' + me.p + '/sdmBalance').set(me.sdmBalance - amount);
+            if (targetId === me.p) {
+                Swal.fire('تنبيه', 'لا يمكنك التحويل لنفسك', 'warning');
+                return;
+            }
+
+            // تأكيد التحويل
+            Swal.fire({
+                title: 'تأكيد التحويل',
+                html: `
+                    <div style="text-align:right;">
+                        <p><b>المستلم:</b> ${targetName}</p>
+                        <p><b>المبلغ:</b> ${amount} SDM</p>
+                        <p><b>رصيدك الحالي:</b> ${me.sdmBalance} SDM</p>
+                        <p><b>رصيدك بعد التحويل:</b> ${me.sdmBalance - amount} SDM</p>
+                        <p style="color:var(--accent); font-size:12px;">هل أنت متأكد من إتمام التحويل؟</p>
+                    </div>
+                `,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'نعم، أتم التحويل',
+                cancelButtonText: 'إلغاء',
+                background: '#1e293b',
+                color: '#fff'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    showLoginLoading();
                     
-                    db.ref('transactions').push({
-                        from: me.p, 
-                        fromN: me.n, 
-                        to: targetId, 
-                        toN: targetName,
-                        amount: amount, 
-                        date: Date.now(),
-                        type: 'transfer'
-                    });
+                    // تنفيذ عملية التحويل
+                    const updates = {};
+                    updates['users/' + me.p + '/sdmBalance'] = me.sdmBalance - amount;
+                    updates['users/' + targetId + '/sdmBalance'] = firebase.database.ServerValue.increment(amount);
+                    
+                    db.ref().update(updates).then(() => {
+                        // تسجيل العملية
+                        db.ref('transactions').push({
+                            from: me.p, 
+                            fromN: me.n, 
+                            fromNumericId: me.numericId,
+                            to: targetId, 
+                            toN: targetName,
+                            toNumericId: document.getElementById('target-id').value,
+                            amount: amount, 
+                            date: Date.now(),
+                            type: 'transfer'
+                        });
 
-                    db.ref('alerts/' + targetId).push({
-                        msg: `وصلك تحويل بمبلغ ${amount} SDM من ${me.n}`,
-                        type: 'success',
-                        date: Date.now()
-                    });
+                        // إرسال تنبيه للمستلم
+                        db.ref('alerts/' + targetId).push({
+                            msg: `📥 وصلك تحويل بمبلغ ${amount} SDM من ${me.n} (${me.numericId})`,
+                            type: 'success',
+                            date: Date.now()
+                        });
 
-                    me.sdmBalance -= amount;
-                    hideLoginLoading();
-                    Swal.fire('تم بنجاح', `تم تحويل ${amount} SDM إلى ${targetName}`, 'success');
-                    render('wallet');
-                } else {
-                    hideLoginLoading();
-                    Swal.fire('خطأ', 'فشلت العملية، حاول لاحقاً', 'error');
+                        // تحديث الرصيد محلياً
+                        me.sdmBalance -= amount;
+                        
+                        hideLoginLoading();
+                        Swal.fire('تم بنجاح', `تم تحويل ${amount} SDM إلى ${targetName}`, 'success');
+                        render('wallet');
+                    }).catch(error => {
+                        hideLoginLoading();
+                        Swal.fire('خطأ', 'فشلت العملية: ' + error.message, 'error');
+                    });
                 }
             });
         }
@@ -1916,6 +2029,7 @@
             loadPosts('posts', curS, 'posts-list');
         
         } else if (view === 'wallet') {
+            // إصلاح: حفظ قيمة المبلغ عند اختيار الصورة
             area.innerHTML = `
                 <div class="wallet-card">
                     <img src="${sdmCoinImage}" class="sdm-logo">
@@ -1939,7 +2053,13 @@
                         <p style="color:var(--text-sec)">بنك الخرطوم: <b style="color:white; font-size:18px;">4426148</b> (محمد)</p>
                         <input id="buy-qty" type="number" placeholder="أدخل الكمية (SDM)" oninput="calcBuyCost(this.value)">
                         <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; margin:10px 0; text-align:center;">المطلوب: <b id="buy-cost-display" style="color:var(--accent);">0</b> جنيه</div>
-                        <label class="btn-main" style="background:#334155; text-align:center; display:block;"><i class="fas fa-receipt"></i> إرفاق الإشعار<input type="file" hidden onchange="encode(this, 'buy')"></label>
+                        <div class="file-input-container">
+                            <label class="file-input-label">
+                                <i class="fas fa-receipt"></i> إرفاق الإشعار
+                                <input type="file" class="file-input" onchange="encode(this, 'buy')" id="deposit-file">
+                            </label>
+                            <div id="file-name-display" class="file-name">لم يتم اختيار صورة</div>
+                        </div>
                         <button class="btn-main" onclick="requestCoins()">إرسال الطلب</button>
                     </div>
                     <h3>سجل المعاملات</h3>
@@ -1979,25 +2099,62 @@
 
         } else if (view === 'vip') {
             const isVip = me.vipStatus === 'active';
-            area.innerHTML = `
-                <div style="text-align:center; padding:30px;">
-                    <i class="fas fa-crown" style="font-size:60px; color:var(--accent); margin-bottom:20px;"></i>
-                    <h2>اشتراك VIP</h2>
-                    <p style="color:var(--text-sec)">${isVip ? 'أنت مشترك حتى: ' + new Date(me.vipExpiry).toLocaleDateString() : 'تميز واحصل على علامة التاج ونشر غير محدود'}</p>
-                    ${!isVip ? `<div class="grid"><div class="card" onclick="buyVip(1, 1)" style="border-color:var(--text-sec)"><h1 style="color:white">1</h1><p>يوم</p><b>1 SDM</b></div><div class="card" onclick="buyVip(7, 7)" style="border-color:var(--neon-blue)"><h1 style="color:var(--neon-blue)">7</h1><p>أيام</p><b>7 SDM</b></div><div class="card" onclick="buyVip(30, 30)" style="border-color:var(--accent)"><h1 style="color:var(--accent)">30</h1><p>يوم</p><b>30 SDM</b></div></div>` : '<div class="card" style="border-color:var(--accent); color:var(--accent)"><h3>الاشتراك نشط ✅</h3></div>'}
-                </div>
-                ${isVip ? `
-                <div class="post" style="padding:20px;">
-                    <h4>نشر VIP مميز مع تخفيض</h4>
-                    <input id="v-t" placeholder="العنوان">
-                    <input id="v-pr" type="number" placeholder="السعر الأصلي (SDM)">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <input id="v-dis" type="number" placeholder="نسبة التخفيض % (اختياري)" style="border:1px solid var(--accent)">
+            // إصلاح: عرض رسالة إذا كان الرصيد غير كافي
+            if (me.sdmBalance <= 0) {
+                area.innerHTML = `
+                    <div style="text-align:center; padding:50px 20px;">
+                        <i class="fas fa-wallet" style="font-size:60px; color:var(--red); margin-bottom:20px;"></i>
+                        <h2>رصيد غير كافي</h2>
+                        <p style="color:var(--text-sec); margin-bottom:30px;">ليس لديك رصيد كافي لشراء اشتراك VIP</p>
+                        <button class="btn-main" onclick="nav('wallet')" style="background:var(--primary);">
+                            <i class="fas fa-coins"></i> شحن الرصيد
+                        </button>
+                    </div>`;
+            } else {
+                area.innerHTML = `
+                    <div style="text-align:center; padding:30px;">
+                        <i class="fas fa-crown" style="font-size:60px; color:var(--accent); margin-bottom:20px;"></i>
+                        <h2>اشتراك VIP</h2>
+                        <p style="color:var(--text-sec)">${isVip ? 'أنت مشترك حتى: ' + new Date(me.vipExpiry).toLocaleDateString() : 'تميز واحصل على علامة التاج ونشر غير محدود'}</p>
+                        <div style="background:rgba(59, 130, 246, 0.1); padding:15px; border-radius:15px; margin:20px; border:1px solid var(--primary);">
+                            <p style="margin:0; font-size:14px; color:var(--neon-blue);">رصيدك الحالي: <b>${me.sdmBalance} SDM</b></p>
+                        </div>
+                        ${!isVip ? `
+                            <div class="grid">
+                                <div class="card" onclick="buyVip(1, 1)" style="border-color:var(--text-sec)">
+                                    <h1 style="color:white">1</h1>
+                                    <p>يوم</p>
+                                    <b>1 SDM</b>
+                                    ${me.sdmBalance >= 1 ? '<div style="color:var(--green); font-size:12px; margin-top:5px;">✓ الرصيد كافي</div>' : '<div style="color:var(--red); font-size:12px; margin-top:5px;">✗ رصيد غير كافي</div>'}
+                                </div>
+                                <div class="card" onclick="buyVip(7, 7)" style="border-color:var(--neon-blue)">
+                                    <h1 style="color:var(--neon-blue)">7</h1>
+                                    <p>أيام</p>
+                                    <b>7 SDM</b>
+                                    ${me.sdmBalance >= 7 ? '<div style="color:var(--green); font-size:12px; margin-top:5px;">✓ الرصيد كافي</div>' : '<div style="color:var(--red); font-size:12px; margin-top:5px;">✗ رصيد غير كافي</div>'}
+                                </div>
+                                <div class="card" onclick="buyVip(30, 30)" style="border-color:var(--accent)">
+                                    <h1 style="color:var(--accent)">30</h1>
+                                    <p>يوم</p>
+                                    <b>30 SDM</b>
+                                    ${me.sdmBalance >= 30 ? '<div style="color:var(--green); font-size:12px; margin-top:5px;">✓ الرصيد كافي</div>' : '<div style="color:var(--red); font-size:12px; margin-top:5px;">✗ رصيد غير كافي</div>'}
+                                </div>
+                            </div>
+                        ` : '<div class="card" style="border-color:var(--accent); color:var(--accent)"><h3>الاشتراك نشط ✅</h3></div>'}
                     </div>
-                    <textarea id="v-d" placeholder="الوصف"></textarea>
-                    <input type="file" onchange="encode(this,'post')">
-                    <button class="btn-main" onclick="publish('vip_posts')">نشر VIP</button>
-                </div>` : ''}`;
+                    ${isVip ? `
+                    <div class="post" style="padding:20px;">
+                        <h4>نشر VIP مميز مع تخفيض</h4>
+                        <input id="v-t" placeholder="العنوان">
+                        <input id="v-pr" type="number" placeholder="السعر الأصلي (SDM)">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <input id="v-dis" type="number" placeholder="نسبة التخفيض % (اختياري)" style="border:1px solid var(--accent)">
+                        </div>
+                        <textarea id="v-d" placeholder="الوصف"></textarea>
+                        <input type="file" onchange="encode(this,'post')">
+                        <button class="btn-main" onclick="publish('vip_posts')">نشر VIP</button>
+                    </div>` : ''}`;
+            }
         
         } else if (view === 'profile') {
             const uid = extra || me.p;
@@ -2068,9 +2225,10 @@
         document.getElementById('buy-cost-display').innerText = isNaN(cost) ? "0" : cost.toLocaleString(); 
     }
     
+    // إصلاح: دالة طلب الإيداع
     function requestCoins() {
         const qtyInput = document.getElementById('buy-qty');
-        const qty = qtyInput ? qtyInput.value : null;
+        const qty = qtyInput ? parseFloat(qtyInput.value) : 0;
         
         if(!qty || qty <= 0) {
             Swal.fire('تنبيه', 'يرجى إدخال كمية صحيحة', 'warning');
@@ -2082,24 +2240,46 @@
             return;
         }
         
-        db.ref('coin_requests').push({ 
-            uP: me.p, 
-            uN: me.n, 
-            qty: parseFloat(qty), 
-            img: tempBuyImg, 
-            status: 'pending', 
-            date: Date.now() 
-        }).then(() => {
-            Swal.fire('تم الإرسال', 'سيقوم المشرف بالمراجعة', 'success');
-            tempBuyImg = '';
-            if (qtyInput) qtyInput.value = '';
-            const fileDisplay = document.getElementById('file-name-display');
-            if (fileDisplay) {
-                fileDisplay.textContent = 'لم يتم اختيار صورة';
-                fileDisplay.style.color = 'var(--text-sec)';
+        Swal.fire({
+            title: 'تأكيد طلب الإيداع',
+            html: `
+                <div style="text-align:right;">
+                    <p><b>الكمية:</b> ${qty} SDM</p>
+                    <p><b>المبلغ بالجنيه:</b> ${(qty * SDM_RATE).toLocaleString()} SDG</p>
+                    <p style="color:var(--accent); font-size:12px;">هل أنت متأكد من إرسال طلب الإيداع؟</p>
+                </div>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، أرسل الطلب',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                Swal.fire({ title: 'جاري إرسال الطلب...', didOpen: () => Swal.showLoading() });
+                
+                db.ref('coin_requests').push({ 
+                    uP: me.p, 
+                    uN: me.n, 
+                    uNumericId: me.numericId,
+                    qty: qty, 
+                    img: tempBuyImg, 
+                    status: 'pending', 
+                    date: Date.now() 
+                }).then(() => {
+                    Swal.fire('تم الإرسال', 'سيقوم المشرف بمراجعة طلبك قريباً', 'success');
+                    tempBuyImg = '';
+                    if (qtyInput) qtyInput.value = '';
+                    const fileDisplay = document.getElementById('file-name-display');
+                    if (fileDisplay) {
+                        fileDisplay.textContent = 'لم يتم اختيار صورة';
+                        fileDisplay.style.color = 'var(--text-sec)';
+                    }
+                }).catch(error => {
+                    Swal.fire('خطأ', 'فشل في إرسال الطلب: ' + error.message, 'error');
+                });
             }
-        }).catch(error => {
-            Swal.fire('خطأ', 'فشل في إرسال الطلب: ' + error.message, 'error');
         });
     }
 
@@ -2154,7 +2334,67 @@
         } 
     }
 
-    // تفعيل زر الأدمن لنشر رسالة عامة (Broadcast)
+    // دالة شراء VIP
+    function buyVip(days, cost) {
+        if (me.sdmBalance < cost) {
+            Swal.fire('رصيد غير كافي', `تحتاج إلى ${cost} SDM لشراء اشتراك ${days} يوم`, 'warning');
+            return;
+        }
+        
+        Swal.fire({
+            title: 'تأكيد الشراء',
+            html: `
+                <div style="text-align:right;">
+                    <p><b>مدة الاشتراك:</b> ${days} يوم</p>
+                    <p><b>التكلفة:</b> ${cost} SDM</p>
+                    <p><b>رصيدك الحالي:</b> ${me.sdmBalance} SDM</p>
+                    <p><b>رصيدك بعد الشراء:</b> ${me.sdmBalance - cost} SDM</p>
+                    <p style="color:var(--accent); font-size:12px;">هل أنت متأكد من شراء اشتراك VIP؟</p>
+                </div>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، اشترِ الآن',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                showLoginLoading();
+                
+                const expiryDate = Date.now() + (days * 24 * 60 * 60 * 1000);
+                
+                db.ref('users/' + me.p).update({
+                    sdmBalance: me.sdmBalance - cost,
+                    vipStatus: 'active',
+                    vipExpiry: expiryDate,
+                    vipSince: Date.now()
+                }).then(() => {
+                    me.sdmBalance -= cost;
+                    me.vipStatus = 'active';
+                    me.vipExpiry = expiryDate;
+                    
+                    db.ref('transactions').push({
+                        type: 'vip_purchase',
+                        from: me.p,
+                        to: 'SYSTEM',
+                        amount: cost,
+                        details: `اشتراك VIP لمدة ${days} يوم`,
+                        date: Date.now()
+                    });
+                    
+                    hideLoginLoading();
+                    Swal.fire('تم الشراء', `تم تفعيل اشتراك VIP لمدة ${days} يوم`, 'success');
+                    render('vip');
+                }).catch(error => {
+                    hideLoginLoading();
+                    Swal.fire('خطأ', 'فشل عملية الشراء: ' + error.message, 'error');
+                });
+            }
+        });
+    }
+
+    // تفعيل زر الأدمن لنشر رسالة عامة
     function sendBroadcastMessage() {
         if (me.role !== 'admin') return;
 
