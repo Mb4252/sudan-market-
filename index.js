@@ -4,80 +4,61 @@ const admin = require('firebase-admin');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-/**
- * 1. تهيئة Firebase Admin
- * تأكد من إضافة المتغير البيئي FIREBASE_SERVICE_ACCOUNT في الاستضافة
- */
+// 1. تهيئة Firebase Admin
 try {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT 
+        ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT) 
+        : require("./serviceAccountKey.json");
+
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
     });
+    console.log("✅ تم الاتصال بقاعدة بيانات Firebase بنجاح");
 } catch (e) {
-    console.error("❌ خطأ: لم يتم العثور على ملف مفاتيح Firebase (Service Account)");
+    console.error("❌ خطأ في تهيئة Firebase: تأكد من ملف serviceAccountKey.json");
 }
 
 const db = admin.database();
 
-// ===== [وظائف البوت الأساسية] =====
+// ===== [وظائف البوت الاحترافية] =====
 
-// 1. معالجة تحويلات الرصيد (Transfers)
+// 1. معالجة تحويلات الرصيد بنظام Transaction (أمان مالي 100%)
 async function processTransfers() {
     const transfersRef = db.ref('requests/transfers');
     const snap = await transfersRef.orderByChild('status').equalTo('pending').once('value');
-    
     if (!snap.exists()) return;
 
     for (const [id, task] of Object.entries(snap.val())) {
+        const { from, to, amount } = task;
         try {
-            const { from, to, amount } = task;
-            
-            // جلب بيانات الحسابات
-            const fromRef = db.ref(`users/${from}`);
-            const toRef = db.ref(`users/${to}`);
-            
-            const [fromSnap, toSnap] = await Promise.all([fromRef.once('value'), toRef.once('value')]);
-
-            if (!fromSnap.exists() || !toSnap.exists()) {
-                await transfersRef.child(id).update({ status: 'failed', error: 'أحد المستخدمين غير موجود' });
-                continue;
-            }
-
-            const fromBal = fromSnap.val().sdmBalance || 0;
-            const toBal = toSnap.val().sdmBalance || 0;
-
-            if (fromBal < amount) {
-                await transfersRef.child(id).update({ status: 'failed', error: 'رصيد غير كافٍ' });
-                continue;
-            }
-
-            // تنفيذ العملية (خصم وإضافة)
-            await fromRef.update({ sdmBalance: fromBal - amount });
-            await toRef.update({ sdmBalance: toBal + amount });
-
-            // تسجيل في السجل العام
-            await db.ref('transactions').push({
-                from, to, amount,
-                type: 'transfer',
-                date: Date.now()
+            const senderBalRef = db.ref(`users/${from}/sdmBalance`);
+            const deductionResult = await senderBalRef.transaction((currentBalance) => {
+                if (currentBalance === null) return 0; 
+                if (currentBalance < amount) return; 
+                return currentBalance - amount;
             });
 
-            // تحديث حالة الطلب
+            if (!deductionResult.committed) {
+                await transfersRef.child(id).update({ status: 'failed', error: 'رصيد غير كافٍ', processedAt: Date.now() });
+                continue;
+            }
+
+            const receiverBalRef = db.ref(`users/${to}/sdmBalance`);
+            await receiverBalRef.transaction((currentBalance) => (currentBalance || 0) + amount);
+
             await transfersRef.child(id).update({ status: 'completed', processedAt: Date.now() });
+            await db.ref('transactions').push({ from, to, amount, type: 'transfer', date: Date.now() });
 
-            // إرسال تنبيهات (ستظهر للمستخدم في التطبيق)
-            await db.ref(`alerts/${from}`).push({ msg: `✅ تم تحويل ${amount} SDM بنجاح`, type: 'info', date: Date.now() });
-            await db.ref(`alerts/${to}`).push({ msg: `💰 استلمت تحويل بقيمة ${amount} SDM`, type: 'success', date: Date.now() });
-
-            console.log(`✅ تم التحويل: ${amount} من ${from} إلى ${to}`);
-        } catch (err) {
-            console.error(`❌ خطأ في معالجة التحويل ${id}:`, err);
-        }
+            const alertMsg = (uid, msg, type) => db.ref(`alerts/${uid}`).push({ msg, type, date: Date.now() });
+            await alertMsg(from, `✅ تم تحويل ${amount} SDM بنجاح.`, 'success');
+            await alertMsg(to, `💰 استلمت تحويل بقيمة ${amount} SDM.`, 'success');
+            console.log(`✅ اكتمل التحويل: ${id}`);
+        } catch (err) { console.error(`❌ خطأ في التحويل ${id}:`, err); }
     }
 }
 
-// 2. معالجة التقييمات وتحديث النجوم (Ratings)
+// 2. معالجة التقييمات وتحديث النجوم
 async function processRatings() {
     const queueRef = db.ref('rating_queue');
     const snap = await queueRef.once('value');
@@ -86,30 +67,60 @@ async function processRatings() {
     for (const [id, rating] of Object.entries(snap.val())) {
         try {
             const { target, stars } = rating;
-            const userRef = db.ref(`users/${target}`);
-            const userSnap = await userRef.once('value');
-
-            if (userSnap.exists()) {
-                const data = userSnap.val();
-                const currentRating = data.rating || 5;
-                const count = data.ratingCount || 0;
-                
-                // معادلة المعدل التراكمي
-                const newRating = ((currentRating * count) + stars) / (count + 1);
-
-                await userRef.update({
-                    rating: parseFloat(newRating.toFixed(1)),
-                    ratingCount: count + 1
-                });
-                
-                await db.ref(`alerts/${target}`).push({ msg: `⭐ حصلت على تقييم جديد (${stars} نجوم)`, type: 'success', date: Date.now() });
-            }
-            await queueRef.child(id).remove(); // حذف من الطابور بعد المعالجة
+            await db.ref(`users/${target}`).transaction((userData) => {
+                if (userData) {
+                    const currentRating = userData.rating || 5;
+                    const count = userData.ratingCount || 0;
+                    userData.rating = parseFloat(((currentRating * count) + stars) / (count + 1)).toFixed(1);
+                    userData.ratingCount = count + 1;
+                }
+                return userData;
+            });
+            await queueRef.child(id).remove();
         } catch (err) { console.error("Rating Error:", err); }
     }
 }
 
-// 3. معالجة البلاغات والحظر التلقائي (Reports)
+// 3. مسح المنشورات القديمة (بعد مرور يومين) + مسح تعليقاتها
+async function cleanupOldPosts() {
+    console.log("🧹 جاري تنظيف المنشورات القديمة (أقدم من يومين)...");
+    const now = Date.now();
+    const cutoff = now - (2 * 24 * 60 * 60 * 1000); // 48 ساعة بالملي ثانية
+
+    const paths = ['posts', 'vip_posts'];
+
+    for (const path of paths) {
+        const snap = await db.ref(path).once('value');
+        if (snap.exists()) {
+            const posts = snap.val();
+            for (const postId in posts) {
+                if (posts[postId].date && posts[postId].date < cutoff) {
+                    // 1. مسح المنشور
+                    await db.ref(`${path}/${postId}`).remove();
+                    // 2. مسح التعليقات المرتبطة بهذا المنشور
+                    await db.ref(`comments/${path}/${postId}`).remove();
+                    console.log(`🗑️ تم حذف المنشور القديم وتعليقاته: ${postId} من ${path}`);
+                }
+            }
+        }
+    }
+}
+
+// 4. تنظيف اشتراكات VIP المنتهية
+async function cleanupVIP() {
+    const now = Date.now();
+    const usersSnap = await db.ref('users').orderByChild('vipStatus').equalTo('active').once('value');
+    if (usersSnap.exists()) {
+        for (const [uid, user] of Object.entries(usersSnap.val())) {
+            if (user.vipExpiry && user.vipExpiry < now) {
+                await db.ref(`users/${uid}`).update({ vipStatus: 'expired' });
+                await db.ref(`alerts/${uid}`).push({ msg: `💔 انتهى اشتراك VIP الخاص بك.`, type: 'info', date: now });
+            }
+        }
+    }
+}
+
+// 5. معالجة البلاغات
 async function processReports() {
     const reportsRef = db.ref('user_reports');
     const snap = await reportsRef.orderByChild('status').equalTo('pending').once('value');
@@ -117,99 +128,48 @@ async function processReports() {
 
     for (const [id, report] of Object.entries(snap.val())) {
         try {
-            const { offender, reason } = report;
-            const userRef = db.ref(`users/${offender}`);
-            const userSnap = await userRef.once('value');
-
+            const { offender } = report;
+            const userSnap = await db.ref(`users/${offender}`).once('value');
             if (userSnap.exists()) {
                 const reportCount = (userSnap.val().reportCount || 0) + 1;
-                let updateData = { reportCount: reportCount };
-
-                // إذا وصل لـ 3 بلاغات يتم الحظر تلقائياً لمدة 7 أيام
+                let updates = { reportCount: reportCount };
                 if (reportCount >= 3) {
-                    updateData.bannedUntil = Date.now() + (7 * 24 * 60 * 60 * 1000);
-                    updateData.banReason = "تعدد البلاغات (تلقائي)";
-                    await db.ref(`alerts/${offender}`).push({ msg: `⛔ تم حظر حسابك لمدة 7 أيام بسبب البلاغات`, type: 'error', date: Date.now() });
+                    updates.bannedUntil = Date.now() + (7 * 24 * 60 * 60 * 1000);
+                    await db.ref(`alerts/${offender}`).push({ msg: `⛔ حظر لمدة 7 أيام بسبب البلاغات.`, type: 'error', date: Date.now() });
                 }
-
-                await userRef.update(updateData);
-                await reportsRef.child(id).update({ status: 'processed' });
-                console.log(`🚩 معالجة بلاغ ضد: ${offender} (البلاغات الحالية: ${reportCount})`);
+                await db.ref(`users/${offender}`).update(updates);
             }
+            await reportsRef.child(id).update({ status: 'processed' });
         } catch (err) { console.error("Report Error:", err); }
     }
 }
 
-// 4. تنظيف اشتراكات VIP والمنشورات المنتهية
-async function cleanupVIP() {
-    const now = Date.now();
-    
-    // تنظيف المستخدمين
-    const usersSnap = await db.ref('users').orderByChild('vipStatus').equalTo('active').once('value');
-    if (usersSnap.exists()) {
-        for (const [uid, user] of Object.entries(usersSnap.val())) {
-            if (user.vipExpiry && user.vipExpiry < now) {
-                await db.ref(`users/${uid}`).update({ vipStatus: 'expired' });
-                await db.ref(`alerts/${uid}`).push({ msg: `💔 انتهى اشتراك VIP الخاص بك`, type: 'info', date: now });
-            }
-        }
-    }
-
-    // تنظيف منشورات VIP (إذا كانت مرتبطة بمدة)
-    const vipPostsSnap = await db.ref('vip_posts').once('value');
-    if (vipPostsSnap.exists()) {
-        for (const [postId, post] of Object.entries(vipPostsSnap.val())) {
-            if (post.date && post.date < (now - 30 * 24 * 60 * 60 * 1000)) { // حذف تلقائي بعد 30 يوم
-                await db.ref(`vip_posts/${postId}`).remove();
-            }
-        }
-    }
-}
-
-// 5. الصيانة الدورية (حذف التنبيهات القديمة)
-async function maintenance() {
-    const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-    // سيقوم النظام تلقائياً بمسح التنبيهات من التطبيق بمجرد قراءتها، 
-    // لكن هذه الدالة كإجراء احتياطي فقط.
-    console.log("🔧 تنظيف وصيانة النظام...");
-}
-
-// ===== [محرك التشغيل الرئيسي] =====
+// ===== [المحرك والجدولة] =====
 
 async function startBot() {
-    console.log("🤖 بوت SDM Market يعمل الآن...");
+    console.log("🤖 بوت SDM Market الاحترافي يعمل الآن...");
     
-    // دورة معالجة كل 5 ثواني
+    // مهام سريعة (كل 5 ثوانٍ): التحويلات، التقييمات، البلاغات
     setInterval(async () => {
         await processTransfers();
         await processRatings();
         await processReports();
     }, 5000);
 
-    // دورة صيانة كل ساعة
+    // مهام الصيانة (كل ساعة): تنظيف المنشورات القديمة والـ VIP
     setInterval(async () => {
+        await cleanupOldPosts();
         await cleanupVIP();
-        await maintenance();
-    }, 3600000);
+    }, 3600000); 
+
+    // تنفيذ تنظيف فوري عند بدء التشغيل
+    await cleanupOldPosts();
 }
 
 // ===== [إعدادات السيرفر] =====
 
 app.use(express.json());
+app.get('/', (req, res) => res.send('Bot SDM Market is Running 🚀'));
+app.get('/health', (req, res) => res.json({ status: 'active', database: 'connected' }));
 
-app.get('/', (req, res) => {
-    res.send('SDM Market Bot is Running 🚀');
-});
-
-// نقطة فحص الحالة (Health Check)
-app.get('/status', async (req, res) => {
-    res.json({
-        online: true,
-        time: new Date().toISOString(),
-        tasks: ['Transfers', 'Ratings', 'Reports', 'VIP-Cleanup']
-    });
-});
-
-app.listen(PORT, () => {
-    startBot();
-});
+app.listen(PORT, () => startBot());
