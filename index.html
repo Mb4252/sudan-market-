@@ -2316,12 +2316,13 @@ async function loginWithGoogle() {
 }
 
 // 2. ميزة البحث التلقائي عن الاسم عند التحويل (توضع بدلاً من showTransfer القديمة)
+// دالة التحويل المعدلة للبحث عن الرقم التعريفي (6 أرقام) أو الأيدي القديم
 async function showTransfer() {
     const { value: formValues } = await Swal.fire({
         title: 'تحويل عملات SDM',
         html: `
-            <div style="text-align:right; font-size:14px; margin-bottom:5px;">ID المستلم:</div>
-            <input id="target-id" class="swal2-input" placeholder="أدخل الـ ID هنا" style="margin-top:0;">
+            <div style="text-align:right; font-size:14px; margin-bottom:5px;">رقم تعريف المستلم (6 أرقام):</div>
+            <input id="target-id" class="swal2-input" placeholder="أدخل الرقم هنا" style="margin-top:0;" maxlength="6">
             <div id="target-name-info" style="margin-top:10px; font-weight:bold; color:var(--accent); min-height:20px; font-size:14px;"></div>
             <div style="text-align:right; font-size:14px; margin-top:15px; margin-bottom:5px;">الكمية (SDM):</div>
             <input id="transfer-amt" class="swal2-input" type="number" placeholder="0.00" style="margin-top:0;">
@@ -2336,61 +2337,97 @@ async function showTransfer() {
             const nameInfo = document.getElementById('target-name-info');
             
             idInput.addEventListener('input', () => {
-                const id = idInput.value.trim();
-                if (id.length > 5) {
-                    nameInfo.innerText = "جاري التحقق من الاسم...";
-                    db.ref('users/' + id).once('value', snap => {
+                const val = idInput.value.trim();
+                if (val.length === 6) {
+                    nameInfo.innerText = "جاري البحث عن صاحب الرقم...";
+                    nameInfo.style.color = "var(--accent)";
+                    
+                    // البحث في كل المستخدمين عن الشخص الذي يملك هذا الرقم التعريفي
+                    db.ref('users').orderByChild('numericId').equalTo(val).once('value', snap => {
                         if (snap.exists()) {
-                            nameInfo.innerText = "✅ المستلم: " + snap.val().n;
+                            // الحصول على بيانات المستخدم (أول نتيجة تطابق الرقم)
+                            const userId = Object.keys(snap.val())[0];
+                            const userData = snap.val()[userId];
+                            nameInfo.innerText = "✅ المستلم: " + userData.n;
                             nameInfo.style.color = "#10b981";
+                            // تخزين الـ UID الحقيقي في خاصية مؤقتة لاستخدامه عند الإرسال
+                            idInput.dataset.realUid = userId;
+                            idInput.dataset.realName = userData.n;
                         } else {
-                            nameInfo.innerText = "❌ هذا الـ ID غير مسجل!";
+                            nameInfo.innerText = "❌ رقم تعريف غير صحيح!";
                             nameInfo.style.color = "#ef4444";
+                            idInput.dataset.realUid = "";
                         }
                     });
-                } else { nameInfo.innerText = ""; }
+                } else {
+                    nameInfo.innerText = "";
+                }
             });
         },
         preConfirm: () => {
-            return [
-                document.getElementById('target-id').value.trim(),
-                document.getElementById('transfer-amt').value
-            ]
+            const targetId = document.getElementById('target-id').dataset.realUid;
+            const targetName = document.getElementById('target-id').dataset.realName;
+            const amount = document.getElementById('transfer-amt').value;
+            
+            if (!targetId) {
+                Swal.showValidationMessage('يرجى إدخال رقم تعريف صحيح أولاً');
+                return false;
+            }
+            if (!amount || parseFloat(amount) <= 0) {
+                Swal.showValidationMessage('يرجى إدخال كمية صالحة');
+                return false;
+            }
+            return { targetId, targetName, amount: parseFloat(amount) };
         }
     });
 
     if (formValues) {
-        const [targetId, amount] = formValues;
-        const amt = parseFloat(amount);
+        const { targetId, targetName, amount } = formValues;
         
-        if (!targetId || isNaN(amt) || amt <= 0) return Swal.fire('خطأ', 'بيانات غير صحيحة', 'error');
-        if (amt > me.sdmBalance) return Swal.fire('خطأ', 'رصيدك غير كافٍ', 'error');
+        if (amount > me.sdmBalance) return Swal.fire('خطأ', 'رصيدك غير كافٍ', 'error');
         if (targetId === me.p) return Swal.fire('تنبيه', 'لا يمكنك التحويل لنفسك', 'warning');
 
         showLoginLoading();
-        db.ref('users/' + targetId).once('value', snap => {
-            if (!snap.exists()) {
-                hideLoginLoading();
-                return Swal.fire('خطأ', 'المستلم غير موجود', 'error');
-            }
-            const updates = {};
-            updates['/users/' + me.p + '/sdmBalance'] = me.sdmBalance - amt;
-            updates['/users/' + targetId + '/sdmBalance'] = (snap.val().sdmBalance || 0) + amt;
-            
-            db.ref().update(updates).then(() => {
+        
+        // تنفيذ عملية التحويل باستخدام الـ UID الحقيقي الذي استخرجناه
+        const updates = {};
+        updates['/users/' + me.p + '/sdmBalance'] = me.sdmBalance - amount;
+        
+        // تحديث رصيد المستلم
+        db.ref('users/' + targetId + '/sdmBalance').transaction(current => (current || 0) + amount, (error, committed) => {
+            if (committed) {
+                // تحديث رصيدك محلياً
+                db.ref('/users/' + me.p + '/sdmBalance').set(me.sdmBalance - amount);
+                
+                // تسجيل العملية في السجل
                 db.ref('transactions').push({
-                    from: me.p, fromN: me.n, to: targetId, toN: snap.val().n,
-                    amount: amt, date: Date.now()
+                    from: me.p, 
+                    fromN: me.n, 
+                    to: targetId, 
+                    toN: targetName,
+                    amount: amount, 
+                    date: Date.now(),
+                    type: 'transfer'
                 });
-                me.sdmBalance -= amt;
+
+                // إرسال تنبيه للمستلم
+                db.ref('alerts/' + targetId).push({
+                    msg: `وصلك تحويل بمبلغ ${amount} SDM من ${me.n}`,
+                    type: 'success',
+                    date: Date.now()
+                });
+
+                me.sdmBalance -= amount;
                 hideLoginLoading();
-                Swal.fire('تم بنجاح', `تم تحويل ${amt} SDM إلى ${snap.val().n}`, 'success');
+                Swal.fire('تم بنجاح', `تم تحويل ${amount} SDM إلى ${targetName}`, 'success');
                 render('wallet');
-            });
+            } else {
+                hideLoginLoading();
+                Swal.fire('خطأ', 'فشلت العملية، حاول لاحقاً', 'error');
+            }
         });
     }
 }
-
 // 3. تفعيل زر الأدمن لنشر رسالة عامة (Broadcast)
 function sendBroadcastMessage() {
     if (me.role !== 'admin') return;
