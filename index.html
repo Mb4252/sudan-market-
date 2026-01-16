@@ -2269,7 +2269,177 @@
             }
         }, 1000);
     });
+// 1. إصلاح مشكلة دخول مستخدم قوقل (الجدد والقدامى)
+async function loginWithGoogle() {
+    try {
+        showLoginLoading(); 
+        const provider = new firebase.auth.GoogleAuthProvider();
+        const result = await auth.signInWithPopup(provider);
+        const user = result.user;
 
+        const snap = await db.ref('users/' + user.uid).once('value');
+        
+        if (snap.exists()) {
+            me = snap.val();
+            me.p = user.uid;
+        } else {
+            // بيانات المستخدم الجديد
+            me = {
+                n: user.displayName || 'مستخدم جديد',
+                p: user.uid,
+                email: user.email,
+                pic: user.photoURL || userPic,
+                sdmBalance: 0,
+                rating: 5.0,
+                role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
+                wa: '',
+                vipStatus: 'none',
+                verified: true,
+                lastSeen: Date.now()
+            };
+            await db.ref('users/' + user.uid).set(me);
+        }
+
+        hideLoginLoading();
+        document.getElementById('auth-screen').classList.add('hidden');
+        document.getElementById('app-screen').classList.remove('hidden');
+        
+        // بدء الاستماع للرسائل فور الدخول
+        listenForBroadcast();
+        render('home'); 
+
+    } catch (error) {
+        hideLoginLoading();
+        console.error("Login Error:", error);
+        Swal.fire('خطأ', 'تعذر تسجيل الدخول، تأكد من اتصالك بالإنترنت', 'error');
+    }
+}
+
+// 2. ميزة البحث التلقائي عن الاسم عند التحويل (توضع بدلاً من showTransfer القديمة)
+async function showTransfer() {
+    const { value: formValues } = await Swal.fire({
+        title: 'تحويل عملات SDM',
+        html: `
+            <div style="text-align:right; font-size:14px; margin-bottom:5px;">ID المستلم:</div>
+            <input id="target-id" class="swal2-input" placeholder="أدخل الـ ID هنا" style="margin-top:0;">
+            <div id="target-name-info" style="margin-top:10px; font-weight:bold; color:var(--accent); min-height:20px; font-size:14px;"></div>
+            <div style="text-align:right; font-size:14px; margin-top:15px; margin-bottom:5px;">الكمية (SDM):</div>
+            <input id="transfer-amt" class="swal2-input" type="number" placeholder="0.00" style="margin-top:0;">
+        `,
+        background: '#1e293b',
+        color: '#fff',
+        confirmButtonText: 'إرسال الآن',
+        showCancelButton: true,
+        cancelButtonText: 'إلغاء',
+        didOpen: () => {
+            const idInput = document.getElementById('target-id');
+            const nameInfo = document.getElementById('target-name-info');
+            
+            idInput.addEventListener('input', () => {
+                const id = idInput.value.trim();
+                if (id.length > 5) {
+                    nameInfo.innerText = "جاري التحقق من الاسم...";
+                    db.ref('users/' + id).once('value', snap => {
+                        if (snap.exists()) {
+                            nameInfo.innerText = "✅ المستلم: " + snap.val().n;
+                            nameInfo.style.color = "#10b981";
+                        } else {
+                            nameInfo.innerText = "❌ هذا الـ ID غير مسجل!";
+                            nameInfo.style.color = "#ef4444";
+                        }
+                    });
+                } else { nameInfo.innerText = ""; }
+            });
+        },
+        preConfirm: () => {
+            return [
+                document.getElementById('target-id').value.trim(),
+                document.getElementById('transfer-amt').value
+            ]
+        }
+    });
+
+    if (formValues) {
+        const [targetId, amount] = formValues;
+        const amt = parseFloat(amount);
+        
+        if (!targetId || isNaN(amt) || amt <= 0) return Swal.fire('خطأ', 'بيانات غير صحيحة', 'error');
+        if (amt > me.sdmBalance) return Swal.fire('خطأ', 'رصيدك غير كافٍ', 'error');
+        if (targetId === me.p) return Swal.fire('تنبيه', 'لا يمكنك التحويل لنفسك', 'warning');
+
+        showLoginLoading();
+        db.ref('users/' + targetId).once('value', snap => {
+            if (!snap.exists()) {
+                hideLoginLoading();
+                return Swal.fire('خطأ', 'المستلم غير موجود', 'error');
+            }
+            const updates = {};
+            updates['/users/' + me.p + '/sdmBalance'] = me.sdmBalance - amt;
+            updates['/users/' + targetId + '/sdmBalance'] = (snap.val().sdmBalance || 0) + amt;
+            
+            db.ref().update(updates).then(() => {
+                db.ref('transactions').push({
+                    from: me.p, fromN: me.n, to: targetId, toN: snap.val().n,
+                    amount: amt, date: Date.now()
+                });
+                me.sdmBalance -= amt;
+                hideLoginLoading();
+                Swal.fire('تم بنجاح', `تم تحويل ${amt} SDM إلى ${snap.val().n}`, 'success');
+                render('wallet');
+            });
+        });
+    }
+}
+
+// 3. تفعيل زر الأدمن لنشر رسالة عامة (Broadcast)
+function sendBroadcastMessage() {
+    if (me.role !== 'admin') return;
+
+    Swal.fire({
+        title: 'نشر إعلان عام للمستخدمين 📢',
+        input: 'textarea',
+        inputPlaceholder: 'اكتب نص الإعلان هنا...',
+        background: '#1e293b',
+        color: '#fff',
+        showCancelButton: true,
+        confirmButtonText: 'نشر الإعلان الآن',
+        cancelButtonText: 'إلغاء'
+    }).then((result) => {
+        if (result.isConfirmed && result.value) {
+            const msgId = Date.now();
+            db.ref('settings/broadcast').set({
+                id: msgId,
+                text: result.value,
+                sender: me.n,
+                date: firebase.database.ServerValue.TIMESTAMP
+            }).then(() => {
+                Swal.fire('تم النشر', 'سيظهر الإعلان لكل المستخدمين الآن', 'success');
+            });
+        }
+    });
+}
+
+// 4. دالة استقبال الإعلانات المنشورة (توضع في البرنامج لتعمل عند الفتح)
+function listenForBroadcast() {
+    db.ref('settings/broadcast').on('value', snap => {
+        const data = snap.val();
+        if (data && data.text) {
+            const lastSeenId = localStorage.getItem('last_broadcast_id');
+            if (lastSeenId != data.id) {
+                Swal.fire({
+                    title: 'إعلان من الإدارة 📢',
+                    text: data.text,
+                    icon: 'info',
+                    background: '#1e293b',
+                    color: '#fff',
+                    confirmButtonText: 'فهمت'
+                }).then(() => {
+                    localStorage.setItem('last_broadcast_id', data.id);
+                });
+            }
+        }
+    });
+}
 </script>
 </body>
 </html>
