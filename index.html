@@ -120,6 +120,17 @@
         .post-menu-item:hover { background: rgba(255,255,255,0.1); }
         .post-menu-item:last-child { border-bottom: none; }
         
+        /* Comments */
+        .comments-section { margin-top: 15px; border-top: 1px solid var(--border); padding-top: 15px; }
+        .comment { padding: 10px; background: rgba(255,255,255,0.05); border-radius: 10px; margin-bottom: 8px; }
+        .comment-author { font-weight: bold; color: var(--neon-blue); cursor: pointer; font-size: 13px; }
+        .comment-author:hover { text-decoration: underline; }
+        .comment-text { font-size: 12px; color: var(--text-sec); margin-top: 5px; }
+        .comment-date { font-size: 10px; color: #6b7280; text-align: left; }
+        .comment-input-container { display: flex; gap: 10px; margin-top: 10px; }
+        .comment-input { flex: 1; padding: 10px; font-size: 12px; }
+        .comment-send-btn { background: var(--primary); color: white; border: none; border-radius: 8px; padding: 0 15px; cursor: pointer; }
+        
         /* Buttons & Inputs */
         button { font-family: 'Tajawal'; }
         .btn-main { background: linear-gradient(90deg, var(--primary), #2563eb); color: white; border: none; padding: 15px; width: 100%; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 10px; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3); transition: 0.3s; }
@@ -866,7 +877,7 @@
     }
 
     // ======================================================
-    // 1. نظام المنشورات (جلب، عرض، ونشر)
+    // 1. نظام المنشورات (جلب، عرض، ونشر) مع التعليقات
     // ======================================================
 
     function loadPosts(path, sub, containerId) {
@@ -885,8 +896,32 @@
             postsArray.forEach(p => {
                 if (path === 'posts' && sub && p.sub !== sub) return;
 
+                const numericUid = p.userId ? generateNumericUid(p.userId) : '0000';
+                const isOwner = me && me.p === p.userId;
+                
                 const postHtml = `
-                    <div class="post">
+                    <div class="post" id="post-${p.id}">
+                        <div class="post-menu">
+                            <div class="post-menu-btn" onclick="togglePostMenu('${p.id}')">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </div>
+                            <div class="post-menu-dropdown" id="menu-${p.id}">
+                                ${isOwner ? `
+                                    <div class="post-menu-item" onclick="markAsSold('${path}', '${p.id}')">
+                                        <i class="fas fa-check-circle"></i> تم البيع
+                                    </div>
+                                    <div class="post-menu-item" onclick="editPost('${path}', '${p.id}')">
+                                        <i class="fas fa-edit"></i> تعديل المنشور
+                                    </div>
+                                    <div class="post-menu-item" onclick="deletePost('${path}', '${p.id}')" style="color:var(--red)">
+                                        <i class="fas fa-trash"></i> حذف المنشور
+                                    </div>
+                                ` : ''}
+                                <div class="post-menu-item" onclick="navigator.clipboard.writeText('${numericUid}'); Swal.fire({title: 'تم النسخ', text: 'تم نسخ الرقم: ${numericUid}', icon: 'success', toast: true, timer: 2000})">
+                                    <i class="fas fa-copy"></i> نسخ الرقم (${numericUid})
+                                </div>
+                            </div>
+                        </div>
                         <div class="post-img-container">
                             ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="height:100%; background:#2d3748; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image" style="font-size:40px; color:#4a5568;"></i></div>`}
                             ${p.sold ? '<div class="sold-overlay">تم البيع</div>' : ''}
@@ -901,11 +936,240 @@
                             <div style="display:flex; align-items:center; gap:8px; margin-bottom:15px;">
                                 <img src="${p.userPic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" style="width:25px; height:25px; border-radius:50%; object-fit:cover;">
                                 <span style="font-size:12px; color:var(--accent); cursor:pointer;" onclick="nav('profile', '${p.userId}')">${escapeHtml(p.userName)}</span>
+                                <span style="font-size:10px; color:var(--text-sec); background:rgba(255,255,255,0.1); padding:2px 8px; border-radius:10px;">${numericUid}</span>
                             </div>
                             <button class="btn-main" onclick="window.open('https://wa.me/${p.userWa}?text=بخصوص إعلانك: ${p.title}')"><i class="fab fa-whatsapp"></i> تواصل عبر واتساب</button>
+                            
+                            <!-- قسم التعليقات -->
+                            <div class="comments-section" id="comments-${p.id}">
+                                <div style="font-size:12px; color:var(--text-sec); margin-bottom:10px;">
+                                    <i class="fas fa-comments"></i> التعليقات
+                                </div>
+                                <div id="comments-list-${p.id}" style="max-height:200px; overflow-y:auto; margin-bottom:10px;">
+                                    <!-- التعليقات تظهر هنا -->
+                                </div>
+                                ${!isGuest ? `
+                                    <div class="comment-input-container">
+                                        <input type="text" class="comment-input" id="comment-input-${p.id}" placeholder="أضف تعليقاً...">
+                                        <button class="comment-send-btn" onclick="addComment('${path}', '${p.id}')">
+                                            <i class="fas fa-paper-plane"></i>
+                                        </button>
+                                    </div>
+                                ` : '<div style="text-align:center; color:var(--text-sec); font-size:12px; padding:10px;">سجل الدخول لإضافة تعليق</div>'}
+                            </div>
                         </div>
                     </div>`;
                 container.innerHTML += postHtml;
+                
+                // تحميل التعليقات لهذا المنشور
+                loadComments(path, p.id);
+            });
+        });
+    }
+
+    // دالة لتحويل UID إلى أرقام فقط
+    function generateNumericUid(uid) {
+        if (!uid) return '0000';
+        // تحويل الأحرف إلى أرقام باستخدام charCodeAt
+        let numeric = 0;
+        for (let i = 0; i < Math.min(uid.length, 8); i++) {
+            numeric += uid.charCodeAt(i);
+        }
+        // جعله 4 أرقام فقط
+        return String(numeric % 10000).padStart(4, '0');
+    }
+
+    // دالة التبديل بين قوائم المنشورات
+    function togglePostMenu(postId) {
+        const allMenus = document.querySelectorAll('.post-menu-dropdown');
+        allMenus.forEach(menu => {
+            if (menu.id !== 'menu-' + postId) {
+                menu.classList.remove('show');
+            }
+        });
+        
+        const menu = document.getElementById('menu-' + postId);
+        if (menu) {
+            menu.classList.toggle('show');
+        }
+    }
+
+    // إغلاق القوائم عند النقر في أي مكان
+    document.addEventListener('click', function(event) {
+        if (!event.target.closest('.post-menu')) {
+            document.querySelectorAll('.post-menu-dropdown').forEach(menu => {
+                menu.classList.remove('show');
+            });
+        }
+    });
+
+    // دالة تحديد المنشور كـ "تم البيع"
+    function markAsSold(path, postId) {
+        Swal.fire({
+            title: 'تأكيد',
+            text: 'هل تريد وضع علامة "تم البيع" على هذا المنشور؟',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'نعم',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                db.ref(`${path}/${postId}`).update({ sold: true }).then(() => {
+                    Swal.fire('تم', 'تم وضع علامة "تم البيع"', 'success');
+                });
+            }
+        });
+    }
+
+    // دالة تعديل المنشور
+    function editPost(path, postId) {
+        db.ref(`${path}/${postId}`).once('value').then(snap => {
+            const post = snap.val();
+            Swal.fire({
+                title: 'تعديل المنشور',
+                html: `
+                    <input id="edit-title" class="swal2-input" value="${escapeHtml(post.title)}" placeholder="العنوان">
+                    <input id="edit-price" class="swal2-input" type="number" value="${post.price}" placeholder="السعر">
+                    <textarea id="edit-desc" class="swal2-input" placeholder="الوصف">${escapeHtml(post.desc)}</textarea>
+                    <label class="btn-main" style="background:#334155; text-align:center; display:block;">
+                        <i class="fas fa-camera"></i> تغيير الصورة
+                        <input type="file" hidden onchange="encode(this, 'edit')">
+                    </label>
+                `,
+                confirmButtonText: 'حفظ التعديلات',
+                showCancelButton: true,
+                background: '#1e293b',
+                color: '#fff',
+                preConfirm: () => {
+                    const newTitle = document.getElementById('edit-title').value;
+                    const newPrice = document.getElementById('edit-price').value;
+                    const newDesc = document.getElementById('edit-desc').value;
+                    
+                    if (!newTitle || !newPrice || !newDesc) {
+                        Swal.showValidationMessage('أكمل جميع الحقول');
+                        return false;
+                    }
+                    
+                    return { newTitle, newPrice, newDesc };
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const updates = {
+                        title: result.value.newTitle,
+                        price: parseFloat(result.value.newPrice),
+                        desc: result.value.newDesc,
+                        editedAt: Date.now()
+                    };
+                    
+                    // إذا كان هناك صورة جديدة
+                    if (tempImg) {
+                        updates.img = tempImg;
+                        tempImg = '';
+                    }
+                    
+                    db.ref(`${path}/${postId}`).update(updates).then(() => {
+                        Swal.fire('تم', 'تم تعديل المنشور بنجاح', 'success');
+                    });
+                }
+            });
+        });
+    }
+
+    // دالة حذف المنشور
+    function deletePost(path, postId) {
+        Swal.fire({
+            title: 'تأكيد الحذف',
+            text: 'هل أنت متأكد من حذف هذا المنشور؟',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، احذف',
+            cancelButtonText: 'إلغاء',
+            confirmButtonColor: '#ef4444',
+            background: '#1e293b',
+            color: '#fff'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // حذف المنشور
+                db.ref(`${path}/${postId}`).remove().then(() => {
+                    // حذف التعليقات المرتبطة بالمنشور
+                    db.ref(`comments/${path}/${postId}`).remove().then(() => {
+                        Swal.fire('تم الحذف', 'تم حذف المنشور وجميع التعليقات المرتبطة به', 'success');
+                    });
+                });
+            }
+        });
+    }
+
+    // دالة تحميل التعليقات
+    function loadComments(path, postId) {
+        const commentsList = document.getElementById(`comments-list-${postId}`);
+        if (!commentsList) return;
+
+        db.ref(`comments/${path}/${postId}`).on('value', snap => {
+            commentsList.innerHTML = '';
+            const comments = snap.val();
+            
+            if (!comments) {
+                commentsList.innerHTML = '<div style="text-align:center; color:var(--text-sec); font-size:11px; padding:10px;">لا توجد تعليقات بعد</div>';
+                return;
+            }
+
+            const commentsArray = Object.keys(comments).map(key => ({ id: key, ...comments[key] })).reverse();
+            
+            commentsArray.forEach(comment => {
+                const commentHtml = `
+                    <div class="comment">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div class="comment-author" onclick="nav('profile', '${comment.userId}')">
+                                <i class="fas fa-user"></i> ${escapeHtml(comment.userName)}
+                            </div>
+                            <div class="comment-date">
+                                ${new Date(comment.date).toLocaleDateString('ar-EG')}
+                            </div>
+                        </div>
+                        <div class="comment-text">${escapeHtml(comment.text)}</div>
+                    </div>`;
+                commentsList.innerHTML += commentHtml;
+            });
+        });
+    }
+
+    // دالة إضافة تعليق جديد
+    function addComment(path, postId) {
+        if (isGuest) {
+            Swal.fire('خطأ', 'يجب تسجيل الدخول لإضافة تعليق', 'error');
+            return;
+        }
+
+        const commentInput = document.getElementById(`comment-input-${postId}`);
+        const commentText = commentInput.value.trim();
+
+        if (!commentText) {
+            Swal.fire('تنبيه', 'اكتب تعليقاً أولاً', 'warning');
+            return;
+        }
+
+        const commentData = {
+            text: commentText,
+            userId: me.p,
+            userName: me.n,
+            userPic: me.pic,
+            date: Date.now()
+        };
+
+        db.ref(`comments/${path}/${postId}`).push(commentData).then(() => {
+            commentInput.value = '';
+            // إظهار رسالة نجاح صغيرة
+            Swal.fire({
+                title: 'تم',
+                text: 'تم إضافة تعليقك',
+                icon: 'success',
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 1500
             });
         });
     }
@@ -922,7 +1186,8 @@
         const postData = {
             title, price: parseFloat(price), desc, img: tempImg,
             userId: me.p, userName: me.n, userPic: me.pic, userWa: me.wa,
-            sub: curS, discount: disc, date: Date.now(), sold: false
+            sub: curS, discount: disc, date: Date.now(), sold: false,
+            numericUid: generateNumericUid(me.p)
         };
 
         Swal.fire({ title: 'جاري النشر...', didOpen: () => Swal.showLoading() });
@@ -1022,12 +1287,30 @@
         Swal.fire({
             title: 'تحويل رصيد SDM',
             html: `
-                <input id="swal-input1" class="swal2-input" placeholder="ID المستلم">
-                <input id="swal-input2" class="swal2-input" type="number" placeholder="الكمية">`,
+                <input id="swal-input1" class="swal2-input" placeholder="الرقم المكون من 4 أرقام">
+                <input id="swal-input2" class="swal2-input" type="number" placeholder="الكمية">
+                <div id="receiver-info" style="display:none; background:rgba(0,0,0,0.2); padding:10px; border-radius:10px; margin-top:10px;">
+                    <div id="receiver-name" style="color:var(--neon-blue); font-weight:bold;"></div>
+                    <div id="receiver-uid" style="font-size:11px; color:var(--text-sec);"></div>
+                </div>`,
             confirmButtonText: 'إرسال طلب التحويل',
             showCancelButton: true,
             background: '#1e293b',
-            color: '#fff'
+            color: '#fff',
+            didOpen: () => {
+                const input = document.getElementById('swal-input1');
+                input.addEventListener('input', function() {
+                    const numericId = this.value.trim();
+                    const infoDiv = document.getElementById('receiver-info');
+                    
+                    if (numericId.length === 4) {
+                        // البحث عن المستخدم باستخدام الرقم المكون من 4 أرقام
+                        findUserByNumericId(numericId);
+                    } else {
+                        infoDiv.style.display = 'none';
+                    }
+                });
+            }
         }).then((result) => {
             if (result.isConfirmed) {
                 const toUid = document.getElementById('swal-input1').value.trim();
@@ -1036,18 +1319,71 @@
                 if (!toUid || isNaN(amount) || amount <= 0) return Swal.fire('خطأ', 'بيانات غير صحيحة', 'error');
                 if (amount > me.sdmBalance) return Swal.fire('خطأ', 'رصيدك غير كافٍ', 'error');
 
-                // إرسال الطلب لمسار البوت
-                db.ref('requests/transfers').push({
-                    from: me.p,
-                    to: toUid,
-                    amount: amount,
-                    status: 'pending',
-                    date: Date.now()
-                }).then(() => {
-                    Swal.fire('تم الإرسال', 'جاري معالجة التحويل آلياً بواسطة البوت...', 'info');
+                // البحث عن المستخدم باستخدام الرقم
+                findUserByNumericId(toUid).then(foundUid => {
+                    if (!foundUid) {
+                        Swal.fire('خطأ', 'لم يتم العثور على مستخدم بهذا الرقم', 'error');
+                        return;
+                    }
+
+                    // إرسال الطلب لمسار البوت
+                    db.ref('requests/transfers').push({
+                        from: me.p,
+                        to: foundUid,
+                        amount: amount,
+                        status: 'pending',
+                        date: Date.now(),
+                        fromName: me.n,
+                        toNumericId: toUid
+                    }).then(() => {
+                        Swal.fire('تم الإرسال', 'جاري معالجة التحويل آلياً بواسطة البوت...', 'info');
+                    });
                 });
             }
         });
+    }
+
+    // دالة للبحث عن المستخدم باستخدام الرقم المكون من 4 أرقام
+    async function findUserByNumericId(numericId) {
+        try {
+            const usersSnapshot = await db.ref('users').once('value');
+            const users = usersSnapshot.val();
+            
+            if (!users) return null;
+            
+            for (const [uid, userData] of Object.entries(users)) {
+                if (uid === 'guest') continue;
+                
+                const userNumericId = generateNumericUid(uid);
+                if (userNumericId === numericId) {
+                    // عرض معلومات المستخدم في واجهة التحويل
+                    const infoDiv = document.getElementById('receiver-info');
+                    const nameDiv = document.getElementById('receiver-name');
+                    const uidDiv = document.getElementById('receiver-uid');
+                    
+                    if (infoDiv && nameDiv && uidDiv) {
+                        infoDiv.style.display = 'block';
+                        nameDiv.textContent = userData.n || 'مستخدم';
+                        uidDiv.textContent = `ID: ${uid.substring(0, 8)}...`;
+                    }
+                    
+                    return uid;
+                }
+            }
+            
+            // إذا لم يتم العثور على المستخدم
+            const infoDiv = document.getElementById('receiver-info');
+            if (infoDiv) {
+                infoDiv.style.display = 'block';
+                document.getElementById('receiver-name').textContent = '⚠️ لم يتم العثور على المستخدم';
+                document.getElementById('receiver-uid').textContent = 'الرقم غير صحيح';
+            }
+            
+            return null;
+        } catch (error) {
+            console.error('خطأ في البحث عن المستخدم:', error);
+            return null;
+        }
     }
 
     // 2. دالة التقييم (ترسل للبوت لتحديث معدل النجوم)
@@ -1239,6 +1575,7 @@
         
         } else if (view === 'profile') {
             const uid = extra || me.p;
+            const numericUid = generateNumericUid(uid);
             area.innerHTML = `
                 <div style="text-align:center; padding:40px 20px;">
                     <div style="position:relative; display:inline-block;">
@@ -1247,6 +1584,11 @@
                     </div>
                     ${uid === me.p ? '<br><label style="color:var(--accent); cursor:pointer; font-size:12px;">تغيير الصورة <input type="file" onchange="encode(this, \'user\')" style="display:none"></label>' : ''}
                     <h2 style="margin:10px 0;">${escapeHtml(me.n)} ${me.vipStatus==='active'?'<i class="fas fa-crown" style="color:var(--accent)"></i>':''}</h2>
+                    <div style="background:rgba(255,255,255,0.1); padding:10px; border-radius:10px; margin:10px auto; max-width:200px;">
+                        <div style="font-size:11px; color:var(--text-sec);">رقم التعريف</div>
+                        <div style="font-size:18px; font-weight:bold; color:var(--neon-blue); letter-spacing:2px;">${numericUid}</div>
+                        <button onclick="navigator.clipboard.writeText('${numericUid}'); Swal.fire({title: 'تم النسخ', text: 'تم نسخ الرقم: ${numericUid}', icon: 'success', toast: true, timer: 2000})" style="background:transparent; border:1px solid var(--border); color:white; border-radius:5px; padding:3px 10px; margin-top:5px; font-size:11px;">نسخ الرقم</button>
+                    </div>
                     <div id="profile-status" class="loading" style="font-size:12px; margin:5px 0;">
                         <div class="loading-spinner" style="width:15px; height:15px; display:inline-block;"></div>
                         جاري التحميل...
@@ -1257,9 +1599,9 @@
                     </div>
                     ${uid === me.p ? `
                         <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; margin-bottom:20px;">
-                            <p style="margin:0; font-size:12px; color:var(--text-sec)">ID المستخدم</p>
-                            <code style="font-size:16px; display:block; margin:5px 0;">${me.p}</code>
-                            <button onclick="navigator.clipboard.writeText('${me.p}'); Swal.fire('تم النسخ','','success')" style="background:transparent; border:1px solid var(--border); color:white; border-radius:5px; padding:5px 10px;">نسخ</button>
+                            <p style="margin:0; font-size:12px; color:var(--text-sec)">ID المستخدم الكامل</p>
+                            <code style="font-size:12px; display:block; margin:5px 0; word-break:break-all;">${me.p}</code>
+                            <button onclick="navigator.clipboard.writeText('${me.p}'); Swal.fire('تم النسخ','','success')" style="background:transparent; border:1px solid var(--border); color:white; border-radius:5px; padding:5px 10px;">نسخ ID الكامل</button>
                         </div>
                         <button class="btn-main" style="background:rgba(239, 68, 68, 0.2); color:#ef4444; border:1px solid #ef4444;" onclick="doLogout()">تسجيل خروج</button>
                     ` : `
@@ -1363,12 +1705,19 @@
         const container = document.getElementById('welcome-container'); 
         if(hStack[hStack.length-1] === 'home' && me && !isGuest) { 
             const greeting = hour < 12 ? "صباح الخير" : (hour < 18 ? "مساء الخير" : "مساء الخير");
+            const numericUid = generateNumericUid(me.p);
             container.innerHTML = `
                 <div style="background:rgba(59, 130, 246, 0.2); color:var(--neon-blue); padding:15px; border-radius:15px; margin:15px 0; border:1px solid var(--primary); display:flex; align-items:center; gap:10px;">
                     <i class="fas fa-hand-sparkles" style="font-size:20px;"></i>
-                    <div>
+                    <div style="flex:1;">
                         <div style="font-size:14px; font-weight:bold;">${greeting}، ${escapeHtml(me.n)} ✨</div>
                         <div style="font-size:12px; color:var(--text-sec);">رصيدك: ${me.sdmBalance.toFixed(2)} SDM</div>
+                        <div style="font-size:11px; color:var(--accent); margin-top:3px;">
+                            <i class="fas fa-id-card"></i> رقم التعريف: <b>${numericUid}</b>
+                            <button onclick="navigator.clipboard.writeText('${numericUid}'); Swal.fire({title: 'تم النسخ', text: 'تم نسخ الرقم', icon: 'success', toast: true, timer: 2000})" style="background:transparent; border:none; color:white; margin-right:5px; cursor:pointer;">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>`; 
         } else { 
