@@ -369,33 +369,113 @@
 </div>
 
 <script>
-    // --- Config & Init ---
+    // --- إعدادات Firebase ---
     const firebaseConfig = {
-      apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
-      authDomain: "sudan-market-6b122.firebaseapp.com",
-      databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
-      projectId: "sudan-market-6b122",
-      storageBucket: "sudan-market-6b122.firebasestorage.app",
-      messagingSenderId: "66729481566",
-      appId: "1:66729481566:web:93393f28dc22d32cceebcf"
+        apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
+        authDomain: "sudan-market-6b122.firebaseapp.com",
+        databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
+        projectId: "sudan-market-6b122",
+        storageBucket: "sudan-market-6b122.firebasestorage.app",
+        messagingSenderId: "66729481566",
+        appId: "1:66729481566:web:93393f28dc22d32cceebcf"
     };
-    
-    // تهيئة Firebase
-    if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-    }
-    
+
+    firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.database();
-
     const ADMIN_EMAIL = "mb425262@gmail.com";
-    const SDM_RATE = 1000; 
+
     let me = null;
+    let isGuest = false;
+
+    // 1. وظيفة تسجيل الدخول المحسنة (متوافقة مع القواعد الصارمة)
+    async function loginWithGoogle() {
+        try {
+            showLoginLoading();
+            const provider = new firebase.auth.GoogleAuthProvider();
+            const result = await auth.signInWithPopup(provider);
+            const user = result.user;
+
+            const snap = await db.ref('users/' + user.uid).once('value');
+            
+            if (snap.exists()) {
+                me = snap.val();
+                me.p = user.uid;
+            } else {
+                // إنشاء مستخدم جديد ببيانات مطابقة لقواعد الـ Rules (أرقام صحيحة ونصوص صحيحة)
+                const newUser = {
+                    n: user.displayName || 'مستخدم جديد',
+                    p: user.uid,
+                    email: user.email,
+                    pic: user.photoURL || 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
+                    sdmBalance: 0, // رقم (Number) كما تطلب القواعد
+                    rating: 5.0,
+                    ratingCount: 0,
+                    role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
+                    wa: '',
+                    vipStatus: 'none',
+                    verified: true,
+                    numericId: Math.floor(100000 + Math.random() * 900000).toString(), // نص (String)
+                    lastSeen: firebase.database.ServerValue.TIMESTAMP
+                };
+                await db.ref('users/' + user.uid).set(newUser);
+                me = newUser;
+            }
+            enterApp();
+        } catch (error) {
+            hideLoginLoading();
+            console.error("Login Error:", error);
+            Swal.fire('خطأ', 'فشل التسجيل: ' + error.message, 'error');
+        }
+    }
+
+    // 2. مراقبة حالة الدخول (ضمان تحميل البيانات قبل عرض الواجهة)
+    auth.onAuthStateChanged(user => {
+        if (user && !isGuest) {
+            db.ref('users/' + user.uid).on('value', snap => {
+                if (snap.exists()) {
+                    me = snap.val();
+                    me.p = user.uid;
+                    if(document.getElementById('app-screen').classList.contains('hidden')) {
+                        enterApp();
+                    } else {
+                        refreshCurrentUI(); // تحديث الرصيد والاسم فوراً إذا تغيروا في القاعدة
+                    }
+                }
+            });
+        } else if (!isGuest) {
+            showAuthScreen();
+        }
+    });
+
+    function enterApp() {
+        hideLoginLoading();
+        document.getElementById('auth-screen').classList.add('hidden');
+        document.getElementById('app-screen').classList.remove('hidden');
+        render('home');
+        listenForBroadcast();
+    }
+
+    // 3. منع انهيار الصفحة (استخدام حماية للقيم undefined)
+    function refreshCurrentUI() {
+        const balanceElements = document.querySelectorAll('.balance-text');
+        balanceElements.forEach(el => {
+            el.innerText = (me?.sdmBalance || 0).toFixed(2) + " SDM";
+        });
+        
+        const nameElements = document.querySelectorAll('.user-name-text');
+        nameElements.forEach(el => {
+            el.innerText = me?.n || "جاري التحميل...";
+        });
+    }
+
+    // --- عند عرض المحفظة مثلاً ---
+    // استخدم دائماً: (me?.sdmBalance || 0).toFixed(2)
+
+    // بداية الكود القديم (بعد الاستبدال)
     let hStack = ['home'];
     let curC = '', curS = '';
     let tempImg = '', tempBuyImg = '', userPic = 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
-    let isGuest = false; 
-    let sliderInterval;
     const sdmCoinImage = "https://cdn-icons-png.flaticon.com/512/5501/5501360.png";
     let isAtHomePage = true;
     
@@ -464,6 +544,46 @@
         };
     }
 
+    function showLoginLoading() {
+        document.getElementById('login-loading').classList.remove('hidden');
+    }
+
+    function hideLoginLoading() {
+        document.getElementById('login-loading').classList.add('hidden');
+    }
+
+    function showAuthScreen() {
+        document.getElementById('auth-screen').classList.remove('hidden');
+        document.getElementById('app-screen').classList.add('hidden');
+    }
+
+    function doLogout() {
+        showLoginLoading();
+        auth.signOut().then(() => {
+            hideLoginLoading();
+            location.reload();
+        }).catch(error => {
+            hideLoginLoading();
+            Swal.fire('خطأ', 'فشل تسجيل الخروج: ' + error.message, 'error');
+        });
+    }
+
+    function enterGuestMode() {
+        isGuest = true;
+        me = { 
+            n: 'زائر', 
+            p: 'guest', 
+            role: 'guest', 
+            sdmBalance: 0,
+            rating: 0,
+            pic: 'https://cdn-icons-png.flaticon.com/512/149/149071.png'
+        };
+        showAuthScreen();
+        document.getElementById('app-screen').classList.remove('hidden');
+        document.getElementById('u-stars').innerText = "زائر";
+        render('home');
+    }
+
     // --- إدارة زر الرجوع ---
     function handleBackButton() {
         const currentView = hStack[hStack.length - 1];
@@ -501,248 +621,6 @@
     window.addEventListener('focus', function() {
         refreshCurrentPage();
     });
-
-    // --- إصلاح مشكلة تسجيل الدخول بجوجل ---
-    function showLoginLoading() {
-        document.getElementById('login-loading').classList.remove('hidden');
-    }
-
-    function hideLoginLoading() {
-        document.getElementById('login-loading').classList.add('hidden');
-    }
-
-    async function loginWithGoogle() {
-        try {
-            showLoginLoading();
-            
-            // إنشاء مزود جوجل
-            const provider = new firebase.auth.GoogleAuthProvider();
-            
-            // إضافة نطاقات إضافية إذا لزم الأمر
-            provider.addScope('profile');
-            provider.addScope('email');
-            
-            // محاولة تسجيل الدخول
-            const result = await auth.signInWithPopup(provider);
-            
-            // التحقق من النتيجة
-            if (result.user) {
-                const user = result.user;
-                console.log('تم تسجيل الدخول بنجاح:', user.email);
-                
-                // الانتظار قليلاً للتأكد من اكتمال العملية
-                setTimeout(() => {
-                    hideLoginLoading();
-                    // سيقوم auth.onAuthStateChanged تلقائياً بتحميل التطبيق
-                }, 1000);
-            }
-        } catch (error) {
-            hideLoginLoading();
-            console.error('خطأ في تسجيل الدخول:', error);
-            
-            let errorMessage = 'حدث خطأ في تسجيل الدخول';
-            
-            if (error.code === 'auth/popup-blocked') {
-                errorMessage = 'تم حظر نافذة تسجيل الدخول. الرجاء السماح بالنوافذ المنبثقة لهذا الموقع.';
-            } else if (error.code === 'auth/popup-closed-by-user') {
-                errorMessage = 'تم إغلاق نافذة تسجيل الدخول. الرجاء المحاولة مرة أخرى.';
-            } else if (error.code === 'auth/network-request-failed') {
-                errorMessage = 'خطأ في الشبكة. الرجاء التحقق من اتصال الإنترنت.';
-            } else if (error.code === 'auth/cancelled-popup-request') {
-                errorMessage = 'تم إلغاء عملية تسجيل الدخول';
-            } else {
-                errorMessage = `خطأ: ${error.message}`;
-            }
-            
-            Swal.fire({
-                title: 'خطأ في تسجيل الدخول',
-                text: errorMessage,
-                icon: 'error',
-                background: '#1e293b',
-                color: '#fff',
-                confirmButtonText: 'حسناً'
-            });
-        }
-    }
-
-    function doLogout() {
-        showLoginLoading();
-        auth.signOut().then(() => {
-            hideLoginLoading();
-            location.reload();
-        }).catch(error => {
-            hideLoginLoading();
-            Swal.fire('خطأ', 'فشل تسجيل الخروج: ' + error.message, 'error');
-        });
-    }
-
-    function enterGuestMode() {
-        isGuest = true;
-        me = { 
-            n: 'زائر', 
-            p: 'guest', 
-            role: 'guest', 
-            sdmBalance: 0,
-            rating: 0,
-            pic: 'https://cdn-icons-png.flaticon.com/512/149/149071.png'
-        };
-        document.getElementById('auth-screen').classList.add('hidden');
-        document.getElementById('app-screen').classList.remove('hidden');
-        document.getElementById('u-stars').innerText = "زائر";
-        render('home');
-    }
-
-    // --- مراقبة حالة المصادقة ---
-    auth.onAuthStateChanged(user => {
-        if (user) {
-            console.log('تم اكتشاف مستخدم مسجل:', user.email);
-            const uid = user.uid;
-            
-            // التحقق من وجود المستخدم في قاعدة البيانات
-            db.ref('users/' + uid).once('value').then(snap => {
-                if (snap.exists()) {
-                    let u = snap.val();
-                    if (user.email === ADMIN_EMAIL && u.role !== 'admin') { 
-                        u.role = 'admin'; 
-                        db.ref('users/' + uid).update({ role: 'admin' });
-                    }
-                    
-                    if (u.bannedUntil && u.bannedUntil > Date.now()) { 
-                        Swal.fire('محظور', 'حسابك محظور مؤقتاً.', 'error').then(() => auth.signOut()); 
-                        return; 
-                    }
-                    
-                    me = u; 
-                    me.p = uid;
-                    me.pic = user.photoURL || me.pic || userPic;
-                    
-                    // إنشاء/تحديث الرقم المكون من 6 أرقام
-                    updateUserNumericId(uid);
-                    
-                    startApp(uid);
-                } else {
-                    // إنشاء مستخدم جديد
-                    const newUser = { 
-                        n: user.displayName || 'مستخدم جديد', 
-                        p: uid, 
-                        email: user.email, 
-                        pic: user.photoURL || userPic, 
-                        sdmBalance: 0, 
-                        rating: 5.0, 
-                        role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'), 
-                        wa: '', 
-                        vipStatus: 'none', 
-                        reportCount: 0, 
-                        verified: true,
-                        lastSeen: Date.now(),
-                        numericId: generate6DigitNumericId(uid)
-                    };
-                    
-                    db.ref('users/' + uid).set(newUser).then(() => { 
-                        me = newUser; 
-                        startApp(uid); 
-                    });
-                }
-            }).catch(error => {
-                console.error('خطأ في تحميل بيانات المستخدم:', error);
-                hideLoginLoading();
-                Swal.fire('خطأ', 'فشل تحميل بيانات المستخدم', 'error');
-            });
-            
-            // تحديث آخر ظهور
-            setInterval(() => { 
-                if(me) db.ref('users/' + uid).update({ lastSeen: Date.now() }); 
-            }, 60000);
-            
-        } else {
-            console.log('لا يوجد مستخدم مسجل');
-            if(!isGuest) { 
-                document.getElementById('auth-screen').classList.remove('hidden'); 
-                document.getElementById('app-screen').classList.add('hidden'); 
-                hideLoginLoading();
-            }
-        }
-    });
-
-    // دالة إنشاء/تحديث الرقم المكون من 6 أرقام
-    function updateUserNumericId(uid) {
-        db.ref('users/' + uid).once('value').then(snap => {
-            const userData = snap.val();
-            if (!userData.numericId) {
-                const numericId = generate6DigitNumericId(uid);
-                db.ref('users/' + uid).update({ numericId: numericId });
-                me.numericId = numericId;
-            } else {
-                me.numericId = userData.numericId;
-            }
-        });
-    }
-
-    // دالة إنشاء رقم مكون من 6 أرقام من UID
-    function generate6DigitNumericId(uid) {
-        if (!uid) return '000000';
-        // تحويل UID إلى عدد باستخدام hash بسيط
-        let hash = 0;
-        for (let i = 0; i < uid.length; i++) {
-            hash = ((hash << 5) - hash) + uid.charCodeAt(i);
-            hash = hash & hash; // تحويل إلى 32-bit integer
-        }
-        // جعله 6 أرقام وإيجابي
-        return String(Math.abs(hash) % 1000000).padStart(6, '0');
-    }
-
-    function startApp(uid) {
-        console.log('بدء التطبيق للمستخدم:', me.n);
-        isGuest = false; 
-        hStack = ['home'];
-        
-        // إخفاء شاشة التحميل
-        hideLoginLoading();
-        
-        // إخفاء شاشة المصادقة وإظهار التطبيق
-        document.getElementById('auth-screen').classList.add('hidden');
-        document.getElementById('app-screen').classList.remove('hidden');
-        
-        // طلب رقم الواتساب إذا لم يكن موجوداً
-        if (!me.wa) {
-            setTimeout(() => {
-                Swal.fire({
-                    title: 'رقم الواتساب',
-                    text: 'يرجاء إدخال رقم واتسابك للتواصل',
-                    input: 'tel',
-                    inputPlaceholder: 'مثال: 249123456789',
-                    background: '#1e293b',
-                    color: '#fff',
-                    showCancelButton: false,
-                    confirmButtonText: 'حفظ'
-                }).then(r => {
-                    if(r.value) {
-                        db.ref('users/' + me.p).update({wa: r.value});
-                        me.wa = r.value;
-                    }
-                });
-            }, 1000);
-        }
-        
-        // تهيئة ميزات الأدمن
-        if(me.role === "admin") {
-            setTimeout(() => {
-                initDeveloperLogic();
-                listenForAdminTasks();
-            }, 1000);
-        }
-        
-        // تحميل الرسائل والتنبيهات
-        listenForUserAlerts();
-        listenForDevAlerts();
-        checkForBroadcastMessage();
-        
-        // عرض الصفحة الرئيسية
-        render('home');
-        
-        // تحديث آخر ظهور
-        db.ref('users/' + uid).update({ lastSeen: Date.now() });
-    }
 
     // --- دوال المساعدة ---
     function compressImage(file) {
@@ -812,8 +690,7 @@
                 color: '#fff' 
             }).then((result) => {
                 if (result.isConfirmed) {
-                    document.getElementById('app-screen').classList.add('hidden');
-                    document.getElementById('auth-screen').classList.remove('hidden');
+                    showAuthScreen();
                 }
             }); 
             return; 
@@ -1225,7 +1102,7 @@
             title, price: parseFloat(price), desc, img: tempImg,
             userId: me.p, userName: me.n, userPic: me.pic, userWa: me.wa,
             sub: curS, discount: disc, date: Date.now(), sold: false,
-            numericId: me.numericId || generate6DigitNumericId(me.p)
+            numericId: me.numericId || Math.floor(100000 + Math.random() * 900000).toString()
         };
 
         Swal.fire({ title: 'جاري النشر...', didOpen: () => Swal.showLoading() });
@@ -1369,7 +1246,7 @@
         const costElement = document.getElementById('game-cost-res');
         
         if (selectedValue && costElement) {
-            const costSDG = parseFloat(selectedValue) * SDM_RATE;
+            const costSDG = parseFloat(selectedValue) * 1000;
             costElement.textContent = costSDG.toLocaleString() + ' SDG';
         } else if (costElement) {
             costElement.textContent = '0 SDG';
@@ -1415,7 +1292,7 @@
                     <p><b>اللعبة:</b> ${gameName}</p>
                     <p><b>ID اللاعب:</b> ${playerId}</p>
                     <p><b>الباقة:</b> ${packName}</p>
-                    <p><b>التكلفة:</b> ${packCost} SDM (${packCost * SDM_RATE} جنيه)</p>
+                    <p><b>التكلفة:</b> ${packCost} SDM (${packCost * 1000} جنيه)</p>
                     <p style="color:var(--accent); font-size:12px;">سيتم خصم ${packCost} SDM من رصيدك</p>
                 </div>
             `,
@@ -1670,224 +1547,115 @@
     // 4. تحويل الرصيد مع إصلاح عرض اسم المستخدم
     // ======================================================
 
-    // 1. دالة تحويل الرصيد (ترسل الطلب للبوت للمعالجة)
+    // دالة تحويل الرصيد
     function showTransfer() {
-        Swal.fire({
-            title: 'تحويل رصيد SDM',
+        const SDM_RATE = 1000;
+        
+        const { value: formValues } = Swal.fire({
+            title: 'تحويل عملات SDM',
             html: `
-                <div style="text-align:right; direction:rtl;">
-                    <input id="swal-input1" class="swal2-input" placeholder="رقم التعريف المكون من 6 أرقام">
-                    <input id="swal-input2" class="swal2-input" type="number" placeholder="الكمية (SDM)">
-                    <div id="receiver-info" style="display:none; background:rgba(0,0,0,0.2); padding:12px; border-radius:10px; margin-top:12px; border:1px solid var(--border);">
-                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
-                            <i class="fas fa-user" style="color:var(--neon-blue);"></i>
-                            <div style="flex:1;">
-                                <div id="receiver-name" style="color:var(--neon-blue); font-weight:bold; font-size:15px;"></div>
-                                <div id="receiver-status" style="font-size:12px; color:var(--text-sec);"></div>
-                            </div>
-                        </div>
-                        <div id="receiver-details" style="font-size:11px; color:var(--text-sec); margin-top:5px; display:none;">
-                            <div id="receiver-rating"></div>
-                        </div>
-                    </div>
-                </div>`,
-            confirmButtonText: 'إرسال طلب التحويل',
-            showCancelButton: true,
+                <div style="text-align:right; font-size:14px; margin-bottom:5px;">رقم تعريف المستلم (6 أرقام):</div>
+                <input id="target-id" class="swal2-input" placeholder="أدخل الرقم هنا" style="margin-top:0;" maxlength="6">
+                <div id="target-name-info" style="margin-top:10px; font-weight:bold; color:var(--accent); min-height:20px; font-size:14px;"></div>
+                <div style="text-align:right; font-size:14px; margin-top:15px; margin-bottom:5px;">الكمية (SDM):</div>
+                <input id="transfer-amt" class="swal2-input" type="number" placeholder="0.00" style="margin-top:0;">
+            `,
             background: '#1e293b',
             color: '#fff',
-            width: '90%',
+            confirmButtonText: 'إرسال الآن',
+            showCancelButton: true,
+            cancelButtonText: 'إلغاء',
             didOpen: () => {
-                const input = document.getElementById('swal-input1');
-                input.addEventListener('input', debounce(function() {
-                    const numericId = this.value.trim();
-                    const infoDiv = document.getElementById('receiver-info');
-                    
-                    if (numericId.length === 6) {
-                        // البحث عن المستخدم باستخدام الرقم المكون من 6 أرقام
-                        findUserByNumericId(numericId);
-                    } else {
-                        infoDiv.style.display = 'none';
-                    }
-                }, 500));
-            },
-            preConfirm: () => {
-                const numericId = document.getElementById('swal-input1').value.trim();
-                const amount = parseFloat(document.getElementById('swal-input2').value);
+                const idInput = document.getElementById('target-id');
+                const nameInfo = document.getElementById('target-name-info');
                 
-                if (!numericId || numericId.length !== 6) {
-                    Swal.showValidationMessage('الرجاء إدخال رقم تعريف صحيح مكون من 6 أرقام');
-                    return false;
-                }
-                
-                if (!amount || amount <= 0) {
-                    Swal.showValidationMessage('الرجاء إدخال كمية صحيحة');
-                    return false;
-                }
-                
-                if (amount > me.sdmBalance) {
-                    Swal.showValidationMessage('رصيدك غير كافٍ');
-                    return false;
-                }
-                
-                return { numericId, amount };
-            }
-        }).then(async (result) => {
-            if (result.isConfirmed) {
-                const { numericId, amount } = result.value;
-                
-                // البحث عن المستخدم باستخدام الرقم
-                const receiverData = await findUserBy6DigitIdForTransfer(numericId);
-                
-                if (!receiverData) {
-                    Swal.fire('خطأ', 'لم يتم العثور على مستخدم بهذا الرقم', 'error');
-                    return;
-                }
-
-                // منع إرسال العملة لنفسك
-                if (receiverData.uid === me.p) {
-                    Swal.fire('خطأ', 'لا يمكن إرسال العملة لنفسك', 'error');
-                    return;
-                }
-
-                // تأكيد التحويل
-                Swal.fire({
-                    title: 'تأكيد التحويل',
-                    html: `
-                        <div style="text-align:right; direction:rtl;">
-                            <p><b>المستلم:</b> ${receiverData.name}</p>
-                            <p><b>الرقم التعريفي:</b> ${numericId}</p>
-                            <p><b>المبلغ:</b> ${amount} SDM</p>
-                            <p style="color:var(--accent); font-size:13px;">سيتم خصم ${amount} SDM من رصيدك</p>
-                        </div>
-                    `,
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonText: 'تأكيد التحويل',
-                    cancelButtonText: 'إلغاء',
-                    background: '#1e293b',
-                    color: '#fff'
-                }).then((confirmResult) => {
-                    if (confirmResult.isConfirmed) {
-                        // إرسال الطلب لمسار البوت
-                        db.ref('requests/transfers').push({
-                            from: me.p,
-                            fromName: me.n,
-                            fromNumericId: me.numericId,
-                            to: receiverData.uid,
-                            toName: receiverData.name,
-                            toNumericId: numericId,
-                            amount: amount,
-                            status: 'pending',
-                            date: Date.now()
-                        }).then(() => {
-                            Swal.fire('تم الإرسال', 'جاري معالجة التحويل آلياً بواسطة البوت...', 'info');
-                        }).catch(error => {
-                            Swal.fire('خطأ', 'فشل إرسال طلب التحويل: ' + error.message, 'error');
+                idInput.addEventListener('input', () => {
+                    const val = idInput.value.trim();
+                    if (val.length === 6) {
+                        nameInfo.innerText = "جاري البحث عن صاحب الرقم...";
+                        nameInfo.style.color = "var(--accent)";
+                        
+                        // البحث في كل المستخدمين عن الشخص الذي يملك هذا الرقم التعريفي
+                        db.ref('users').orderByChild('numericId').equalTo(val).once('value', snap => {
+                            if (snap.exists()) {
+                                // الحصول على بيانات المستخدم (أول نتيجة تطابق الرقم)
+                                const userId = Object.keys(snap.val())[0];
+                                const userData = snap.val()[userId];
+                                nameInfo.innerText = "✅ المستلم: " + userData.n;
+                                nameInfo.style.color = "#10b981";
+                                // تخزين الـ UID الحقيقي في خاصية مؤقتة لاستخدامه عند الإرسال
+                                idInput.dataset.realUid = userId;
+                                idInput.dataset.realName = userData.n;
+                            } else {
+                                nameInfo.innerText = "❌ رقم تعريف غير صحيح!";
+                                nameInfo.style.color = "#ef4444";
+                                idInput.dataset.realUid = "";
+                            }
                         });
+                    } else {
+                        nameInfo.innerText = "";
                     }
                 });
+            },
+            preConfirm: () => {
+                const targetId = document.getElementById('target-id').dataset.realUid;
+                const targetName = document.getElementById('target-id').dataset.realName;
+                const amount = document.getElementById('transfer-amt').value;
+                
+                if (!targetId) {
+                    Swal.showValidationMessage('يرجى إدخال رقم تعريف صحيح أولاً');
+                    return false;
+                }
+                if (!amount || parseFloat(amount) <= 0) {
+                    Swal.showValidationMessage('يرجى إدخال كمية صالحة');
+                    return false;
+                }
+                return { targetId, targetName, amount: parseFloat(amount) };
             }
         });
-    }
 
-    // دالة للبحث عن المستخدم باستخدام الرقم المكون من 6 أرقام (للعرض)
-    async function findUserByNumericId(numericId) {
-        try {
-            const infoDiv = document.getElementById('receiver-info');
-            const nameDiv = document.getElementById('receiver-name');
-            const statusDiv = document.getElementById('receiver-status');
-            const detailsDiv = document.getElementById('receiver-details');
-            const ratingDiv = document.getElementById('receiver-rating');
+        if (formValues) {
+            const { targetId, targetName, amount } = formValues;
             
-            // إظهار حالة التحميل
-            infoDiv.style.display = 'block';
-            nameDiv.textContent = 'جاري البحث...';
-            statusDiv.textContent = 'يرجى الانتظار';
-            statusDiv.style.color = 'var(--accent)';
-            detailsDiv.style.display = 'none';
-            
-            const usersSnapshot = await db.ref('users').once('value');
-            const users = usersSnapshot.val();
-            
-            if (!users) {
-                nameDiv.textContent = '⚠️ لم يتم العثور على المستخدم';
-                statusDiv.textContent = 'الرقم غير صحيح';
-                statusDiv.style.color = 'var(--red)';
-                return null;
-            }
-            
-            let foundUser = null;
-            for (const [uid, userData] of Object.entries(users)) {
-                if (uid === 'guest' || uid === me.p) continue;
-                
-                if (userData.numericId === numericId) {
-                    foundUser = { uid, ...userData };
-                    break;
-                }
-            }
-            
-            if (foundUser) {
-                // عرض معلومات المستخدم
-                nameDiv.textContent = foundUser.n || 'مستخدم';
-                statusDiv.textContent = '✓ تم التحقق من المستخدم';
-                statusDiv.style.color = 'var(--green)';
-                
-                // عرض التفاصيل الإضافية
-                detailsDiv.style.display = 'block';
-                ratingDiv.innerHTML = `
-                    <div>⭐ التقييم: ${(foundUser.rating || 5).toFixed(1)}</div>
-                    ${foundUser.vipStatus === 'active' ? '<div><i class="fas fa-crown" style="color:var(--accent)"></i> عضو VIP</div>' : ''}
-                `;
-                
-                return foundUser;
-            } else {
-                nameDiv.textContent = '⚠️ لم يتم العثور على المستخدم';
-                statusDiv.textContent = 'الرقم غير صحيح';
-                statusDiv.style.color = 'var(--red)';
-                detailsDiv.style.display = 'none';
-                
-                return null;
-            }
-        } catch (error) {
-            console.error('خطأ في البحث عن المستخدم:', error);
-            const infoDiv = document.getElementById('receiver-info');
-            const nameDiv = document.getElementById('receiver-name');
-            const statusDiv = document.getElementById('receiver-status');
-            
-            if (infoDiv && nameDiv && statusDiv) {
-                infoDiv.style.display = 'block';
-                nameDiv.textContent = '⚠️ خطأ في البحث';
-                statusDiv.textContent = 'حاول مرة أخرى';
-                statusDiv.style.color = 'var(--red)';
-            }
-            return null;
-        }
-    }
+            if (amount > me.sdmBalance) return Swal.fire('خطأ', 'رصيدك غير كافٍ', 'error');
+            if (targetId === me.p) return Swal.fire('تنبيه', 'لا يمكنك التحويل لنفسك', 'warning');
 
-    // دالة للبحث عن المستخدم باستخدام الرقم المكون من 6 أرقام (لعملية التحويل)
-    async function findUserBy6DigitIdForTransfer(numericId) {
-        try {
-            const usersSnapshot = await db.ref('users').once('value');
-            const users = usersSnapshot.val();
+            showLoginLoading();
             
-            if (!users) return null;
-            
-            for (const [uid, userData] of Object.entries(users)) {
-                if (uid === 'guest') continue;
-                
-                if (userData.numericId === numericId) {
-                    return {
-                        uid: uid,
-                        name: userData.n || 'مستخدم',
-                        rating: userData.rating || 5
-                    };
+            // تنفيذ عملية التحويل باستخدام الـ UID الحقيقي الذي استخرجناه
+            // تحديث رصيد المستلم
+            db.ref('users/' + targetId + '/sdmBalance').transaction(current => (current || 0) + amount, (error, committed) => {
+                if (committed) {
+                    // تحديث رصيدك محلياً
+                    db.ref('/users/' + me.p + '/sdmBalance').set(me.sdmBalance - amount);
+                    
+                    // تسجيل العملية في السجل
+                    db.ref('transactions').push({
+                        from: me.p, 
+                        fromN: me.n, 
+                        to: targetId, 
+                        toN: targetName,
+                        amount: amount, 
+                        date: Date.now(),
+                        type: 'transfer'
+                    });
+
+                    // إرسال تنبيه للمستلم
+                    db.ref('alerts/' + targetId).push({
+                        msg: `وصلك تحويل بمبلغ ${amount} SDM من ${me.n}`,
+                        type: 'success',
+                        date: Date.now()
+                    });
+
+                    me.sdmBalance -= amount;
+                    hideLoginLoading();
+                    Swal.fire('تم بنجاح', `تم تحويل ${amount} SDM إلى ${targetName}`, 'success');
+                    render('wallet');
+                } else {
+                    hideLoginLoading();
+                    Swal.fire('خطأ', 'فشلت العملية، حاول لاحقاً', 'error');
                 }
-            }
-            
-            return null;
-        } catch (error) {
-            console.error('خطأ في البحث عن المستخدم:', error);
-            return null;
+            });
         }
     }
 
@@ -2023,8 +1791,8 @@
             area.innerHTML = `
                 <div class="wallet-card">
                     <img src="${sdmCoinImage}" class="sdm-logo">
-                    <h1 style="font-size:36px; margin:15px 0;">${me.sdmBalance.toFixed(2)} <span style="font-size:16px; color:var(--text-sec)">SDM</span></h1>
-                    <p style="font-size:12px; color:var(--accent);">1 SDM = ${SDM_RATE} جنيه</p>
+                    <h1 style="font-size:36px; margin:15px 0;">${(me?.sdmBalance || 0).toFixed(2)} <span style="font-size:16px; color:var(--text-sec)">SDM</span></h1>
+                    <p style="font-size:12px; color:var(--accent);">1 SDM = 1000 جنيه</p>
                     <div style="display:flex; gap:10px; justify-content:center;">
                         <button class="btn-main" style="background:var(--neon-blue); color:black; width:auto; padding:10px 30px;" onclick="showTransfer()">إرسال <i class="fas fa-paper-plane"></i></button>
                     </div>
@@ -2165,7 +1933,7 @@
     }
     
     function calcBuyCost(val) { 
-        const cost = parseFloat(val||0) * SDM_RATE;
+        const cost = parseFloat(val||0) * 1000;
         document.getElementById('buy-cost-display').innerText = isNaN(cost) ? "0" : cost.toLocaleString(); 
     }
     
@@ -2239,7 +2007,7 @@
                     <i class="fas fa-hand-sparkles" style="font-size:20px;"></i>
                     <div style="flex:1;">
                         <div style="font-size:14px; font-weight:bold;">${greeting}، ${escapeHtml(me.n)} ✨</div>
-                        <div style="font-size:12px; color:var(--text-sec);">رصيدك: ${me.sdmBalance.toFixed(2)} SDM</div>
+                        <div style="font-size:12px; color:var(--text-sec);">رصيدك: ${(me.sdmBalance || 0).toFixed(2)} SDM</div>
                         <div style="font-size:11px; color:var(--accent); margin-top:3px;">
                             <i class="fas fa-id-card"></i> رقم التعريف: <b>${me.numericId || '000000'}</b>
                             <button onclick="navigator.clipboard.writeText('${me.numericId || '000000'}'); Swal.fire({title: 'تم النسخ', text: 'تم نسخ الرقم', icon: 'success', toast: true, timer: 2000})" style="background:transparent; border:none; color:white; margin-right:5px; cursor:pointer;">
@@ -2269,211 +2037,163 @@
             }
         }, 1000);
     });
-// 1. إصلاح مشكلة دخول مستخدم قوقل (الجدد والقدامى)
-async function loginWithGoogle() {
-    try {
-        showLoginLoading(); 
-        const provider = new firebase.auth.GoogleAuthProvider();
-        const result = await auth.signInWithPopup(provider);
-        const user = result.user;
+    
+    // 3. تفعيل زر الأدمن لنشر رسالة عامة (Broadcast)
+    function sendBroadcastMessage() {
+        if (me.role !== 'admin') return;
 
-        const snap = await db.ref('users/' + user.uid).once('value');
-        
-        if (snap.exists()) {
-            me = snap.val();
-            me.p = user.uid;
-        } else {
-            // بيانات المستخدم الجديد
-            me = {
-                n: user.displayName || 'مستخدم جديد',
-                p: user.uid,
-                email: user.email,
-                pic: user.photoURL || userPic,
-                sdmBalance: 0,
-                rating: 5.0,
-                role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
-                wa: '',
-                vipStatus: 'none',
-                verified: true,
-                lastSeen: Date.now()
-            };
-            await db.ref('users/' + user.uid).set(me);
-        }
-
-        hideLoginLoading();
-        document.getElementById('auth-screen').classList.add('hidden');
-        document.getElementById('app-screen').classList.remove('hidden');
-        
-        // بدء الاستماع للرسائل فور الدخول
-        listenForBroadcast();
-        render('home'); 
-
-    } catch (error) {
-        hideLoginLoading();
-        console.error("Login Error:", error);
-        Swal.fire('خطأ', 'تعذر تسجيل الدخول، تأكد من اتصالك بالإنترنت', 'error');
-    }
-}
-
-// 2. ميزة البحث التلقائي عن الاسم عند التحويل (توضع بدلاً من showTransfer القديمة)
-// دالة التحويل المعدلة للبحث عن الرقم التعريفي (6 أرقام) أو الأيدي القديم
-async function showTransfer() {
-    const { value: formValues } = await Swal.fire({
-        title: 'تحويل عملات SDM',
-        html: `
-            <div style="text-align:right; font-size:14px; margin-bottom:5px;">رقم تعريف المستلم (6 أرقام):</div>
-            <input id="target-id" class="swal2-input" placeholder="أدخل الرقم هنا" style="margin-top:0;" maxlength="6">
-            <div id="target-name-info" style="margin-top:10px; font-weight:bold; color:var(--accent); min-height:20px; font-size:14px;"></div>
-            <div style="text-align:right; font-size:14px; margin-top:15px; margin-bottom:5px;">الكمية (SDM):</div>
-            <input id="transfer-amt" class="swal2-input" type="number" placeholder="0.00" style="margin-top:0;">
-        `,
-        background: '#1e293b',
-        color: '#fff',
-        confirmButtonText: 'إرسال الآن',
-        showCancelButton: true,
-        cancelButtonText: 'إلغاء',
-        didOpen: () => {
-            const idInput = document.getElementById('target-id');
-            const nameInfo = document.getElementById('target-name-info');
-            
-            idInput.addEventListener('input', () => {
-                const val = idInput.value.trim();
-                if (val.length === 6) {
-                    nameInfo.innerText = "جاري البحث عن صاحب الرقم...";
-                    nameInfo.style.color = "var(--accent)";
-                    
-                    // البحث في كل المستخدمين عن الشخص الذي يملك هذا الرقم التعريفي
-                    db.ref('users').orderByChild('numericId').equalTo(val).once('value', snap => {
-                        if (snap.exists()) {
-                            // الحصول على بيانات المستخدم (أول نتيجة تطابق الرقم)
-                            const userId = Object.keys(snap.val())[0];
-                            const userData = snap.val()[userId];
-                            nameInfo.innerText = "✅ المستلم: " + userData.n;
-                            nameInfo.style.color = "#10b981";
-                            // تخزين الـ UID الحقيقي في خاصية مؤقتة لاستخدامه عند الإرسال
-                            idInput.dataset.realUid = userId;
-                            idInput.dataset.realName = userData.n;
-                        } else {
-                            nameInfo.innerText = "❌ رقم تعريف غير صحيح!";
-                            nameInfo.style.color = "#ef4444";
-                            idInput.dataset.realUid = "";
-                        }
-                    });
-                } else {
-                    nameInfo.innerText = "";
-                }
-            });
-        },
-        preConfirm: () => {
-            const targetId = document.getElementById('target-id').dataset.realUid;
-            const targetName = document.getElementById('target-id').dataset.realName;
-            const amount = document.getElementById('transfer-amt').value;
-            
-            if (!targetId) {
-                Swal.showValidationMessage('يرجى إدخال رقم تعريف صحيح أولاً');
-                return false;
-            }
-            if (!amount || parseFloat(amount) <= 0) {
-                Swal.showValidationMessage('يرجى إدخال كمية صالحة');
-                return false;
-            }
-            return { targetId, targetName, amount: parseFloat(amount) };
-        }
-    });
-
-    if (formValues) {
-        const { targetId, targetName, amount } = formValues;
-        
-        if (amount > me.sdmBalance) return Swal.fire('خطأ', 'رصيدك غير كافٍ', 'error');
-        if (targetId === me.p) return Swal.fire('تنبيه', 'لا يمكنك التحويل لنفسك', 'warning');
-
-        showLoginLoading();
-        
-        // تنفيذ عملية التحويل باستخدام الـ UID الحقيقي الذي استخرجناه
-        const updates = {};
-        updates['/users/' + me.p + '/sdmBalance'] = me.sdmBalance - amount;
-        
-        // تحديث رصيد المستلم
-        db.ref('users/' + targetId + '/sdmBalance').transaction(current => (current || 0) + amount, (error, committed) => {
-            if (committed) {
-                // تحديث رصيدك محلياً
-                db.ref('/users/' + me.p + '/sdmBalance').set(me.sdmBalance - amount);
-                
-                // تسجيل العملية في السجل
-                db.ref('transactions').push({
-                    from: me.p, 
-                    fromN: me.n, 
-                    to: targetId, 
-                    toN: targetName,
-                    amount: amount, 
-                    date: Date.now(),
-                    type: 'transfer'
+        Swal.fire({
+            title: 'نشر إعلان عام للمستخدمين 📢',
+            input: 'textarea',
+            inputPlaceholder: 'اكتب نص الإعلان هنا...',
+            background: '#1e293b',
+            color: '#fff',
+            showCancelButton: true,
+            confirmButtonText: 'نشر الإعلان الآن',
+            cancelButtonText: 'إلغاء'
+        }).then((result) => {
+            if (result.isConfirmed && result.value) {
+                const msgId = Date.now();
+                db.ref('settings/broadcast').set({
+                    id: msgId,
+                    text: result.value,
+                    sender: me.n,
+                    date: firebase.database.ServerValue.TIMESTAMP
+                }).then(() => {
+                    Swal.fire('تم النشر', 'سيظهر الإعلان لكل المستخدمين الآن', 'success');
                 });
-
-                // إرسال تنبيه للمستلم
-                db.ref('alerts/' + targetId).push({
-                    msg: `وصلك تحويل بمبلغ ${amount} SDM من ${me.n}`,
-                    type: 'success',
-                    date: Date.now()
-                });
-
-                me.sdmBalance -= amount;
-                hideLoginLoading();
-                Swal.fire('تم بنجاح', `تم تحويل ${amount} SDM إلى ${targetName}`, 'success');
-                render('wallet');
-            } else {
-                hideLoginLoading();
-                Swal.fire('خطأ', 'فشلت العملية، حاول لاحقاً', 'error');
             }
         });
     }
-}
-// 3. تفعيل زر الأدمن لنشر رسالة عامة (Broadcast)
-function sendBroadcastMessage() {
-    if (me.role !== 'admin') return;
 
+    // 4. دالة استقبال الإعلانات المنشورة (توضع في البرنامج لتعمل عند الفتح)
+    function listenForBroadcast() {
+        db.ref('settings/broadcast').on('value', snap => {
+            const data = snap.val();
+            if (data && data.text) {
+                const lastSeenId = localStorage.getItem('last_broadcast_id');
+                if (lastSeenId != data.id) {
+                    Swal.fire({
+                        title: 'إعلان من الإدارة 📢',
+                        text: data.text,
+                        icon: 'info',
+                        background: '#1e293b',
+                        color: '#fff',
+                        confirmButtonText: 'فهمت'
+                    }).then(() => {
+                        localStorage.setItem('last_broadcast_id', data.id);
+                    });
+                }
+            }
+        });
+    }
+// --- دوال إضافية تحتاج إلى تعريف ---
+function updateCurrentSliderImg() {
+    // دالة لتعديل صور السلايدر (للأدمن فقط)
+    if (!isGuest && me.role === 'admin') {
+        Swal.fire({
+            title: 'تعديل صور السلايدر',
+            text: 'هذه الميزة قيد التطوير',
+            icon: 'info',
+            background: '#1e293b',
+            color: '#fff'
+        });
+    }
+}
+
+function updateCategoryImg(category) {
+    // دالة لتعديل صورة القسم (للأدمن فقط)
+    if (!isGuest && me.role === 'admin') {
+        Swal.fire({
+            title: `تعديل صورة قسم ${category}`,
+            text: 'هذه الميزة قيد التطوير',
+            icon: 'info',
+            background: '#1e293b',
+            color: '#fff'
+        });
+    }
+}
+
+function buyVip(days, cost) {
+    // دالة شراء عضوية VIP
+    if (isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
+    
+    if (me.sdmBalance < cost) {
+        Swal.fire('خطأ', 'رصيدك غير كافٍ لشراء العضوية', 'error');
+        return;
+    }
+    
     Swal.fire({
-        title: 'نشر إعلان عام للمستخدمين 📢',
-        input: 'textarea',
-        inputPlaceholder: 'اكتب نص الإعلان هنا...',
-        background: '#1e293b',
-        color: '#fff',
+        title: `شراء عضوية VIP لمدة ${days} يوم`,
+        text: `سيكلفك ${cost} SDM من رصيدك`,
+        icon: 'question',
         showCancelButton: true,
-        confirmButtonText: 'نشر الإعلان الآن',
-        cancelButtonText: 'إلغاء'
+        confirmButtonText: 'شراء',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff'
     }).then((result) => {
-        if (result.isConfirmed && result.value) {
-            const msgId = Date.now();
-            db.ref('settings/broadcast').set({
-                id: msgId,
-                text: result.value,
-                sender: me.n,
-                date: firebase.database.ServerValue.TIMESTAMP
+        if (result.isConfirmed) {
+            const expiryDate = Date.now() + (days * 24 * 60 * 60 * 1000);
+            const newBalance = me.sdmBalance - cost;
+            
+            db.ref('users/' + me.p).update({
+                sdmBalance: newBalance,
+                vipStatus: 'active',
+                vipExpiry: expiryDate
             }).then(() => {
-                Swal.fire('تم النشر', 'سيظهر الإعلان لكل المستخدمين الآن', 'success');
+                me.sdmBalance = newBalance;
+                me.vipStatus = 'active';
+                me.vipExpiry = expiryDate;
+                
+                // تسجيل العملية
+                db.ref('transactions').push({
+                    type: 'vip_purchase',
+                    from: me.p,
+                    to: 'SYSTEM',
+                    amount: cost,
+                    details: `عضوية VIP لمدة ${days} يوم`,
+                    date: Date.now()
+                });
+                
+                Swal.fire('نجاح', `تم شراء العضوية بنجاح! صالحة لمدة ${days} يوم`, 'success');
+                render('vip');
             });
         }
     });
 }
 
-// 4. دالة استقبال الإعلانات المنشورة (توضع في البرنامج لتعمل عند الفتح)
-function listenForBroadcast() {
-    db.ref('settings/broadcast').on('value', snap => {
-        const data = snap.val();
-        if (data && data.text) {
-            const lastSeenId = localStorage.getItem('last_broadcast_id');
-            if (lastSeenId != data.id) {
-                Swal.fire({
-                    title: 'إعلان من الإدارة 📢',
-                    text: data.text,
-                    icon: 'info',
-                    background: '#1e293b',
-                    color: '#fff',
-                    confirmButtonText: 'فهمت'
-                }).then(() => {
-                    localStorage.setItem('last_broadcast_id', data.id);
-                });
-            }
+function loadUserProfile(uid) {
+    // دالة تحميل ملف مستخدم آخر
+    const statusDiv = document.getElementById('profile-status');
+    if (!statusDiv) return;
+    
+    db.ref('users/' + uid).once('value').then(snap => {
+        const userData = snap.val();
+        if (!userData) {
+            statusDiv.innerHTML = '<span style="color:var(--red)">المستخدم غير موجود</span>';
+            return;
+        }
+        
+        const now = Date.now();
+        const lastSeen = userData.lastSeen || 0;
+        const isOnline = (now - lastSeen) < 300000; // 5 دقائق
+        
+        statusDiv.innerHTML = isOnline 
+            ? '<span class="online-dot"></span> متصل الآن'
+            : `<span style="color:var(--text-sec)">آخر ظهور: ${new Date(lastSeen).toLocaleDateString('ar-EG')}</span>`;
+    });
+}
+
+function listenForAdminTasks() {
+    // استماع لمهام الأدمن
+    if (me.role !== 'admin') return;
+    
+    db.ref('admin_notifications').orderByChild('read').equalTo(false).on('value', snap => {
+        const notifications = snap.val();
+        if (notifications) {
+            // يمكن إضافة شارة للإشعارات الجديدة
+            console.log('إشعارات أدمن جديدة:', Object.keys(notifications).length);
         }
     });
 }
