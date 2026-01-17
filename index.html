@@ -2271,6 +2271,46 @@
             }
         }, 1000);
     });
+    // دالة ضغط الصور لضمان عدم تجاوز حجم قاعدة البيانات
+async function compressImage(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = event => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 600; // حجم مناسب جداً للموبايل
+                const scaleSize = MAX_WIDTH / img.width;
+                canvas.width = MAX_WIDTH;
+                canvas.height = img.height * scaleSize;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL('image/jpeg', 0.7)); // ضغط الجودة لـ 70%
+            };
+        };
+        reader.onerror = error => reject(error);
+    });
+}
+
+// دالة تحديث صورة القسم (للأدمن)
+function updateCategoryImg(catName) {
+    Swal.fire({
+        title: 'تغيير صورة القسم',
+        input: 'file',
+        inputAttributes: { 'accept': 'image/*', 'aria-label': 'تحميل صورة القسم' },
+        showCancelButton: true
+    }).then(async (file) => {
+        if (file.value) {
+            const compressed = await compressImage(file.value);
+            db.ref(`settings/categories/${catName}`).set(compressed).then(() => {
+                Swal.fire('تم', 'تم تحديث الصورة بنجاح', 'success');
+                location.reload();
+            });
+        }
+    });
+}
 </script>
 </body>
 </html>
