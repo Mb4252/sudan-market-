@@ -479,134 +479,11 @@
         setTimeout(() => { if (isLoading) hideLoginLoading(); }, 10000);
     }
 
-    function hideLoginLoading() {
-        isLoading = false;
-        const loader = document.getElementById('login-loading');
-        if (loader) {
-            loader.classList.add('hidden');
-            loader.style.display = 'none';
-        }
-    }
-
     // ================= [ 2. نظام التنبيهات الاحترافي ] =================
-
-    function listenForUserAlerts() {
-        if (isGuest || !me) return;
-        
-        // مراقبة التنبيهات وحذفها فوراً بعد العرض
-        db.ref('alerts/' + me.p).on('child_added', snap => {
-            const alert = snap.val();
-            snap.ref.remove(); // حذف التنبيه لضمان عدم تكراره عند إعادة الفتح
-
-            const Toast = Swal.mixin({
-                toast: true,
-                position: 'top-end',
-                showConfirmButton: false,
-                timer: 3000,
-                timerProgressBar: true,
-                background: '#1e293b',
-                color: '#fff'
-            });
-
-            Toast.fire({
-                icon: alert.type || 'success',
-                title: alert.msg
-            });
-            
-            hideLoginLoading(); // إغلاق أي تحميل عالق عند وصول النتيجة
-        });
-    }
 
     // ================= [ 3. إدارة المستخدم والرصيد الحي ] =================
 
-    function startApp(uid) {
-        isGuest = false;
-        hStack = ['home'];
-
-        // مراقب حي: أي تغيير في الرصيد من البوت سيظهر فوراً
-        db.ref('users/' + uid).on('value', snap => {
-            if (snap.exists()) {
-                me = snap.val();
-                me.p = uid;
-                document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
-                if (hStack[hStack.length-1] === 'home') showWelcome();
-                hideLoginLoading();
-            }
-        });
-
-        document.getElementById('auth-screen').classList.add('hidden');
-        document.getElementById('app-screen').classList.remove('hidden');
-        
-        listenForUserAlerts();
-        listenForDevAlerts();
-        render('home');
-    }
-
     // ================= [ 4. عملية التحويل الآمنة - المحدثة ] =================
-
-    async function showTransfer() {
-        if (isGuest) return;
-        
-        const { value: formValues } = await Swal.fire({
-            title: 'تحويل عملات SDM',
-            html: `
-                <div style="text-align:right; font-size:14px; margin-bottom:5px;">رقم المستلم (6 أرقام):</div>
-                <input id="target-id" class="swal2-input" placeholder="000000" maxlength="6">
-                <div id="target-name-info" style="margin-top:10px; font-weight:bold; color:var(--accent); min-height:20px;"></div>
-                <div style="text-align:right; font-size:14px; margin-top:15px; margin-bottom:5px;">الكمية:</div>
-                <input id="transfer-amt" class="swal2-input" type="number" placeholder="0.00">
-            `,
-            background: '#1e293b',
-            color: '#fff',
-            confirmButtonText: 'إرسال الطلب',
-            showCancelButton: true,
-            didOpen: () => {
-                const idInput = document.getElementById('target-id');
-                idInput.addEventListener('input', () => {
-                    const val = idInput.value.trim();
-                    if (val.length === 6) {
-                        db.ref('users').orderByChild('numericId').equalTo(val).once('value', s => {
-                            if (s.exists()) {
-                                const u = Object.values(s.val())[0];
-                                document.getElementById('target-name-info').innerText = "✅ المستلم: " + u.n;
-                                idInput.dataset.realUid = Object.keys(s.val())[0];
-                            } else {
-                                document.getElementById('target-name-info').innerText = "❌ رقم غير صحيح";
-                            }
-                        });
-                    }
-                });
-            }
-        });
-
-        if (formValues) {
-            const targetUid = document.getElementById('target-id').dataset.realUid;
-            const amount = parseFloat(document.getElementById('transfer-amt').value);
-
-            if (!targetUid || isNaN(amount) || amount <= 0 || amount > me.sdmBalance) {
-                Swal.fire('خطأ', 'تأكد من الرقم والرصيد', 'error');
-                return;
-            }
-
-            showLoginLoading(); // ابدأ التحميل
-
-            db.ref('requests/transfers').push({
-                from: me.p,
-                fromName: me.n, // 👈 أضف هذا السطر لإرسال اسمك
-                to: targetUid,
-                amount: amount,
-                status: 'pending',
-                date: Date.now()
-            }).then(() => {
-                // ملاحظة: نغلق التحميل فوراً وننتظر تنبيه البوت
-                hideLoginLoading();
-                Swal.fire({ title: 'قيد المعالجة', text: 'تم إرسال الطلب للبوت..', icon: 'info', timer: 2000, showConfirmButton: false });
-            }).catch(() => {
-                hideLoginLoading();
-                Swal.fire('خطأ', 'فشل في الاتصال', 'error');
-            });
-        }
-    }
 
     // --- إدارة زر الرجوع ---
     function handleBackButton() {
@@ -2271,46 +2148,184 @@
             }
         }, 1000);
     });
-    // دالة ضغط الصور لضمان عدم تجاوز حجم قاعدة البيانات
-async function compressImage(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = event => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const MAX_WIDTH = 600; // حجم مناسب جداً للموبايل
-                const scaleSize = MAX_WIDTH / img.width;
-                canvas.width = MAX_WIDTH;
-                canvas.height = img.height * scaleSize;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                resolve(canvas.toDataURL('image/jpeg', 0.7)); // ضغط الجودة لـ 70%
-            };
-        };
-        reader.onerror = error => reject(error);
-    });
-}
+    
+    // 1. تحديث دالة إخفاء التحميل لضمان تنظيف الشاشة تماماً
+    function hideLoginLoading() {
+        isLoading = false;
+        const loader = document.getElementById('login-loading');
+        if (loader) {
+            loader.classList.add('hidden');
+            loader.style.display = 'none';
+        }
+        // إغلاق أي نافذة تنبيه معلقة تمنع اللمس
+        if (typeof Swal !== 'undefined' && Swal.isVisible() && !Swal.getAttribute('toast')) {
+            Swal.close();
+        }
+    }
 
-// دالة تحديث صورة القسم (للأدمن)
-function updateCategoryImg(catName) {
-    Swal.fire({
-        title: 'تغيير صورة القسم',
-        input: 'file',
-        inputAttributes: { 'accept': 'image/*', 'aria-label': 'تحميل صورة القسم' },
-        showCancelButton: true
-    }).then(async (file) => {
-        if (file.value) {
-            const compressed = await compressImage(file.value);
-            db.ref(`settings/categories/${catName}`).set(compressed).then(() => {
-                Swal.fire('تم', 'تم تحديث الصورة بنجاح', 'success');
-                location.reload();
+    // 2. تحديث مراقب التنبيهات لإظهار رسائل "غير حاجبة" (Toasts)
+    function listenForUserAlerts() {
+        if (isGuest || !me) return;
+        
+        db.ref('alerts/' + me.p).on('child_added', snap => {
+            const alert = snap.val();
+            snap.ref.remove(); // حذف التنبيه فوراً لعدم التكرار
+
+            // أهم خطوة: إغلاق شاشة التحميل فور وصول رد البوت
+            hideLoginLoading();
+
+            const Toast = Swal.mixin({
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 3000,
+                timerProgressBar: true,
+                background: '#1e293b',
+                color: '#fff'
+            });
+
+            Toast.fire({
+                icon: alert.type || 'success',
+                title: alert.msg
+            });
+        });
+    }
+
+    // 3. تحديث دالة التحويل لمنع التعليق بعد الضغط على "إرسال"
+    async function showTransfer() {
+        if (isGuest) return;
+        
+        const { value: formValues } = await Swal.fire({
+            title: 'تحويل عملات SDM',
+            html: `
+                <div style="text-align:right; font-size:14px; margin-bottom:5px;">رقم المستلم (6 أرقام):</div>
+                <input id="target-id" class="swal2-input" placeholder="000000" maxlength="6">
+                <div id="target-name-info" style="margin-top:10px; font-weight:bold; color:var(--accent); min-height:20px;"></div>
+                <div style="text-align:right; font-size:14px; margin-top:15px; margin-bottom:5px;">الكمية:</div>
+                <input id="transfer-amt" class="swal2-input" type="number" placeholder="0.00">
+            `,
+            background: '#1e293b',
+            color: '#fff',
+            confirmButtonText: 'إرسال الطلب',
+            showCancelButton: true,
+            didOpen: () => {
+                const idInput = document.getElementById('target-id');
+                idInput.addEventListener('input', () => {
+                    const val = idInput.value.trim();
+                    if (val.length === 6) {
+                        db.ref('users').orderByChild('numericId').equalTo(val).once('value', s => {
+                            if (s.exists()) {
+                                const u = Object.values(s.val())[0];
+                                document.getElementById('target-name-info').innerText = "✅ المستلم: " + u.n;
+                                idInput.dataset.realUid = Object.keys(s.val())[0];
+                            } else {
+                                document.getElementById('target-name-info').innerText = "❌ رقم غير صحيح";
+                            }
+                        });
+                    }
+                });
+            }
+        });
+
+        if (formValues) {
+            const targetUid = document.getElementById('target-id').dataset.realUid;
+            const amount = parseFloat(document.getElementById('transfer-amt').value);
+
+            if (!targetUid || isNaN(amount) || amount <= 0 || amount > me.sdmBalance) {
+                Swal.fire('خطأ', 'تأكد من الرقم والرصيد', 'error');
+                return;
+            }
+
+            showLoginLoading(); // ابدأ التحميل
+
+            db.ref('requests/transfers').push({
+                from: me.p,
+                fromName: me.n,
+                to: targetUid,
+                amount: amount,
+                status: 'pending',
+                date: Date.now()
+            }).then(() => {
+                // نغلق نافذة الإدخال ونظهر رسالة بسيطة جداً لا تحجب الشاشة
+                hideLoginLoading();
+                const Toast = Swal.mixin({ toast: true, position: 'top' });
+                Toast.fire({ title: 'جاري المعالجة...', icon: 'info', timer: 2000, showConfirmButton: false });
+            }).catch(() => {
+                hideLoginLoading();
+                Swal.fire('خطأ', 'فشل في الاتصال', 'error');
             });
         }
-    });
-}
+    }
+
+    // 4. تحديث دالة البدء لمنع "قفز" التطبيق أو الرجوع للرئيسية عند تحديث الرصيد
+    function startApp(uid) {
+        isGuest = false;
+        
+        db.ref('users/' + uid).on('value', snap => {
+            if (snap.exists()) {
+                const isFirstLoad = (me === null);
+                me = snap.val();
+                me.p = uid;
+                
+                // تحديث الأرقام في الواجهة فقط دون إعادة رسم الصفحة كاملة
+                const starsEl = document.getElementById('u-stars');
+                if (starsEl) starsEl.innerText = (me.rating || 0).toFixed(1);
+                
+                // تحديث رسالة الترحيب فقط إذا كنا في الرئيسية
+                if (hStack[hStack.length-1] === 'home') showWelcome();
+                
+                if (isFirstLoad) {
+                    document.getElementById('auth-screen').classList.add('hidden');
+                    document.getElementById('app-screen').classList.remove('hidden');
+                    render('home');
+                    listenForUserAlerts();
+                    listenForDevAlerts();
+                }
+                hideLoginLoading();
+            }
+        });
+    }
+
+    // دالة ضغط الصور لضمان عدم تجاوز حجم قاعدة البيانات
+    async function compressImage(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = event => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 600; // حجم مناسب جداً للموبايل
+                    const scaleSize = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH;
+                    canvas.height = img.height * scaleSize;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.7)); // ضغط الجودة لـ 70%
+                };
+            };
+            reader.onerror = error => reject(error);
+        });
+    }
+
+    // دالة تحديث صورة القسم (للأدمن)
+    function updateCategoryImg(catName) {
+        Swal.fire({
+            title: 'تغيير صورة القسم',
+            input: 'file',
+            inputAttributes: { 'accept': 'image/*', 'aria-label': 'تحميل صورة القسم' },
+            showCancelButton: true
+        }).then(async (file) => {
+            if (file.value) {
+                const compressed = await compressImage(file.value);
+                db.ref(`settings/categories/${catName}`).set(compressed).then(() => {
+                    Swal.fire('تم', 'تم تحديث الصورة بنجاح', 'success');
+                    location.reload();
+                });
+            }
+        });
+    }
 </script>
 </body>
 </html>
