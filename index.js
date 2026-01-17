@@ -1,143 +1,146 @@
-const express = require('express');
 const admin = require('firebase-admin');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+// 1. إعداد الاتصال (تأكد من وجود ملف المفتاح)
+const serviceAccount = require("./serviceAccountKey.json");
 
-// 1. تهيئة Firebase Admin بشكل آمن
-try {
-    const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT 
-        ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT) 
-        : require("./serviceAccountKey.json");
-
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
-    });
-    console.log("✅ Firebase Admin Initialized Successfully");
-} catch (e) {
-    console.error("❌ Firebase Initialization Error:", e.message);
-}
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
+});
 
 const db = admin.database();
 let isBusy = false;
 
-// 1. معالجة التحويلات (نظام الطلبات)
-async function processTransfers() {
+/**
+ * المحرك الأساسي لمعالجة التحويلات بأمان عالي
+ */
+async function processSecureTransfers() {
     const transfersRef = db.ref('requests/transfers');
-    const snap = await transfersRef.orderByChild('status').equalTo('pending').limitToFirst(10).once('value');
+    // جلب أول 5 طلبات تنتظر المعالجة
+    const snap = await transfersRef.orderByChild('status').equalTo('pending').limitToFirst(5).once('value');
     
     if (!snap.exists()) return;
 
     const tasks = snap.val();
     for (const id in tasks) {
-        const { from, to, amount } = tasks[id];
+        const { from, to, amount, fromName } = tasks[id];
+        
         try {
-            // خصم من المرسل
-            const result = await db.ref(`users/${from}/sdmBalance`).transaction((current) => {
-                if (current === null) return 0;
-                if (current < amount) return; // رصيد غير كافٍ
-                return current - amount;
+            console.log(`⏳ جاري معالجة تحويل: ${amount} SDM من ${fromName}...`);
+
+            // العمل داخل Transaction لضمان دقة الرصيد
+            const senderRef = db.ref(`users/${from}/sdmBalance`);
+            const receiverRef = db.ref(`users/${to}/sdmBalance`);
+
+            await senderRef.transaction((currentBalance) => {
+                if (currentBalance === null) return 0;
+                if (currentBalance < amount) {
+                    console.log("❌ رصيد غير كافٍ للمرسل");
+                    return; // إلغاء العملية
+                }
+                return currentBalance - amount;
+            }, async (error, committed, snapshot) => {
+                if (committed) {
+                    // إذا نجح الخصم من المرسل، نقوم بالإضافة للمستلم وتحديث الحالة فوراً
+                    const updates = {};
+                    const now = Date.now();
+                    
+                    // إضافة للمستلم
+                    await receiverRef.transaction(b => (b || 0) + amount);
+                    
+                    // تحديث حالة الطلب وسجل العمليات في خطوة واحدة (Atomic Update)
+                    updates[`requests/transfers/${id}/status`] = 'completed';
+                    updates[`requests/transfers/${id}/processedAt`] = now;
+                    updates[`transactions/${id}`] = { from, to, amount, type: 'transfer', date: now };
+                    
+                    await db.ref().update(updates);
+
+                    // إرسال تنبيهات فورية
+                    sendAlert(from, `✅ تم تحويل ${amount} SDM بنجاح إلى المستلم.`, 'success');
+                    sendAlert(to, `💰 استلمت تحويل بقيمة ${amount} SDM من ${fromName}.`, 'success');
+                    
+                    console.log(`✅ تمت العملية بنجاح: ${id}`);
+                } else {
+                    // إذا فشل الخصم بسبب الرصيد
+                    await transfersRef.child(id).update({ status: 'failed', reason: 'رصيدك غير كافٍ' });
+                    sendAlert(from, `❌ فشل التحويل: رصيدك الحالي لا يكفي.`, 'error');
+                }
             });
 
-            if (result.committed) {
-                // إضافة للمستلم
-                await db.ref(`users/${to}/sdmBalance`).transaction((c) => (c || 0) + amount);
-                // تحديث الطلب
-                await transfersRef.child(id).update({ status: 'completed', processedAt: Date.now() });
-                // سجل العمليات
-                await db.ref('transactions').push({ from, to, amount, type: 'transfer', date: Date.now() });
-                // تنبيهات
-                db.ref(`alerts/${from}`).push({ msg: `✅ تم تحويل ${amount} SDM بنجاح.`, type: 'success', date: Date.now() });
-                db.ref(`alerts/${to}`).push({ msg: `💰 استلمت تحويل بقيمة ${amount} SDM.`, type: 'success', date: Date.now() });
-                console.log(`✅ Transfer Done: ${amount} from ${from} to ${to}`);
-            } else {
-                await transfersRef.child(id).update({ status: 'failed', reason: 'Insufficient Balance', processedAt: Date.now() });
-            }
-        } catch (err) { console.error("Transfer Task Error:", err.message); }
+        } catch (err) {
+            console.error("Critical Transfer Error:", err.message);
+        }
     }
 }
 
-// 2. معالجة التقييمات
+/**
+ * دالة إرسال التنبيهات
+ */
+function sendAlert(uid, msg, type) {
+    db.ref(`alerts/${uid}`).push({
+        msg,
+        type,
+        date: Date.now()
+    });
+}
+
+/**
+ * دالة تنظيف وصيانة النظام (تلقائية)
+ */
+async function maintenanceTask() {
+    console.log("🧹 جاري فحص الاشتراكات والمنشورات القديمة...");
+    const now = Date.now();
+    
+    // 1. إنهاء اشتراكات VIP المنتهية
+    const vipSnap = await db.ref('users').orderByChild('vipStatus').equalTo('active').once('value');
+    if (vipSnap.exists()) {
+        vipSnap.forEach(uSnap => {
+            const u = uSnap.val();
+            if (u.vipExpiry && u.vipExpiry < now) {
+                uSnap.ref.update({ vipStatus: 'expired' });
+                sendAlert(uSnap.key, "💔 انتهى اشتراك VIP الخاص بك. قم بالتجديد للتمتع بالمميزات.", "info");
+            }
+        });
+    }
+
+    // 2. حذف التقييمات المعلقة ومعالجتها
+    processRatings();
+}
+
+/**
+ * معالجة التقييمات
+ */
 async function processRatings() {
     const queueRef = db.ref('rating_queue');
     const snap = await queueRef.limitToFirst(10).once('value');
     if (!snap.exists()) return;
 
-    const ratings = snap.val();
-    for (const id in ratings) {
-        const { target, stars } = ratings[id];
-        try {
-            await db.ref(`users/${target}`).transaction((userData) => {
-                if (userData) {
-                    const currentRating = Number(userData.rating) || 5;
-                    const count = Number(userData.ratingCount) || 0;
-                    const newRating = ((currentRating * count) + stars) / (count + 1);
-                    
-                    userData.rating = Math.round(newRating * 10) / 10;
-                    userData.ratingCount = count + 1;
-                }
-                return userData;
-            });
-            await queueRef.child(id).remove();
-        } catch (err) { console.error("Rating Task Error:", err.message); }
-    }
-}
-
-// 3. تنظيف البيانات (المنشورات القديمة و VIP)
-async function maintenanceTask() {
-    console.log("🧹 Starting Maintenance...");
-    const now = Date.now();
-    const postCutoff = now - (48 * 60 * 60 * 1000); // 48 ساعة
-
-    // تنظيف المنشورات
-    const paths = ['posts', 'vip_posts'];
-    for (const path of paths) {
-        const oldSnap = await db.ref(path).orderByChild('date').endAt(postCutoff).once('value');
-        if (oldSnap.exists()) {
-            const updates = {};
-            oldSnap.forEach(post => {
-                updates[`${path}/${post.key}`] = null;
-                updates[`comments/${path}/${post.key}`] = null;
-            });
-            await db.ref().update(updates);
-        }
-    }
-
-    // تنظيف VIP
-    const vipSnap = await db.ref('users').orderByChild('vipStatus').equalTo('active').once('value');
-    if (vipSnap.exists()) {
-        const vipUpdates = {};
-        vipSnap.forEach(uSnap => {
-            const u = uSnap.val();
-            if (u.vipExpiry && u.vipExpiry < now) {
-                vipUpdates[`users/${uSnap.key}/vipStatus`] = 'expired';
-                db.ref(`alerts/${uSnap.key}`).push({ msg: `💔 انتهى اشتراك VIP الخاص بك.`, type: 'info', date: now });
+    for (const id in snap.val()) {
+        const { target, stars } = snap.val()[id];
+        await db.ref(`users/${target}`).transaction((u) => {
+            if (u) {
+                const currentRating = u.rating || 5;
+                const count = u.ratingCount || 0;
+                u.rating = ((currentRating * count) + stars) / (count + 1);
+                u.ratingCount = count + 1;
             }
+            return u;
         });
-        if (Object.keys(vipUpdates).length > 0) await db.ref().update(vipUpdates);
+        await queueRef.child(id).remove();
     }
 }
 
-// المحرك الأساسي
-async function startEngine() {
+// تشغيل المحرك الأساسي كل 5 ثوانٍ
+setInterval(async () => {
     if (isBusy) return;
     isBusy = true;
-    try {
-        await processTransfers();
-        await processRatings();
-    } catch (e) { console.error("Engine Error:", e.message); }
+    await processSecureTransfers();
     isBusy = false;
-}
+}, 5000);
 
-app.get('/', (req, res) => res.send('SDM Market Security Bot is Online 🚀'));
+// تشغيل الصيانة كل ساعة
+setInterval(maintenanceTask, 3600000);
 
-app.listen(PORT, () => {
-    console.log(`🤖 Bot is running on port: ${PORT}`);
-    // فحص التحويلات والتقييمات كل 5 ثوانٍ
-    setInterval(startEngine, 5000);
-    // فحص الصيانة كل ساعة
-    setInterval(maintenanceTask, 3600000);
-    // تشغيل صيانة فورية عند الإقلاع
-    maintenanceTask();
-});
+// البدء الفوري عند التشغيل
+console.log("🤖 SDM Secure Bot is now Active...");
+maintenanceTask();
