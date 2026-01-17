@@ -1,12 +1,36 @@
 const admin = require('firebase-admin');
 
-// 1. إعداد الاتصال بقاعدة البيانات
-const serviceAccount = require("./serviceAccountKey.json");
+/**
+ * 1. إعداد الاتصال بقاعدة البيانات
+ * سيتم قراءة بيانات الاعتماد من متغير البيئة FIREBASE_SERVICE_ACCOUNT
+ */
+try {
+    const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
 
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
-});
+    if (!serviceAccountRaw) {
+        console.error("❌ خطأ: لم يتم العثور على متغير البيئة FIREBASE_SERVICE_ACCOUNT");
+        console.error("يرجى إضافته في إعدادات Render (Environment Variables)");
+        process.exit(1);
+    }
+
+    // تحويل النص إلى كائن JSON
+    const serviceAccount = JSON.parse(serviceAccountRaw);
+
+    // معالجة مشكلة الأسطر الجديدة في المفتاح الخاص (ضرورية للعمل على السيرفرات)
+    if (serviceAccount.private_key) {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
+
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
+    });
+
+    console.log("✅ تم الاتصال بـ Firebase بنجاح عبر متغيرات البيئة.");
+} catch (error) {
+    console.error("❌ فشل في تشغيل Firebase:", error.message);
+    process.exit(1);
+}
 
 const db = admin.database();
 let isProcessing = false;
@@ -56,8 +80,6 @@ async function processSecureTransfers() {
             }
 
             // 3. التنفيذ الذري (Atomic Multi-Path Update)
-            // هذه الخطوة تضمن تحديث كل المسارات في "نبضة واحدة". 
-            // إما أن ينجح الخصم والإضافة وتغيير الحالة معاً، أو يفشل كل شيء (لا ضياع للأموال).
             const now = Date.now();
             const updates = {};
 
@@ -109,13 +131,11 @@ async function processRatings() {
                 if (user) {
                     const currentRating = user.rating || 5;
                     const count = user.ratingCount || 0;
-                    // معادلة المتوسط الحسابي
                     user.rating = ((currentRating * count) + stars) / (count + 1);
                     user.ratingCount = count + 1;
                 }
                 return user;
             });
-            // حذف الطلب من الطابور بعد المعالجة
             await queueRef.child(id).remove();
         } catch (e) {
             console.error("Rating Error:", e.message);
@@ -131,7 +151,6 @@ async function maintenanceTask() {
     const now = Date.now();
 
     try {
-        // 1. إنهاء اشتراكات VIP المنتهية
         const usersSnap = await db.ref('users').orderByChild('vipStatus').equalTo('active').once('value');
         if (usersSnap.exists()) {
             usersSnap.forEach(uSnap => {
@@ -143,7 +162,6 @@ async function maintenanceTask() {
             });
         }
 
-        // 2. حذف المنشورات القديمة (أكثر من 48 ساعة) - اختيارية
         const cutoff = now - (48 * 60 * 60 * 1000);
         const postsRef = db.ref('posts');
         const oldPostsSnap = await postsRef.orderByChild('date').endAt(cutoff).once('value');
@@ -191,8 +209,8 @@ async function runEngine() {
 // تشغيل فحص التحويلات كل 5 ثوانٍ
 setInterval(runEngine, 5000);
 
-// تشغيل الصيانة كل ساعة (تغيير VIP وحذف المنشورات)
+// تشغيل الصيانة كل ساعة
 setInterval(maintenanceTask, 3600000);
 
 console.log("🚀 SDM Secure Bot is Online...");
-maintenanceTask(); // تشغيل فحص أولي عند الإقلاع
+maintenanceTask();
