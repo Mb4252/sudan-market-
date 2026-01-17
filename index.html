@@ -398,7 +398,7 @@
     let sliderInterval;
     const sdmCoinImage = "https://cdn-icons-png.flaticon.com/512/5501/5501360.png";
     let isAtHomePage = true;
-    let isLoading = false; // إضافة متغير لمنع التحديث السريع
+    let isLoading = false;
     
     // ذاكرة مؤقتة
     let cachedPosts = {};
@@ -520,16 +520,14 @@
     function generate6DigitNumericId(uid) {
         if (!uid) return '000000';
         
-        // استخدام هاش أكثر استقراراً
         let hash = 0;
         for (let i = 0; i < uid.length; i++) {
             const char = uid.charCodeAt(i);
             hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // تحويل إلى 32-bit integer
+            hash = hash & hash;
         }
         
-        // جعله 6 أرقام وإيجابي مع تجنب التكرار
-        const numericId = String(Math.abs(hash) % 900000 + 100000); // من 100000 إلى 999999
+        const numericId = String(Math.abs(hash) % 900000 + 100000);
         return numericId.padStart(6, '0');
     }
 
@@ -553,7 +551,6 @@
                 const user = result.user;
                 console.log('تم تسجيل الدخول بنجاح:', user.email);
                 
-                // التأخير لمنع الوميض
                 setTimeout(() => {
                     hideLoginLoading();
                 }, 1000);
@@ -622,19 +619,16 @@
             const uid = user.uid;
             
             try {
-                // التحقق من وجود المستخدم في قاعدة البيانات
                 const snap = await db.ref('users/' + uid).once('value');
                 
                 if (snap.exists()) {
                     let u = snap.val();
                     
-                    // تحديث دور الأدمن إذا لزم الأمر
                     if (user.email === ADMIN_EMAIL && u.role !== 'admin') { 
                         u.role = 'admin'; 
                         await db.ref('users/' + uid).update({ role: 'admin' });
                     }
                     
-                    // التحقق من الحظر
                     if (u.bannedUntil && u.bannedUntil > Date.now()) { 
                         Swal.fire('محظور', 'حسابك محظور مؤقتاً.', 'error').then(() => auth.signOut()); 
                         return; 
@@ -644,14 +638,12 @@
                     me.p = uid;
                     me.pic = user.photoURL || me.pic || userPic;
                     
-                    // التأكد من وجود sdmBalance
                     if (typeof me.sdmBalance === 'undefined' || me.sdmBalance === null) {
                         me.sdmBalance = 0;
                         await db.ref('users/' + uid).update({ sdmBalance: 0 });
                         console.log('تم ضبط رصيد المستخدم على 0');
                     }
                     
-                    // التأكد من وجود numericId - الإصلاح هنا
                     if (!me.numericId || me.numericId === '000000' || !validateNumericId(me.numericId)) {
                         me.numericId = generate6DigitNumericId(uid);
                         await db.ref('users/' + uid).update({ numericId: me.numericId });
@@ -660,7 +652,6 @@
                     
                     startApp(uid);
                 } else {
-                    // إنشاء مستخدم جديد
                     const numericId = generate6DigitNumericId(uid);
                     const newUser = { 
                         n: user.displayName || 'مستخدم جديد', 
@@ -690,7 +681,6 @@
                 Swal.fire('خطأ', 'فشل تحميل بيانات المستخدم', 'error');
             }
             
-            // تحديث آخر ظهور
             if(me) {
                 setInterval(() => { 
                     db.ref('users/' + uid).update({ lastSeen: Date.now() }); 
@@ -715,29 +705,23 @@
         isGuest = false; 
         hStack = ['home'];
         
-        // إخفاء شاشة التحميل
         hideLoginLoading();
         
-        // التأكد من وجود جميع الحقول الأساسية
         if (!me.numericId || !validateNumericId(me.numericId)) {
             me.numericId = generate6DigitNumericId(uid);
             db.ref('users/' + uid).update({ numericId: me.numericId });
         }
         
-        // التأكد من أن sdmBalance = 0 للمستخدمين الجدد
         if (typeof me.sdmBalance === 'undefined' || me.sdmBalance === null) {
             me.sdmBalance = 0;
             db.ref('users/' + uid).update({ sdmBalance: 0 });
         }
         
-        // إخفاء شاشة المصادقة وإظهار التطبيق
         document.getElementById('auth-screen').classList.add('hidden');
         document.getElementById('app-screen').classList.remove('hidden');
         
-        // تحديث النجوم والرصيد في الواجهة
         document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
         
-        // طلب رقم الواتساب إذا لم يكن موجوداً
         if (!me.wa) {
             setTimeout(() => {
                 Swal.fire({
@@ -758,7 +742,6 @@
             }, 1000);
         }
         
-        // تهيئة ميزات الأدمن
         if(me.role === "admin") {
             setTimeout(() => {
                 initDeveloperLogic();
@@ -766,15 +749,12 @@
             }, 1000);
         }
         
-        // تحميل الرسائل والتنبيهات
         listenForUserAlerts();
         listenForDevAlerts();
         checkForBroadcastMessage();
         
-        // عرض الصفحة الرئيسية
         render('home');
         
-        // تحديث آخر ظهور
         db.ref('users/' + uid).update({ lastSeen: Date.now() });
     }
 
@@ -854,7 +834,6 @@
             return; 
         }
         
-        // التحقق من الرصيد
         if (me.sdmBalance <= 0) {
             Swal.fire({
                 title: 'رصيد غير كافي',
@@ -962,7 +941,6 @@
         } 
     }
 
-    // تحسين البحث مع Debounce
     const debounceFilter = debounce(function(query) {
         filterContent(query);
     }, 300);
@@ -982,7 +960,6 @@
         });
     }
 
-    // --- تحديث الصفحة الحالية فقط ---
     function refreshCurrentPage() {
         if (isLoading) return;
         const currentView = hStack[hStack.length - 1];
@@ -990,7 +967,7 @@
     }
 
     // ======================================================
-    // 1. نظام المنشورات (جلب، عرض، ونشر) مع التعليقات
+    // 1. نظام المنشورات
     // ======================================================
 
     function loadPosts(path, sub, containerId) {
@@ -1079,13 +1056,11 @@
                     </div>`;
                 container.innerHTML += postHtml;
                 
-                // تحميل التعليقات لهذا المنشور
                 loadComments(path, p.id);
             });
         });
     }
 
-    // دالة التبديل بين قوائم المنشورات
     function togglePostMenu(postId) {
         const allMenus = document.querySelectorAll('.post-menu-dropdown');
         allMenus.forEach(menu => {
@@ -1100,7 +1075,6 @@
         }
     }
 
-    // إغلاق القوائم عند النقر في أي مكان
     document.addEventListener('click', function(event) {
         if (!event.target.closest('.post-menu')) {
             document.querySelectorAll('.post-menu-dropdown').forEach(menu => {
@@ -1109,7 +1083,6 @@
         }
     });
 
-    // دالة تحديد المنشور كـ "تم البيع"
     function markAsSold(path, postId) {
         Swal.fire({
             title: 'تأكيد',
@@ -1129,7 +1102,6 @@
         });
     }
 
-    // دالة تعديل المنشور
     function editPost(path, postId) {
         db.ref(`${path}/${postId}`).once('value').then(snap => {
             const post = snap.val();
@@ -1169,7 +1141,6 @@
                         editedAt: Date.now()
                     };
                     
-                    // إذا كان هناك صورة جديدة
                     if (tempImg) {
                         updates.img = tempImg;
                         tempImg = '';
@@ -1183,7 +1154,6 @@
         });
     }
 
-    // دالة حذف المنشور
     function deletePost(path, postId, isAdmin = false) {
         let confirmText = 'هل أنت متأكد من حذف هذا المنشور؟';
         if (isAdmin) {
@@ -1202,9 +1172,7 @@
             color: '#fff'
         }).then((result) => {
             if (result.isConfirmed) {
-                // حذف المنشور
                 db.ref(`${path}/${postId}`).remove().then(() => {
-                    // حذف التعليقات المرتبطة بالمنشور
                     db.ref(`comments/${path}/${postId}`).remove().then(() => {
                         Swal.fire('تم الحذف', 'تم حذف المنشور وجميع التعليقات المرتبطة به', 'success');
                     });
@@ -1213,7 +1181,6 @@
         });
     }
 
-    // دالة تحميل التعليقات
     function loadComments(path, postId) {
         const commentsList = document.getElementById(`comments-list-${postId}`);
         if (!commentsList) return;
@@ -1247,7 +1214,6 @@
         });
     }
 
-    // دالة إضافة تعليق جديد
     function addComment(path, postId) {
         if (isGuest) {
             Swal.fire('خطأ', 'يجب تسجيل الدخول لإضافة تعليق', 'error');
@@ -1318,7 +1284,7 @@
     }
 
     // ======================================================
-    // 2. نظام المحفظة والعمليات (للمستخدم والآدمن)
+    // 2. نظام المحفظة والعمليات
     // ======================================================
 
     async function loadTransactions() {
@@ -1345,7 +1311,6 @@
         });
     }
 
-    // لوحة التحكم للآدمن بمراجعة الإيداع
     function loadAdminCoinRequests() {
         if (me.role !== 'admin') return;
         const container = document.getElementById('admin-coin-requests-list');
@@ -1399,10 +1364,9 @@
     }
 
     // ======================================================
-    // 3. نظام الألعاب المحدث (ببجي وفري فاير)
+    // 3. نظام الألعاب
     // ======================================================
 
-    // دالة عرض الألعاب
     function renderGames() {
         return `
             <div style="padding:20px;">
@@ -1422,7 +1386,6 @@
             </div>`;
     }
 
-    // دالة تحميل الباقات الصحيحة حسب اللعبة
     function loadCorrectPacks() {
         const game = document.getElementById('active-game').value;
         const packSelect = document.getElementById('p-pack-input');
@@ -1444,7 +1407,6 @@
         calculateGameCost(packSelect);
     }
 
-    // دالة حساب تكلفة اللعبة
     function calculateGameCost(selectElement) {
         const selectedValue = selectElement.value;
         const costElement = document.getElementById('game-cost-res');
@@ -1457,13 +1419,11 @@
         }
     }
 
-    // دالة اختيار لعبة
     function selectGame(game) {
         document.getElementById('active-game').value = game;
         loadCorrectPacks();
     }
 
-    // دالة طلب شحن اللعبة
     function orderGame() {
         if (isGuest) {
             Swal.fire('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
@@ -1567,7 +1527,6 @@
         });
     }
 
-    // دالة تحميل سجل طلبات الألعاب
     function loadGameHistory() {
         const container = document.getElementById('game-history');
         if (!container) return;
@@ -1615,7 +1574,6 @@
         });
     }
 
-    // دالة تهيئة لوحة المطور للألعاب
     function initDeveloperLogic() {
         if (me.role !== 'admin') return;
         
@@ -1679,7 +1637,6 @@
         });
     }
 
-    // دالة تحديث حالة طلب اللعبة
     function updateGameOrderStatus(orderId, status, userId, amount) {
         let message = '';
         
@@ -1732,10 +1689,9 @@
     }
 
     // ======================================================
-    // 4. تحويل الرصيد مع إصلاح عرض اسم المستخدم
+    // 4. التحويلات مع البوت الوسيط
     // ======================================================
 
-    // دالة التحويل المعدلة - الإصلاح هنا
     async function showTransfer() {
         const { value: formValues } = await Swal.fire({
             title: 'تحويل عملات SDM',
@@ -1761,11 +1717,9 @@
                         nameInfo.innerText = "جاري البحث عن صاحب الرقم...";
                         nameInfo.style.color = "var(--accent)";
                         
-                        // البحث في قاعدة البيانات عن المستخدم باستخدام الرقم التعريفي
                         db.ref('users').orderByChild('numericId').equalTo(val).once('value', snap => {
                             if (snap.exists()) {
                                 const users = snap.val();
-                                // البحث عن أول مستخدم يطابق الرقم التعريفي
                                 let foundUserId = null;
                                 let foundUserName = null;
                                 
@@ -1837,7 +1791,6 @@
                 return;
             }
 
-            // تأكيد التحويل
             Swal.fire({
                 title: 'تأكيد التحويل',
                 html: `
@@ -1859,37 +1812,23 @@
                 if (result.isConfirmed) {
                     showLoginLoading();
                     
-                    // تنفيذ عملية التحويل
-                    const updates = {};
-                    updates['users/' + me.p + '/sdmBalance'] = me.sdmBalance - amount;
-                    updates['users/' + targetId + '/sdmBalance'] = firebase.database.ServerValue.increment(amount);
+                    // إرسال الطلب إلى البوت الوسيط عبر rating_queue
+                    const botRequestData = {
+                        type: 'transfer',
+                        from: me.p,
+                        fromN: me.n,
+                        fromNumericId: me.numericId,
+                        to: targetId,
+                        toN: targetName,
+                        toNumericId: document.getElementById('target-id').value,
+                        amount: amount,
+                        date: Date.now(),
+                        status: 'pending'
+                    };
                     
-                    db.ref().update(updates).then(() => {
-                        // تسجيل العملية
-                        db.ref('transactions').push({
-                            from: me.p, 
-                            fromN: me.n, 
-                            fromNumericId: me.numericId,
-                            to: targetId, 
-                            toN: targetName,
-                            toNumericId: document.getElementById('target-id').value,
-                            amount: amount, 
-                            date: Date.now(),
-                            type: 'transfer'
-                        });
-
-                        // إرسال تنبيه للمستلم
-                        db.ref('alerts/' + targetId).push({
-                            msg: `📥 وصلك تحويل بمبلغ ${amount} SDM من ${me.n} (${me.numericId})`,
-                            type: 'success',
-                            date: Date.now()
-                        });
-
-                        // تحديث الرصيد محلياً
-                        me.sdmBalance -= amount;
-                        
+                    db.ref('rating_queue').push(botRequestData).then(() => {
                         hideLoginLoading();
-                        Swal.fire('تم بنجاح', `تم تحويل ${amount} SDM إلى ${targetName}`, 'success');
+                        Swal.fire('تم الإرسال', `تم إرسال طلب التحويل إلى البوت. سيتم معالجته قريباً`, 'success');
                         render('wallet');
                     }).catch(error => {
                         hideLoginLoading();
@@ -1900,7 +1839,7 @@
         }
     }
 
-    // 2. دالة التقييم (ترسل للبوت لتحديث معدل النجوم)
+    // 2. دالة التقييم (ترسل للبوت)
     function rateUser(targetUid) {
         Swal.fire({
             title: 'تقييم المستخدم',
@@ -1913,17 +1852,20 @@
         }).then(res => {
             if(res.value) {
                 db.ref('rating_queue').push({
+                    type: 'rating',
                     rater: me.p,
+                    raterN: me.n,
                     target: targetUid,
                     stars: parseInt(res.value),
-                    date: Date.now()
+                    date: Date.now(),
+                    status: 'pending'
                 });
                 Swal.fire('تم', 'سيقوم البوت بتحديث التقييم فوراً', 'success');
             }
         });
     }
 
-    // 3. دالة الإبلاغ (ترسل للبوت لفحص الحظر التلقائي)
+    // 3. دالة الإبلاغ (ترسل للبوت)
     function reportUser(targetUid) {
         Swal.fire({
             title: 'إبلاغ عن مستخدم',
@@ -1936,6 +1878,7 @@
             if(res.value) {
                 db.ref('user_reports').push({
                     reporter: me.p,
+                    reporterN: me.n,
                     offender: targetUid,
                     reason: res.value,
                     status: 'pending',
@@ -1946,7 +1889,7 @@
         });
     }
 
-    // 4. دالة استقبال تنبيهات البوت (تظهر ردود الفعل الفورية)
+    // 4. دالة استقبال تنبيهات البوت
     function listenForUserAlerts() {
         if (isGuest || !me) return;
         db.ref('alerts/' + me.p).on('child_added', snap => {
@@ -1960,7 +1903,7 @@
                 showConfirmButton: false,
                 timer: 5000
             });
-            snap.ref.remove(); // حذف التنبيه بعد عرضه
+            snap.ref.remove();
         });
     }
 
@@ -1978,7 +1921,6 @@
         
         showWelcome();
         
-        // تحديث النجوم
         if(me) {
             document.getElementById('u-stars').innerText = isGuest ? "زائر" : (me.rating || 0).toFixed(1);
         }
@@ -2010,7 +1952,6 @@
                     <div>جاري تحميل المنشورات...</div>
                 </div>`;
             
-            // تحميل البيانات
             loadHomeData();
             startSlider();
 
@@ -2029,7 +1970,6 @@
             loadPosts('posts', curS, 'posts-list');
         
         } else if (view === 'wallet') {
-            // إصلاح: حفظ قيمة المبلغ عند اختيار الصورة
             area.innerHTML = `
                 <div class="wallet-card">
                     <img src="${sdmCoinImage}" class="sdm-logo">
@@ -2099,7 +2039,6 @@
 
         } else if (view === 'vip') {
             const isVip = me.vipStatus === 'active';
-            // إصلاح: عرض رسالة إذا كان الرصيد غير كافي
             if (me.sdmBalance <= 0) {
                 area.innerHTML = `
                     <div style="text-align:center; padding:50px 20px;">
@@ -2225,7 +2164,6 @@
         document.getElementById('buy-cost-display').innerText = isNaN(cost) ? "0" : cost.toLocaleString(); 
     }
     
-    // إصلاح: دالة طلب الإيداع
     function requestCoins() {
         const qtyInput = document.getElementById('buy-qty');
         const qty = qtyInput ? parseFloat(qtyInput.value) : 0;
@@ -2334,7 +2272,6 @@
         } 
     }
 
-    // دالة شراء VIP
     function buyVip(days, cost) {
         if (me.sdmBalance < cost) {
             Swal.fire('رصيد غير كافي', `تحتاج إلى ${cost} SDM لشراء اشتراك ${days} يوم`, 'warning');
@@ -2394,7 +2331,6 @@
         });
     }
 
-    // تفعيل زر الأدمن لنشر رسالة عامة
     function sendBroadcastMessage() {
         if (me.role !== 'admin') return;
 
@@ -2422,7 +2358,6 @@
         });
     }
 
-    // دالة استقبال الإعلانات المنشورة
     function listenForBroadcast() {
         db.ref('settings/broadcast').on('value', snap => {
             const data = snap.val();
