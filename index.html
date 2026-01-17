@@ -399,7 +399,7 @@
     const sdmCoinImage = "https://cdn-icons-png.flaticon.com/512/5501/5501360.png";
     let isAtHomePage = true;
     let isLoading = false;
-    let authInitialized = false; // إضافة متغير لتتبع تهيئة المصادقة
+    let authObserverInitialized = false;
     
     // ذاكرة مؤقتة
     let cachedPosts = {};
@@ -552,7 +552,6 @@
                 const user = result.user;
                 console.log('تم تسجيل الدخول بنجاح:', user.email);
                 
-                // بدلاً من الانتظار، ندع auth.onAuthStateChanged يتولى الأمر
                 setTimeout(() => {
                     hideLoginLoading();
                 }, 500);
@@ -615,8 +614,6 @@
     }
 
     // --- مراقبة حالة المصادقة - النسخة المحسنة ---
-    let authObserverInitialized = false;
-    
     function initializeAuthObserver() {
         if (authObserverInitialized) return;
         
@@ -770,59 +767,69 @@
         db.ref('users/' + uid).update({ lastSeen: Date.now() });
     }
 
-    // --- دوال المساعدة ---
-    function compressImage(file) {
-        return new Promise((resolve) => {
-            const reader = new FileReader(); 
-            reader.readAsDataURL(file);
-            reader.onload = (event) => {
-                const img = new Image(); 
-                img.src = event.target.result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const scaleSize = 800 / img.width;
-                    if (scaleSize >= 1) { 
-                        resolve(event.target.result); 
-                        return; 
-                    }
-                    canvas.width = 800; 
-                    canvas.height = img.height * scaleSize;
-                    const ctx = canvas.getContext('2d'); 
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.7));
-                }
-            };
-        });
-    }
-
+    // دالة معالجة الصور المحسنة (لا تمسح الحقول)
     async function encode(i, t) {
         if(!i.files[0]) return;
+        
+        // تنبيه بسيط (Toast) بدلاً من نافذة كبيرة تعطل الصفحة
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 2000
+        });
+        Toast.fire({ icon: 'info', title: 'جاري تجهيز الصورة...' });
+
         try {
-            Swal.fire({ title: 'معالجة...', didOpen: () => Swal.showLoading(), background: '#1e293b', color: '#fff' });
             const compressed = await compressImage(i.files[0]);
-            if(t === 'user') { 
-                userPic = compressed; 
-                if(me && !isGuest) { 
-                    db.ref('users/'+me.p).update({ pic: userPic }); 
-                    document.getElementById('profile-img-view').src = userPic; 
-                } 
-            }
-            else if(t === 'buy') { 
-                tempBuyImg = compressed; 
-                const fileName = i.files[0].name;
-                const fileDisplay = document.getElementById('file-name-display');
-                if (fileDisplay) {
-                    fileDisplay.textContent = `تم اختيار: ${fileName}`;
-                    fileDisplay.style.color = 'var(--green)';
+            if(t === 'post') {
+                tempImg = compressed; // حفظ في الذاكرة المؤقتة
+                Toast.fire({ icon: 'success', title: 'تمت إضافة الصورة بنجاح' });
+            } else if(t === 'buy') {
+                tempBuyImg = compressed;
+                if(document.getElementById('file-name-display')) {
+                    document.getElementById('file-name-display').innerText = "✅ تم اختيار الصورة";
                 }
             }
-            else { 
-                tempImg = compressed; 
-            }
-            Swal.close();
-        } catch(e) { 
-            Swal.fire('خطأ', 'فشل معالجة الصورة', 'error'); 
+        } catch(e) {
+            Swal.fire('خطأ', 'فشل في ضغط الصورة', 'error');
         }
+    }
+
+    // دالة النشر المحسنة
+    function publish(path) {
+        if (isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
+        
+        // جلب البيانات من الحقول في لحظة الضغط (لضمان عدم فقدانها)
+        const titleField = document.getElementById(path === 'posts' ? 'pt' : 'v-t');
+        const priceField = document.getElementById(path === 'posts' ? 'pp' : 'v-pr');
+        const descField = document.getElementById(path === 'posts' ? 'pd' : 'v-d');
+
+        if (!titleField.value || !priceField.value || !descField.value) {
+            return Swal.fire('تنبيه', 'أكمل بيانات العنوان والسعر والوصف أولاً', 'warning');
+        }
+
+        const postData = {
+            title: titleField.value, 
+            price: parseFloat(priceField.value), 
+            desc: descField.value, 
+            img: tempImg || "", // الصورة التي تم اختيارها سابقاً
+            userId: me.p, 
+            userName: me.n, 
+            userPic: me.pic || "", 
+            userWa: me.wa,
+            date: Date.now(), 
+            sold: false,
+            numericId: me.numericId
+        };
+
+        Swal.fire({ title: 'جاري النشر الآن...', didOpen: () => Swal.showLoading() });
+        
+        db.ref(path).push(postData).then(() => {
+            Swal.fire('تم بنجاح', 'تم نشر إعلانك وهو متاح للجميع الآن', 'success');
+            tempImg = ""; // تفريغ الصورة استعداداً لمنشور جديد
+            goBack(); 
+        }).catch(e => Swal.fire('خطأ في النشر', e.message, 'error'));
     }
 
     // إصلاح: دالة للتحقق من الـ VIP
@@ -1259,84 +1266,6 @@
                 showConfirmButton: false,
                 timer: 1500
             });
-        });
-    }
-
-    // ========= إصلاح دالة النشر =========
-    function publish(path) {
-        console.log('بدء النشر للمسار:', path);
-        
-        if (isGuest) {
-            Swal.fire('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
-            return;
-        }
-
-        let title, price, desc, disc;
-        
-        if (path === 'posts') {
-            title = document.getElementById('pt').value;
-            price = document.getElementById('pp').value;
-            desc = document.getElementById('pd').value;
-            disc = 0;
-        } else if (path === 'vip_posts') {
-            title = document.getElementById('v-t').value;
-            price = document.getElementById('v-pr').value;
-            desc = document.getElementById('v-d').value;
-            disc = document.getElementById('v-dis').value || 0;
-        }
-
-        console.log('القيم المدخلة:', { title, price, desc, disc });
-
-        if (!title || !price || !desc) {
-            Swal.fire('تنبيه', 'أكمل جميع الحقول', 'warning');
-            return;
-        }
-
-        const postData = {
-            title, 
-            price: parseFloat(price), 
-            desc, 
-            img: tempImg,
-            userId: me.p, 
-            userName: me.n, 
-            userPic: me.pic, 
-            userWa: me.wa,
-            sub: curS, 
-            discount: disc, 
-            date: Date.now(), 
-            sold: false,
-            numericId: me.numericId || generate6DigitNumericId(me.p)
-        };
-
-        console.log('بيانات النشر:', postData);
-
-        Swal.fire({ 
-            title: 'جاري النشر...', 
-            didOpen: () => Swal.showLoading(),
-            background: '#1e293b',
-            color: '#fff'
-        });
-        
-        db.ref(path).push(postData).then(() => {
-            Swal.fire('تم بنجاح', 'تم النشر بنجاح', 'success');
-            tempImg = ""; 
-            
-            // تنظيف الحقول بعد النشر
-            if (path === 'posts') {
-                document.getElementById('pt').value = '';
-                document.getElementById('pp').value = '';
-                document.getElementById('pd').value = '';
-            } else if (path === 'vip_posts') {
-                document.getElementById('v-t').value = '';
-                document.getElementById('v-pr').value = '';
-                document.getElementById('v-d').value = '';
-                document.getElementById('v-dis').value = '';
-            }
-            
-            goBack();
-        }).catch(e => {
-            console.error('خطأ في النشر:', e);
-            Swal.fire('خطأ', e.message, 'error');
         });
     }
 
@@ -1848,70 +1777,42 @@
         if (formValues) {
             const { targetId, targetName, amount } = formValues;
             
-            console.log('بيانات التحويل:', { targetId, targetName, amount });
-            
-            if (amount > me.sdmBalance) {
-                Swal.fire('خطأ', 'رصيدك غير كافٍ', 'error');
-                return;
-            }
-            
-            if (targetId === me.p) {
-                Swal.fire('تنبيه', 'لا يمكنك التحويل لنفسك', 'warning');
-                return;
-            }
-
+            // تأكيد نهائي من المستخدم
             Swal.fire({
-                title: 'تأكيد التحويل',
-                html: `
-                    <div style="text-align:right;">
-                        <p><b>المستلم:</b> ${targetName}</p>
-                        <p><b>المبلغ:</b> ${amount} SDM</p>
-                        <p><b>رصيدك الحالي:</b> ${me.sdmBalance} SDM</p>
-                        <p><b>رصيدك بعد التحويل:</b> ${me.sdmBalance - amount} SDM</p>
-                        <p style="color:var(--accent); font-size:12px;">هل أنت متأكد من إتمام التحويل؟</p>
-                    </div>
-                `,
+                title: 'تأكيد إرسال الطلب',
+                text: `هل تريد تحويل ${amount} SDM إلى ${targetName}؟`,
                 icon: 'question',
                 showCancelButton: true,
-                confirmButtonText: 'نعم، أتم التحويل',
+                confirmButtonText: 'تأكيد',
                 cancelButtonText: 'إلغاء',
                 background: '#1e293b',
                 color: '#fff'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    showLoginLoading();
-                    
-                    // إرسال الطلب إلى البوت الوسيط عبر rating_queue
-                    const botRequestData = {
-                        type: 'transfer',
+                    showLoginLoading(); // إظهار شاشة التحميل
+
+                    // بدلاً من محاولة تعديل رصيد الطرف الآخر (الذي يسبب الخطأ)
+                    // نقوم فقط بإضافة "طلب" في مسار جديد يراقبه البوت
+                    const transferRequest = {
                         from: me.p,
-                        fromN: me.n,
-                        fromNumericId: me.numericId,
                         to: targetId,
-                        toN: targetName,
-                        toNumericId: document.getElementById('target-id').value,
                         amount: amount,
-                        date: Date.now(),
-                        status: 'pending'
+                        status: 'pending', // البوت سيبحث عن كلمة pending
+                        date: Date.now()
                     };
-                    
-                    console.log('إرسال طلب التحويل للبوت:', botRequestData);
-                    
-                    db.ref('rating_queue').push(botRequestData).then(() => {
+
+                    db.ref('requests/transfers').push(transferRequest).then(() => {
                         hideLoginLoading();
-                        Swal.fire('تم الإرسال', `تم إرسال طلب التحويل إلى البوت. سيتم معالجته قريباً`, 'success');
-                        
-                        // تنظيف الحقول
-                        document.getElementById('target-id').value = '';
-                        document.getElementById('target-id').dataset.realUid = '';
-                        document.getElementById('target-id').dataset.realName = '';
-                        document.getElementById('transfer-amt').value = '';
-                        
-                        render('wallet');
+                        Swal.fire({
+                            title: 'تم إرسال الطلب',
+                            text: 'سيقوم البوت بمعالجة التحويل خلال ثوانٍ قليلة.. تابع رصيدك وتنبيهاتك.',
+                            icon: 'info',
+                            background: '#1e293b',
+                            color: '#fff'
+                        });
                     }).catch(error => {
                         hideLoginLoading();
-                        console.error('خطأ في إرسال التحويل:', error);
-                        Swal.fire('خطأ', 'فشلت العملية: ' + error.message, 'error');
+                        Swal.fire('خطأ', 'فشل في إرسال الطلب: ' + error.message, 'error');
                     });
                 }
             });
