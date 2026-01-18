@@ -729,54 +729,51 @@
     }
 
     // --- مراقبة حالة المصادقة - النسخة المحسنة ---
-    
-// --- مراقب الدخول الموحد والجديد (حل مشكلة التعليق) ---
-let isAuthProcessed = false;
-
+    // --- مراقب الدخول المطور (حل مشكلة التعليق) ---
 auth.onAuthStateChanged(async (user) => {
-    if (isAuthProcessed) return; 
-    
     const preloader = document.getElementById('main-preloader');
-    
-    if (user) {
-        isAuthProcessed = true;
-        const uid = user.uid;
-        try {
-            // التحقق من وجود الحساب
-            const snap = await db.ref('users/' + uid).once('value');
+    const authScreen = document.getElementById('auth-screen');
+    const appScreen = document.getElementById('app-screen');
 
+    if (user) {
+        try {
+            // 1. محاولة جلب بيانات المستخدم
+            const snap = await db.ref('users/' + user.uid).once('value');
+            
             if (!snap.exists()) {
-                // إنشاء حساب جديد (بدون إرسال sdmBalance لتجنب رفض القواعد)
+                // 2. إذا كان مستخدم جديد، أنشئ السجل بدون الحقول المحمية (مثل الرصيد)
                 const numericId = Math.floor(100000 + Math.random() * 900000).toString();
                 const newUser = {
                     n: user.displayName || 'مستخدم جديد',
                     email: user.email,
                     pic: user.photoURL || 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
                     rating: 5.0,
-                    role: (user.email === "mb425262@gmail.com" ? 'admin' : 'user'),
+                    role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
                     numericId: numericId,
                     joinDate: firebase.database.ServerValue.TIMESTAMP
                 };
-                await db.ref('users/' + uid).set(newUser);
+                await db.ref('users/' + user.uid).set(newUser);
             }
             
-            // تشغيل الجلسة
-            startAppSession(uid);
+            // 3. تشغيل الجلسة
+            startAppSession(user.uid);
 
         } catch (error) {
             console.error("Auth Error:", error);
+            // إخفاء التحميل حتى لو فشل لجعل الواجهة تظهر (سيظهر خطأ الصلاحيات في الكونسول)
             if (preloader) preloader.style.display = 'none';
+            Swal.fire('خطأ في البيانات', 'تعذر الوصول لقاعدة البيانات. تأكد من إعدادات الـ Rules', 'error');
         }
     } else {
-        // إذا لم يسجل دخول ولم يضغط على "زائر"
+        // إذا لم يسجل دخول
         if (!isGuest) {
             if (preloader) preloader.style.display = 'none';
-            document.getElementById('auth-screen').classList.remove('hidden');
-            document.getElementById('app-screen').classList.add('hidden');
+            authScreen.classList.remove('hidden');
+            appScreen.classList.add('hidden');
         }
     }
 });
-
+// --- مراقب الدخول الموحد والجديد (حل مشكلة التعليق) ---
 function startAppSession(uid) {
     isGuest = false;
     db.ref('users/' + uid).on('value', snap => {
