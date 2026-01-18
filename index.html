@@ -2195,33 +2195,38 @@ updateActiveTabUI(view);
 }
     
     // 2. إضافة دالة listenForUserAlerts المفقودة
-    function listenForUserAlerts() {
-        if (isGuest || !me) return;
-        
-        // مراقبة التنبيهات وحذفها فوراً بعد العرض
-        db.ref('alerts/' + me.p).on('child_added', snap => {
-            const alert = snap.val();
-            snap.ref.remove(); // حذف التنبيه لضمان عدم تكراره عند إعادة الفتح
-
-            const Toast = Swal.mixin({
-                toast: true,
-                position: 'top-end',
-                showConfirmButton: false,
-                timer: 3000,
-                timerProgressBar: true,
-                background: '#1e293b',
-                color: '#fff'
-            });
-
-            Toast.fire({
-                icon: alert.type || 'success',
-                title: alert.msg
-            });
-            
-            hideLoginLoading(); // إغلاق أي تحميل عالق عند وصول النتيجة
-        });
-    }
+    // 2. دالة التنبيهات المحدثة - listenForUserAlerts
+function listenForUserAlerts() {
+    if (isGuest || !me) return;
     
+    // مراقبة التنبيهات القادمة من البوت
+    db.ref('alerts/' + me.p).on('child_added', snap => {
+        const alert = snap.val();
+        const alertRef = snap.ref; // مرجع التنبيه في قاعدة البيانات
+
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 4000, // مدة العرض 4 ثوانٍ
+            timerProgressBar: true,
+            background: '#1e293b',
+            color: '#fff',
+            // التعديل الجوهري: لا يتم حذف التنبيه من السيرفر إلا بعد انتهاء العرض
+            didClose: () => {
+                alertRef.remove(); 
+            }
+        });
+
+        Toast.fire({
+            icon: alert.type || 'success',
+            title: alert.msg
+        });
+        
+        // إغلاق أي علامة تحميل (Loading) عند استلام النتيجة
+        hideLoginLoading();
+    });
+}
     // 3. إضافة دالة showTransfer المفقودة
      async function showTransfer() {
     if (isGuest) return;
