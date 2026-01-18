@@ -390,7 +390,6 @@
 
 <script>
     // --- Config & Init ---
-    // --- 1. الإعدادات والتهيئ ---
     const firebaseConfig = {
       apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
       authDomain: "sudan-market-6b122.firebaseapp.com",
@@ -401,123 +400,41 @@
       appId: "1:66729481566:web:93393f28dc22d32cceebcf"
     };
     
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    // تهيئة Firebase
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
     
     const auth = firebase.auth();
     const db = firebase.database();
+
     const ADMIN_EMAIL = "mb425262@gmail.com";
     const SDM_RATE = 1000; 
-
     let me = null;
     let hStack = ['home'];
-    let isGuest = false;
-    let tempImg = '', tempBuyImg = '';
+    let curC = '', curS = '';
+    let tempImg = '', tempBuyImg = '', userPic = 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
+    let isGuest = false; 
     let sliderInterval;
+    const sdmCoinImage = "https://cdn-icons-png.flaticon.com/512/5501/5501360.png";
+    let isAtHomePage = true;
+    let isLoading = false;
+    let authObserverInitialized = false;
+    
+    // ذاكرة مؤقتة
+    let cachedPosts = {};
+    let cachedTransactions = null;
+    let cachedSettings = null;
+    let cacheTimeout = {};
+    
+    // بيانات افتراضية
+    let sliderImages = [
+        "https://images.unsplash.com/photo-1556742049-0cfed4f7a07d?w=800",
+        "https://images.unsplash.com/photo-1534423861386-85a16f5d13fd?w=800",
+        sdmCoinImage
+    ]; 
+    let currentSliderIndex = 0;
 
-    // --- 2. مراقب حالة الدخول (المحسن والموحد) ---
-    auth.onAuthStateChanged(async (user) => {
-        const preloader = document.getElementById('main-preloader');
-        const authScreen = document.getElementById('auth-screen');
-        const appScreen = document.getElementById('app-screen');
-
-        if (user) {
-            // مستخدم مسجل
-            try {
-                const snap = await db.ref('users/' + user.uid).once('value');
-                if (!snap.exists()) {
-                    // إنشاء حساب جديد
-                    const numericId = Math.floor(100000 + Math.random() * 900000).toString();
-                    me = {
-                        n: user.displayName || 'مستخدم جديد',
-                        email: user.email,
-                        pic: user.photoURL || 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
-                        sdmBalance: 0,
-                        rating: 5.0,
-                        role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
-                        numericId: numericId,
-                        joinDate: Date.now()
-                    };
-                    await db.ref('users/' + user.uid).set(me);
-                }
-                
-                // تشغيل منطق التطبيق
-                isGuest = false;
-                startAppSession(user.uid);
-
-            } catch (e) { console.error("Error checking user:", e); }
-        } else {
-            // غير مسجل
-            if (!isGuest) {
-                if (preloader) preloader.style.display = 'none';
-                authScreen.classList.remove('hidden');
-                appScreen.classList.add('hidden');
-            }
-        }
-    });
-
-    function startAppSession(uid) {
-        // مراقب البيانات الحية (للرصيد والتنبيهات)
-        db.ref('users/' + uid).on('value', snap => {
-            if (snap.exists()) {
-                me = snap.val();
-                me.p = uid;
-                document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
-                showWelcome();
-                
-                // إخفاء شاشات التحميل وإظهار التطبيق
-                document.getElementById('main-preloader').style.display = 'none';
-                document.getElementById('auth-screen').classList.add('hidden');
-                document.getElementById('app-screen').classList.remove('hidden');
-            }
-        });
-
-        // تشغيل مراقب التنبيهات
-        listenForUserAlerts();
-        listenForDevAlerts();
-
-        // استعادة الصفحة الأخيرة أو الرئيسية
-        const lastV = localStorage.getItem('last_view') || 'home';
-        render(lastV);
-    }
-
-    // --- 3. دوال تسجيل الدخول ---
-    async function loginWithGoogle() {
-        showLoginLoading();
-        const provider = new firebase.auth.GoogleAuthProvider();
-        try {
-            await auth.signInWithPopup(provider);
-        } catch (e) {
-            hideLoginLoading();
-            Swal.fire('خطأ', 'فشل تسجيل الدخول: ' + e.message, 'error');
-        }
-    }
-
-    function enterGuestMode() {
-        isGuest = true;
-        me = { n: 'زائر', role: 'guest', sdmBalance: 0, rating: 0, numericId: '000000' };
-        document.getElementById('main-preloader').style.display = 'none';
-        document.getElementById('auth-screen').classList.add('hidden');
-        document.getElementById('app-screen').classList.remove('hidden');
-        render('home');
-    }
-
-    function doLogout() {
-        auth.signOut().then(() => location.reload());
-    }
-
-    // --- 4. نظام التنقل المحسن ---
-    function nav(v, e) {
-        hStack.push(v);
-        localStorage.setItem('last_view', v);
-        render(v, e);
-    }
-
-    function goBack() {
-        if (hStack.length > 1) {
-            hStack.pop();
-            render(hStack[hStack.length - 1]);
-        }
-    }
     const cats = {
         "الهواتف": {i:"mobile-alt", s:["آيفون","سامسونج","شاومي","بكسل","هواوي","اكسسوارات"]},
         "المركبات": {i:"car", s:["تويوتا","هيونداي","BYD","أمجاد","ركشات","شاحنات"]},
@@ -729,114 +646,63 @@
     }
 
     // --- مراقبة حالة المصادقة - النسخة المحسنة ---
-    // --- مراقب الدخول المطور (حل مشكلة التعليق) ---
-auth.onAuthStateChanged(async (user) => {
-    const preloader = document.getElementById('main-preloader');
-    const authScreen = document.getElementById('auth-screen');
-    const appScreen = document.getElementById('app-screen');
-
-    if (user) {
-        try {
-            // 1. محاولة جلب بيانات المستخدم
-            const snap = await db.ref('users/' + user.uid).once('value');
-            
-            if (!snap.exists()) {
-                // 2. إذا كان مستخدم جديد، أنشئ السجل بدون الحقول المحمية (مثل الرصيد)
-                const numericId = Math.floor(100000 + Math.random() * 900000).toString();
-                const newUser = {
-                    n: user.displayName || 'مستخدم جديد',
-                    email: user.email,
-                    pic: user.photoURL || 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
-                    rating: 5.0,
-                    role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
-                    numericId: numericId,
-                    joinDate: firebase.database.ServerValue.TIMESTAMP
-                };
-                await db.ref('users/' + user.uid).set(newUser);
-            }
-            
-            // 3. تشغيل الجلسة
-            startAppSession(user.uid);
-
-        } catch (error) {
-            console.error("Auth Error:", error);
-            // إخفاء التحميل حتى لو فشل لجعل الواجهة تظهر (سيظهر خطأ الصلاحيات في الكونسول)
-            if (preloader) preloader.style.display = 'none';
-            Swal.fire('خطأ في البيانات', 'تعذر الوصول لقاعدة البيانات. تأكد من إعدادات الـ Rules', 'error');
-        }
-    } else {
-        // إذا لم يسجل دخول
-        if (!isGuest) {
-            if (preloader) preloader.style.display = 'none';
-            authScreen.classList.remove('hidden');
-            appScreen.classList.add('hidden');
-        }
-    }
-});
-// --- مراقب الدخول الموحد والجديد (حل مشكلة التعليق) ---
-function startAppSession(uid) {
-    isGuest = false;
-    db.ref('users/' + uid).on('value', snap => {
-        if (snap.exists()) {
-            me = snap.val();
-            me.p = uid;
-            if (me.sdmBalance === undefined) me.sdmBalance = 0;
-            
-            document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
-            showWelcome();
-            
-            // إخفاء التحميل تماماً
-            document.getElementById('main-preloader').style.display = 'none';
-            document.getElementById('auth-screen').classList.add('hidden');
-            document.getElementById('app-screen').classList.remove('hidden');
-        }
-    });
-
-    listenForUserAlerts();
-    listenForDevAlerts();
+    function initializeAuthObserver() {
+    if (authObserverInitialized) return;
+    authObserverInitialized = true;
     
-    // استعادة الصفحة الأخيرة
-    const lastV = localStorage.getItem('last_view') || 'home';
-    render(lastV);
-}
-// 2. دالة تشغيل منطق التطبيق (منفصلة ونظيفة)
-function runAppLogic(uid) {
-    isGuest = false;
+    auth.onAuthStateChanged(async user => {
+        const preloader = document.getElementById('main-preloader');
+        const authScreen = document.getElementById('auth-screen');
+        const appScreen = document.getElementById('app-screen');
 
-    // استعادة آخر صفحة كان عليها المستخدم
-    const lastView = localStorage.getItem('last_view') || 'home';
-    const lastExtra = localStorage.getItem('last_extra') || '';
+        if (user) {
+            const uid = user.uid;
+            try {
+                const snap = await db.ref('users/' + uid).once('value');
+                
+                if (snap.exists()) {
+                    me = snap.val();
+                    me.p = uid;
+                    // تحديث الصلاحيات إذا كان المسؤول
+                    if (user.email === ADMIN_EMAIL && me.role !== 'admin') {
+                        me.role = 'admin';
+                        await db.ref('users/' + uid).update({ role: 'admin' });
+                    }
+                } else {
+                    // إنشاء حساب جديد إذا لم يكن موجوداً
+                    const numericId = generate6DigitNumericId(uid);
+                    const newUser = { 
+                        n: user.displayName || 'مستخدم جديد', p: uid, email: user.email, 
+                        pic: user.photoURL || userPic, sdmBalance: 0, rating: 5.0, 
+                        role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
+                        numericId: numericId, joinDate: Date.now() 
+                    };
+                    await db.ref('users/' + uid).set(newUser);
+                    me = newUser;
+                }
 
-    // تفعيل مراقب البيانات الحي (لتحديث الرصيد فوراً)
-    db.ref('users/' + uid).on('value', snap => {
-        if (snap.exists()) {
-            me = snap.val();
-            me.p = uid;
-            document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
-            if (hStack[hStack.length - 1] === 'home') showWelcome();
-            hideLoginLoading();
+                // تشغيل التطبيق
+                startApp(uid);
+
+                // إظهار الشاشة فوراً وإخفاء التحميل
+                if(preloader) preloader.style.display = 'none';
+                appScreen.style.setProperty('display', 'block', 'important');
+                authScreen.style.setProperty('display', 'none', 'important');
+
+            } catch (error) {
+                console.error("خطأ في جلب البيانات:", error);
+                if(preloader) preloader.style.display = 'none';
+            }
+        } else {
+            // لا يوجد مستخدم - إظهار شاشة الدخول فقط
+            if(!isGuest) { 
+                if(preloader) preloader.style.display = 'none';
+                authScreen.style.setProperty('display', 'block', 'important');
+                appScreen.style.setProperty('display', 'none', 'important');
+            }
         }
     });
-
-    // إخفاء شاشات التحميل وإظهار التطبيق
-    document.getElementById('main-preloader').style.display = 'none';
-    document.getElementById('auth-screen').classList.add('hidden');
-    document.getElementById('app-screen').classList.remove('hidden');
-
-    listenForUserAlerts();
-    listenForDevAlerts();
-
-    // تشغيل الصفحة الأخيرة
-    render(lastView, lastExtra);
-
-    // تحديث شكل الأزرار السفلية لتناسب الصفحة الحالية
-    const tabs = document.querySelectorAll('.tab-btn');
-    tabs.forEach(t => t.classList.remove('active'));
-    const tabMap = { 'home': 0, 'wallet': 1, 'games': 2, 'vip': 3, 'profile': 4 };
-    if (tabMap[lastView] !== undefined) {
-        tabs[tabMap[lastView]].classList.add('active');
-    }
-} 
+    }                             
     // دالة معالجة الصور المحسنة (لا تمسح الحقول)
     async function encode(i, t) {
         if(!i.files[0]) return;
@@ -1019,22 +885,16 @@ function runAppLogic(uid) {
     }
     
     function nav(v, e) { 
-    hStack.push(v); 
-    // حفظ الصفحة والبيانات الإضافية في ذاكرة المتصفح
-    localStorage.setItem('last_view', v);
-    localStorage.setItem('last_extra', e || '');
-    render(v, e); 
-}
+        hStack.push(v); 
+        render(v, e); 
+    }
     
     function goBack() { 
-    if(hStack.length > 1) { 
-        hStack.pop(); 
-        const prevView = hStack[hStack.length-1];
-        // تحديث الذاكرة بالصفحة التي رجعنا إليها
-        localStorage.setItem('last_view', prevView);
-        render(prevView); 
-    } 
-}
+        if(hStack.length > 1) { 
+            hStack.pop(); 
+            render(hStack[hStack.length-1]); 
+        } 
+    }
 
     const debounceFilter = debounce(function(query) {
         filterContent(query);
@@ -2473,18 +2333,10 @@ function runAppLogic(uid) {
     
     // 7. إضافة دالة loadUserProfile المفقودة
     function loadUserProfile(uid) {
-    const statusEl = document.getElementById('profile-status');
-    db.ref('users/' + uid).once('value').then(snap => {
-        const u = snap.val();
-        if (u) {
-            document.getElementById('profile-img-view').src = u.pic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
-            statusEl.innerHTML = `<span class="online-dot" style="background:gray; box-shadow:none;"></span> آخر ظهور: ${new Date(u.joinDate).toLocaleDateString('ar-EG')}`;
-            // يمكنك إضافة المزيد من التفاصيل هنا
-        } else {
-            statusEl.innerText = "المستخدم غير موجود";
-        }
-    });
-}
+        // دالة بسيطة لتحميل ملف تعريف المستخدم
+        // يمكن تطويرها حسب الحاجة
+        document.getElementById('profile-status').innerHTML = 'جاري تحميل الملف الشخصي...';
+    }
 </script>
 </body>
 </html>
