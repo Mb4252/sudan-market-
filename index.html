@@ -390,6 +390,7 @@
 
 <script>
     // --- Config & Init ---
+    // --- 1. الإعدادات والتهيئ ---
     const firebaseConfig = {
       apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
       authDomain: "sudan-market-6b122.firebaseapp.com",
@@ -400,41 +401,123 @@
       appId: "1:66729481566:web:93393f28dc22d32cceebcf"
     };
     
-    // تهيئة Firebase
-    if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-    }
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     
     const auth = firebase.auth();
     const db = firebase.database();
-
     const ADMIN_EMAIL = "mb425262@gmail.com";
     const SDM_RATE = 1000; 
+
     let me = null;
     let hStack = ['home'];
-    let curC = '', curS = '';
-    let tempImg = '', tempBuyImg = '', userPic = 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
-    let isGuest = false; 
+    let isGuest = false;
+    let tempImg = '', tempBuyImg = '';
     let sliderInterval;
-    const sdmCoinImage = "https://cdn-icons-png.flaticon.com/512/5501/5501360.png";
-    let isAtHomePage = true;
-    let isLoading = false;
-    let authObserverInitialized = false;
-    
-    // ذاكرة مؤقتة
-    let cachedPosts = {};
-    let cachedTransactions = null;
-    let cachedSettings = null;
-    let cacheTimeout = {};
-    
-    // بيانات افتراضية
-    let sliderImages = [
-        "https://images.unsplash.com/photo-1556742049-0cfed4f7a07d?w=800",
-        "https://images.unsplash.com/photo-1534423861386-85a16f5d13fd?w=800",
-        sdmCoinImage
-    ]; 
-    let currentSliderIndex = 0;
 
+    // --- 2. مراقب حالة الدخول (المحسن والموحد) ---
+    auth.onAuthStateChanged(async (user) => {
+        const preloader = document.getElementById('main-preloader');
+        const authScreen = document.getElementById('auth-screen');
+        const appScreen = document.getElementById('app-screen');
+
+        if (user) {
+            // مستخدم مسجل
+            try {
+                const snap = await db.ref('users/' + user.uid).once('value');
+                if (!snap.exists()) {
+                    // إنشاء حساب جديد
+                    const numericId = Math.floor(100000 + Math.random() * 900000).toString();
+                    me = {
+                        n: user.displayName || 'مستخدم جديد',
+                        email: user.email,
+                        pic: user.photoURL || 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
+                        sdmBalance: 0,
+                        rating: 5.0,
+                        role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
+                        numericId: numericId,
+                        joinDate: Date.now()
+                    };
+                    await db.ref('users/' + user.uid).set(me);
+                }
+                
+                // تشغيل منطق التطبيق
+                isGuest = false;
+                startAppSession(user.uid);
+
+            } catch (e) { console.error("Error checking user:", e); }
+        } else {
+            // غير مسجل
+            if (!isGuest) {
+                if (preloader) preloader.style.display = 'none';
+                authScreen.classList.remove('hidden');
+                appScreen.classList.add('hidden');
+            }
+        }
+    });
+
+    function startAppSession(uid) {
+        // مراقب البيانات الحية (للرصيد والتنبيهات)
+        db.ref('users/' + uid).on('value', snap => {
+            if (snap.exists()) {
+                me = snap.val();
+                me.p = uid;
+                document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
+                showWelcome();
+                
+                // إخفاء شاشات التحميل وإظهار التطبيق
+                document.getElementById('main-preloader').style.display = 'none';
+                document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('app-screen').classList.remove('hidden');
+            }
+        });
+
+        // تشغيل مراقب التنبيهات
+        listenForUserAlerts();
+        listenForDevAlerts();
+
+        // استعادة الصفحة الأخيرة أو الرئيسية
+        const lastV = localStorage.getItem('last_view') || 'home';
+        render(lastV);
+    }
+
+    // --- 3. دوال تسجيل الدخول ---
+    async function loginWithGoogle() {
+        showLoginLoading();
+        const provider = new firebase.auth.GoogleAuthProvider();
+        try {
+            await auth.signInWithPopup(provider);
+        } catch (e) {
+            hideLoginLoading();
+            Swal.fire('خطأ', 'فشل تسجيل الدخول: ' + e.message, 'error');
+        }
+    }
+
+    function enterGuestMode() {
+        isGuest = true;
+        me = { n: 'زائر', role: 'guest', sdmBalance: 0, rating: 0, numericId: '000000' };
+        document.getElementById('main-preloader').style.display = 'none';
+        document.getElementById('auth-screen').classList.add('hidden');
+        document.getElementById('app-screen').classList.remove('hidden');
+        render('home');
+    }
+
+    function doLogout() {
+        auth.signOut().then(() => location.reload());
+    }
+
+    // --- 4. نظام التنقل المحسن ---
+    function nav(v, e) {
+        hStack.push(v);
+        localStorage.setItem('last_view', v);
+        render(v, e);
+    }
+
+    function goBack() {
+        if (hStack.length > 1) {
+            hStack.pop();
+            render(hStack[hStack.length - 1]);
+        }
+    }
     const cats = {
         "الهواتف": {i:"mobile-alt", s:["آيفون","سامسونج","شاومي","بكسل","هواوي","اكسسوارات"]},
         "المركبات": {i:"car", s:["تويوتا","هيونداي","BYD","أمجاد","ركشات","شاحنات"]},
