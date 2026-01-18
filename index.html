@@ -885,17 +885,22 @@
     }
     
     function nav(v, e) { 
-        hStack.push(v); 
-        render(v, e); 
-    }
+    hStack.push(v); 
+    // حفظ الصفحة الحالية والمعطيات الإضافية في ذاكرة المتصفح
+    localStorage.setItem('last_view', v);
+    if(e) localStorage.setItem('last_extra', e);
+    else localStorage.removeItem('last_extra');
     
+    render(v, e); 
+}
     function goBack() { 
-        if(hStack.length > 1) { 
-            hStack.pop(); 
-            render(hStack[hStack.length-1]); 
-        } 
-    }
-
+    if(hStack.length > 1) { 
+        hStack.pop(); 
+        const prevView = hStack[hStack.length-1];
+        localStorage.setItem('last_view', prevView); // تحديث الصفحة المحفوظة
+        render(prevView); 
+    } 
+}
     const debounceFilter = debounce(function(query) {
         filterContent(query);
     }, 300);
@@ -1897,6 +1902,24 @@
                 document.getElementById('profile-status').innerHTML = '<span class="online-dot"></span> متصل الآن';
             }
         }
+        // داخل دالة render(view, extra) أضف في نهايتها:
+function updateActiveTabUI(view) {
+    const tabs = {
+        'home': 0,
+        'wallet': 1,
+        'games': 2,
+        'vip': 3,
+        'profile': 4
+    };
+    const index = tabs[view];
+    if(index !== undefined) {
+        const allTabs = document.querySelectorAll('.tab-btn');
+        allTabs.forEach(t => t.classList.remove('active'));
+        allTabs[index].classList.add('active');
+    }
+}
+// ثم استدعها داخل render
+updateActiveTabUI(view);
     }
 
     // --- دوال المساعدة الإضافية ---
@@ -2142,27 +2165,34 @@
     
     // 1. إضافة دالة startApp المفقودة
     function startApp(uid) {
-        isGuest = false;
-        hStack = ['home'];
+    isGuest = false;
+    
+    // استعادة الصفحة الأخيرة من الذاكرة
+    const lastView = localStorage.getItem('last_view') || 'home';
+    const lastExtra = localStorage.getItem('last_extra') || null;
 
-        // مراقب حي: أي تغيير في الرصيد من البوت سيظهر فوراً
-        db.ref('users/' + uid).on('value', snap => {
-            if (snap.exists()) {
-                me = snap.val();
-                me.p = uid;
-                document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
-                if (hStack[hStack.length-1] === 'home') showWelcome();
-                hideLoginLoading();
-            }
-        });
+    hStack = ['home']; 
+    if(lastView !== 'home') hStack.push(lastView);
 
-        document.getElementById('auth-screen').classList.add('hidden');
-        document.getElementById('app-screen').classList.remove('hidden');
-        
-        listenForUserAlerts();
-        listenForDevAlerts();
-        render('home');
-    }
+    db.ref('users/' + uid).on('value', snap => {
+        if (snap.exists()) {
+            me = snap.val();
+            me.p = uid;
+            document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
+            if (hStack[hStack.length-1] === 'home') showWelcome();
+            hideLoginLoading();
+        }
+    });
+
+    document.getElementById('auth-screen').classList.add('hidden');
+    document.getElementById('app-screen').classList.remove('hidden');
+    
+    listenForUserAlerts();
+    listenForDevAlerts();
+    
+    // التشغيل على الصفحة الأخيرة
+    render(lastView, lastExtra);
+}
     
     // 2. إضافة دالة listenForUserAlerts المفقودة
     function listenForUserAlerts() {
