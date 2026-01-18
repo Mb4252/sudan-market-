@@ -682,27 +682,47 @@
                 }
 
                 // تشغيل التطبيق
-                startApp(uid);
+                function startApp(uid) {
+    isGuest = false;
 
-                // إظهار الشاشة فوراً وإخفاء التحميل
-                if(preloader) preloader.style.display = 'none';
-                appScreen.style.setProperty('display', 'block', 'important');
-                authScreen.style.setProperty('display', 'none', 'important');
+    // استعادة آخر صفحة من الذاكرة أو فتح الرئيسية إذا كانت فارغة
+    const lastView = localStorage.getItem('last_view') || 'home';
+    const lastExtra = localStorage.getItem('last_extra') || '';
 
-            } catch (error) {
-                console.error("خطأ في جلب البيانات:", error);
-                if(preloader) preloader.style.display = 'none';
-            }
-        } else {
-            // لا يوجد مستخدم - إظهار شاشة الدخول فقط
-            if(!isGuest) { 
-                if(preloader) preloader.style.display = 'none';
-                authScreen.style.setProperty('display', 'block', 'important');
-                appScreen.style.setProperty('display', 'none', 'important');
-            }
+    if (lastView === 'home') {
+        hStack = ['home'];
+    } else {
+        hStack = ['home', lastView];
+    }
+
+    db.ref('users/' + uid).on('value', snap => {
+        if (snap.exists()) {
+            me = snap.val();
+            me.p = uid;
+            document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
+            if (hStack[hStack.length-1] === 'home') showWelcome();
+            hideLoginLoading();
         }
     });
-    }                             
+
+    document.getElementById('auth-screen').classList.add('hidden');
+    document.getElementById('app-screen').classList.remove('hidden');
+    
+    listenForUserAlerts();
+    listenForDevAlerts();
+
+    // تشغيل آخر صفحة كان عليها المستخدم
+    render(lastView, lastExtra);
+    
+    // تلوين الزر السفلي الصحيح
+    const tabs = document.querySelectorAll('.tab-btn');
+    tabs.forEach(t => t.classList.remove('active'));
+    if (lastView === 'home') tabs[0].classList.add('active');
+    else if (lastView === 'wallet') tabs[1].classList.add('active');
+    else if (lastView === 'games') tabs[2].classList.add('active');
+    else if (lastView === 'vip') tabs[3].classList.add('active');
+    else if (lastView === 'profile') tabs[4].classList.add('active');
+}
     // دالة معالجة الصور المحسنة (لا تمسح الحقول)
     async function encode(i, t) {
         if(!i.files[0]) return;
