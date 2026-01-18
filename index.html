@@ -2195,27 +2195,36 @@ updateActiveTabUI(view);
 }
     
     // 2. إضافة دالة listenForUserAlerts المفقودة
-    // 2. دالة التنبيهات المحدثة - listenForUserAlerts
-function listenForUserAlerts() {
+    function listenForUserAlerts() {
     if (isGuest || !me) return;
-    
-    // مراقبة التنبيهات القادمة من البوت
+
+    // الحصول على وقت تشغيل التطبيق الآن
+    const appStartTime = Date.now();
+
+    // مراقبة التنبيهات
     db.ref('alerts/' + me.p).on('child_added', snap => {
         const alert = snap.val();
-        const alertRef = snap.ref; // مرجع التنبيه في قاعدة البيانات
+        const alertRef = snap.ref;
 
+        // 1. الحذف الفوري من قاعدة البيانات لضمان عدم التكرار
+        alertRef.remove();
+
+        // 2. التحقق: هل التنبيه جديد (أُرسل بعد فتح التطبيق) أم قديم؟
+        // أضفنا هامش 5 ثواني (5000ms) للأمان
+        if (alert.date && alert.date < (appStartTime - 5000)) {
+            console.log("تنبيه قديم تم تجاهله");
+            return; 
+        }
+
+        // 3. عرض التنبيه للمستخدم
         const Toast = Swal.mixin({
             toast: true,
             position: 'top-end',
             showConfirmButton: false,
-            timer: 4000, // مدة العرض 4 ثوانٍ
+            timer: 4000,
             timerProgressBar: true,
             background: '#1e293b',
-            color: '#fff',
-            // التعديل الجوهري: لا يتم حذف التنبيه من السيرفر إلا بعد انتهاء العرض
-            didClose: () => {
-                alertRef.remove(); 
-            }
+            color: '#fff'
         });
 
         Toast.fire({
@@ -2223,8 +2232,7 @@ function listenForUserAlerts() {
             title: alert.msg
         });
         
-        // إغلاق أي علامة تحميل (Loading) عند استلام النتيجة
-        hideLoginLoading();
+        if (typeof hideLoginLoading === "function") hideLoginLoading();
     });
 }
     // 3. إضافة دالة showTransfer المفقودة
