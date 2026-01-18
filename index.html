@@ -885,16 +885,22 @@
     }
     
     function nav(v, e) { 
-        hStack.push(v); 
-        render(v, e); 
-    }
+    hStack.push(v); 
+    // حفظ الصفحة والبيانات الإضافية في ذاكرة المتصفح
+    localStorage.setItem('last_view', v);
+    localStorage.setItem('last_extra', e || '');
+    render(v, e); 
+}
     
     function goBack() { 
-        if(hStack.length > 1) { 
-            hStack.pop(); 
-            render(hStack[hStack.length-1]); 
-        } 
-    }
+    if(hStack.length > 1) { 
+        hStack.pop(); 
+        const prevView = hStack[hStack.length-1];
+        // تحديث الذاكرة بالصفحة التي رجعنا إليها
+        localStorage.setItem('last_view', prevView);
+        render(prevView); 
+    } 
+}
 
     const debounceFilter = debounce(function(query) {
         filterContent(query);
