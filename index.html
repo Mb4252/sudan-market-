@@ -789,17 +789,21 @@
             return; 
         }
         
-        if (me.sdmBalance <= 0) {
-            Swal.fire({
-                title: 'رصيد غير كافي',
-                text: 'ليس لديك رصيد كافي لشراء VIP. يرجى شحن رصيدك أولاً.',
-                icon: 'warning',
-                background: '#1e293b',
-                color: '#fff',
-                confirmButtonText: 'حسناً'
-            });
-            return;
-        }
+        // التحقق إذا كان المستخدم مشتركاً بالفعل
+    const isAlreadyVip = (me.vipStatus === 'active');
+
+    // إذا لم يكن مشتركاً ورصيده صفر، نمنعه من الدخول لشراء باقة
+    if (!isAlreadyVip && me.sdmBalance <= 0) {
+        Swal.fire({
+            title: 'رصيد غير كافي',
+            text: 'ليس لديك رصيد كافي لشراء VIP. يرجى شحن رصيدك أولاً.',
+            icon: 'warning',
+            background: '#1e293b',
+            color: '#fff',
+            confirmButtonText: 'حسناً'
+        });
+        return;
+    }
         
         nav('vip');
         highlightTab(document.querySelector('.tab-btn:nth-child(4)'));
@@ -1798,15 +1802,16 @@
             loadCorrectPacks(); 
             loadGameHistory(); 
             if(me.role === "admin") initDeveloperLogic();
-
-        } else if (view === 'vip') {
-            const isVip = me.vipStatus === 'active';
-            if (me.sdmBalance <= 0) {
+      } else if (view === 'vip') {
+            const isVip = (me.vipStatus === 'active');
+            
+            // التعديل المهم: نتحقق إذا لم يكن مشتركاً ورصيده صفر
+            if (!isVip && me.sdmBalance <= 0) { 
                 area.innerHTML = `
                     <div style="text-align:center; padding:50px 20px;">
                         <i class="fas fa-wallet" style="font-size:60px; color:var(--red); margin-bottom:20px;"></i>
                         <h2>رصيد غير كافي</h2>
-                        <p style="color:var(--text-sec); margin-bottom:30px;">ليس لديك رصيد كافي لشراء اشتراك VIP</p>
+                        <p style="color:var(--text-sec); margin-bottom:30px;">ليس لديك رصيد كافي لشراء اشتراك VIP. يرجى شحن رصيدك أولاً.</p>
                         <button class="btn-main" onclick="nav('wallet')" style="background:var(--primary);">
                             <i class="fas fa-coins"></i> شحن الرصيد
                         </button>
@@ -1816,47 +1821,32 @@
                     <div style="text-align:center; padding:30px;">
                         <i class="fas fa-crown" style="font-size:60px; color:var(--accent); margin-bottom:20px;"></i>
                         <h2>اشتراك VIP</h2>
-                        <p style="color:var(--text-sec)">${isVip ? 'أنت مشترك حتى: ' + new Date(me.vipExpiry).toLocaleDateString() : 'تميز واحصل على علامة التاج ونشر غير محدود'}</p>
+                        <p style="color:var(--text-sec)">${isVip ? 'أنت مشترك حالياً ✅ ينتهي في: ' + new Date(me.vipExpiry).toLocaleDateString() : 'تميز واحصل على علامة التاج ونشر غير محدود'}</p>
+                        
                         <div style="background:rgba(59, 130, 246, 0.1); padding:15px; border-radius:15px; margin:20px; border:1px solid var(--primary);">
-                            <p style="margin:0; font-size:14px; color:var(--neon-blue);">رصيدك الحالي: <b>${me.sdmBalance} SDM</b></p>
+                            <p style="margin:0; font-size:14px; color:var(--neon-blue);">رصيدك الحالي: <b>${me.sdmBalance.toFixed(2)} SDM</b></p>
                         </div>
+
                         ${!isVip ? `
                             <div class="grid">
-                                <div class="card" onclick="buyVip(1, 1)" style="border-color:var(--text-sec)">
-                                    <h1 style="color:white">1</h1>
-                                    <p>يوم</p>
-                                    <b>1 SDM</b>
-                                    ${me.sdmBalance >= 1 ? '<div style="color:var(--green); font-size:12px; margin-top:5px;">✓ الرصيد كافي</div>' : '<div style="color:var(--red); font-size:12px; margin-top:5px;">✗ رصيد غير كافي</div>'}
-                                </div>
-                                <div class="card" onclick="buyVip(7, 7)" style="border-color:var(--neon-blue)">
-                                    <h1 style="color:var(--neon-blue)">7</h1>
-                                    <p>أيام</p>
-                                    <b>7 SDM</b>
-                                    ${me.sdmBalance >= 7 ? '<div style="color:var(--green); font-size:12px; margin-top:5px;">✓ الرصيد كافي</div>' : '<div style="color:var(--red); font-size:12px; margin-top:5px;">✗ رصيد غير كافي</div>'}
-                                </div>
-                                <div class="card" onclick="buyVip(30, 30)" style="border-color:var(--accent)">
-                                    <h1 style="color:var(--accent)">30</h1>
-                                    <p>يوم</p>
-                                    <b>30 SDM</b>
-                                    ${me.sdmBalance >= 30 ? '<div style="color:var(--green); font-size:12px; margin-top:5px;">✓ الرصيد كافي</div>' : '<div style="color:var(--red); font-size:12px; margin-top:5px;">✗ رصيد غير كافي</div>'}
+                                <div class="card" onclick="buyVip(1, 1)" style="border-color:var(--text-sec)"><h1>1</h1><p>يوم</p><b>1 SDM</b></div>
+                                <div class="card" onclick="buyVip(7, 7)" style="border-color:var(--neon-blue)"><h1>7</h1><p>أيام</p><b>7 SDM</b></div>
+                                <div class="card" onclick="buyVip(30, 30)" style="border-color:var(--accent)"><h1>30</h1><p>يوم</p><b>30 SDM</b></div>
                             </div>
-                        </div>
-                    ` : '<div class="card" style="border-color:var(--accent); color:var(--accent)"><h3>الاشتراك نشط ✅</h3></div>'}
-                </div>
-                ${isVip ? `
-                <div class="post" style="padding:20px;">
-                    <h4>نشر VIP مميز مع تخفيض</h4>
-                    <input id="v-t" placeholder="العنوان">
-                    <input id="v-pr" type="number" placeholder="السعر الأصلي (SDM)">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <input id="v-dis" type="number" placeholder="نسبة التخفيض % (اختياري)" style="border:1px solid var(--accent)">
-                    </div>
-                    <textarea id="v-d" placeholder="الوصف"></textarea>
-                    <input type="file" onchange="encode(this,'post')">
-                    <button class="btn-main" onclick="publish('vip_posts')">نشر VIP</button>
-                </div>` : ''}`;
+                        ` : `
+                        <div class="post" style="padding:20px; border: 1px solid var(--accent); background: rgba(245, 158, 11, 0.05);">
+                            <h4 style="color:var(--accent)">✨ لوحة نشر VIP</h4>
+                            <input id="v-t" placeholder="عنوان الإعلان">
+                            <input id="v-pr" type="number" placeholder="السعر الأصلي (SDM)">
+                            <textarea id="v-d" placeholder="وصف المنتج وتفاصيله..."></textarea>
+                            <label class="btn-main" style="background:#334155; display:block; text-align:center; margin-bottom:10px; cursor:pointer;">
+                                <i class="fas fa-camera"></i> إضافة صورة المنتج
+                                <input type="file" hidden onchange="encode(this,'post')">
+                            </label>
+                            <button class="btn-main" onclick="publish('vip_posts')" style="background:var(--accent); color:black;">نشر الإعلان الآن</button>
+                        </div>`}
+                    </div>`;
             }
-        
         } else if (view === 'profile') {
             const uid = extra || me.p;
             const userPicUrl = me.pic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
