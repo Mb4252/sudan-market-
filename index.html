@@ -656,73 +656,89 @@
         const appScreen = document.getElementById('app-screen');
 
         if (user) {
-            const uid = user.uid;
-            try {
-                const snap = await db.ref('users/' + uid).once('value');
-                
-                if (snap.exists()) {
-                    me = snap.val();
-                    me.p = uid;
-                    // تحديث الصلاحيات إذا كان المسؤول
-                    if (user.email === ADMIN_EMAIL && me.role !== 'admin') {
-                        me.role = 'admin';
-                        await db.ref('users/' + uid).update({ role: 'admin' });
-                    }
-                } else {
-                    // إنشاء حساب جديد إذا لم يكن موجوداً
-                    const numericId = generate6DigitNumericId(uid);
-                    const newUser = { 
-                        n: user.displayName || 'مستخدم جديد', p: uid, email: user.email, 
-                        pic: user.photoURL || userPic, sdmBalance: 0, rating: 5.0, 
-                        role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
-                        numericId: numericId, joinDate: Date.now() 
-                    };
-                    await db.ref('users/' + uid).set(newUser);
-                    me = newUser;
-                }
+           // 1. مراقب حالة تسجيل الدخول
+auth.onAuthStateChanged(async (user) => {
+    if (user) {
+        const uid = user.uid;
+        try {
+            const snap = await db.ref('users/' + uid).once('value');
 
-                // تشغيل التطبيق
-                function startApp(uid) {
+            // إذا كان المستخدم جديداً تماماً، نقوم بإنشائه
+            if (!snap.exists()) {
+                const numericId = generate6DigitNumericId(uid);
+                const newUser = {
+                    n: user.displayName || 'مستخدم جديد',
+                    p: uid,
+                    email: user.email,
+                    pic: user.photoURL || userPic,
+                    sdmBalance: 0,
+                    rating: 5.0,
+                    role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
+                    numericId: numericId,
+                    joinDate: Date.now()
+                };
+                await db.ref('users/' + uid).set(newUser);
+            } else {
+                // إذا كان موجوداً، نتأكد فقط من رتبة الأدمن للأمان
+                if (user.email === ADMIN_EMAIL && snap.val().role !== 'admin') {
+                    await db.ref('users/' + uid).update({ role: 'admin' });
+                }
+            }
+
+            // الآن نشغل التطبيق
+            runAppLogic(uid);
+
+        } catch (error) {
+            console.error("خطأ في التحقق من الحساب:", error);
+        }
+    } else {
+        // إذا لم يكن هناك مستخدم مسجل
+        document.getElementById('main-preloader').style.display = 'none';
+        if (!isGuest) {
+            document.getElementById('auth-screen').classList.remove('hidden');
+            document.getElementById('app-screen').classList.add('hidden');
+        }
+    }
+});
+
+// 2. دالة تشغيل منطق التطبيق (منفصلة ونظيفة)
+function runAppLogic(uid) {
     isGuest = false;
 
-    // استعادة آخر صفحة من الذاكرة أو فتح الرئيسية إذا كانت فارغة
+    // استعادة آخر صفحة كان عليها المستخدم
     const lastView = localStorage.getItem('last_view') || 'home';
     const lastExtra = localStorage.getItem('last_extra') || '';
 
-    if (lastView === 'home') {
-        hStack = ['home'];
-    } else {
-        hStack = ['home', lastView];
-    }
-
+    // تفعيل مراقب البيانات الحي (لتحديث الرصيد فوراً)
     db.ref('users/' + uid).on('value', snap => {
         if (snap.exists()) {
             me = snap.val();
             me.p = uid;
             document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
-            if (hStack[hStack.length-1] === 'home') showWelcome();
+            if (hStack[hStack.length - 1] === 'home') showWelcome();
             hideLoginLoading();
         }
     });
 
+    // إخفاء شاشات التحميل وإظهار التطبيق
+    document.getElementById('main-preloader').style.display = 'none';
     document.getElementById('auth-screen').classList.add('hidden');
     document.getElementById('app-screen').classList.remove('hidden');
-    
+
     listenForUserAlerts();
     listenForDevAlerts();
 
-    // تشغيل آخر صفحة كان عليها المستخدم
+    // تشغيل الصفحة الأخيرة
     render(lastView, lastExtra);
-    
-    // تلوين الزر السفلي الصحيح
+
+    // تحديث شكل الأزرار السفلية لتناسب الصفحة الحالية
     const tabs = document.querySelectorAll('.tab-btn');
     tabs.forEach(t => t.classList.remove('active'));
-    if (lastView === 'home') tabs[0].classList.add('active');
-    else if (lastView === 'wallet') tabs[1].classList.add('active');
-    else if (lastView === 'games') tabs[2].classList.add('active');
-    else if (lastView === 'vip') tabs[3].classList.add('active');
-    else if (lastView === 'profile') tabs[4].classList.add('active');
-}
+    const tabMap = { 'home': 0, 'wallet': 1, 'games': 2, 'vip': 3, 'profile': 4 };
+    if (tabMap[lastView] !== undefined) {
+        tabs[tabMap[lastView]].classList.add('active');
+    }
+} 
     // دالة معالجة الصور المحسنة (لا تمسح الحقول)
     async function encode(i, t) {
         if(!i.files[0]) return;
