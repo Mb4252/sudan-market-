@@ -734,39 +734,74 @@
 
     // دالة النشر المحسنة
     function publish(path) {
-        if (isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
-        
-        // جلب البيانات من الحقول في لحظة الضغط (لضمان عدم فقدانها)
-        const titleField = document.getElementById(path === 'posts' ? 'pt' : 'v-t');
-        const priceField = document.getElementById(path === 'posts' ? 'pp' : 'v-pr');
-        const descField = document.getElementById(path === 'posts' ? 'pd' : 'v-d');
-
-        if (!titleField.value || !priceField.value || !descField.value) {
-            return Swal.fire('تنبيه', 'أكمل بيانات العنوان والسعر والوصف أولاً', 'warning');
-        }
-
-        const postData = {
-            title: titleField.value, 
-            price: parseFloat(priceField.value), 
-            desc: descField.value, 
-            img: tempImg || "", // الصورة التي تم اختيارها سابقاً
-            userId: me.p, 
-            userName: me.n, 
-            userPic: me.pic || "", 
-            userWa: me.wa,
-            date: Date.now(), 
-            sold: false,
-            numericId: me.numericId
-        };
-
-        Swal.fire({ title: 'جاري النشر الآن...', didOpen: () => Swal.showLoading() });
-        
-        db.ref(path).push(postData).then(() => {
-            Swal.fire('تم بنجاح', 'تم نشر إعلانك وهو متاح للجميع الآن', 'success');
-            tempImg = ""; // تفريغ الصورة استعداداً لمنشور جديد
-            goBack(); 
-        }).catch(e => Swal.fire('خطأ في النشر', e.message, 'error'));
+    if (isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
+    
+    // 1. التحقق من وجود رقم الواتساب (مهم جداً للمستخدم الجديد)
+    if (!me.wa || me.wa.trim() === "") {
+        return Swal.fire({
+            title: 'رقم الهاتف مطلوب',
+            text: 'يجب إضافة رقم الواتساب في ملفك الشخصي أولاً ليتمكن المشترون من التواصل معك.',
+            icon: 'warning',
+            confirmButtonText: 'الذهاب للملف الشخصي'
+        }).then(() => nav('profile'));
     }
+
+    const titleField = document.getElementById(path === 'posts' ? 'pt' : 'v-t');
+    const priceField = document.getElementById(path === 'posts' ? 'pp' : 'v-pr');
+    const descField = document.getElementById(path === 'posts' ? 'pd' : 'v-d');
+
+    if (!titleField.value || !priceField.value || !descField.value) {
+        return Swal.fire('تنبيه', 'أكمل بيانات العنوان والسعر والوصف أولاً', 'warning');
+    }
+
+    // إظهار تحميل مع منع الإغلاق العشوائي
+    Swal.fire({ 
+        title: 'جاري النشر الآن...', 
+        text: 'يرجى الانتظار، قد يستغرق الأمر ثوانٍ حسب حجم الصورة',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading() 
+    });
+
+    const postData = {
+        title: titleField.value, 
+        price: parseFloat(priceField.value), 
+        desc: descField.value, 
+        img: tempImg || "", 
+        userId: me.p, 
+        userName: me.n, 
+        userPic: me.pic || "", 
+        userWa: me.wa,
+        sub: (path === 'posts' ? curS : "VIP"), // إضافة القسم للمنشور
+        date: firebase.database.ServerValue.TIMESTAMP, // استخدام توقيت السيرفر
+        sold: false,
+        numericId: me.numericId || "000000"
+    };
+
+    // تنفيذ عملية النشر مع معالجة الخطأ
+    db.ref(path).push(postData)
+        .then(() => {
+            Swal.fire({
+                title: 'تم بنجاح',
+                text: 'تم نشر إعلانك بنجاح وهو متاح للجميع الآن',
+                icon: 'success',
+                timer: 2000
+            });
+            tempImg = ""; 
+            // تفريغ الحقول
+            titleField.value = "";
+            priceField.value = "";
+            descField.value = "";
+            goBack(); 
+        })
+        .catch(e => {
+            console.error(e);
+            let errorMsg = "حدث خطأ أثناء النشر";
+            if (e.message.includes("PERMISSION_DENIED")) {
+                errorMsg = "عذراً، ليس لديك صلاحية النشر هنا. تأكد من تفعيل اشتراك VIP";
+            }
+            Swal.fire('فشل النشر', errorMsg, 'error');
+        });
+}
 
     // إصلاح: دالة للتحقق من الـ VIP
     function checkVIPAccess() {
@@ -1874,11 +1909,17 @@
                         ${me.role==='admin'?'<span class="badge badge-admin">Admin</span>':''}
                     </div>
                     ${uid === me.p ? `
-                        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; margin-bottom:20px;">
-                            <p style="margin:0; font-size:12px; color:var(--text-sec)">ID المستخدم الكامل</p>
-                            <code style="font-size:12px; display:block; margin:5px 0; word-break:break-all;">${me.p}</code>
-                            <button onclick="navigator.clipboard.writeText('${me.p}'); Swal.fire('تم النسخ','','success')" style="background:transparent; border:1px solid var(--border); color:white; border-radius:5px; padding:5px 10px;">نسخ ID الكامل</button>
-                        </div>
+                        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:15px; margin-bottom:20px; border:1px solid var(--border);">
+                <p style="margin:0 0 10px 0; font-size:12px; color:var(--accent); font-weight:bold;">رقم الواتساب (مطلوب للنشر)</p>
+                <input id="edit-wa" type="number" value="${me.wa || ''}" placeholder="أدخل رقمك (مثلاً: 912345678)" style="text-align:center; margin-bottom:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:white; width:100%; padding:12px; border-radius:12px;">
+                <button class="btn-main" onclick="updateProfileData()" style="padding:10px; font-size:14px; background:var(--green); margin-bottom:15px; border-radius:10px; width:100%; color:white; border:none; cursor:pointer;">حفظ الرقم ✅</button>
+                
+                <hr style="border:0; border-top:1px solid var(--border); margin:15px 0;">
+                
+                <p style="margin:0; font-size:11px; color:var(--text-sec)">رقم التعريف الكامل (ID)</p>
+                <code style="font-size:10px; display:block; margin:5px 0; word-break:break-all; color:var(--neon-blue);">${me.p}</code>
+                <button onclick="navigator.clipboard.writeText('${me.p}'); Swal.fire({title:'تم النسخ', icon:'success', toast:true, position:'top-end', showConfirmButton:false, timer:2000})" style="background:rgba(255,255,255,0.1); border:1px solid var(--border); color:white; border-radius:8px; padding:5px 12px; font-size:10px; cursor:pointer;">نسخ ID</button>
+            </div>
                         <button class="btn-main" style="background:rgba(239, 68, 68, 0.2); color:#ef4444; border:1px solid #ef4444;" onclick="doLogout()">تسجيل خروج</button>
                     ` : `
                         <button class="btn-main" style="background:var(--accent); color:black;" onclick="rateUser('${uid}')">⭐ تقييم البائع</button>
@@ -2362,6 +2403,41 @@ updateActiveTabUI(view);
         // يمكن تطويرها حسب الحاجة
         document.getElementById('profile-status').innerHTML = 'جاري تحميل الملف الشخصي...';
     }
+    // دالة حفظ رقم الواتساب وتحديثه في التطبيق
+function updateProfileData() {
+    const waInput = document.getElementById('edit-wa');
+    if (!waInput) return;
+    
+    const wa = waInput.value.trim();
+    
+    if (wa.length < 9) {
+        return Swal.fire({
+            title: 'رقم غير مكتمل',
+            text: 'يرجى إدخال رقم واتساب صحيح لضمان تواصل المشترين معك',
+            icon: 'warning',
+            background: '#1e293b',
+            color: '#fff'
+        });
+    }
+    
+    Swal.fire({ title: 'جاري الحفظ...', didOpen: () => Swal.showLoading() });
+    
+    // التحديث في قاعدة البيانات
+    db.ref('users/' + me.p).update({ wa: wa }).then(() => {
+        // تحديث البيانات في الجلسة الحالية
+        me.wa = wa; 
+        Swal.fire({
+            title: 'تم الحفظ!',
+            text: 'تم تحديث رقمك بنجاح، يمكنك الآن النشر في السوق',
+            icon: 'success',
+            background: '#1e293b',
+            color: '#fff',
+            timer: 2500
+        });
+    }).catch(err => {
+        Swal.fire('خطأ', 'تعذر حفظ البيانات: ' + err.message, 'error');
+    });
+}
 </script>
 </body>
 </html>
