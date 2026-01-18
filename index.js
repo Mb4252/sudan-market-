@@ -3,7 +3,6 @@ const http = require('http');
 
 /**
  * 1. إعداد الاتصال بقاعدة البيانات Firebase
- * تأكد من إضافة FIREBASE_SERVICE_ACCOUNT في إعدادات Environment Variables في Render
  */
 try {
     const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -13,10 +12,8 @@ try {
         process.exit(1);
     }
 
-    // تحويل النص إلى كائن JSON
     const serviceAccount = JSON.parse(serviceAccountRaw);
 
-    // معالجة مشكلة الأسطر الجديدة في المفتاح الخاص (ضرورية للعمل على السيرفرات)
     if (serviceAccount.private_key) {
         serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
     }
@@ -36,12 +33,12 @@ const db = admin.database();
 let isProcessing = false;
 
 /**
- * 2. المحرك الرئيسي لمعالجة التحويلات المالية
+ * 2. المحرك المطور لمعالجة التحويلات المالية (البحث بالرقم المكون من 6 أرقام)
  */
 async function processSecureTransfers() {
     const transfersRef = db.ref('requests/transfers');
     
-    // جلب الطلبات التي تنتظر المعالجة (حالتها pending)
+    // جلب الطلبات التي تنتظر المعالجة
     const snap = await transfersRef.orderByChild('status').equalTo('pending').limitToFirst(10).once('value');
     
     if (!snap.exists()) return;
@@ -49,51 +46,76 @@ async function processSecureTransfers() {
     const tasks = snap.val();
     
     for (const id in tasks) {
-        const { from, to, amount, fromName } = tasks[id];
+        const { from, toId, amount, fromName } = tasks[id];
         
         try {
-            console.log(`[LOG] جاري معالجة طلب تحويل: ${amount} SDM من ${fromName}...`);
+            console.log(`[PROCESS] طلب تحويل: من ${fromName} إلى الرقم (${toId}) بمبلغ ${amount} SDM`);
 
-            const [senderSnap, receiverSnap] = await Promise.all([
-                db.ref(`users/${from}`).once('value'),
-                db.ref(`users/${to}`).once('value')
-            ]);
+            // أ- البحث عن المستلم بواسطة الـ numericId (الـ 6 أرقام)
+            const userQuery = await db.ref('users').orderByChild('numericId').equalTo(toId).once('value');
+            
+            if (!userQuery.exists()) {
+                await transfersRef.child(id).update({ status: 'failed', reason: 'الرقم غير مسجل' });
+                sendAlert(from, `❌ فشل التحويل: الرقم (${toId}) غير موجود في النظام.`, 'error');
+                continue;
+            }
 
-            const sender = senderSnap.val();
-            const receiver = receiverSnap.val();
+            const receiverUid = Object.keys(userQuery.val())[0];
+            const receiverData = userQuery.val()[receiverUid];
 
-            if (!sender) {
+            // ب- جلب بيانات المرسل للتأكد من الرصيد
+            const senderSnap = await db.ref(`users/${from}`).once('value');
+            const senderData = senderSnap.val();
+
+            if (!senderData) {
                 await transfersRef.child(id).update({ status: 'failed', reason: 'المرسل غير موجود' });
                 continue;
             }
-            if (!receiver) {
-                await transfersRef.child(id).update({ status: 'failed', reason: 'المستلم غير موجود' });
-                sendAlert(from, `❌ فشل التحويل: رقم تعريف المستلم غير صحيح.`, 'error');
-                continue;
-            }
-            if (sender.sdmBalance < amount) {
-                await transfersRef.child(id).update({ status: 'failed', reason: 'رصيد غير كافٍ' });
-                sendAlert(from, `❌ فشل التحويل: رصيدك الحالي (${sender.sdmBalance}) لا يكفي.`, 'error');
+
+            // ج- الفحوصات الأمنية
+            if (from === receiverUid) {
+                await transfersRef.child(id).update({ status: 'failed', reason: 'تحويل ذاتي' });
+                sendAlert(from, `⚠️ لا يمكنك التحويل لنفسك!`, 'warning');
                 continue;
             }
 
+            if (Number(senderData.sdmBalance) < Number(amount)) {
+                await transfersRef.child(id).update({ status: 'failed', reason: 'رصيد غير كافٍ' });
+                sendAlert(from, `❌ رصيدك الحالي (${senderData.sdmBalance}) لا يكفي لتحويل ${amount}.`, 'error');
+                continue;
+            }
+
+            // د- تنفيذ عملية التحويل بنظام التحديث الموحد (Atomic Update)
             const now = Date.now();
             const updates = {};
 
-            updates[`users/${from}/sdmBalance`] = Number(sender.sdmBalance) - Number(amount);
-            updates[`users/${to}/sdmBalance`] = (Number(receiver.sdmBalance) || 0) + Number(amount);
+            // خصم من المرسل
+            updates[`users/${from}/sdmBalance`] = Number(senderData.sdmBalance) - Number(amount);
+            // إضافة للمستلم
+            updates[`users/${receiverUid}/sdmBalance`] = (Number(receiverData.sdmBalance) || 0) + Number(amount);
+            // تحديث حالة الطلب
             updates[`requests/transfers/${id}/status`] = 'completed';
             updates[`requests/transfers/${id}/processedAt`] = now;
+            updates[`requests/transfers/${id}/toUID`] = receiverUid; 
+            
+            // تسجيل المعاملة في السجل العام
             updates[`transactions/${id}`] = {
-                from, to, fromName: sender.n, toName: receiver.n,
-                amount, type: 'transfer', date: now
+                from, 
+                to: receiverUid, 
+                fromName: senderData.n, 
+                toName: receiverData.n,
+                amount, 
+                type: 'transfer', 
+                date: now
             };
 
             await db.ref().update(updates);
 
-            console.log(`[SUCCESS] تم التحويل بنجاح: ${id}`);
-            sendAlert(from, `✅ تم تحويل ${amount} SDM بنجاح إلى ${receiver.n}.`, 'success');
-            sendAlert(to, `💰 استلمت ${amount} SDM من ${sender.n}.`, 'success');
+            console.log(`[SUCCESS] اكتمل التحويل: ${amount} من ${senderData.n} إلى ${receiverData.n}`);
+
+            // هـ- إرسال التنبيهات (ستظهر كتنبيهات Toast في التطبيق)
+            sendAlert(from, `✅ تم تحويل ${amount} SDM بنجاح إلى ${receiverData.n}.`, 'success');
+            sendAlert(receiverUid, `💰 استلمت ${amount} SDM من ${senderData.n}.`, 'success');
 
         } catch (err) {
             console.error(`[ERROR] فشل في معالجة الطلب ${id}:`, err.message);
@@ -102,7 +124,7 @@ async function processSecureTransfers() {
 }
 
 /**
- * 3. معالجة طابور التقييمات
+ * 3. معالجة طابور التقييمات (تحديث النجوم تلقائياً)
  */
 async function processRatings() {
     const queueRef = db.ref('rating_queue');
@@ -130,26 +152,26 @@ async function processRatings() {
 }
 
 /**
- * 4. وظيفة الصيانة الدورية
+ * 4. وظيفة الصيانة الدورية (VIP والمنشورات القديمة)
  */
 async function maintenanceTask() {
-    console.log("🧹 جاري فحص النظام وصيانة البيانات...");
+    console.log("🧹 جاري فحص النظام (صيانة دورية)...");
     const now = Date.now();
 
     try {
-        // فحص اشتراكات VIP
+        // فحص اشتراكات VIP المنتهية
         const usersSnap = await db.ref('users').orderByChild('vipStatus').equalTo('active').once('value');
         if (usersSnap.exists()) {
             usersSnap.forEach(uSnap => {
                 const u = uSnap.val();
                 if (u.vipExpiry && u.vipExpiry < now) {
                     uSnap.ref.update({ vipStatus: 'expired' });
-                    sendAlert(uSnap.key, "💔 انتهى اشتراك VIP الخاص بك.", "info");
+                    sendAlert(uSnap.key, "💔 انتهى اشتراك VIP الخاص بك. قم بالتجديد للتمتع بالمزايا.", "info");
                 }
             });
         }
 
-        // حذف المنشورات القديمة (أكثر من 48 ساعة)
+        // حذف المنشورات التي مضى عليها أكثر من 48 ساعة (للحفاظ على سرعة قاعدة البيانات)
         const cutoff = now - (48 * 60 * 60 * 1000);
         const postsRef = db.ref('posts');
         const oldPostsSnap = await postsRef.orderByChild('date').endAt(cutoff).once('value');
@@ -160,17 +182,29 @@ async function maintenanceTask() {
                 updates[`comments/posts/${p.key}`] = null;
             });
             await db.ref().update(updates);
+            console.log("✅ تم تنظيف المنشورات القديمة.");
         }
     } catch (e) {
         console.error("Maintenance Error:", e.message);
     }
 }
 
+/**
+ * دالة مساعدة لإرسال التنبيهات للمستخدمين
+ */
 function sendAlert(uid, msg, type) {
-    db.ref(`alerts/${uid}`).push({ msg, type, date: Date.now() });
+    db.ref(`alerts/${uid}`).push({ 
+        msg, 
+        type, 
+        date: Date.now() 
+    });
 }
 
-// تشغيل المحرك الرئيسي كل 5 ثوانٍ
+/**
+ * 5. تشغيل المحركات والمؤقتات
+ */
+
+// تشغيل محرك التحويلات والتقييم كل 5 ثوانٍ
 setInterval(async () => {
     if (isProcessing) return;
     isProcessing = true;
@@ -183,17 +217,18 @@ setInterval(async () => {
 
 // تشغيل الصيانة كل ساعة
 setInterval(maintenanceTask, 3600000);
+
+// تشغيل أولي للصيانة عند بدء تشغيل البوت
 maintenanceTask();
 
-console.log("🚀 SDM Secure Bot Logic is Running...");
+console.log("🚀 SDM Secure Bot Engine is Running...");
 
 /**
- * 5. أهم جزء لـ Render: خادم الويب (Health Check Server)
- * هذا الجزء سيفتح المنفذ الذي يطلبه Render لضمان بقاء البوت حياً (Live)
+ * 6. خادم الويب (Health Check) لمنصة Render
  */
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.write('سيرفر البوت يعمل بنجاح! ✅');
+    res.write('سيرفر البوت يعمل بنجاح! ✅ الحالة: نشط');
     res.end();
 });
 
