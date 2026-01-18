@@ -2078,35 +2078,27 @@ updateActiveTabUI(view);
         }).then((result) => {
             if (result.isConfirmed) {
                 showLoginLoading();
-                
-                const expiryDate = Date.now() + (days * 24 * 60 * 60 * 1000);
-                
-                db.ref('users/' + me.p).update({
-                    sdmBalance: me.sdmBalance - cost,
-                    vipStatus: 'active',
-                    vipExpiry: expiryDate,
-                    vipSince: Date.now()
-                }).then(() => {
-                    me.sdmBalance -= cost;
-                    me.vipStatus = 'active';
-                    me.vipExpiry = expiryDate;
-                    
-                    db.ref('transactions').push({
-                        type: 'vip_purchase',
-                        from: me.p,
-                        to: 'SYSTEM',
-                        amount: cost,
-                        details: `اشتراك VIP لمدة ${days} يوم`,
-                        date: Date.now()
-                    });
-                    
-                    hideLoginLoading();
-                    Swal.fire('تم الشراء', `تم تفعيل اشتراك VIP لمدة ${days} يوم`, 'success');
-                    render('vip');
-                }).catch(error => {
-                    hideLoginLoading();
-                    Swal.fire('خطأ', 'فشل عملية الشراء: ' + error.message, 'error');
+                  // إرسال طلب اشتراك للبوت بدلاً من التعديل المباشر
+            db.ref('requests/vip_subscriptions').push({
+                userId: me.p,
+                userName: me.n,
+                days: days,
+                cost: cost,
+                status: 'pending',
+                date: Date.now()
+            }).then(() => {
+                hideLoginLoading();
+                Swal.fire({
+                    title: 'تم إرسال الطلب',
+                    text: 'جاري معالجة اشتراكك وتفعيل الحساب خلال ثوانٍ...',
+                    icon: 'info',
+                    background: '#1e293b',
+                    color: '#fff'
                 });
+            }).catch(error => {
+                hideLoginLoading();
+                Swal.fire('خطأ', 'فشل في إرسال الطلب: ' + error.message, 'error');
+            });              
             }
         });
     }
