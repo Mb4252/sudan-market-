@@ -643,85 +643,62 @@
 
     // --- مراقبة حالة المصادقة - النسخة المحسنة ---
     function initializeAuthObserver() {
-        if (authObserverInitialized) return;
-        
-        authObserverInitialized = true;
-        
-        auth.onAuthStateChanged(async user => {
-            console.log('حالة المصادقة تغيرت:', user ? 'مستخدم موجود' : 'لا يوجد مستخدم');
-            
-            if (user) {
-                console.log('تم اكتشاف مستخدم مسجل:', user.email);
-                const uid = user.uid;
+    if (authObserverInitialized) return;
+    authObserverInitialized = true;
+    
+    auth.onAuthStateChanged(async user => {
+        const preloader = document.getElementById('main-preloader');
+        const authScreen = document.getElementById('auth-screen');
+        const appScreen = document.getElementById('app-screen');
+
+        if (user) {
+            const uid = user.uid;
+            try {
+                const snap = await db.ref('users/' + uid).once('value');
                 
-                try {
-                    const snap = await db.ref('users/' + uid).once('value');
-                    
-                    if (snap.exists()) {
-                        let u = snap.val();
-                        
-                        if (user.email === ADMIN_EMAIL && u.role !== 'admin') { 
-                            u.role = 'admin'; 
-                            await db.ref('users/' + uid).update({ role: 'admin' });
-                        }
-                        
-                        if (u.bannedUntil && u.bannedUntil > Date.now()) { 
-                            Swal.fire('محظور', 'حسابك محظور مؤقتاً.', 'error').then(() => auth.signOut()); 
-                            return; 
-                        }
-                        
-                        me = u; 
-                        me.p = uid;
-                        me.pic = user.photoURL || me.pic || userPic;
-                        
-                        if (typeof me.sdmBalance === 'undefined' || me.sdmBalance === null) {
-                            me.sdmBalance = 0;
-                            await db.ref('users/' + uid).update({ sdmBalance: 0 });
-                            console.log('تم ضبط رصيد المستخدم على 0');
-                        }
-                        
-                        if (!me.numericId || me.numericId === '000000' || !validateNumericId(me.numericId)) {
-                            me.numericId = generate6DigitNumericId(uid);
-                            await db.ref('users/' + uid).update({ numericId: me.numericId });
-                            console.log('تم إنشاء رقم تعريف جديد للمستخدم:', me.numericId);
-                        }
-                        
-                        // ======== الإصلاح هنا ========
-                        startApp(uid);
-                        // ============================
-                        
-                    } else {
-                        const numericId = generate6DigitNumericId(uid);
-                        const newUser = { 
-                            n: user.displayName || 'مستخدم جديد', 
-                            p: uid, 
-                            email: user.email, 
-                            pic: user.photoURL || userPic, 
-                            sdmBalance: 0,
-                            rating: 5.0, 
-                            role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'), 
-                            wa: '', 
-                            vipStatus: 'none', 
-                            reportCount: 0, 
-                            verified: true,
-                            lastSeen: Date.now(),
-                            numericId: numericId,
-                            joinDate: Date.now()
-                        };
-                        
-                        await db.ref('users/' + uid).set(newUser); 
-                        me = newUser; 
-                        console.log('تم إنشاء مستخدم جديد برصيد 0 ورقم تعريف:', numericId);
-                        
-                        // ======== الإصلاح هنا ========
-                        startApp(uid);
-                        // ============================
+                if (snap.exists()) {
+                    me = snap.val();
+                    me.p = uid;
+                    // تحديث الصلاحيات إذا كان المسؤول
+                    if (user.email === ADMIN_EMAIL && me.role !== 'admin') {
+                        me.role = 'admin';
+                        await db.ref('users/' + uid).update({ role: 'admin' });
                     }
-                } catch (error) {
-                    console.error('خطأ في تحميل بيانات المستخدم:', error);
-                    hideLoginLoading();
-                    Swal.fire('خطأ', 'فشل تحميل بيانات المستخدم', 'error');
+                } else {
+                    // إنشاء حساب جديد إذا لم يكن موجوداً
+                    const numericId = generate6DigitNumericId(uid);
+                    const newUser = { 
+                        n: user.displayName || 'مستخدم جديد', p: uid, email: user.email, 
+                        pic: user.photoURL || userPic, sdmBalance: 0, rating: 5.0, 
+                        role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
+                        numericId: numericId, joinDate: Date.now() 
+                    };
+                    await db.ref('users/' + uid).set(newUser);
+                    me = newUser;
                 }
+
+                // تشغيل التطبيق
+                startApp(uid);
+
+                // إظهار الشاشة فوراً وإخفاء التحميل
+                if(preloader) preloader.style.display = 'none';
+                appScreen.style.setProperty('display', 'block', 'important');
+                authScreen.style.setProperty('display', 'none', 'important');
+
+            } catch (error) {
+                console.error("خطأ في جلب البيانات:", error);
+                if(preloader) preloader.style.display = 'none';
+            }
+        } else {
+            // لا يوجد مستخدم - إظهار شاشة الدخول فقط
+            if(!isGuest) { 
+                if(preloader) preloader.style.display = 'none';
+                authScreen.style.setProperty('display', 'block', 'important');
+                appScreen.style.setProperty('display', 'none', 'important');
+            }
+        }
+    });
+}
                 
                 if(me) {
                     setInterval(() => { 
