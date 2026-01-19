@@ -2,22 +2,22 @@ const admin = require('firebase-admin');
 const express = require('express');
 const app = express();
 
-// --- 1. إعداد الاتصال بقاعدة البيانات ---
+// --- 1. إعداد الاتصال ---
 try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
     });
-    console.log("✅ SDM Secure Bot: يعمل الآن بنظام الحماية الشامل وميزة الإغلاق التلقائي");
+    console.log("✅ البوت الشامل يعمل بنسخة (الوسيط المطور)");
 } catch (error) {
-    console.error("❌ خطأ في تشغيل البوت:", error.message);
+    console.error("❌ خطأ في الاتصال:", error.message);
     process.exit(1);
 }
 
 const db = admin.database();
 
-// دالة مساعدة لإرسال تنبيه للمستخدم داخل التطبيق
+// دالة إرسال التنبيهات
 function sendAlert(uid, msg, type = 'success') {
     db.ref(`alerts/${uid}`).push({ 
         msg, 
@@ -26,7 +26,7 @@ function sendAlert(uid, msg, type = 'success') {
     });
 }
 
-// --- 2. محرك التحويلات بين المستخدمين ---
+// --- 2. محرك التحويلات المباشرة ---
 async function processTransfers() {
     const ref = db.ref('requests/transfers');
     const snap = await ref.orderByChild('status').equalTo('pending').limitToFirst(5).once('value');
@@ -47,10 +47,10 @@ async function processTransfers() {
             const receiverUid = Object.keys(userSnap.val())[0];
             const senderRef = db.ref(`users/${from}/sdmBalance`);
 
-            const tx = await senderRef.transaction(current => {
-                if (current === null) return 0;
-                let balance = parseFloat(current);
-                if (balance < numAmount) return; 
+            const tx = await senderRef.transaction(currentBalance => {
+                if (currentBalance === null) return 0; 
+                let balance = parseFloat(currentBalance);
+                if (balance < numAmount) return; // إلغاء إذا لم يتوفر الرصيد
                 return parseFloat((balance - numAmount).toFixed(2));
             });
 
@@ -58,79 +58,21 @@ async function processTransfers() {
                 await db.ref(`users/${receiverUid}/sdmBalance`).transaction(c => {
                     return parseFloat((parseFloat(c || 0) + numAmount).toFixed(2));
                 });
+
                 await ref.child(id).update({ status: 'completed' });
                 sendAlert(receiverUid, `💰 استلمت ${numAmount} SDM من ${fromName}`, 'success');
-                sendAlert(from, `✅ تم تحويل ${numAmount} SDM للمستلم ${toId}`, 'success');
+                sendAlert(from, `✅ تم تحويل ${numAmount} SDM بنجاح`, 'success');
             } else {
-                await ref.child(id).update({ status: 'failed', reason: 'رصيد غير كافي' });
-                sendAlert(from, `❌ فشل: رصيدك لا يكفي للتحويل`, 'error');
+                await ref.child(id).update({ status: 'failed_balance' }); // تغيير الحالة يوقف التكرار
+                sendAlert(from, `❌ فشل: رصيدك الحالي لا يكفي للتحويل`, 'error');
             }
         } catch (e) { console.error("Transfer Error:", e); }
     }
 }
 
-// --- 3. محرك العمليات التجارية (الوسيط، VIP، الشحن) ---
+// --- 3. محرك التجارة (VIP + الشراء الآمن) ---
 async function processCommerce() {
-    
-    // أ- حجز المال وإغلاق المنشور (Escrow Phase 1)
-    const escRef = db.ref('requests/escrow_deals');
-    const newDeals = await escRef.orderByChild('status').equalTo('pending_delivery').once('value');
-    
-    if (newDeals.exists()) {
-        for (const [id, deal] of Object.entries(newDeals.val())) {
-            const amt = parseFloat(deal.amount);
-            
-            // خصم المال من المشتري
-            const tx = await db.ref(`users/${deal.buyerId}/sdmBalance`).transaction(c => {
-                if (c !== null && parseFloat(c) >= amt) return parseFloat((parseFloat(c) - amt).toFixed(2));
-            });
-
-            if (tx.committed) {
-                // 1. تحديث حالة الطلب إلى "مؤمن"
-                await escRef.child(id).update({ status: 'secured' }); 
-
-                // 2. إغلاق المنشور فوراً (أهم إضافة) لمنع الشراء المزدوج
-                // نقوم بتحديث المنشور في القسمين (العادي و VIP) لضمان الإغلاق
-                if (deal.postId) {
-                    await db.ref(`posts/${deal.postId}`).update({ sold: true });
-                    await db.ref(`vip_posts/${deal.postId}`).update({ sold: true });
-                }
-
-                sendAlert(deal.buyerId, `🔒 تم حجز المبلغ وإغلاق المنشور بنجاح. تواصل مع البائع.`, 'info');
-                console.log(`✅ تم تأمين الصفقة ${id} وإغلاق المنشور المرتبط بها.`);
-            } else {
-                await escRef.child(id).update({ status: 'failed', reason: 'رصيد غير كافي' });
-                sendAlert(deal.buyerId, `❌ فشل الشراء: رصيدك الحالي لا يكفي`, 'error');
-            }
-        }
-    }
-
-    // ب- تحرير المال للبائع (Escrow Phase 2)
-    const confirmedDeals = await escRef.orderByChild('status').equalTo('confirmed_by_buyer').once('value');
-    if (confirmedDeals.exists()) {
-        for (const [id, deal] of Object.entries(confirmedDeals.val())) {
-            await db.ref(`users/${deal.sellerId}/sdmBalance`).transaction(c => {
-                return parseFloat((parseFloat(c || 0) + parseFloat(deal.amount)).toFixed(2));
-            });
-            await escRef.child(id).update({ status: 'completed' });
-            sendAlert(deal.sellerId, `💰 مبروك! تم تحويل ${deal.amount} SDM لحسابك مقابل بيع سلعة`, 'success');
-        }
-    }
-
-    // ج- شحن الرصيد بموافقة الأدمن
-    const coinRequests = await db.ref('coin_requests').orderByChild('status').equalTo('approved_by_admin').once('value');
-    if (coinRequests.exists()) {
-        for (const [id, req] of Object.entries(coinRequests.val())) {
-            const qty = parseFloat(req.qty);
-            await db.ref(`users/${req.uP}/sdmBalance`).transaction(c => {
-                return parseFloat((parseFloat(c || 0) + qty).toFixed(2));
-            });
-            await db.ref(`coin_requests/${id}`).update({ status: 'completed' });
-            sendAlert(req.uP, `✅ تم إيداع ${qty} SDM في رصيدك بنجاح`, 'success');
-        }
-    }
-
-    // د- تفعيل اشتراكات VIP
+    // أ- معالجة اشتراكات VIP
     const vipRef = db.ref('requests/vip_subscriptions');
     const vSnap = await vipRef.orderByChild('status').equalTo('pending').once('value');
     if (vSnap.exists()) {
@@ -148,8 +90,52 @@ async function processCommerce() {
             });
             if (tx.committed) {
                 await vipRef.child(id).update({ status: 'completed' });
-                sendAlert(task.userId, `👑 تم تفعيل عضوية VIP بنجاح!`, 'success');
+                sendAlert(task.userId, `👑 تم تفعيل اشتراك VIP بنجاح`, 'success');
+            } else {
+                await vipRef.child(id).update({ status: 'failed_balance' });
+                sendAlert(task.userId, `❌ فشل تفعيل VIP: رصيدك غير كافٍ`, 'error');
             }
+        }
+    }
+
+    // ب- الشراء الآمن (Escrow): المرحلة 1 - حجز المال من المشتري
+    const escRef = db.ref('requests/escrow_deals');
+    const eSnap = await escRef.orderByChild('status').equalTo('pending_delivery').once('value');
+    if (eSnap.exists()) {
+        for (const [id, deal] of Object.entries(eSnap.val())) {
+            const amount = parseFloat(deal.amount);
+            const buyerRef = db.ref(`users/${deal.buyerId}/sdmBalance`);
+
+            const tx = await buyerRef.transaction(current => {
+                if (current !== null && parseFloat(current) >= amount) {
+                    return parseFloat((parseFloat(current) - amount).toFixed(2));
+                }
+                return; // سيفشل إذا كان الرصيد أقل
+            });
+
+            if (tx.committed) {
+                // المال الآن "مؤمن" لدى الوسيط
+                await escRef.child(id).update({ status: 'secured' });
+                sendAlert(deal.buyerId, `✅ تم تأمين مبلغ ${amount} SDM. الطلب قيد التنفيذ الآن.`, 'success');
+                sendAlert(deal.sellerId, `📢 قام ${deal.buyerName} بحجز مبلغ لسلعتك. قم بتسليمه الآن.`, 'info');
+            } else {
+                // فشل الرصيد: نغير الحالة فوراً لإيقاف التكرار
+                await escRef.child(id).update({ status: 'failed_balance' });
+                sendAlert(deal.buyerId, `❌ فشل الشراء: رصيدك الحالي لا يكفي للحجز`, 'error');
+            }
+        }
+    }
+
+    // ج- الشراء الآمن (Escrow): المرحلة 2 - تحرير المال للبائع
+    const confirmedSnap = await escRef.orderByChild('status').equalTo('confirmed_by_buyer').once('value');
+    if (confirmedSnap.exists()) {
+        for (const [id, deal] of Object.entries(confirmedSnap.val())) {
+            await db.ref(`users/${deal.sellerId}/sdmBalance`).transaction(c => {
+                return parseFloat((parseFloat(c || 0) + parseFloat(deal.amount)).toFixed(2));
+            });
+            await escRef.child(id).update({ status: 'completed' });
+            sendAlert(deal.sellerId, `💰 مبروك! استلمت ${deal.amount} SDM من عملية بيع ${deal.itemTitle}`, 'success');
+            sendAlert(deal.buyerId, `✅ تم إغلاق الطلب بنجاح. شكراً لثقتك بنا.`, 'success');
         }
     }
 }
@@ -174,17 +160,19 @@ async function processRatings() {
     }
 }
 
-// --- 5. تنظيف النظام ---
-async function cleanupSystem() {
+// --- 5. محرك تنظيف المنشورات القديمة (كل 48 ساعة) ---
+async function cleanupOldPosts() {
     const cutoff = Date.now() - (48 * 60 * 60 * 1000);
-    ['posts', 'vip_posts'].forEach(async path => {
+    const paths = ['posts', 'vip_posts'];
+    for (const path of paths) {
         const snap = await db.ref(path).orderByChild('date').endAt(cutoff).once('value');
         if (snap.exists()) {
             const updates = {};
-            Object.keys(snap.val()).forEach(k => updates[k] = null);
-            db.ref(path).update(updates);
+            Object.keys(snap.val()).forEach(key => { updates[key] = null; });
+            await db.ref(path).update(updates);
+            console.log(`🧹 تنظيف: تم حذف منشورات قديمة من ${path}`);
         }
-    });
+    }
 }
 
 // --- التشغيل الدوري ---
@@ -192,10 +180,10 @@ setInterval(() => {
     processTransfers();
     processCommerce();
     processRatings();
-}, 3000); // يعمل كل 3 ثواني
+}, 5000); // يعمل كل 5 ثواني لفحص الطلبات
 
-setInterval(cleanupSystem, 3600000); // تنظيف كل ساعة
+setInterval(cleanupOldPosts, 3600000); // فحص التنظيف كل ساعة
 
 const PORT = process.env.PORT || 10000;
-app.get('/', (req, res) => res.send('SDM Secure Bot is Online 🛡️'));
-app.listen(PORT, () => console.log(`Server is running`));
+app.get('/', (req, res) => res.send('SDM Secure Bot is Online...'));
+app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
