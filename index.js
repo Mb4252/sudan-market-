@@ -1,151 +1,153 @@
 const admin = require('firebase-admin');
 const http = require('http');
 
-// --- 1. إعداد الاتصال بقاعدة البيانات ---
+// --- 1. إعداد الاتصال ---
 try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
     });
-    console.log("✅ محرك SDM الذكي يعمل الآن.. مراقبة العمليات مفعلة");
+    console.log("✅ البوت الشامل يعمل الآن (تحويل، VIP، تنظيف، تقييم، بلاغات)");
 } catch (e) {
-    console.error("❌ خطأ فادح في الاتصال: تأكد من ملف الـ JSON وصحة الرابط", e.message);
+    console.error("❌ خطأ اتصال:", e.message);
     process.exit(1);
 }
 
 const db = admin.database();
 let isProcessing = false;
 
-// --- 2. محرك تحويل الأموال (Transfer Engine) ---
+// --- 2. محرك مسح المنشورات القديمة (تلقائي كل ساعة) ---
+async function cleanupOldPosts() {
+    const now = Date.now();
+    const expiryTime = 48 * 60 * 60 * 1000; // 48 ساعة
+    const cutoff = now - expiryTime;
+
+    const paths = ['posts', 'vip_posts'];
+    for (const path of paths) {
+        const snap = await db.ref(path).orderByChild('date').endAt(cutoff).once('value');
+        if (snap.exists()) {
+            const count = snap.numChildren();
+            await db.ref(path).update(Object.keys(snap.val()).reduce((acc, key) => ({ ...acc, [key]: null }), {}));
+            console.log(`[CLEANUP] تم حذف ${count} منشور قديم من ${path}`);
+        }
+    }
+}
+
+// --- 3. محرك التحويلات المالية ---
 async function processTransfers() {
     const ref = db.ref('requests/transfers');
     const snap = await ref.orderByChild('status').equalTo('pending').limitToFirst(5).once('value');
     if (!snap.exists()) return;
 
-    const tasks = snap.val();
-    for (const id in tasks) {
-        const { from, toId, amount, fromName } = tasks[id];
+    for (const [id, task] of Object.entries(snap.val())) {
+        const { from, toId, amount, fromName } = task;
         const numAmount = Number(amount);
-        const cleanToId = String(toId).trim();
-
         try {
-            // البحث عن المستلم بواسطة الرقم التعريفي
-            const userSnap = await db.ref('users').orderByChild('numericId').equalTo(cleanToId).once('value');
+            const userSnap = await db.ref('users').orderByChild('numericId').equalTo(String(toId)).once('value');
             if (!userSnap.exists()) {
-                await ref.child(id).update({ status: 'failed', reason: 'رقم المستلم غير صحيح' });
-                sendAlert(from, `❌ فشل التحويل: الرقم ${cleanToId} غير موجود`, 'error');
+                await ref.child(id).update({ status: 'failed', reason: 'المستلم غير موجود' });
                 continue;
             }
-
             const receiverUid = Object.keys(userSnap.val())[0];
-            if (from === receiverUid) {
-                await ref.child(id).update({ status: 'failed', reason: 'لا يمكن التحويل لنفسك' });
-                continue;
-            }
-
-            // تنفيذ العملية المالية بنظام الـ Transaction (أمان 100%)
-            const senderBalRef = db.ref(`users/${from}/sdmBalance`);
-            const tx = await senderBalRef.transaction(current => {
-                if ((current || 0) >= numAmount) return current - numAmount;
-                return; // إلغاء إذا لم يكفِ الرصيد
-            });
-
+            const tx = await db.ref(`users/${from}/sdmBalance`).transaction(curr => (curr >= numAmount ? curr - numAmount : undefined));
+            
             if (tx.committed) {
                 await db.ref(`users/${receiverUid}/sdmBalance`).transaction(c => (c || 0) + numAmount);
-                await ref.child(id).update({ status: 'completed', completedAt: admin.database.ServerValue.TIMESTAMP });
-                
-                // توثيق في سجل المعاملات العالمي
-                db.ref('transactions').push({ from, to: receiverUid, amount: numAmount, date: Date.now(), type: 'transfer' });
-
-                sendAlert(receiverUid, `💰 استلمت ${numAmount} SDM من ${fromName}`, 'success');
-                sendAlert(from, `✅ تم تحويل ${numAmount} SDM بنجاح للرقم ${cleanToId}`, 'success');
-                console.log(`[OK] Transfer Done: ${numAmount} from ${from} to ${receiverUid}`);
+                await ref.child(id).update({ status: 'completed', completedAt: now() });
+                sendAlert(receiverUid, `💰 وصلك ${numAmount} SDM من ${fromName}`, 'success');
+                sendAlert(from, `✅ تم تحويل ${numAmount} SDM للمستلم ${toId}`, 'success');
             } else {
-                await ref.child(id).update({ status: 'failed', reason: 'رصيد غير كافٍ' });
-                sendAlert(from, `❌ رصيدك الحالي لا يكفي لإتمام التحويل`, 'error');
+                await ref.child(id).update({ status: 'failed', reason: 'رصيدك غير كافٍ' });
             }
-        } catch (err) { console.error("Transfer Error:", err.message); }
+        } catch (e) { console.error(e); }
     }
 }
 
-// --- 3. محرك اشتراكات VIP (VIP Engine) ---
-async function processVipSubscriptions() {
+// --- 4. محرك تقييمات المستخدمين (تحديث النجوم تلقائياً) ---
+async function processRatings() {
+    const ref = db.ref('rating_queue');
+    const snap = await ref.orderByChild('status').equalTo('pending').once('value');
+    if (!snap.exists()) return;
+
+    for (const [id, task] of Object.entries(snap.val())) {
+        try {
+            const userRef = db.ref(`users/${task.target}`);
+            await userRef.transaction(user => {
+                if (user) {
+                    const oldRating = user.rating || 5;
+                    const count = user.ratingCount || 1;
+                    user.rating = ((oldRating * count) + task.stars) / (count + 1);
+                    user.ratingCount = count + 1;
+                    return user;
+                }
+            });
+            await ref.child(id).update({ status: 'completed' });
+            sendAlert(task.target, `⭐ حصلت على تقييم جديد (${task.stars} نجوم) من ${task.raterN}`, 'info');
+        } catch (e) { console.error(e); }
+    }
+}
+
+// --- 5. محرك البلاغات (تسجيل البلاغ وإخطار الأدمن) ---
+async function processReports() {
+    const ref = db.ref('user_reports');
+    const snap = await ref.orderByChild('status').equalTo('pending').once('value');
+    if (!snap.exists()) return;
+
+    for (const [id, report] of Object.entries(snap.val())) {
+        console.log(`[REPORT] بلاغ جديد ضد ${report.offender} من ${report.reporterN}`);
+        // هنا يمكن للبوت حظر المستخدم تلقائياً إذا تجاوز 5 بلاغات (اختياري)
+        await ref.child(id).update({ status: 'logged_to_admin' });
+    }
+}
+
+// --- 6. محرك الـ VIP ---
+async function processVips() {
     const ref = db.ref('requests/vip_subscriptions');
     const snap = await ref.orderByChild('status').equalTo('pending').once('value');
     if (!snap.exists()) return;
 
-    const tasks = snap.val();
-    for (const id in tasks) {
-        const { userId, days, cost } = tasks[id];
-        try {
-            const userRef = db.ref(`users/${userId}`);
-            const tx = await userRef.transaction(user => {
-                if (user && (user.sdmBalance || 0) >= cost) {
-                    const now = Date.now();
-                    const currentExpiry = (user.vipExpiry && user.vipExpiry > now) ? user.vipExpiry : now;
-                    user.sdmBalance -= cost;
-                    user.vipStatus = 'active';
-                    user.vipExpiry = currentExpiry + (days * 24 * 60 * 60 * 1000);
-                    return user;
-                }
-                return;
-            });
-
-            if (tx.committed) {
-                await ref.child(id).update({ status: 'completed' });
-                sendAlert(userId, `✨ مبروك! تم تفعيل اشتراك VIP لمدة ${days} يوم بنجاح`, 'success');
-            } else {
-                await ref.child(id).update({ status: 'failed', reason: 'رصيد غير كافٍ' });
-                sendAlert(userId, `❌ فشل تفعيل VIP: رصيدك غير كافٍ`, 'error');
+    for (const [id, task] of Object.entries(snap.val())) {
+        const { userId, days, cost } = task;
+        const tx = await db.ref(`users/${userId}`).transaction(u => {
+            if (u && (u.sdmBalance || 0) >= cost) {
+                const start = (u.vipExpiry && u.vipExpiry > Date.now()) ? u.vipExpiry : Date.now();
+                u.sdmBalance -= cost;
+                u.vipStatus = 'active';
+                u.vipExpiry = start + (days * 24 * 60 * 60 * 1000);
+                return u;
             }
-        } catch (e) { console.error("VIP Error:", e.message); }
+        });
+        if (tx.committed) {
+            await ref.child(id).update({ status: 'completed' });
+            sendAlert(userId, `👑 مبروك! تم تفعيل VIP لمدة ${days} يوم`, 'success');
+        } else {
+            await ref.child(id).update({ status: 'failed', reason: 'رصيد غير كافٍ' });
+        }
     }
 }
 
-// --- 4. محرك الوسيط الآمن (Escrow Engine) ---
-async function processEscrowDeals() {
-    const ref = db.ref('requests/escrow_deals');
-    const snap = await ref.orderByChild('status').equalTo('confirmed_by_buyer').once('value');
-    if (!snap.exists()) return;
-
-    const deals = snap.val();
-    for (const id in deals) {
-        const { sellerId, amount, itemTitle, buyerId } = deals[id];
-        try {
-            // تحويل المال "المجمد" إلى رصيد البائع
-            await db.ref(`users/${sellerId}/sdmBalance`).transaction(c => (c || 0) + Number(amount));
-            await ref.child(id).update({ status: 'completed', completedAt: Date.now() });
-
-            sendAlert(sellerId, `✅ استلمت ${amount} SDM ثمن: ${itemTitle}. تم التأكيد من المشتري`, 'success');
-            sendAlert(buyerId, `📦 تم إغلاق صفقة (${itemTitle}) بنجاح. شكراً لثقتك`, 'info');
-        } catch (e) { console.error("Escrow Error:", e.message); }
-    }
-}
-
-// --- 5. وظيفة إرسال التنبيهات الفورية ---
+// --- وظائف مساعدة ---
 function sendAlert(uid, msg, type) {
-    db.ref(`alerts/${uid}`).push({
-        msg: msg,
-        type: type,
-        date: admin.database.ServerValue.TIMESTAMP
-    });
+    db.ref(`alerts/${uid}`).push({ msg, type, date: Date.now() });
 }
+function now() { return Date.now(); }
 
-// --- 6. حلقة التشغيل الدائمة (كل 3 ثوانٍ) ---
+// --- الحلقة الرئيسية (تعمل كل 5 ثوانٍ) ---
 setInterval(async () => {
     if (isProcessing) return;
     isProcessing = true;
     try {
         await processTransfers();
-        await processVipSubscriptions();
-        await processEscrowDeals();
-    } catch (err) { console.error("Loop Error:", err.message); }
+        await processVips();
+        await processRatings();
+        await processReports();
+    } catch (e) {}
     isProcessing = false;
-}, 3000);
+}, 5000);
 
-// --- 7. خادم الويب (لإبقاء البوت مستيقظاً) ---
-http.createServer((req, res) => {
-    res.writeHead(200, {'Content-Type': 'text/plain'});
-    res.end('SDM Master Bot is Online ✅');
-}).listen(process.env.PORT || 3000);
+// حلقة التنظيف (كل ساعة)
+setInterval(cleanupOldPosts, 3600000);
+
+// خادم الويب (لإبقاء البوت مستيقظاً)
+http.createServer((req, res) => res.end('SDM All-In-One Bot is Running')).listen(process.env.PORT || 3000);
