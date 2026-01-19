@@ -1033,7 +1033,13 @@
                                 ${new Date(p.date).toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'})}
                             </div>
                             <button class="btn-main" onclick="window.open('https://wa.me/${p.userWa}?text=بخصوص إعلانك: ${p.title}')"><i class="fab fa-whatsapp"></i> تواصل عبر واتساب</button>
-                            
+                            // أضف هذا الزر بجانب زر الواتساب في دالة loadPosts
+${(!isOwner && !p.sold) ? `
+    <button class="btn-main" style="background:var(--green); margin-top:5px;" 
+        onclick="initiateEscrow('${p.id}', '${p.userId}', ${p.price}, '${escapeHtml(p.title)}')">
+        <i class="fas fa-shield-alt"></i> شراء آمن (عبر الوسيط)
+    </button>
+` : ''}
                             <!-- قسم التعليقات -->
                             <div class="comments-section" id="comments-${p.id}">
                                 <div style="font-size:12px; color:var(--text-sec); margin-bottom:10px;">
@@ -1803,6 +1809,10 @@
                         </div>
                         <button class="btn-main" onclick="requestCoins()">إرسال الطلب</button>
                     </div>
+                    <h3 style="margin-top:20px; color:var(--accent);"><i class="fas fa-box"></i> مشتريات بانتظار التأكيد</h3>
+<div id="escrow-list" style="background:rgba(255,255,255,0.05); padding:10px; border-radius:15px; min-height:50px; margin-bottom:20px;">
+    جاري تحميل العمليات...
+</div>
                     <h3>سجل المعاملات</h3>
                     <div id="transactions-history">جاري التحميل...</div>
                 </div>`;
@@ -2436,6 +2446,80 @@ function updateProfileData() {
         });
     }).catch(err => {
         Swal.fire('خطأ', 'تعذر حفظ البيانات: ' + err.message, 'error');
+    });
+}
+    // 1. دالة بدء عملية الشراء وحجز المال
+function initiateEscrow(postId, sellerId, price, title) {
+    if (isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
+    if (me.sdmBalance < price) return Swal.fire('رصيدك غير كافٍ', 'يرجى شحن محفظتك لإتمام الشراء الآمن', 'warning');
+
+    Swal.fire({
+        title: 'تأكيد الشراء الآمن',
+        html: `سيتم خصم <b>${price} SDM</b> وحجزها لدى التطبيق (الوسيط).<br>لن يتم تسليم المبلغ للبائع إلا بعد تأكيدك للاستلام.`,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'تأكيد وحجز المبلغ',
+        cancelButtonText: 'إلغاء'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            showLoginLoading();
+            // إرسال طلب للبوت لمعالجة الحجز
+            db.ref('requests/escrow_deals').push({
+                buyerId: me.p,
+                buyerName: me.n,
+                sellerId: sellerId,
+                postId: postId,
+                itemTitle: title,
+                amount: price,
+                status: 'pending_delivery', // بانتظار التسليم
+                date: Date.now()
+            }).then(() => {
+                hideLoginLoading();
+                Swal.fire('تم الحجز', 'تم خصم المبلغ وتجميده. تواصل مع البائع لاستلام سلعتك.', 'success');
+            });
+        }
+    });
+}
+
+// 2. دالة عرض الصفقات المعلقة في صفحة المحفظة (للمشتري لتأكيد الاستلام)
+function loadMyEscrowDeals() {
+    const container = document.getElementById('escrow-list');
+    if(!container) return;
+
+    db.ref('requests/escrow_deals').on('value', snap => {
+        container.innerHTML = "";
+        const deals = snap.val();
+        if(!deals) return container.innerHTML = "<p style='font-size:12px; color:gray;'>لا توجد عمليات شراء معلقة.</p>";
+
+        Object.keys(deals).forEach(id => {
+            const d = deals[id];
+            if(d.buyerId === me.p && d.status === 'pending_delivery') {
+                container.innerHTML += `
+                    <div style="background:rgba(16, 185, 129, 0.1); border:1px solid var(--green); padding:10px; border-radius:10px; margin-bottom:10px;">
+                        <div style="font-size:13px;"><b>شراء:</b> ${d.itemTitle}</div>
+                        <div style="font-size:11px; color:var(--text-sec);">المبلغ المحجوز: ${d.amount} SDM</div>
+                        <button class="btn-main" style="padding:5px; font-size:12px; background:var(--green);" 
+                            onclick="confirmReceipt('${id}')">تأكيد الاستلام وتحرير المبلغ</button>
+                    </div>`;
+            }
+        });
+    });
+}
+
+// 3. دالة تأكيد الاستلام (تحرير المال للبائع)
+function confirmReceipt(dealId) {
+    Swal.fire({
+        title: 'هل استلمت السلعة فعلاً؟',
+        text: "بمجرد التأكيد سيتم تحويل المال لحساب البائع ولا يمكنك التراجع.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، استلمت',
+        cancelButtonText: 'ليس بعد'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            db.ref(`requests/escrow_deals/${dealId}`).update({ status: 'confirmed_by_buyer' });
+            Swal.fire('تمت العملية', 'تم تحويل المال للبائع بنجاح.', 'success');
+        }
     });
 }
 </script>
