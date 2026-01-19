@@ -2450,73 +2450,89 @@ function updateProfileData() {
     // 1. دالة بدء عملية الشراء وحجز المال
 function initiateEscrow(postId, sellerId, price, title) {
     if (isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
-    if (me.sdmBalance < price) return Swal.fire('رصيدك غير كافٍ', 'يرجى شحن محفظتك لإتمام الشراء الآمن', 'warning');
+    
+    // تحويل القيم إلى أرقام لضمان دقة المقارنة
+    const userBalance = Number(me.sdmBalance || 0);
+    const itemPrice = Number(price);
+
+    if (userBalance < itemPrice) {
+        return Swal.fire({
+            title: 'رصيد غير كافي',
+            text: `رصيدك الحالي (${userBalance} SDM) أقل من سعر السلعة (${itemPrice} SDM)`,
+            icon: 'warning',
+            background: '#1e293b',
+            color: '#fff'
+        });
+    }
 
     Swal.fire({
         title: 'تأكيد الشراء الآمن',
-        html: `سيتم خصم <b>${price} SDM</b> وحجزها لدى التطبيق (الوسيط).<br>لن يتم تسليم المبلغ للبائع إلا بعد تأكيدك للاستلام.`,
+        html: `سيتم حجز مبلغ <b>${itemPrice} SDM</b> لدى الوسيط.<br>لن يتم تسليم المبلغ للبائع إلا بعد تأكيدك للاستلام.`,
         icon: 'info',
         showCancelButton: true,
         confirmButtonText: 'تأكيد وحجز المبلغ',
-        cancelButtonText: 'إلغاء'
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff'
     }).then((result) => {
         if (result.isConfirmed) {
             showLoginLoading();
-            // إرسال طلب للبوت لمعالجة الحجز
+            // إرسال الطلب للبوت
             db.ref('requests/escrow_deals').push({
                 buyerId: me.p,
                 buyerName: me.n,
                 sellerId: sellerId,
                 postId: postId,
                 itemTitle: title,
-                amount: price,
-                status: 'pending_delivery', // بانتظار التسليم
+                amount: itemPrice, // التأكد من إرساله كرقم
+                status: 'pending_delivery', 
                 date: Date.now()
             }).then(() => {
                 hideLoginLoading();
-                Swal.fire('تم الحجز', 'تم خصم المبلغ وتجميده. تواصل مع البائع لاستلام سلعتك.', 'success');
+                Swal.fire('تم إرسال الطلب', 'البوت يقوم الآن بحجز المبلغ وتأمين العملية...', 'success');
+            }).catch(err => {
+                hideLoginLoading();
+                Swal.fire('خطأ', 'فشل إرسال الطلب: ' + err.message, 'error');
             });
         }
     });
 }
 
 // 2. دالة عرض الصفقات المعلقة في صفحة المحفظة (للمشتري لتأكيد الاستلام)
-
-function loadMyEscrowDeals() {
+ function loadMyEscrowDeals() {
     const container = document.getElementById('escrow-list');
     if(!container) return;
 
     db.ref('requests/escrow_deals').on('value', snap => {
         container.innerHTML = "";
         const deals = snap.val();
-        if(!deals) return container.innerHTML = "<p style='font-size:12px; color:gray;'>لا توجد عمليات شراء معلقة.</p>";
+        if(!deals) return container.innerHTML = "<p style='font-size:12px; color:gray;'>لا توجد عمليات شراء حالياً.</p>";
 
-        Object.keys(deals).forEach(id => {
+        Object.keys(deals).reverse().forEach(id => {
             const d = deals[id];
-            // التعديل هنا: نبحث عن حالتين (قيد التنفيذ) أو (تم حجز المال بنجاح)
-            if(d.buyerId === me.p && (d.status === 'secured' || d.status === 'pending_delivery')) {
-                const isSecured = d.status === 'secured';
-                
+            if(d.buyerId === me.p) {
+                let statusHtml = '';
+                if (d.status === 'pending_delivery') statusHtml = '<span style="color:orange;">⏳ جاري فحص الرصيد...</span>';
+                else if (d.status === 'secured') statusHtml = '<span style="color:#10b981;">✅ المبلغ محجوز (آمن)</span>';
+                else if (d.status === 'confirmed_by_buyer') statusHtml = '<span style="color:cyan;">🔄 جاري تحويل المال للبائع...</span>';
+                else if (d.status === 'completed') statusHtml = '<span style="color:gray;">🏁 مكتملة</span>';
+                else if (d.status === 'failed') statusHtml = '<span style="color:red;">❌ فشلت (رصيد غير كافي)</span>';
+
                 container.innerHTML += `
-                    <div style="background:${isSecured ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 158, 11, 0.05)'}; 
-                                border:1px solid ${isSecured ? '#10b981' : '#f59e0b'}; 
-                                padding:10px; border-radius:10px; margin-bottom:10px;">
-                        <div style="font-size:13px;"><b>شراء:</b> ${d.itemTitle}</div>
-                        <div style="font-size:11px; color:${isSecured ? '#10b981' : '#f59e0b'}; font-weight:bold;">
-                            ${isSecured ? '✅ تم حجز المال (آمن)' : '⏳ جاري فحص الرصيد...'}
-                        </div>
-                        <div style="font-size:11px; color:var(--text-sec);">المبلغ: ${d.amount} SDM</div>
+                    <div style="background:rgba(255,255,255,0.05); border:1px solid #334155; padding:12px; border-radius:12px; margin-bottom:10px;">
+                        <div style="font-size:13px; font-weight:bold;">${d.itemTitle}</div>
+                        <div style="font-size:11px; margin:5px 0;">الحالة: ${statusHtml}</div>
+                        <div style="font-size:12px; color:var(--accent);">المبلغ: ${d.amount} SDM</div>
                         
-                        ${isSecured ? `
-                            <button class="btn-main" style="padding:5px; font-size:12px; background:#10b981; margin-top:5px;" 
-                                onclick="confirmReceipt('${id}')">تأكيد الاستلام وتحرير المبلغ</button>
-                        ` : '<p style="font-size:10px; color:gray; margin:5px 0;">بانتظار تأمين المبلغ من قبل البوت...</p>'}
+                        ${d.status === 'secured' ? `
+                            <button class="btn-main" style="padding:6px; font-size:12px; background:#10b981; margin-top:8px;" 
+                                onclick="confirmReceipt('${id}')">تأكيد الاستلام</button>
+                        ` : ''}
                     </div>`;
             }
         });
     });
-}
-    
+}  
 // 3. دالة تأكيد الاستلام (تحرير المال للبائع)
 function confirmReceipt(dealId) {
     Swal.fire({
