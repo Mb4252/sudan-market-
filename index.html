@@ -1311,29 +1311,33 @@ ${(!isOwner && !p.sold) ? `
             });
         });
     }
+async function approveCoins(reqId, userId, qty) {
+    // رسالة تنبيه للأدمن
+    Swal.fire({ 
+        title: 'جاري إرسال الأمر للبوت...', 
+        text: 'سيقوم الخادم بشحن الرصيد لضمان الحماية',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading() 
+    });
 
-    async function approveCoins(reqId, userId, qty) {
-        Swal.fire({ title: 'جاري المعالجة...', didOpen: () => Swal.showLoading() });
-        const userRef = db.ref(`users/${userId}/sdmBalance`);
-        const snap = await userRef.once('value');
-        const newBal = (snap.val() || 0) + qty;
-        
-        await userRef.set(newBal);
-        await db.ref(`coin_requests/${reqId}`).update({ status: 'approved' });
-        await db.ref('transactions').push({ type: 'deposit', to: userId, from: 'SYSTEM', amount: qty, date: Date.now() });
-        await db.ref(`alerts/${userId}`).push({ msg: `✅ تم تأكيد إيداع ${qty} SDM في حسابك`, type: 'success', date: Date.now() });
-        
-        Swal.fire('نجاح', 'تم شحن الرصيد للمستخدم', 'success');
-    }
+    try {
+        // نغير الحالة فقط، والبوت سيتكفل بالباقي
+        await db.ref(`coin_requests/${reqId}`).update({ 
+            status: 'approved_by_admin' 
+        });
 
-    async function rejectCoins(reqId, userId) {
-        const { value: reason } = await Swal.fire({ title: 'سبب الرفض؟', input: 'text', showCancelButton: true });
-        if (reason) {
-            await db.ref(`coin_requests/${reqId}`).update({ status: 'rejected', reason: reason });
-            await db.ref(`alerts/${userId}`).push({ msg: `❌ تم رفض طلب الإيداع: ${reason}`, type: 'error', date: Date.now() });
-            Swal.fire('تم الرفض', 'أرسلنا تنبيه للمستخدم', 'info');
-        }
+        Swal.fire({
+            title: 'تمت الموافقة بنجاح',
+            text: 'البوت يقوم الآن بإضافة الرصيد للمستخدم وتحديث سجلاته',
+            icon: 'success',
+            timer: 2500
+        });
+    } catch (error) {
+        console.error("Error:", error);
+        Swal.fire('خطأ', 'تعذر الاتصال بقاعدة البيانات', 'error');
     }
+}
+    
 
     // ======================================================
     // 3. نظام الألعاب
@@ -2477,6 +2481,7 @@ function initiateEscrow(postId, sellerId, price, title) {
 }
 
 // 2. دالة عرض الصفقات المعلقة في صفحة المحفظة (للمشتري لتأكيد الاستلام)
+
 function loadMyEscrowDeals() {
     const container = document.getElementById('escrow-list');
     if(!container) return;
@@ -2488,19 +2493,30 @@ function loadMyEscrowDeals() {
 
         Object.keys(deals).forEach(id => {
             const d = deals[id];
-            if(d.buyerId === me.p && d.status === 'pending_delivery') {
+            // التعديل هنا: نبحث عن حالتين (قيد التنفيذ) أو (تم حجز المال بنجاح)
+            if(d.buyerId === me.p && (d.status === 'secured' || d.status === 'pending_delivery')) {
+                const isSecured = d.status === 'secured';
+                
                 container.innerHTML += `
-                    <div style="background:rgba(16, 185, 129, 0.1); border:1px solid var(--green); padding:10px; border-radius:10px; margin-bottom:10px;">
+                    <div style="background:${isSecured ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 158, 11, 0.05)'}; 
+                                border:1px solid ${isSecured ? '#10b981' : '#f59e0b'}; 
+                                padding:10px; border-radius:10px; margin-bottom:10px;">
                         <div style="font-size:13px;"><b>شراء:</b> ${d.itemTitle}</div>
-                        <div style="font-size:11px; color:var(--text-sec);">المبلغ المحجوز: ${d.amount} SDM</div>
-                        <button class="btn-main" style="padding:5px; font-size:12px; background:var(--green);" 
-                            onclick="confirmReceipt('${id}')">تأكيد الاستلام وتحرير المبلغ</button>
+                        <div style="font-size:11px; color:${isSecured ? '#10b981' : '#f59e0b'}; font-weight:bold;">
+                            ${isSecured ? '✅ تم حجز المال (آمن)' : '⏳ جاري فحص الرصيد...'}
+                        </div>
+                        <div style="font-size:11px; color:var(--text-sec);">المبلغ: ${d.amount} SDM</div>
+                        
+                        ${isSecured ? `
+                            <button class="btn-main" style="padding:5px; font-size:12px; background:#10b981; margin-top:5px;" 
+                                onclick="confirmReceipt('${id}')">تأكيد الاستلام وتحرير المبلغ</button>
+                        ` : '<p style="font-size:10px; color:gray; margin:5px 0;">بانتظار تأمين المبلغ من قبل البوت...</p>'}
                     </div>`;
             }
         });
     });
 }
-
+    
 // 3. دالة تأكيد الاستلام (تحرير المال للبائع)
 function confirmReceipt(dealId) {
     Swal.fire({
