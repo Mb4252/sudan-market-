@@ -644,7 +644,8 @@
     }
 
     // --- مراقبة حالة المصادقة - النسخة المحسنة ---
-    function initializeAuthObserver() {
+    // --- 1. نظام مراقبة دخول المستخدم (استبدل القديم بهذا) ---
+function initializeAuthObserver() {
     if (authObserverInitialized) return;
     authObserverInitialized = true;
     
@@ -666,7 +667,58 @@
             }
         }
     });
-    }
+}
+
+// --- 2. تشغيل التطبيق وجلب بيانات المستخدم ---
+function startApp(uid) {
+    const preloader = document.getElementById('main-preloader');
+    
+    // مراقبة بيانات المستخدم في الوقت الفعلي
+    db.ref('users/' + uid).on('value', snap => {
+        if (preloader) preloader.style.display = 'none';
+        
+        if (snap.exists()) {
+            me = snap.val();
+            me.p = uid;
+            
+            // التأكد من وجود رقم تعريف (Numeric ID) للمستخدمين القدامى
+            if(!me.numericId) {
+                const nid = generate6DigitNumericId(uid);
+                db.ref('users/' + uid).update({ numericId: nid });
+            }
+
+            // إخفاء شاشات الدخول وإظهار التطبيق
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('app-screen').classList.remove('hidden');
+            
+            // تشغيل الأنظمة الفرعية
+            listenForUserAlerts();
+            checkForBroadcastMessage();
+            listenForDevAlerts();
+            
+            // العودة لآخر صفحة كان فيها المستخدم أو الرئيسية
+            render(localStorage.getItem('last_view') || 'home', localStorage.getItem('last_extra'));
+        } else {
+            // إذا كان المستخدم جديداً تماماً (أول مرة يسجل بجوجل)
+            const newUser = {
+                n: auth.currentUser.displayName || "مستخدم جديد",
+                p: uid,
+                pic: auth.currentUser.photoURL || 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
+                sdmBalance: 0,
+                rating: 5.0,
+                role: (auth.currentUser.email === ADMIN_EMAIL) ? 'admin' : 'user',
+                numericId: generate6DigitNumericId(uid),
+                wa: "",
+                vipStatus: 'none',
+                joinedAt: Date.now()
+            };
+            db.ref('users/' + uid).set(newUser);
+        }
+    }, error => {
+        if (preloader) preloader.style.display = 'none';
+        console.error("خطأ في الوصول لقاعدة البيانات:", error);
+    });
+}
     // دالة معالجة الصور المحسنة (لا تمسح الحقول)
     async function encode(i, t) {
         if(!i.files[0]) return;
@@ -2176,36 +2228,6 @@ updateActiveTabUI(view);
     });
     
     // ======== الإصلاح هنا: إضافة الدوال المفقودة ========
-    
-    // 1. إضافة دالة startApp المفقودة
-    function startApp(uid) {
-    const preloader = document.getElementById('main-preloader');
-    
-    db.ref('users/' + uid).on('value', snap => {
-        if (preloader) preloader.style.display = 'none'; // إخفاء الشاشة فور استلام أي رد
-        
-        if (snap.exists()) {
-            me = snap.val();
-            me.p = uid;
-            document.getElementById('auth-screen').classList.add('hidden');
-            document.getElementById('app-screen').classList.remove('hidden');
-            render(localStorage.getItem('last_view') || 'home');
-        } else {
-            // كود إنشاء مستخدم جديد إذا لم يكن موجوداً
-        }
-    }, error => {
-        // في حالة حدوث خطأ في الاتصال بالقاعدة
-        if (preloader) preloader.style.display = 'none';
-        console.error("خطأ في الاتصال:", error);
-    });
-    }
-        // في حال وجود مشكلة في الصلاحيات أو الشبكة
-        console.error("Firebase Error:", error);
-        const preloader = document.getElementById('main-preloader');
-        if(preloader) preloader.innerHTML = `<p style="color:white; padding:20px;">خطأ في الاتصال بالخادم، يرجى التأكد من الإنترنت أو الـ VPN</p>`;
-    });
-}
-    
     // 2. إضافة دالة listenForUserAlerts المفقودة
     function listenForUserAlerts() {
     if (isGuest || !me) return;
