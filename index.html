@@ -1221,6 +1221,47 @@
         });
     });
 }
+    async function buyItem(path, postId, price, sellerId, title) {
+    if (isGuest) return Swal.fire('تنبيه', 'يجب تسجيل الدخول أولاً', 'warning');
+    if (me.sdmBalance < price) {
+        return Swal.fire('رصيد غير كافٍ', `سعر السلعة ${price} SDM ورصيدك الحالي ${me.sdmBalance.toFixed(2)} SDM`, 'error');
+    }
+
+    const result = await Swal.fire({
+        title: 'تأكيد عملية الشراء',
+        text: `سيتم حجز مبلغ ${price} SDM من رصيدك كبائع وسيط. هل تريد المتابعة؟`,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'شراء الآن',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff'
+    });
+
+    if (result.isConfirmed) {
+        showLoginLoading();
+        // حجز المنشور وتحديد المشتري
+        await db.ref(`${path}/${postId}`).update({ 
+            pending: true, 
+            buyerId: me.p 
+        });
+
+        // إرسال الطلب للبوت
+        db.ref('requests/escrow_deals').push({
+            postId: postId,
+            path: path,
+            buyerId: me.p,
+            sellerId: sellerId,
+            amount: price,
+            itemTitle: title,
+            status: 'pending_delivery',
+            date: Date.now()
+        }).then(() => {
+            hideLoginLoading();
+            Swal.fire('تم حجز السلعة', 'تواصل مع البائع لاستلام غرضك، ثم اضغط على "تأكيد الاستلام" لتسليمه المال.', 'success');
+        });
+    }
+}
     function loadComments(path, postId) {
         const commentsList = document.getElementById(`comments-list-${postId}`);
         if (!commentsList) return;
