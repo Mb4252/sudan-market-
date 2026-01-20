@@ -2607,6 +2607,68 @@ function confirmReceipt(dealId) {
         }
     });
 }
+    // 1. دالة لجلب النزاعات وعرضها للأدمن
+function loadAdminDisputes() {
+    if (me.role !== 'admin') return;
+    const container = document.getElementById('admin-disputes-list');
+    if (!container) return;
+
+    db.ref('requests/escrow_deals').orderByChild('status').equalTo('disputed').on('value', snap => {
+        container.innerHTML = "";
+        const deals = snap.val();
+        if (!deals) return container.innerHTML = "<p style='color:gray; text-align:center;'>لا توجد نزاعات حالياً</p>";
+
+        Object.keys(deals).forEach(id => {
+            const d = deals[id];
+            container.innerHTML += `
+                <div class="admin-item" style="border:1px solid var(--red); padding:10px; margin-bottom:10px; background:rgba(239, 68, 68, 0.05);">
+                    <div style="font-weight:bold; color:var(--red);">🚩 نزاع على: ${d.itemTitle}</div>
+                    <div style="font-size:12px; margin:5px 0;">
+                        <b>المشتري:</b> ${d.buyerName} <br>
+                        <b>السبب:</b> ${d.disputeReason || 'غير مذكور'}
+                    </div>
+                    <div style="font-size:13px; color:var(--accent); margin-bottom:10px;">المبلغ المحجوز: ${d.amount} SDM</div>
+                    
+                    <div style="display:flex; gap:5px;">
+                        <button class="btn-main" style="background:var(--green); flex:1; padding:8px; font-size:11px;" 
+                            onclick="resolveByAdmin('${id}', 'seller')">لصالح البائع (تحويل) ✅</button>
+                        <button class="btn-main" style="background:var(--red); flex:1; padding:8px; font-size:11px;" 
+                            onclick="resolveByAdmin('${id}', 'buyer')">لصالح المشتري (إرجاع) 🔙</button>
+                    </div>
+                </div>`;
+        });
+    });
+}
+
+// 2. دالة إرسال قرار الأدمن للبوت
+function resolveByAdmin(dealId, winner) {
+    const actionText = winner === 'seller' ? "تحويل المال للبائع" : "إرجاع المال للمشتري";
+    
+    Swal.fire({
+        title: 'تأكيد القرار النهائي',
+        text: `أنت بصفتك أدمن، هل تريد ${actionText}؟ هذا القرار فوري ولا يمكن التراجع عنه.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، نفذ الآن',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            showLoginLoading();
+            // تحديث الحالة ليراها البوت وينفذها
+            const finalStatus = winner === 'seller' ? 'admin_won_seller' : 'admin_won_buyer';
+            db.ref(`requests/escrow_deals/${dealId}`).update({ 
+                status: finalStatus,
+                resolvedBy: me.n,
+                resolvedDate: Date.now()
+            }).then(() => {
+                hideLoginLoading();
+                Swal.fire('تم التنفيذ', 'تم إرسال القرار للبوت لمعالجة الرصيد فوراً', 'success');
+            });
+        }
+    });
+}
 </script>
 </body>
 </html>
