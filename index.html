@@ -1193,16 +1193,18 @@
             });
         });
     }
-
     function deletePost(path, postId, isAdmin = false) {
-        let confirmText = 'هل أنت متأكد من حذف هذا المنشور؟';
-        if (isAdmin) {
-            confirmText = 'أنت كأدمن تريد حذف هذا المنشور. هل أنت متأكد؟';
-        }
+    db.ref(`${path}/${postId}`).once('value').then(snap => {
+        const post = snap.val();
         
+        // منع الحذف إذا كان المنشور قيد الشراء أو تم بيعه (إلا للأدمن)
+        if (!isAdmin && (post.pending || post.sold)) {
+            return Swal.fire('تنبيه', 'لا يمكنك حذف المنشور أثناء عملية الشراء أو بعد البيع لضمان حقوق الأطراف.', 'warning');
+        }
+
         Swal.fire({
             title: 'تأكيد الحذف',
-            text: confirmText,
+            text: isAdmin ? 'أنت كأدمن ستقوم بحذف هذا المنشور نهائياً' : 'هل أنت متأكد من حذف هذا المنشور؟',
             icon: 'warning',
             showCancelButton: true,
             confirmButtonText: 'نعم، احذف',
@@ -1213,14 +1215,12 @@
         }).then((result) => {
             if (result.isConfirmed) {
                 db.ref(`${path}/${postId}`).remove().then(() => {
-                    db.ref(`comments/${path}/${postId}`).remove().then(() => {
-                        Swal.fire('تم الحذف', 'تم حذف المنشور وجميع التعليقات المرتبطة به', 'success');
-                    });
+                    Swal.fire('تم', 'تم الحذف بنجاح', 'success');
                 });
             }
         });
-    }
-
+    });
+}
     function loadComments(path, postId) {
         const commentsList = document.getElementById(`comments-list-${postId}`);
         if (!commentsList) return;
