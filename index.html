@@ -654,49 +654,55 @@ function initializeAuthObserver() {
         const authScreen = document.getElementById('auth-screen');
         const appScreen = document.getElementById('app-screen');
 
+        // أهم خطوة: إخفاء شاشة التحميل فوراً عند حدوث أي تغيير في الحالة
+        if (preloader) preloader.style.display = 'none';
+
         if (user) {
-            // إذا وجد مستخدم، ننتقل لدالة تشغيل التطبيق
+            console.log("مستخدم مسجل:", user.email);
             startApp(user.uid);
         } else {
-            // إذا لم يجد مستخدم، يخفي شاشة التحميل ويظهر شاشة الدخول
-            if(preloader) preloader.style.display = 'none';
-            if(!isGuest) {
-                authScreen.classList.remove('hidden');
+            console.log("لا يوجد مستخدم - إظهار صفحة الدخول");
+            if (!isGuest) {
+                // إظهار صفحة الدخول يدويًا
                 authScreen.style.display = 'flex';
-                appScreen.classList.add('hidden');
+                appScreen.style.display = 'none';
             }
         }
+    }, error => {
+        // في حالة وجود خطأ في الاتصال
+        const preloader = document.getElementById('main-preloader');
+        if (preloader) preloader.style.display = 'none';
+        alert("خطأ في الاتصال بـ Firebase: " + error.message);
     });
 }
 
 // --- 2. تشغيل التطبيق وجلب بيانات المستخدم ---
 function startApp(uid) {
     const preloader = document.getElementById('main-preloader');
-    
-    // 1. أخفِ شاشة التحميل فوراً هنا (خارج مراقب البيانات) لضمان عدم التعليق
+    const authScreen = document.getElementById('auth-screen');
+    const appScreen = document.getElementById('app-screen');
+
+    // إخفاء التحميل والبدء فوراً
     if (preloader) preloader.style.display = 'none';
+    authScreen.style.display = 'none';
+    appScreen.style.display = 'block';
 
     db.ref('users/' + uid).on('value', snap => {
-        // إذا كنت تريد التأكد مرة أخرى داخل المراقب فلا بأس
-        if (preloader) preloader.style.display = 'none';
-        
         if (snap.exists()) {
             me = snap.val();
             me.p = uid;
             
-            // باقي الكود الخاص بك...
+            // باقي أوامرك البرمجية...
             if(!me.numericId) {
                 const nid = generate6DigitNumericId(uid);
                 db.ref('users/' + uid).update({ numericId: nid });
             }
-            document.getElementById('auth-screen').classList.add('hidden');
-            document.getElementById('app-screen').classList.remove('hidden');
             listenForUserAlerts();
             checkForBroadcastMessage();
             listenForDevAlerts();
             render(localStorage.getItem('last_view') || 'home', localStorage.getItem('last_extra'));
         } else {
-            // كود المستخدم الجديد...
+            // كود المستخدم الجديد
             const newUser = {
                 n: auth.currentUser.displayName || "مستخدم جديد",
                 p: uid,
@@ -711,10 +717,6 @@ function startApp(uid) {
             };
             db.ref('users/' + uid).set(newUser);
         }
-    }, error => {
-        // في حالة حدوث خطأ في القاعدة، أخفِ الشاشة أيضاً واظهر تنبيه
-        if (preloader) preloader.style.display = 'none';
-        console.error("خطأ قاعدة بيانات:", error);
     });
 }
     // دالة معالجة الصور المحسنة (لا تمسح الحقول)
@@ -2636,13 +2638,20 @@ function resolveByAdmin(dealId, winner) {
             }
         });
     });
-}
-    // أضف هذا الكود في نهاية ملف الجافاسكريبت
-// أضف هذا الكود في نهاية ملف الجافاسكريبت أو داخل DOMContentLoaded
-setTimeout(() => {
-    const preloader = document.getElementById('main-preloader');
-    if (preloader) preloader.style.display = 'none'; 
-}, 8000); // 8 ثوانٍ كحد أقصى لإخفاء الشاشة إجبارياً
+    }
+    // ضعه قبل إغلاق وسام الـ </script>
+window.onload = function() {
+    setTimeout(() => {
+        const preloader = document.getElementById('main-preloader');
+        if (preloader && preloader.style.display !== 'none') {
+            preloader.style.display = 'none';
+            // إذا كان Firebase عالقاً، اظهر صفحة الدخول على الأقل
+            if (!auth.currentUser) {
+                document.getElementById('auth-screen').style.display = 'flex';
+            }
+        }
+    }, 4000); // 4 ثوانٍ كافية جداً
+};
 </script>
 </body>
 </html>
