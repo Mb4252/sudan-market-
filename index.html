@@ -655,54 +655,48 @@
         const authScreen = document.getElementById('auth-screen');
         const appScreen = document.getElementById('app-screen');
 
+        // أخفِ شاشة التحميل فوراً بمجرد معرفة الحالة
+        if(preloader) preloader.style.display = 'none';
+
         if (user) {
             const uid = user.uid;
+            // إظهار شاشة التطبيق فوراً
+            appScreen.classList.remove('hidden');
+            appScreen.style.display = 'block';
+            authScreen.classList.add('hidden');
+            authScreen.style.display = 'none';
+
             try {
+                // جلب البيانات في الخلفية
                 const snap = await db.ref('users/' + uid).once('value');
-                
                 if (snap.exists()) {
                     me = snap.val();
                     me.p = uid;
-                    // تحديث الصلاحيات إذا كان المسؤول
-                    if (user.email === ADMIN_EMAIL && me.role !== 'admin') {
-                        me.role = 'admin';
-                        await db.ref('users/' + uid).update({ role: 'admin' });
-                    }
                 } else {
-                    // إنشاء حساب جديد إذا لم يكن موجوداً
+                    // إنشاء حساب جديد إذا لم يوجد
                     const numericId = generate6DigitNumericId(uid);
-                    const newUser = { 
-                        n: user.displayName || 'مستخدم جديد', p: uid, email: user.email, 
-                        pic: user.photoURL || userPic, sdmBalance: 0, rating: 5.0, 
-                        role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
-                        numericId: numericId, joinDate: Date.now() 
+                    me = { 
+                        n: user.displayName || 'مستخدم جديد', p: uid, 
+                        pic: user.photoURL || userPic, sdmBalance: 0, 
+                        rating: 5.0, role: 'user', numericId: numericId 
                     };
-                    await db.ref('users/' + uid).set(newUser);
-                    me = newUser;
+                    await db.ref('users/' + uid).set(me);
                 }
-
-                // تشغيل التطبيق
                 startApp(uid);
-
-                // إظهار الشاشة فوراً وإخفاء التحميل
-                if(preloader) preloader.style.display = 'none';
-                appScreen.style.setProperty('display', 'block', 'important');
-                authScreen.style.setProperty('display', 'none', 'important');
-
             } catch (error) {
                 console.error("خطأ في جلب البيانات:", error);
-                if(preloader) preloader.style.display = 'none';
             }
         } else {
-            // لا يوجد مستخدم - إظهار شاشة الدخول فقط
+            // إذا لم يكن مسجلاً وليس زائراً، أظهر شاشة الدخول
             if(!isGuest) { 
-                if(preloader) preloader.style.display = 'none';
-                authScreen.style.setProperty('display', 'block', 'important');
-                appScreen.style.setProperty('display', 'none', 'important');
+                authScreen.classList.remove('hidden');
+                authScreen.style.display = 'block';
+                appScreen.classList.add('hidden');
+                appScreen.style.display = 'none';
             }
         }
     });
-    }                             
+}
     // دالة معالجة الصور المحسنة (لا تمسح الحقول)
     async function encode(i, t) {
         if(!i.files[0]) return;
