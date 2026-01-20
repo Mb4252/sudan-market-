@@ -2525,29 +2525,67 @@ function initiateEscrow(postId, sellerId, price, title) {
 
         Object.keys(deals).reverse().forEach(id => {
             const d = deals[id];
-            if(d.buyerId === me.p) {
+            // عرض الصفقات للمشتري وللبائع
+            if(d.buyerId === me.p || d.sellerId === me.p) {
+                const isBuyer = d.buyerId === me.p;
                 let statusHtml = '';
-                if (d.status === 'pending_delivery') statusHtml = '<span style="color:orange;">⏳ جاري فحص الرصيد...</span>';
+                
+                if (d.status === 'pending_delivery') statusHtml = '<span style="color:orange;">⏳ جاري حجز الرصيد...</span>';
                 else if (d.status === 'secured') statusHtml = '<span style="color:#10b981;">✅ المبلغ محجوز (آمن)</span>';
-                else if (d.status === 'confirmed_by_buyer') statusHtml = '<span style="color:cyan;">🔄 جاري تحويل المال للبائع...</span>';
+                else if (d.status === 'disputed') statusHtml = '<span style="color:#ef4444;">⚠️ تحت النزاع (بانتظار الإدارة)</span>';
                 else if (d.status === 'completed') statusHtml = '<span style="color:gray;">🏁 مكتملة</span>';
-                else if (d.status === 'failed') statusHtml = '<span style="color:red;">❌ فشلت (رصيد غير كافي)</span>';
 
                 container.innerHTML += `
-                    <div style="background:rgba(255,255,255,0.05); border:1px solid #334155; padding:12px; border-radius:12px; margin-bottom:10px;">
-                        <div style="font-size:13px; font-weight:bold;">${d.itemTitle}</div>
+                    <div style="background:rgba(255,255,255,0.05); border:1px solid ${d.status==='disputed'?'#ef4444':'#334155'}; padding:12px; border-radius:12px; margin-bottom:10px;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <div style="font-size:13px; font-weight:bold;">${d.itemTitle}</div>
+                            <span style="font-size:10px; color:gray;">${isBuyer?'شراء':'بيع'}</span>
+                        </div>
                         <div style="font-size:11px; margin:5px 0;">الحالة: ${statusHtml}</div>
                         <div style="font-size:12px; color:var(--accent);">المبلغ: ${d.amount} SDM</div>
                         
-                        ${d.status === 'secured' ? `
-                            <button class="btn-main" style="padding:6px; font-size:12px; background:#10b981; margin-top:8px;" 
-                                onclick="confirmReceipt('${id}')">تأكيد الاستلام</button>
-                        ` : ''}
+                        <div style="display:flex; gap:5px; margin-top:8px;">
+                            ${(isBuyer && d.status === 'secured') ? `
+                                <button class="btn-main" style="padding:6px; font-size:11px; background:#10b981; flex:2;" 
+                                    onclick="confirmReceipt('${id}')">تأكيد الاستلام ✅</button>
+                                <button class="btn-main" style="padding:6px; font-size:11px; background:#ef4444; flex:1;" 
+                                    onclick="openDispute('${id}')">نزاع 🚩</button>
+                            ` : ''}
+
+                            ${(!isBuyer && d.status === 'secured') ? `
+                                <button class="btn-main" style="padding:6px; font-size:11px; background:#f59e0b; flex:1;" 
+                                    onclick="openDispute('${id}')">إبلاغ عن مماطلة المشتري 🚩</button>
+                            ` : ''}
+                        </div>
                     </div>`;
             }
         });
     });
-}  
+}
+
+// دالة فتح نزاع
+function openDispute(dealId) {
+    Swal.fire({
+        title: 'فتح نزاع رسمي',
+        text: 'سيتم تجميد المبلغ تماماً وتدخل الإدارة للفصل بينكما. يرجى ذكر السبب:',
+        input: 'textarea',
+        inputPlaceholder: 'مثلاً: البضاعة تالفة، أو المشتري لا يريد الدفع بعد الاستلام...',
+        showCancelButton: true,
+        confirmButtonText: 'إرسال للإدارة',
+        cancelButtonText: 'تراجع'
+    }).then((result) => {
+        if (result.isConfirmed && result.value) {
+            db.ref(`requests/escrow_deals/${dealId}`).update({
+                status: 'disputed',
+                disputeReason: result.value,
+                disputedBy: me.p,
+                disputeDate: Date.now()
+            }).then(() => {
+                Swal.fire('تم فتح النزاع', 'سيقوم المشرف بالتواصل معكم قريباً.', 'warning');
+            });
+        }
+    });
+}
 // 3. دالة تأكيد الاستلام (تحرير المال للبائع)
 function confirmReceipt(dealId) {
     Swal.fire({
