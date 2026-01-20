@@ -1229,7 +1229,7 @@
 
     const result = await Swal.fire({
         title: 'تأكيد عملية الشراء',
-        text: `سيتم حجز مبلغ ${price} SDM من رصيدك كبائع وسيط. هل تريد المتابعة؟`,
+        text: `سيتم حجز مبلغ ${price} SDM من رصيدك في نظام الوسيط. هل تريد المتابعة؟`,
         icon: 'info',
         showCancelButton: true,
         confirmButtonText: 'شراء الآن',
@@ -1240,25 +1240,24 @@
 
     if (result.isConfirmed) {
         showLoginLoading();
-        // حجز المنشور وتحديد المشتري
-        await db.ref(`${path}/${postId}`).update({ 
-            pending: true, 
-            buyerId: me.p 
-        });
-
-        // إرسال الطلب للبوت
+        
+        // أرسل الطلب للبوت فقط (لا تحاول تعديل المنشور من هنا لأن القواعد ستمنعك)
         db.ref('requests/escrow_deals').push({
             postId: postId,
-            path: path,
+            path: path, // posts أو vip_posts
             buyerId: me.p,
+            buyerName: me.n,
             sellerId: sellerId,
             amount: price,
             itemTitle: title,
-            status: 'pending_delivery',
+            status: 'pending_delivery', // الحالة التي يبحث عنها البوت
             date: Date.now()
         }).then(() => {
             hideLoginLoading();
-            Swal.fire('تم حجز السلعة', 'تواصل مع البائع لاستلام غرضك، ثم اضغط على "تأكيد الاستلام" لتسليمه المال.', 'success');
+            Swal.fire('تم إرسال الطلب', 'جاري حجز المبلغ من قبل البوت وتحديث حالة المنشور...', 'success');
+        }).catch(e => {
+            hideLoginLoading();
+            Swal.fire('خطأ', 'فشل إرسال الطلب: ' + e.message, 'error');
         });
     }
 }
