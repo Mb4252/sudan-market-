@@ -654,19 +654,19 @@
         const appScreen = document.getElementById('app-screen');
 
         if (user) {
-            // ... كود جلب بيانات المستخدم الموجود أصلاً ...
-            if(preloader) preloader.style.display = 'none'; // إخفاء التحميل
+            // إذا وجد مستخدم، ننتقل لدالة تشغيل التطبيق
+            startApp(user.uid);
         } else {
-            // إذا لم يكن هناك مستخدم، أظهر شاشة الدخول وأخفِ التحميل
+            // إذا لم يجد مستخدم، يخفي شاشة التحميل ويظهر شاشة الدخول
             if(preloader) preloader.style.display = 'none';
             if(!isGuest) {
                 authScreen.classList.remove('hidden');
-                authScreen.style.display = 'flex'; // تأكد من استخدام flex أو block
+                authScreen.style.display = 'flex';
                 appScreen.classList.add('hidden');
             }
         }
     });
-}
+    }
     // دالة معالجة الصور المحسنة (لا تمسح الحقول)
     async function encode(i, t) {
         if(!i.files[0]) return;
@@ -2181,35 +2181,43 @@ updateActiveTabUI(view);
     function startApp(uid) {
     isGuest = false;
     
-    // اطلب البيانات من قاعدة البيانات
+    // مراقبة بيانات المستخدم في قاعدة البيانات
     db.ref('users/' + uid).on('value', snap => {
+        const preloader = document.getElementById('main-preloader');
+        
         if (snap.exists()) {
             me = snap.val();
             me.p = uid;
             
-            // الآن وبعد أن تأكدنا من وصول بياناتك، نخفي شاشة التحميل ونظهر التطبيق
-            const preloader = document.getElementById('main-preloader');
+            // إخفاء شاشة التحميل تماماً وإظهار التطبيق
             if(preloader) preloader.style.display = 'none';
-            
             document.getElementById('auth-screen').classList.add('hidden');
             document.getElementById('app-screen').classList.remove('hidden');
 
-            // تشغيل الصفحة
+            // تشغيل آخر صفحة كان عليها المستخدم أو الرئيسية
             const lastView = localStorage.getItem('last_view') || 'home';
             render(lastView); 
             
+            // بدء الاستماع للتنبيهات (مثل تحويل الرصيد)
+            listenForUserAlerts();
             hideLoginLoading();
         } else {
-            // إذا كان المستخدم جديداً تماماً وليس له بيانات
-            alert("حسابك جديد، جاري تهيئة البيانات...");
+            // إذا كان المستخدم جديداً (أول مرة يسجل بجوجل)
             db.ref('users/' + uid).set({
                 n: auth.currentUser.displayName || "مستخدم جديد",
                 sdmBalance: 0,
                 role: "user",
                 numericId: Math.floor(100000 + Math.random() * 900000).toString(),
-                pic: auth.currentUser.photoURL || ""
+                pic: auth.currentUser.photoURL || "",
+                vipStatus: "inactive",
+                wa: ""
             });
         }
+    }, error => {
+        // في حال وجود مشكلة في الصلاحيات أو الشبكة
+        console.error("Firebase Error:", error);
+        const preloader = document.getElementById('main-preloader');
+        if(preloader) preloader.innerHTML = `<p style="color:white; padding:20px;">خطأ في الاتصال بالخادم، يرجى التأكد من الإنترنت أو الـ VPN</p>`;
     });
 }
     
