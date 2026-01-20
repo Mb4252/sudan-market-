@@ -1219,39 +1219,55 @@
     async function confirmReceipt(postId, path) {
     const res = await Swal.fire({
         title: 'تأكيد استلام السلعة',
-        text: 'هل استلمت المنتج بالفعل؟ بمجرد التأكيد سيتم تحويل المال للبائع فوراً ولا يمكن التراجع.',
+        text: 'هل استلمت المنتج بالفعل؟ بمجرد التأكيد سيتم تحويل المال للبائع فوراً.',
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonText: 'نعم، استلمت وأكد التحويل',
-        cancelButtonText: 'ليس بعد'
+        confirmButtonText: 'نعم، أكد التحويل',
+        cancelButtonText: 'ليس بعد',
+        background: '#1e293b',
+        color: '#fff'
     });
 
     if (res.isConfirmed) {
         showLoginLoading();
-        // البحث عن الصفقة النشطة لهذا المنشور
-        db.ref('requests/escrow_deals').orderByChild('postId').equalTo(postId).once('value', snap => {
-            let dealKey = null;
-            snap.forEach(child => {
-                if (child.val().buyerId === me.p && child.val().status === 'secured') {
-                    dealKey = child.key;
+        
+        // البحث عن الصفقة النشطة المرتبطة بهذا المنشور والمشتري
+        db.ref('requests/escrow_deals')
+            .orderByChild('postId')
+            .equalTo(postId)
+            .once('value', snap => {
+                let dealKey = null;
+                snap.forEach(child => {
+                    const deal = child.val();
+                    // التأكد أن الصفقة تخص المشتري وحالتها "محجوزة بنجاح"
+                    if (deal.buyerId === me.p && deal.status === 'secured') {
+                        dealKey = child.key;
+                    }
+                });
+
+                if (dealKey) {
+                    // تحديث الحالة ليراها البوت ويبدأ التحويل
+                    db.ref(`requests/escrow_deals/${dealKey}`).update({
+                        status: 'confirmed_by_buyer',
+                        updatedAt: firebase.database.ServerValue.TIMESTAMP
+                    }).then(() => {
+                        hideLoginLoading();
+                        Swal.fire({
+                            title: 'تم إرسال التأكيد',
+                            text: 'جاري تحويل المبلغ للبائع وتحديث حالة المنشور خلال ثوانٍ...',
+                            icon: 'success'
+                        });
+                    }).catch(err => {
+                        hideLoginLoading();
+                        Swal.fire('خطأ في الصلاحيات', 'تعذر تحديث الحالة: ' + err.message, 'error');
+                    });
+                } else {
+                    hideLoginLoading();
+                    Swal.fire('خطأ', 'لم يتم العثور على صفقة محجوزة لهذا المنشور. ربما تم تأكيدها مسبقاً.', 'error');
                 }
             });
-
-            if (dealKey) {
-                // تحديث الحالة للبوت ليقوم بالتحويل
-                db.ref(`requests/escrow_deals/${dealKey}`).update({
-                    status: 'confirmed_by_buyer'
-                }).then(() => {
-                    hideLoginLoading();
-                    Swal.fire('تم التأكيد', 'سيتم تحويل المال للبائع وتغيير حالة المنشور إلى "تم البيع" خلال ثوانٍ.', 'success');
-                });
-            } else {
-                hideLoginLoading();
-                Swal.fire('خطأ', 'لم يتم العثور على صفقة نشطة لم تؤكد بعد.', 'error');
-            }
-        });
     }
-    }
+}
     function loadComments(path, postId) {
         const commentsList = document.getElementById(`comments-list-${postId}`);
         if (!commentsList) return;
