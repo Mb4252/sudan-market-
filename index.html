@@ -51,7 +51,7 @@
         .hidden { display: none !important; }
         /* منع الوميض: إخفاء الشاشات عند التحميل */
 /* تم التعديل: إزالة !important للسماح للجافاسكريبت بإظهارها */
-#auth-screen, #app-screen { display: none !important; }
+#auth-screen, #app-screen { display: none; }
 /* شاشة التحميل الأولية */
 #main-preloader {
     position: fixed;
@@ -2180,31 +2180,36 @@ updateActiveTabUI(view);
     function startApp(uid) {
     isGuest = false;
     
-    // استعادة الصفحة الأخيرة من الذاكرة
-    const lastView = localStorage.getItem('last_view') || 'home';
-    const lastExtra = localStorage.getItem('last_extra') || null;
-
-    hStack = ['home']; 
-    if(lastView !== 'home') hStack.push(lastView);
-
+    // اطلب البيانات من قاعدة البيانات
     db.ref('users/' + uid).on('value', snap => {
         if (snap.exists()) {
             me = snap.val();
             me.p = uid;
-            document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
-            if (hStack[hStack.length-1] === 'home') showWelcome();
+            
+            // الآن وبعد أن تأكدنا من وصول بياناتك، نخفي شاشة التحميل ونظهر التطبيق
+            const preloader = document.getElementById('main-preloader');
+            if(preloader) preloader.style.display = 'none';
+            
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('app-screen').classList.remove('hidden');
+
+            // تشغيل الصفحة
+            const lastView = localStorage.getItem('last_view') || 'home';
+            render(lastView); 
+            
             hideLoginLoading();
+        } else {
+            // إذا كان المستخدم جديداً تماماً وليس له بيانات
+            alert("حسابك جديد، جاري تهيئة البيانات...");
+            db.ref('users/' + uid).set({
+                n: auth.currentUser.displayName || "مستخدم جديد",
+                sdmBalance: 0,
+                role: "user",
+                numericId: Math.floor(100000 + Math.random() * 900000).toString(),
+                pic: auth.currentUser.photoURL || ""
+            });
         }
     });
-
-    document.getElementById('auth-screen').classList.add('hidden');
-    document.getElementById('app-screen').classList.remove('hidden');
-    
-    listenForUserAlerts();
-    listenForDevAlerts();
-    
-    // التشغيل على الصفحة الأخيرة
-    render(lastView, lastExtra);
 }
     
     // 2. إضافة دالة listenForUserAlerts المفقودة
