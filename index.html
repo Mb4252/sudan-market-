@@ -1001,35 +1001,34 @@
                     <div style="background:rgba(16, 185, 129, 0.1); color:var(--green); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--green); font-weight:bold; margin-top:10px;">
                         <i class="fas fa-check-double"></i> تمت عملية البيع بنجاح
                     </div>`;
-            } else if (p.pending) {
-                // حالة قيد الشراء (محجوز)
-                if (isBuyer) {
-                    actionButtons = `
-                        <div style="background:rgba(59, 130, 246, 0.1); padding:10px; border-radius:10px; border:1px solid var(--primary); margin-top:10px; margin-bottom:10px;">
-                            <p style="color:var(--text-main); font-size:12px; margin:0; text-align:center;">⚠️ المال محجوز الآن، اضغط أدناه بعد استلام البضاعة</p>
-                        </div>
-                        <button class="btn-main" style="background:var(--primary)" onclick="confirmReceipt('${p.id}')">✅ تأكيد استلام البضاعة</button>`;
-                } else {
-                    actionButtons = `
-                        <div style="background:rgba(245, 158, 11, 0.1); color:var(--accent); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--accent); margin-top:10px; opacity:0.8;">
-                            <i class="fas fa-hourglass-half"></i> عذراً، هذا المنشور محجوز (قيد الشراء)
-                        </div>`;
-                }
-            } else {
-                // الحالة العادية (متاح للعرض)
-                if (isOwner) {
-                    actionButtons = `<p style="text-align:center; color:var(--text-sec); font-size:12px; margin-top:10px;">هذا إعلانك (متاح للعرض الآن)</p>`;
-                } else {
-                    actionButtons = `
-                        <button class="btn-main" style="background:var(--green); color:white;" onclick="buyItem('${path}', '${p.id}', ${p.price}, '${p.userId}', '${p.title}')">
-                            <i class="fas fa-shield-alt"></i> شراء عبر الوسيط الآمن
-                        </button>
-                        <button class="btn-guest" style="width:100%; border-color:var(--text-sec); margin-top:8px;" onclick="window.open('https://wa.me/${p.userWa}?text=بخصوص إعلانك: ${p.title}')">
-                            <i class="fab fa-whatsapp"></i> استفسار عبر واتساب
-                        </button>`;
-                }
-            }
+            // --- استبدل منطقة p.pending في دالة loadPosts بهذا الكود الصارم ---
 
+    else if (p.pending) {
+      if (me && me.p === p.buyerId) {
+        // ما يراه المشتري فقط: زر التأكيد
+        actionButtons = `
+            <div style="background:rgba(59, 130, 246, 0.1); padding:10px; border-radius:10px; border:1px solid var(--primary); margin-top:10px;">
+                <p style="color:var(--text-main); font-size:12px; margin:0; text-align:center;">🔒 المال محجوز الآن لدى الوسيط.</p>
+                <p style="color:var(--text-sec); font-size:11px; margin:5px 0 0 0; text-align:center;">اضغط أدناه "فقط" بعد استلامك الغرض بنجاح:</p>
+            </div>
+            <button class="btn-main" style="background:var(--green); margin-top:10px;" onclick="confirmReceipt('${p.id}')">✅ تأكيد استلام البضاعة</button>`;
+      } 
+      else if (me && me.p === p.userId) {
+        // ما يراه البائع: حالة انتظار فقط
+        actionButtons = `
+            <div style="background:rgba(245, 158, 11, 0.1); color:var(--accent); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--accent); margin-top:10px;">
+                <i class="fas fa-hourglass-start"></i> بانتظار تأكيد المشتري..
+                <p style="font-size:10px; margin-top:5px; color:var(--text-main);">المال محجوز في النظام، يرجى تسليم البضاعة للمشتري.</p>
+            </div>`;
+      } 
+      else {
+        // ما يراه بقية المستخدمين
+        actionButtons = `
+            <div style="background:rgba(245, 158, 11, 0.1); color:var(--accent); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--accent); margin-top:10px; opacity:0.8;">
+                <i class="fas fa-lock"></i> عذراً، هذا المنشور محجوز (قيد الشراء)
+            </div>`;
+      }
+  }
             // --- بناء تصميم المنشور ---
             const postHtml = `
                 <div class="post" id="post-${p.id}" style="${p.sold ? 'opacity:0.8;' : ''}">
