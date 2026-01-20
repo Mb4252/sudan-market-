@@ -2639,19 +2639,46 @@ function resolveByAdmin(dealId, winner) {
         });
     });
     }
-    // ضعه قبل إغلاق وسام الـ </script>
-window.onload = function() {
-    setTimeout(() => {
-        const preloader = document.getElementById('main-preloader');
-        if (preloader && preloader.style.display !== 'none') {
-            preloader.style.display = 'none';
-            // إذا كان Firebase عالقاً، اظهر صفحة الدخول على الأقل
-            if (!auth.currentUser) {
-                document.getElementById('auth-screen').style.display = 'flex';
+</script>
+    <!-- ضع هذا الكود بعد إغلاق السكريبت الرئيسي وقبل وسم </body> مباشرة -->
+<script>
+    // كود الأمان المنفصل - يعمل بشكل مستقل تماماً
+    (function() {
+        console.log("بدء تشغيل محرك الأمان المنفصل...");
+        
+        var forceHide = function() {
+            var preloader = document.getElementById('main-preloader');
+            var authScreen = document.getElementById('auth-screen');
+            
+            if (preloader) {
+                preloader.style.setProperty('display', 'none', 'important');
+                console.log("تم إخفاء شاشة التحميل إجبارياً");
             }
-        }
-    }, 4000); // 4 ثوانٍ كافية جداً
-};
+
+            // محاولة إظهار شاشة الدخول بأمان
+            try {
+                // نتحقق هل الفايربيس محمل وهل يوجد مستخدم
+                if (typeof firebase !== 'undefined' && firebase.auth().currentUser) {
+                    // إذا وجد مستخدم، الكود الرئيسي سيتولى الأمر (إلا إذا كان معطلاً)
+                    document.getElementById('app-screen').style.display = 'block';
+                } else {
+                    if (authScreen) authScreen.style.display = 'flex';
+                }
+            } catch (e) {
+                // في حالة فشل الفايربيس تماماً، اظهر شاشة الدخول على الأقل
+                if (authScreen) authScreen.style.display = 'flex';
+                console.log("تعذر التحقق من المستخدم، تم إظهار شاشة الدخول كحل بديل");
+            }
+        };
+
+        // تنفيذ الإخفاء بعد 5 ثوانٍ مهما كانت حالة السيرفر
+        setTimeout(forceHide, 5000);
+
+        // تنفيذ الإخفاء فور اكتمال تحميل الصفحة
+        window.addEventListener('load', function() {
+            setTimeout(forceHide, 1000);
+        });
+    })();
 </script>
 </body>
 </html>
