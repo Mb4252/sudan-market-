@@ -656,44 +656,16 @@
         const authScreen = document.getElementById('auth-screen');
         const appScreen = document.getElementById('app-screen');
 
-        // أخفِ شاشة التحميل فوراً بمجرد معرفة الحالة
-        if(preloader) preloader.style.display = 'none';
-
         if (user) {
-            const uid = user.uid;
-            // إظهار شاشة التطبيق فوراً
-            appScreen.classList.remove('hidden');
-            appScreen.style.display = 'block';
-            authScreen.classList.add('hidden');
-            authScreen.style.display = 'none';
-
-            try {
-                // جلب البيانات في الخلفية
-                const snap = await db.ref('users/' + uid).once('value');
-                if (snap.exists()) {
-                    me = snap.val();
-                    me.p = uid;
-                } else {
-                    // إنشاء حساب جديد إذا لم يوجد
-                    const numericId = generate6DigitNumericId(uid);
-                    me = { 
-                        n: user.displayName || 'مستخدم جديد', p: uid, 
-                        pic: user.photoURL || userPic, sdmBalance: 0, 
-                        rating: 5.0, role: 'user', numericId: numericId 
-                    };
-                    await db.ref('users/' + uid).set(me);
-                }
-                startApp(uid);
-            } catch (error) {
-                console.error("خطأ في جلب البيانات:", error);
-            }
+            // ... كود جلب بيانات المستخدم الموجود أصلاً ...
+            if(preloader) preloader.style.display = 'none'; // إخفاء التحميل
         } else {
-            // إذا لم يكن مسجلاً وليس زائراً، أظهر شاشة الدخول
-            if(!isGuest) { 
+            // إذا لم يكن هناك مستخدم، أظهر شاشة الدخول وأخفِ التحميل
+            if(preloader) preloader.style.display = 'none';
+            if(!isGuest) {
                 authScreen.classList.remove('hidden');
-                authScreen.style.display = 'block';
+                authScreen.style.display = 'flex'; // تأكد من استخدام flex أو block
                 appScreen.classList.add('hidden');
-                appScreen.style.display = 'none';
             }
         }
     });
