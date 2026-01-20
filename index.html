@@ -50,8 +50,10 @@
 
         .hidden { display: none !important; }
         /* منع الوميض: إخفاء الشاشات عند التحميل */
-/* تم التعديل: إزالة !important للسماح للجافاسكريبت بإظهارها */
-#auth-screen, #app-screen { display: none; }
+#auth-screen, #app-screen { 
+    display: none !important; 
+}
+
 /* شاشة التحميل الأولية */
 #main-preloader {
     position: fixed;
@@ -644,8 +646,7 @@
     }
 
     // --- مراقبة حالة المصادقة - النسخة المحسنة ---
-    // --- 1. نظام مراقبة دخول المستخدم (استبدل القديم بهذا) ---
-function initializeAuthObserver() {
+    function initializeAuthObserver() {
     if (authObserverInitialized) return;
     authObserverInitialized = true;
     
@@ -654,71 +655,54 @@ function initializeAuthObserver() {
         const authScreen = document.getElementById('auth-screen');
         const appScreen = document.getElementById('app-screen');
 
-        // أهم خطوة: إخفاء شاشة التحميل فوراً عند حدوث أي تغيير في الحالة
-        if (preloader) preloader.style.display = 'none';
-
         if (user) {
-            console.log("مستخدم مسجل:", user.email);
-            startApp(user.uid);
+            const uid = user.uid;
+            try {
+                const snap = await db.ref('users/' + uid).once('value');
+                
+                if (snap.exists()) {
+                    me = snap.val();
+                    me.p = uid;
+                    // تحديث الصلاحيات إذا كان المسؤول
+                    if (user.email === ADMIN_EMAIL && me.role !== 'admin') {
+                        me.role = 'admin';
+                        await db.ref('users/' + uid).update({ role: 'admin' });
+                    }
+                } else {
+                    // إنشاء حساب جديد إذا لم يكن موجوداً
+                    const numericId = generate6DigitNumericId(uid);
+                    const newUser = { 
+                        n: user.displayName || 'مستخدم جديد', p: uid, email: user.email, 
+                        pic: user.photoURL || userPic, sdmBalance: 0, rating: 5.0, 
+                        role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
+                        numericId: numericId, joinDate: Date.now() 
+                    };
+                    await db.ref('users/' + uid).set(newUser);
+                    me = newUser;
+                }
+
+                // تشغيل التطبيق
+                startApp(uid);
+
+                // إظهار الشاشة فوراً وإخفاء التحميل
+                if(preloader) preloader.style.display = 'none';
+                appScreen.style.setProperty('display', 'block', 'important');
+                authScreen.style.setProperty('display', 'none', 'important');
+
+            } catch (error) {
+                console.error("خطأ في جلب البيانات:", error);
+                if(preloader) preloader.style.display = 'none';
+            }
         } else {
-            console.log("لا يوجد مستخدم - إظهار صفحة الدخول");
-            if (!isGuest) {
-                // إظهار صفحة الدخول يدويًا
-                authScreen.style.display = 'flex';
-                appScreen.style.display = 'none';
+            // لا يوجد مستخدم - إظهار شاشة الدخول فقط
+            if(!isGuest) { 
+                if(preloader) preloader.style.display = 'none';
+                authScreen.style.setProperty('display', 'block', 'important');
+                appScreen.style.setProperty('display', 'none', 'important');
             }
         }
-    }, error => {
-        // في حالة وجود خطأ في الاتصال
-        const preloader = document.getElementById('main-preloader');
-        if (preloader) preloader.style.display = 'none';
-        alert("خطأ في الاتصال بـ Firebase: " + error.message);
     });
-}
-
-// --- 2. تشغيل التطبيق وجلب بيانات المستخدم ---
-function startApp(uid) {
-    const preloader = document.getElementById('main-preloader');
-    const authScreen = document.getElementById('auth-screen');
-    const appScreen = document.getElementById('app-screen');
-
-    // إخفاء التحميل والبدء فوراً
-    if (preloader) preloader.style.display = 'none';
-    authScreen.style.display = 'none';
-    appScreen.style.display = 'block';
-
-    db.ref('users/' + uid).on('value', snap => {
-        if (snap.exists()) {
-            me = snap.val();
-            me.p = uid;
-            
-            // باقي أوامرك البرمجية...
-            if(!me.numericId) {
-                const nid = generate6DigitNumericId(uid);
-                db.ref('users/' + uid).update({ numericId: nid });
-            }
-            listenForUserAlerts();
-            checkForBroadcastMessage();
-            listenForDevAlerts();
-            render(localStorage.getItem('last_view') || 'home', localStorage.getItem('last_extra'));
-        } else {
-            // كود المستخدم الجديد
-            const newUser = {
-                n: auth.currentUser.displayName || "مستخدم جديد",
-                p: uid,
-                pic: auth.currentUser.photoURL || 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
-                sdmBalance: 0,
-                rating: 5.0,
-                role: (auth.currentUser.email === ADMIN_EMAIL) ? 'admin' : 'user',
-                numericId: generate6DigitNumericId(uid),
-                wa: "",
-                vipStatus: 'none',
-                joinedAt: Date.now()
-            };
-            db.ref('users/' + uid).set(newUser);
-        }
-    });
-}
+    }                             
     // دالة معالجة الصور المحسنة (لا تمسح الحقول)
     async function encode(i, t) {
         if(!i.files[0]) return;
@@ -984,112 +968,98 @@ function startApp(uid) {
     // ======================================================
     // 1. نظام المنشورات
     // ======================================================
+
     function loadPosts(path, sub, containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
+        const container = document.getElementById(containerId);
+        if (!container) return;
 
-    db.ref(path).on('value', snap => {
-        container.innerHTML = "";
-        const data = snap.val();
-        if (!data) {
-            container.innerHTML = `<div style="text-align:center; padding:20px; color:gray;">لا توجد منشورات حالياً</div>`;
-            return;
-        }
+        db.ref(path).on('value', snap => {
+            container.innerHTML = "";
+            const data = snap.val();
+            if (!data) {
+                container.innerHTML = `<div style="text-align:center; padding:20px; color:gray;">لا توجد منشورات حالياً</div>`;
+                return;
+            }
 
-        const postsArray = Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse();
-        postsArray.forEach(p => {
-            if (path === 'posts' && sub && p.sub !== sub) return;
+            const postsArray = Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse();
+            postsArray.forEach(p => {
+                if (path === 'posts' && sub && p.sub !== sub) return;
 
-            const isOwner = me && me.p === p.userId;
-            const isAdmin = me && me.role === 'admin';
-            const showMenu = isOwner || isAdmin;
-            
-            const postHtml = `
-                <div class="post" id="post-${p.id}">
-                    ${showMenu ? `
-                        <div class="post-menu">
-                            <div class="post-menu-btn" onclick="togglePostMenu('${p.id}')">
-                                <i class="fas fa-ellipsis-v"></i>
-                            </div>
-                            <div class="post-menu-dropdown" id="menu-${p.id}">
-                                ${isOwner ? `
-                                    <div class="post-menu-item" onclick="markAsSold('${path}', '${p.id}')">
-                                        <i class="fas fa-check-circle"></i> تم البيع
+                const isOwner = me && me.p === p.userId;
+                const isAdmin = me && me.role === 'admin';
+                const showMenu = isOwner || isAdmin;
+                
+                const postHtml = `
+                    <div class="post" id="post-${p.id}">
+                        ${showMenu ? `
+                            <div class="post-menu">
+                                <div class="post-menu-btn" onclick="togglePostMenu('${p.id}')">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </div>
+                                <div class="post-menu-dropdown" id="menu-${p.id}">
+                                    ${isOwner ? `
+                                        <div class="post-menu-item" onclick="markAsSold('${path}', '${p.id}')">
+                                            <i class="fas fa-check-circle"></i> تم البيع
+                                        </div>
+                                        <div class="post-menu-item" onclick="editPost('${path}', '${p.id}')">
+                                            <i class="fas fa-edit"></i> تعديل المنشور
+                                        </div>
+                                    ` : ''}
+                                    <div class="post-menu-item" onclick="deletePost('${path}', '${p.id}', ${isAdmin})" style="color:var(--red)">
+                                        <i class="fas fa-trash"></i> ${isAdmin ? 'حذف (أدمن)' : 'حذف المنشور'}
                                     </div>
-                                    <div class="post-menu-item" onclick="editPost('${path}', '${p.id}')">
-                                        <i class="fas fa-edit"></i> تعديل المنشور
-                                    </div>
-                                ` : ''}
-                                <div class="post-menu-item" onclick="deletePost('${path}', '${p.id}', ${isAdmin})" style="color:var(--red)">
-                                    <i class="fas fa-trash"></i> ${isAdmin ? 'حذف (أدمن)' : 'حذف المنشور'}
                                 </div>
                             </div>
+                        ` : ''}
+                        <div class="post-img-container">
+                            ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="height:100%; background:#2d3748; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image" style="font-size:40px; color:#4a5568;"></i></div>`}
+                            ${p.sold ? '<div class="sold-overlay">تم البيع</div>' : ''}
+                            ${p.discount ? `<div class="discount-tag" style="position:absolute; top:10px; left:10px;">-${p.discount}%</div>` : ''}
                         </div>
-                    ` : ''}
-                    <div class="post-img-container">
-                        ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="height:100%; background:#2d3748; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image" style="font-size:40px; color:#4a5568;"></i></div>`}
-                        
-                        <!-- طبقات الحالة فوق الصورة (الكود الجديد الذي طلبته) -->
-                        ${p.sold ? 
-                            '<div class="sold-overlay" style="background:rgba(0,0,0,0.7); z-index:5;">تم البيع ✓</div>' : 
-                            (p.pending ? '<div class="sold-overlay" style="background:rgba(245, 158, 11, 0.8); z-index:5;">قيد المعالجة (محجوز)</div>' : '')
-                        }
-                        
-                        ${p.discount ? `<div class="discount-tag" style="position:absolute; top:10px; left:10px; z-index:6;">-${p.discount}%</div>` : ''}
-                    </div>
-                    <div style="padding:15px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <h3 style="margin:0;">${escapeHtml(p.title)}</h3>
-                            <b style="color:var(--neon-blue);">${p.price} SDM</b>
-                        </div>
-                        <p style="font-size:13px; color:var(--text-sec); margin:10px 0;">${escapeHtml(p.desc)}</p>
-                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-                            <img src="${p.userPic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" style="width:25px; height:25px; border-radius:50%; object-fit:cover;">
-                            <span style="font-size:12px; color:var(--accent); cursor:pointer;" onclick="nav('profile', '${p.userId}')">${escapeHtml(p.userName)}</span>
-                            <span style="font-size:10px; color:var(--text-sec);">${p.numericId || '000000'}</span>
-                        </div>
-                        <div class="post-date">
-                            <i class="far fa-clock"></i>
-                            ${new Date(p.date).toLocaleDateString('ar-EG')} - 
-                            ${new Date(p.date).toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'})}
-                        </div>
-
-                        <!-- أزرار التواصل والشراء (المنطق الجديد الذي طلبته) -->
-                        <button class="btn-main" onclick="window.open('https://wa.me/${p.userWa}?text=بخصوص إعلانك: ${p.title}')">
-                            <i class="fab fa-whatsapp"></i> تواصل عبر واتساب
-                        </button>
-                        
-                        ${(!isOwner && !p.sold && !p.pending) ? `
-                            <button class="btn-main" style="background:var(--green); margin-top:5px;" 
-                                onclick="initiateEscrow('${p.id}', '${p.userId}', ${p.price}, '${escapeHtml(p.title)}')">
-                                <i class="fas fa-shield-alt"></i> شراء آمن
-                            </button>
-                        ` : (p.pending && !p.sold ? `<div style="text-align:center; color:orange; font-size:12px; padding:10px; border:1px dashed orange; border-radius:10px; margin-top:10px;">هذا المنتج محجوز حالياً لإتمام عملية دفع</div>` : '')}
-                        
-                        ${p.sold ? `<div style="text-align:center; color:var(--red); font-weight:bold; padding:10px; background:rgba(239, 68, 68, 0.1); border-radius:10px; margin-top:10px;">المنتج مباع - سيختفي الإعلان قريباً</div>` : ''}
-
-                        <!-- قسم التعليقات -->
-                        <div class="comments-section" id="comments-${p.id}">
-                            <div style="font-size:12px; color:var(--text-sec); margin-bottom:10px;">
-                                <i class="fas fa-comments"></i> التعليقات
+                        <div style="padding:15px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <h3 style="margin:0;">${escapeHtml(p.title)}</h3>
+                                <b style="color:var(--neon-blue);">${p.price} SDM</b>
                             </div>
-                            <div id="comments-list-${p.id}" style="max-height:200px; overflow-y:auto; margin-bottom:10px;"></div>
-                            ${!isGuest ? `
-                                <div class="comment-input-container">
-                                    <input type="text" class="comment-input" id="comment-input-${p.id}" placeholder="أضف تعليقاً...">
-                                    <button class="comment-send-btn" onclick="addComment('${path}', '${p.id}')">
-                                        <i class="fas fa-paper-plane"></i>
-                                    </button>
+                            <p style="font-size:13px; color:var(--text-sec); margin:10px 0;">${escapeHtml(p.desc)}</p>
+                            <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                                <img src="${p.userPic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" style="width:25px; height:25px; border-radius:50%; object-fit:cover;">
+                                <span style="font-size:12px; color:var(--accent); cursor:pointer;" onclick="nav('profile', '${p.userId}')">${escapeHtml(p.userName)}</span>
+                                <span style="font-size:10px; color:var(--text-sec);">${p.numericId || '000000'}</span>
+                            </div>
+                            <div class="post-date">
+                                <i class="far fa-clock"></i>
+                                ${new Date(p.date).toLocaleDateString('ar-EG')} - 
+                                ${new Date(p.date).toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'})}
+                            </div>
+                            <button class="btn-main" onclick="window.open('https://wa.me/${p.userWa}?text=بخصوص إعلانك: ${p.title}')"><i class="fab fa-whatsapp"></i> تواصل عبر واتساب</button>
+                            
+                            <!-- قسم التعليقات -->
+                            <div class="comments-section" id="comments-${p.id}">
+                                <div style="font-size:12px; color:var(--text-sec); margin-bottom:10px;">
+                                    <i class="fas fa-comments"></i> التعليقات
                                 </div>
-                            ` : ''}
+                                <div id="comments-list-${p.id}" style="max-height:200px; overflow-y:auto; margin-bottom:10px;">
+                                    <!-- التعليقات تظهر هنا -->
+                                </div>
+                                ${!isGuest ? `
+                                    <div class="comment-input-container">
+                                        <input type="text" class="comment-input" id="comment-input-${p.id}" placeholder="أضف تعليقاً...">
+                                        <button class="comment-send-btn" onclick="addComment('${path}', '${p.id}')">
+                                            <i class="fas fa-paper-plane"></i>
+                                        </button>
+                                    </div>
+                                ` : '<div style="text-align:center; color:var(--text-sec); font-size:12px; padding:10px;">سجل الدخول لإضافة تعليق</div>'}
+                            </div>
                         </div>
-                    </div>
-                </div>`;
-            container.innerHTML += postHtml;
-            loadComments(path, p.id);
+                    </div>`;
+                container.innerHTML += postHtml;
+                
+                loadComments(path, p.id);
+            });
         });
-    });
-}
+    }
+
     function togglePostMenu(postId) {
         const allMenus = document.querySelectorAll('.post-menu-dropdown');
         allMenus.forEach(menu => {
@@ -1335,33 +1305,29 @@ function startApp(uid) {
             });
         });
     }
-async function approveCoins(reqId, userId, qty) {
-    // رسالة تنبيه للأدمن
-    Swal.fire({ 
-        title: 'جاري إرسال الأمر للبوت...', 
-        text: 'سيقوم الخادم بشحن الرصيد لضمان الحماية',
-        allowOutsideClick: false,
-        didOpen: () => Swal.showLoading() 
-    });
 
-    try {
-        // نغير الحالة فقط، والبوت سيتكفل بالباقي
-        await db.ref(`coin_requests/${reqId}`).update({ 
-            status: 'approved_by_admin' 
-        });
-
-        Swal.fire({
-            title: 'تمت الموافقة بنجاح',
-            text: 'البوت يقوم الآن بإضافة الرصيد للمستخدم وتحديث سجلاته',
-            icon: 'success',
-            timer: 2500
-        });
-    } catch (error) {
-        console.error("Error:", error);
-        Swal.fire('خطأ', 'تعذر الاتصال بقاعدة البيانات', 'error');
+    async function approveCoins(reqId, userId, qty) {
+        Swal.fire({ title: 'جاري المعالجة...', didOpen: () => Swal.showLoading() });
+        const userRef = db.ref(`users/${userId}/sdmBalance`);
+        const snap = await userRef.once('value');
+        const newBal = (snap.val() || 0) + qty;
+        
+        await userRef.set(newBal);
+        await db.ref(`coin_requests/${reqId}`).update({ status: 'approved' });
+        await db.ref('transactions').push({ type: 'deposit', to: userId, from: 'SYSTEM', amount: qty, date: Date.now() });
+        await db.ref(`alerts/${userId}`).push({ msg: `✅ تم تأكيد إيداع ${qty} SDM في حسابك`, type: 'success', date: Date.now() });
+        
+        Swal.fire('نجاح', 'تم شحن الرصيد للمستخدم', 'success');
     }
-}
-    
+
+    async function rejectCoins(reqId, userId) {
+        const { value: reason } = await Swal.fire({ title: 'سبب الرفض؟', input: 'text', showCancelButton: true });
+        if (reason) {
+            await db.ref(`coin_requests/${reqId}`).update({ status: 'rejected', reason: reason });
+            await db.ref(`alerts/${userId}`).push({ msg: `❌ تم رفض طلب الإيداع: ${reason}`, type: 'error', date: Date.now() });
+            Swal.fire('تم الرفض', 'أرسلنا تنبيه للمستخدم', 'info');
+        }
+    }
 
     // ======================================================
     // 3. نظام الألعاب
@@ -1747,7 +1713,6 @@ async function approveCoins(reqId, userId, qty) {
     // ======================================================
 
     function render(view, extra) {
-        if (!me && !isGuest) return;
         const area = document.getElementById('content-area');
         const adminArea = document.getElementById('admin-notifications-area');
         const searchEl = document.getElementById('main-search');
@@ -1821,16 +1786,12 @@ async function approveCoins(reqId, userId, qty) {
                     <h3 style="margin-top:0; color:var(--accent);"><i class="fas fa-shield-alt"></i> طلبات الإيداع (للإدارة)</h3>
                     <div id="admin-coin-requests-list">جاري التحميل...</div>
                 </div>
-                ${(me.role === 'admin') ? `
-              <div style="padding:15px; background:rgba(239, 68, 68, 0.1); border:1px solid var(--red); border-radius:15px; margin:15px;">
-              <h3 style="margin-top:0; color:var(--red);"><i class="fas fa-gavel"></i> نزاعات بانتظار الفصل</h3>
-              <div id="admin-disputes-list">جاري تحميل النزاعات...</div>
-              </div>
-              ` : ''}                
+                ` : ''}
+
                 <div style="padding:20px;">
                     <h3>شراء عملة من المطور</h3>
                     <div class="post" style="padding:20px;">
-                        <p style="color:var(--text-sec)">بنك الخرطوم: <b style="color:white; font-size:18px;">4426148</b> (محمد عبد المعطي)</p>
+                        <p style="color:var(--text-sec)">بنك الخرطوم: <b style="color:white; font-size:18px;">4426148</b> (محمد)</p>
                         <input id="buy-qty" type="number" placeholder="أدخل الكمية (SDM)" oninput="calcBuyCost(this.value)">
                         <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; margin:10px 0; text-align:center;">المطلوب: <b id="buy-cost-display" style="color:var(--accent);">0</b> جنيه</div>
                         <div class="file-input-container">
@@ -1842,17 +1803,13 @@ async function approveCoins(reqId, userId, qty) {
                         </div>
                         <button class="btn-main" onclick="requestCoins()">إرسال الطلب</button>
                     </div>
-                    <h3 style="margin-top:20px; color:var(--accent);"><i class="fas fa-box"></i> مشتريات بانتظار التأكيد</h3>
-                     <div id="escrow-list" style="background:rgba(255,255,255,0.05); padding:10px; border-radius:15px; min-height:50px; margin-bottom:20px;">
-                     جاري تحميل العمليات...
-                    </div>
                     <h3>سجل المعاملات</h3>
                     <div id="transactions-history">جاري التحميل...</div>
                 </div>`;
-             loadTransactions();
-loadMyEscrowDeals(); // أضف هذا السطر هنا ضروري جداً
-                  if(me.role === 'admin') loadAdminDisputes();
-if(me.role === 'admin') loadAdminCoinRequests();           
+            
+            loadTransactions(); 
+            if(me.role === 'admin') loadAdminCoinRequests(); 
+        
         } else if (view === 'games') {
             const gamesHTML = renderGames();
             area.innerHTML = `
@@ -2228,6 +2185,38 @@ updateActiveTabUI(view);
     });
     
     // ======== الإصلاح هنا: إضافة الدوال المفقودة ========
+    
+    // 1. إضافة دالة startApp المفقودة
+    function startApp(uid) {
+    isGuest = false;
+    
+    // استعادة الصفحة الأخيرة من الذاكرة
+    const lastView = localStorage.getItem('last_view') || 'home';
+    const lastExtra = localStorage.getItem('last_extra') || null;
+
+    hStack = ['home']; 
+    if(lastView !== 'home') hStack.push(lastView);
+
+    db.ref('users/' + uid).on('value', snap => {
+        if (snap.exists()) {
+            me = snap.val();
+            me.p = uid;
+            document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
+            if (hStack[hStack.length-1] === 'home') showWelcome();
+            hideLoginLoading();
+        }
+    });
+
+    document.getElementById('auth-screen').classList.add('hidden');
+    document.getElementById('app-screen').classList.remove('hidden');
+    
+    listenForUserAlerts();
+    listenForDevAlerts();
+    
+    // التشغيل على الصفحة الأخيرة
+    render(lastView, lastExtra);
+}
+    
     // 2. إضافة دالة listenForUserAlerts المفقودة
     function listenForUserAlerts() {
     if (isGuest || !me) return;
@@ -2270,81 +2259,85 @@ updateActiveTabUI(view);
     });
 }
     // 3. إضافة دالة showTransfer المفقودة
-     // --- دالة التحويل المحدثة والمصلحة ---
-    async function showTransfer() {
-        if (isGuest) return;
+     async function showTransfer() {
+    if (isGuest) return;
 
-        Swal.fire({
-            title: 'تحويل عملات SDM',
-            html: `
-                <div style="text-align:right; font-size:14px; margin-bottom:5px;">رقم المستلم (6 أرقام):</div>
-                <input id="target-id" class="swal2-input" placeholder="000000" maxlength="6">
-                <div id="recipient-name-display" style="color: var(--accent); font-size: 13px; margin-top: -10px; margin-bottom: 10px; height: 15px; font-weight: bold;"></div>
-                
-                <div style="text-align:right; font-size:14px; margin-top:5px; margin-bottom:5px;">الكمية:</div>
-                <input id="transfer-amt" class="swal2-input" type="number" placeholder="0.00">
-            `,
-            background: '#1e293b',
-            color: '#fff',
-            confirmButtonText: 'إرسال الطلب',
-            showCancelButton: true,
-            didOpen: () => {
-                const idInput = document.getElementById('target-id');
-                const nameDisplay = document.getElementById('recipient-name-display');
-                idInput.addEventListener('input', () => {
-                    const val = idInput.value.trim();
-                    if (val.length === 6) {
-                        nameDisplay.innerText = "جاري البحث...";
-                        db.ref('users').orderByChild('numericId').equalTo(val).once('value', snap => {
-                            if (snap.exists()) {
-                                const userData = Object.values(snap.val())[0];
-                                nameDisplay.innerText = "المستلم: " + userData.n;
-                                nameDisplay.style.color = "var(--green)";
-                            } else {
-                                nameDisplay.innerText = "رقم غير صحيح";
-                                nameDisplay.style.color = "var(--red)";
-                            }
-                        });
-                    } else { nameDisplay.innerText = ""; }
-                });
-            },
-            preConfirm: () => {
-                const targetId = document.getElementById('target-id').value.trim();
-                const amount = parseFloat(document.getElementById('transfer-amt').value);
-                const myBalance = Number(me.sdmBalance || 0); // تحويل الرصيد لرقم صريح
+    Swal.fire({
+        title: 'تحويل عملات SDM',
+        html: `
+            <div style="text-align:right; font-size:14px; margin-bottom:5px;">رقم المستلم (6 أرقام):</div>
+            <input id="target-id" class="swal2-input" placeholder="000000" maxlength="6">
+            <div id="recipient-name-display" style="color: var(--accent); font-size: 13px; margin-top: -10px; margin-bottom: 10px; height: 15px; font-weight: bold;"></div>
+            
+            <div style="text-align:right; font-size:14px; margin-top:5px; margin-bottom:5px;">الكمية:</div>
+            <input id="transfer-amt" class="swal2-input" type="number" placeholder="0.00">
+        `,
+        background: '#1e293b',
+        color: '#fff',
+        confirmButtonText: 'إرسال الطلب',
+        showCancelButton: true,
+        didOpen: () => {
+            const idInput = document.getElementById('target-id');
+            const nameDisplay = document.getElementById('recipient-name-display');
 
-                if (targetId.length !== 6 || isNaN(amount) || amount <= 0) {
-                    Swal.showValidationMessage('تأكد من الرقم والكمية');
-                    return false;
+            // وظيفة البحث عند الكتابة
+            idInput.addEventListener('input', () => {
+                const val = idInput.value.trim();
+                if (val.length === 6) {
+                    nameDisplay.innerText = "جاري البحث عن الاسم...";
+                    
+                    // البحث في Firebase عن المستخدم الذي يملك هذا الرقم
+                    db.ref('users').orderByChild('numericId').equalTo(val).once('value', snap => {
+                        if (snap.exists()) {
+                            const userData = Object.values(snap.val())[0];
+                            nameDisplay.innerText = "المستلم: " + userData.n;
+                            nameDisplay.style.color = "var(--green)";
+                        } else {
+                            nameDisplay.innerText = "رقم غير صحيح أو مستخدم غير موجود";
+                            nameDisplay.style.color = "var(--red)";
+                        }
+                    });
+                } else {
+                    nameDisplay.innerText = "";
                 }
-                // إصلاح مشكلة المقارنة: تحويل كلاهما لأرقام
-                if (Number(amount) > myBalance) {
-                    Swal.showValidationMessage(`رصيدك غير كافٍ (رصيدك الحالي: ${myBalance})`);
-                    return false;
-                }
-                return { targetId, amount };
+            });
+        },
+        preConfirm: () => {
+            const targetId = document.getElementById('target-id').value.trim();
+            const amount = parseFloat(document.getElementById('transfer-amt').value);
+            
+            if (targetId.length !== 6 || isNaN(amount) || amount <= 0) {
+                Swal.showValidationMessage('تأكد من الرقم والكمية');
+                return false;
             }
-        }).then((result) => {
-            if (result.isConfirmed) {
-                const { targetId, amount } = result.value;
-                showLoginLoading();
-                db.ref('requests/transfers').push({
-                    from: me.p,
-                    fromName: me.n,
-                    toId: targetId,
-                    amount: Number(amount), // التأكد من إرسالها كرقـم
-                    status: 'pending',
-                    date: Date.now()
-                }).then(() => {
-                    hideLoginLoading();
-                    Swal.fire('تم الإرسال', 'طلبك قيد المعالجة من قبل البوت', 'info');
-                }).catch(err => {
-                    hideLoginLoading();
-                    Swal.fire('خطأ', err.message, 'error');
-                });
+            if (amount > me.sdmBalance) {
+                Swal.showValidationMessage('رصيدك غير كافٍ');
+                return false;
             }
-        });
-    }
+            return { targetId, amount };
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const { targetId, amount } = result.value;
+            showLoginLoading();
+
+            db.ref('requests/transfers').push({
+                from: me.p,
+                fromName: me.n,
+                toId: targetId,
+                amount: amount,
+                status: 'pending',
+                date: Date.now()
+            }).then(() => {
+                hideLoginLoading();
+                Swal.fire('تم الإرسال', 'طلبك قيد المعالجة من قبل البوت، سيصلك إشعار بالنتيجة', 'info');
+            }).catch(err => {
+                hideLoginLoading();
+                Swal.fire('خطأ', err.message, 'error');
+            });
+        }
+    });
+}
     // 4. إضافة دالة compressImage المفقودة
     async function compressImage(file) {
         return new Promise((resolve, reject) => {
@@ -2445,199 +2438,6 @@ function updateProfileData() {
         Swal.fire('خطأ', 'تعذر حفظ البيانات: ' + err.message, 'error');
     });
 }
-    // 1. دالة بدء عملية الشراء وحجز المال
-function initiateEscrow(postId, sellerId, price, title) {
-    if (isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
-    
-    // تحويل القيم إلى أرقام لضمان دقة المقارنة
-    const userBalance = Number(me.sdmBalance || 0);
-    const itemPrice = Number(price);
-
-    if (userBalance < itemPrice) {
-        return Swal.fire({
-            title: 'رصيد غير كافي',
-            text: `رصيدك الحالي (${userBalance} SDM) أقل من سعر السلعة (${itemPrice} SDM)`,
-            icon: 'warning',
-            background: '#1e293b',
-            color: '#fff'
-        });
-    }
-
-    Swal.fire({
-        title: 'تأكيد الشراء الآمن',
-        html: `سيتم حجز مبلغ <b>${itemPrice} SDM</b> لدى الوسيط.<br>لن يتم تسليم المبلغ للبائع إلا بعد تأكيدك للاستلام.`,
-        icon: 'info',
-        showCancelButton: true,
-        confirmButtonText: 'تأكيد وحجز المبلغ',
-        cancelButtonText: 'إلغاء',
-        background: '#1e293b',
-        color: '#fff'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            showLoginLoading();
-            // إرسال الطلب للبوت
-            db.ref('requests/escrow_deals').push({
-                buyerId: me.p,
-                buyerName: me.n,
-                sellerId: sellerId,
-                postId: postId,
-                itemTitle: title,
-                amount: itemPrice, // التأكد من إرساله كرقم
-                status: 'pending_delivery', 
-                date: Date.now()
-            }).then(() => {
-            // 1. تحديث حالة المنتج إلى "قيد الشراء"
-            db.ref('posts/' + postId).update({ pending: true });
-            db.ref('vip_posts/' + postId).update({ pending: true });
-
-            // 2. إخفاء شاشة التحميل وإظهار رسالة النجاح
-            hideLoginLoading();
-            Swal.fire('تم الحجز', 'المنتج الآن "قيد الشراء" وسيختفي الزر عن بقية المستخدمين.', 'success');
-
-        }).catch(err => {
-            // في حالة حدوث خطأ في الإرسال
-            hideLoginLoading();
-            Swal.fire('خطأ', 'فشل إرسال الطلب: ' + err.message, 'error');
-        });           
-        }
-    });
-}
-
-// 2. دالة عرض الصفقات المعلقة في صفحة المحفظة (للمشتري لتأكيد الاستلام)
- 
-// دالة فتح نزاع
-function openDispute(dealId) {
-    Swal.fire({
-        title: 'فتح نزاع رسمي',
-        text: 'سيتم تجميد المبلغ تماماً وتدخل الإدارة للفصل بينكما. يرجى ذكر السبب:',
-        input: 'textarea',
-        inputPlaceholder: 'مثلاً: البضاعة تالفة، أو المشتري لا يريد الدفع بعد الاستلام...',
-        showCancelButton: true,
-        confirmButtonText: 'إرسال للإدارة',
-        cancelButtonText: 'تراجع'
-    }).then((result) => {
-        if (result.isConfirmed && result.value) {
-            db.ref(`requests/escrow_deals/${dealId}`).update({
-                status: 'disputed',
-                disputeReason: result.value,
-                disputedBy: me.p,
-                disputeDate: Date.now()
-            }).then(() => {
-                Swal.fire('تم فتح النزاع', 'سيقوم المشرف بالتواصل معكم قريباً.', 'warning');
-            });
-        }
-    });
-}
-// 3. دالة تأكيد الاستلام (تحرير المال للبائع)
-function confirmReceipt(dealId) {
-    Swal.fire({
-        title: 'هل استلمت السلعة فعلاً؟',
-        text: "بمجرد التأكيد سيتم تحويل المال لحساب البائع ولا يمكنك التراجع.",
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'نعم، استلمت',
-        cancelButtonText: 'ليس بعد'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            db.ref(`requests/escrow_deals/${dealId}`).update({ status: 'confirmed_by_buyer' });
-            Swal.fire('تمت العملية', 'تم تحويل المال للبائع بنجاح.', 'success');
-        }
-    });
-}
-    // 1. دالة لجلب النزاعات وعرضها للأدمن
-function loadAdminDisputes() {
-    if (me.role !== 'admin') return;
-    const container = document.getElementById('admin-disputes-list');
-    if (!container) return;
-
-    db.ref('requests/escrow_deals').orderByChild('status').equalTo('disputed').on('value', snap => {
-        container.innerHTML = "";
-        const deals = snap.val();
-        if (!deals) return container.innerHTML = "<p style='color:gray; text-align:center;'>لا توجد نزاعات حالياً</p>";
-
-        Object.keys(deals).forEach(id => {
-            const d = deals[id];
-            container.innerHTML += `
-                <div class="admin-item" style="border:1px solid var(--red); padding:10px; margin-bottom:10px; background:rgba(239, 68, 68, 0.05);">
-                    <div style="font-weight:bold; color:var(--red);">🚩 نزاع على: ${d.itemTitle}</div>
-                    <div style="font-size:12px; margin:5px 0;">
-                        <b>المشتري:</b> ${d.buyerName} <br>
-                        <b>السبب:</b> ${d.disputeReason || 'غير مذكور'}
-                    </div>
-                    <div style="font-size:13px; color:var(--accent); margin-bottom:10px;">المبلغ المحجوز: ${d.amount} SDM</div>
-                    
-                    <div style="display:flex; gap:5px;">
-                        <button class="btn-main" style="background:var(--green); flex:1; padding:8px; font-size:11px;" 
-                            onclick="resolveByAdmin('${id}', 'seller')">لصالح البائع (تحويل) ✅</button>
-                        <button class="btn-main" style="background:var(--red); flex:1; padding:8px; font-size:11px;" 
-                            onclick="resolveByAdmin('${id}', 'buyer')">لصالح المشتري (إرجاع) 🔙</button>
-                    </div>
-                </div>`;
-        });
-    });
-}
-
-// 2. دالة إرسال قرار الأدمن للبوت
-function resolveByAdmin(dealId, winner) {
-    const actionText = winner === 'seller' ? "تحويل المال للبائع" : "إرجاع المال للمشتري";
-    
-    Swal.fire({
-        title: 'تأكيد القرار النهائي',
-        text: `أنت بصفتك أدمن، هل تريد ${actionText}؟ هذا القرار فوري ولا يمكن التراجع عنه.`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'نعم، نفذ الآن',
-        cancelButtonText: 'إلغاء',
-        background: '#1e293b',
-        color: '#fff'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            showLoginLoading();
-            // تحديث الحالة ليراها البوت وينفذها
-            const finalStatus = winner === 'seller' ? 'admin_won_seller' : 'admin_won_buyer';
-            db.ref(`requests/escrow_deals/${dealId}`).update({ 
-                status: finalStatus,
-
-</script>
-    <!-- ضع هذا الكود بعد إغلاق السكريبت الرئيسي وقبل وسم </body> مباشرة -->
-<script>
-    // كود الأمان المنفصل - يعمل بشكل مستقل تماماً
-    (function() {
-        console.log("بدء تشغيل محرك الأمان المنفصل...");
-        
-        var forceHide = function() {
-            var preloader = document.getElementById('main-preloader');
-            var authScreen = document.getElementById('auth-screen');
-            
-            if (preloader) {
-                preloader.style.setProperty('display', 'none', 'important');
-                console.log("تم إخفاء شاشة التحميل إجبارياً");
-            }
-
-            // محاولة إظهار شاشة الدخول بأمان
-            try {
-                // نتحقق هل الفايربيس محمل وهل يوجد مستخدم
-                if (typeof firebase !== 'undefined' && firebase.auth().currentUser) {
-                    // إذا وجد مستخدم، الكود الرئيسي سيتولى الأمر (إلا إذا كان معطلاً)
-                    document.getElementById('app-screen').style.display = 'block';
-                } else {
-                    if (authScreen) authScreen.style.display = 'flex';
-                }
-            } catch (e) {
-                // في حالة فشل الفايربيس تماماً، اظهر شاشة الدخول على الأقل
-                if (authScreen) authScreen.style.display = 'flex';
-                console.log("تعذر التحقق من المستخدم، تم إظهار شاشة الدخول كحل بديل");
-            }
-        };
-
-        // تنفيذ الإخفاء بعد 5 ثوانٍ مهما كانت حالة السيرفر
-        setTimeout(forceHide, 5000);
-
-        // تنفيذ الإخفاء فور اكتمال تحميل الصفحة
-        window.addEventListener('load', function() {
-            setTimeout(forceHide, 1000);
-        });
-    })();
 </script>
 </body>
 </html>
