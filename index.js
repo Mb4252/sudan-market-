@@ -3,14 +3,13 @@ const express = require('express');
 const app = express();
 
 // --- 1. إعداد الاتصال بـ Firebase ---
-// تأكد من وضع ملف الـ JSON الخاص بـ Service Account في متغيرات البيئة
 try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
     });
-    console.log("✅ بوت SDM يعمل بنجاح | نظام الوسيط المطور مفعل");
+    console.log("✅ بوت SDM يعمل بنجاح | تم تفعيل نظام الفصل الإداري الفوري");
 } catch (error) {
     console.error("❌ خطأ في تشغيل البوت:", error.message);
     process.exit(1);
@@ -27,7 +26,7 @@ function sendAlert(uid, msg, type = 'success') {
     });
 }
 
-// --- 2. المحرك المالي والوسيط (Escrow) ---
+// --- 2. المحرك المالي والوسيط (Escrow) المطور ---
 async function processFinance() {
     const escRef = db.ref('requests/escrow_deals');
     const eSnap = await escRef.once('value');
@@ -35,15 +34,14 @@ async function processFinance() {
     if (eSnap.exists()) {
         const deals = eSnap.val();
         for (const [id, d] of Object.entries(deals)) {
-            
-            // [أ] المرحلة الأولى: حجز المبلغ (من pending_delivery إلى secured)
+            const amount = parseFloat(d.amount);
+
+            // [أ] حجز المبلغ (من pending_delivery إلى secured)
             if (d.status === 'pending_delivery') {
-                const amount = parseFloat(d.amount);
                 const buyerRef = db.ref(`users/${d.buyerId}/sdmBalance`);
-                
                 const tx = await buyerRef.transaction(bal => {
                     if (bal === null) return 0;
-                    if (parseFloat(bal) < amount) return; // إلغاء العملية إذا الرصيد غير كافٍ
+                    if (parseFloat(bal) < amount) return; 
                     return parseFloat((parseFloat(bal) - amount).toFixed(2));
                 });
 
@@ -53,40 +51,58 @@ async function processFinance() {
                     sendAlert(d.sellerId, `🔔 مبلغ سلعتك (${d.itemTitle}) محجوز لدى الوسيط. يمكنك تسليم السلعة الآن.`, 'info');
                 } else {
                     await escRef.child(id).update({ status: 'failed' });
-                    // إرجاع حالة المنتج في السوق ليتمكن شخص آخر من شرائه
                     await db.ref(`posts/${d.postId}`).update({ pending: false });
                     await db.ref(`vip_posts/${d.postId}`).update({ pending: false });
                     sendAlert(d.buyerId, `❌ رصيدك لا يكفي لشراء ${d.itemTitle}`, 'error');
                 }
             }
 
-            // [ب] المرحلة الثانية: تحويل المال للبائع وتحديث حالة المنشور (من confirmed_by_buyer إلى completed)
+            // [ب] تأكيد الاستلام العادي (بواسطة المشتري)
             if (d.status === 'confirmed_by_buyer') {
-                const amount = parseFloat(d.amount);
-                
-                // 1. إضافة المال لرصيد البائع
                 await db.ref(`users/${d.sellerId}/sdmBalance`).transaction(c => parseFloat((parseFloat(c || 0) + amount).toFixed(2)));
+                await escRef.child(id).update({ status: 'completed', resolvedBy: 'buyer' });
                 
-                // 2. تحديث حالة الصفقة إلى "مكتملة"
-                await escRef.child(id).update({ status: 'completed' });
-
-                // 3. التعديل الجوهري: تحديث المنشور الأصلي ليصبح "مباع" نهائياً
-                // نقوم بالتحديث في كلا المسارين (عادي و VIP) لضمان الوصول للمنشور
-                const postUpdates = {
-                    pending: false,
-                    sold: true,
-                    soldDate: admin.database.ServerValue.TIMESTAMP
-                };
+                const postUpdates = { pending: false, sold: true, soldDate: admin.database.ServerValue.TIMESTAMP };
                 await db.ref(`posts/${d.postId}`).update(postUpdates).catch(()=>{});
                 await db.ref(`vip_posts/${d.postId}`).update(postUpdates).catch(()=>{});
 
-                sendAlert(d.sellerId, `💰 مبروك! تم إيداع ${amount} SDM في رصيدك بعد تأكيد استلام: ${d.itemTitle}`, 'success');
-                sendAlert(d.buyerId, `📦 تم إتمام عملية شراء ${d.itemTitle} بنجاح.`, 'success');
+                sendAlert(d.sellerId, `💰 تم إيداع ${amount} SDM في رصيدك (تأكيد من المشتري)`, 'success');
+                sendAlert(d.buyerId, `📦 تم إتمام الشراء بنجاح.`, 'success');
+            }
+
+            // [ج] *** التحديث الجديد: فصل الأدمن لصالح البائع ***
+            if (d.status === 'admin_approve_seller') {
+                await db.ref(`users/${d.sellerId}/sdmBalance`).transaction(c => parseFloat((parseFloat(c || 0) + amount).toFixed(2)));
+                await escRef.child(id).update({ status: 'completed', resolvedBy: 'admin_gavel' });
+
+                const postUpdates = { pending: false, sold: true, soldDate: admin.database.ServerValue.TIMESTAMP };
+                await db.ref(`posts/${d.postId}`).update(postUpdates).catch(()=>{});
+                
+                sendAlert(d.sellerId, `⚖️ قرار إداري: تم تحويل ${amount} SDM لصالحك في النزاع على: ${d.itemTitle}`, 'success');
+                sendAlert(d.buyerId, `⚖️ قرار إداري: تم إنهاء النزاع وتحويل المبلغ للبائع.`, 'info');
+            }
+
+            // [د] *** التحديث الجديد: فصل الأدمن لصالح المشتري (إرجاع المال) ***
+            if (d.status === 'admin_refund_buyer') {
+                await db.ref(`users/${d.buyerId}/sdmBalance`).transaction(c => parseFloat((parseFloat(c || 0) + amount).toFixed(2)));
+                await escRef.child(id).update({ status: 'refunded', resolvedBy: 'admin_gavel' });
+
+                // إرجاع المنتج للحالة "متاح" في السوق لأنه لم يُبع فعلياً
+                await db.ref(`posts/${d.postId}`).update({ pending: false, sold: false }).catch(()=>{});
+                
+                sendAlert(d.buyerId, `⚖️ قرار إداري: تم استرداد ${amount} SDM إلى حسابك بعد الفصل في النزاع`, 'success');
+                sendAlert(d.sellerId, `⚖️ قرار إداري: تم إرجاع المبلغ للمشتري وإلغاء عملية البيع.`, 'error');
             }
         }
     }
 
-    // [ج] معالجة تحويل الرصيد المباشر بين المستخدمين
+    // (بقية العمليات: التحويل المباشر، اشتراكات VIP، شحن الألعاب...)
+    await processDirectTransfers();
+    await processVipSubs();
+}
+
+// دالة معالجة التحويلات المباشرة (تم فصلها للتنظيم)
+async function processDirectTransfers() {
     const tRef = db.ref('requests/transfers');
     const tSnap = await tRef.orderByChild('status').equalTo('pending').limitToFirst(10).once('value');
     if (tSnap.exists()) {
@@ -106,24 +122,24 @@ async function processFinance() {
                     await db.ref(`users/${recUid}/sdmBalance`).transaction(c => parseFloat((parseFloat(c || 0) + amount).toFixed(2)));
                     await tRef.child(id).update({ status: 'completed' });
                     sendAlert(recUid, `💰 استلمت تحويل بقيمة ${amount} SDM من ${t.fromName}`, 'success');
-                    sendAlert(t.from, `✅ تم تحويل ${amount} SDM بنجاح إلى الرقم ${t.toId}`, 'success');
+                    sendAlert(t.from, `✅ تم تحويل ${amount} SDM بنجاح للرقم ${t.toId}`, 'success');
                 }
             } else {
-                await tRef.child(id).update({ status: 'failed', reason: 'رقم التعريف غير موجود' });
-                sendAlert(t.from, `❌ فشل التحويل: رقم التعريف ${t.toId} غير صحيح`, 'error');
+                await tRef.child(id).update({ status: 'failed', reason: 'ID invalid' });
+                sendAlert(t.from, `❌ الرقم ${t.toId} غير مسجل`, 'error');
             }
         }
     }
+}
 
-    // [د] تفعيل اشتراكات VIP
+// دالة معالجة الـ VIP
+async function processVipSubs() {
     const vipReqRef = db.ref('requests/vip_subscriptions');
     const vSnap = await vipReqRef.orderByChild('status').equalTo('pending').once('value');
     if (vSnap.exists()) {
         for (const [id, t] of Object.entries(vSnap.val())) {
             const cost = parseFloat(t.cost);
-            const userRef = db.ref(`users/${t.userId}`);
-            
-            const tx = await userRef.transaction(u => {
+            await db.ref(`users/${t.userId}`).transaction(u => {
                 if (u && parseFloat(u.sdmBalance || 0) >= cost) {
                     const now = Date.now();
                     const currentExpiry = (u.vipExpiry && u.vipExpiry > now) ? u.vipExpiry : now;
@@ -132,61 +148,17 @@ async function processFinance() {
                     u.vipExpiry = currentExpiry + (parseInt(t.days) * 86400000);
                     return u;
                 }
-            });
-
-            if (tx.committed) {
-                await vipReqRef.child(id).update({ status: 'completed' });
-                sendAlert(t.userId, `👑 تهانينا! تم تفعيل اشتراك VIP لمدة ${t.days} يوم`, 'success');
-            }
-        }
-    }
-}
-
-// --- 3. التنظيف التلقائي للمنشورات المباعة (بعد 24 ساعة) ---
-async function cleanupSoldPosts() {
-    const now = Date.now();
-    const expiryTime = 24 * 60 * 60 * 1000; // 24 ساعة
-    const categories = ['posts', 'vip_posts'];
-
-    for (const cat of categories) {
-        const snap = await db.ref(cat).once('value');
-        if (snap.exists()) {
-            snap.forEach(child => {
-                const post = child.val();
-                if (post.sold === true && post.soldDate && (now - post.soldDate > expiryTime)) {
-                    child.ref.remove();
-                    console.log(`🧹 تم حذف المنشور المباع القديم: ${child.key}`);
-                }
+            }).then(res => {
+                if(res.committed) vipReqRef.child(id).update({ status: 'completed' });
             });
         }
     }
 }
 
-// --- 4. تحديث التقييمات من الطابور ---
-async function updateRatings() {
-    const rSnap = await db.ref('rating_queue').orderByChild('status').equalTo('pending').once('value');
-    if (rSnap.exists()) {
-        for (const [id, t] of Object.entries(rSnap.val())) {
-            await db.ref(`users/${t.target}`).transaction(u => {
-                if (u) {
-                    const currentRating = parseFloat(u.rating || 5);
-                    const count = parseInt(u.ratingCount || 1);
-                    u.rating = ((currentRating * count) + parseFloat(t.stars)) / (count + 1);
-                    u.ratingCount = count + 1;
-                    return u;
-                }
-            });
-            await db.ref(`rating_queue/${id}`).update({ status: 'completed' });
-        }
-    }
-}
+// --- 3. المهام الدورية ---
+setInterval(processFinance, 5000); // معالجة كل شيء كل 5 ثوانٍ
 
-// --- 5. تشغيل المهام الدورية ---
-setInterval(processFinance, 5000);      // كل 5 ثوانٍ للعمليات المالية
-setInterval(updateRatings, 15000);      // كل 15 ثانية للتقييمات
-setInterval(cleanupSoldPosts, 3600000); // كل ساعة لتنظيف المتجر
-
-// --- 6. واجهة السيرفر (Keep Alive) ---
+// --- 4. واجهة السيرفر ---
 const PORT = process.env.PORT || 10000;
-app.get('/', (req, res) => res.send('🚀 SDM Market Bot Is Active and Monitoring...'));
-app.listen(PORT, () => console.log(`السيرفر يعمل على المنفذ ${PORT}`));
+app.get('/', (req, res) => res.send('SDM Secure Bot Active 🚀'));
+app.listen(PORT, () => console.log(`Server on port ${PORT}`));
