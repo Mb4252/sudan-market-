@@ -2597,48 +2597,7 @@ function resolveByAdmin(dealId, winner) {
             const finalStatus = winner === 'seller' ? 'admin_won_seller' : 'admin_won_buyer';
             db.ref(`requests/escrow_deals/${dealId}`).update({ 
                 status: finalStatus,
-                resolvedBy: me.n,
-                resolvedDate: Date.now()
-            }).then(() => {
-                hideLoginLoading();
-                Swal.fire('تم التنفيذ', 'تم إرسال القرار للبوت لمعالجة الرصيد فوراً', 'success');
-            });
-        }
-    });
-}
-    function loadMyEscrowDeals() {
-    const container = document.getElementById('escrow-list');
-    if (!container || isGuest) return;
 
-    db.ref('requests/escrow_deals').on('value', snap => {
-        container.innerHTML = "";
-        const data = snap.val();
-        if (!data) {
-            container.innerHTML = "<p style='color:gray; text-align:center; font-size:12px;'>لا توجد عمليات حجز نشطة</p>";
-            return;
-        }
-
-        Object.keys(data).forEach(id => {
-            const d = data[id];
-            // عرض الصفقات التي تخص المستخدم الحالي فقط (كمشتري أو بائع)
-            if (d.buyerId === me.p || d.sellerId === me.p) {
-                const isBuyer = d.buyerId === me.p;
-                let statusText = d.status === 'secured' ? 'تم حجز المبلغ ✅' : (d.status === 'disputed' ? 'نزاع 🚩' : 'قيد المعالجة');
-                
-                container.innerHTML += `
-                    <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; margin-bottom:10px; border:1px solid var(--border);">
-                        <div style="font-size:13px;"><b>المنتج:</b> ${d.itemTitle}</div>
-                        <div style="font-size:12px; color:var(--accent);">المبلغ: ${d.amount} SDM</div>
-                        <div style="font-size:11px; color:var(--text-sec);">الحالة: ${statusText}</div>
-                        ${isBuyer && d.status === 'secured' ? 
-                            `<button class="btn-main" style="padding:5px; font-size:12px; background:var(--green);" onclick="confirmReceipt('${id}')">تأكيد الاستلام تحرير المال</button>` 
-                            : ''}
-                        <button class="btn-main" style="padding:5px; font-size:12px; background:var(--red); margin-top:5px;" onclick="openDispute('${id}')">فتح نزاع/مشكلة</button>
-                    </div>`;
-            }
-        });
-    });
-    }
 </script>
     <!-- ضع هذا الكود بعد إغلاق السكريبت الرئيسي وقبل وسم </body> مباشرة -->
 <script>
