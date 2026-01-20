@@ -1262,6 +1262,34 @@
         });
     }
 }
+    async function confirmReceipt(postId) {
+    const result = await Swal.fire({
+        title: 'تأكيد استلام السلعة',
+        text: 'هل استلمت البضاعة بالفعل؟ بمجرد التأكيد سيتم تحويل المال للبائع فوراً ولا يمكن التراجع.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، استلمت',
+        cancelButtonText: 'ليس بعد',
+        background: '#1e293b',
+        color: '#fff'
+    });
+
+    if (result.isConfirmed) {
+        showLoginLoading();
+        // البحث عن الصفقة لتحديث حالتها
+        const snap = await db.ref('requests/escrow_deals').orderByChild('postId').equalTo(postId).once('value');
+        if (snap.exists()) {
+            const dealId = Object.keys(snap.val())[0];
+            // نرسل إشارة للبوت ليقوم بنقل الأموال
+            await db.ref(`requests/escrow_deals/${dealId}`).update({ status: 'confirmed_by_buyer' });
+            hideLoginLoading();
+            Swal.fire('تمت العملية', 'شكراً لك! سيقوم البوت بمعالجة تحويل الرصيد الآن.', 'success');
+        } else {
+            hideLoginLoading();
+            Swal.fire('خطأ', 'لم يتم العثور على بيانات الصفقة', 'error');
+        }
+    }
+}
     function loadComments(path, postId) {
         const commentsList = document.getElementById(`comments-list-${postId}`);
         if (!commentsList) return;
