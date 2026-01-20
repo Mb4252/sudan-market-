@@ -673,33 +673,30 @@ function initializeAuthObserver() {
 function startApp(uid) {
     const preloader = document.getElementById('main-preloader');
     
-    // مراقبة بيانات المستخدم في الوقت الفعلي
+    // 1. أخفِ شاشة التحميل فوراً هنا (خارج مراقب البيانات) لضمان عدم التعليق
+    if (preloader) preloader.style.display = 'none';
+
     db.ref('users/' + uid).on('value', snap => {
+        // إذا كنت تريد التأكد مرة أخرى داخل المراقب فلا بأس
         if (preloader) preloader.style.display = 'none';
         
         if (snap.exists()) {
             me = snap.val();
             me.p = uid;
             
-            // التأكد من وجود رقم تعريف (Numeric ID) للمستخدمين القدامى
+            // باقي الكود الخاص بك...
             if(!me.numericId) {
                 const nid = generate6DigitNumericId(uid);
                 db.ref('users/' + uid).update({ numericId: nid });
             }
-
-            // إخفاء شاشات الدخول وإظهار التطبيق
             document.getElementById('auth-screen').classList.add('hidden');
             document.getElementById('app-screen').classList.remove('hidden');
-            
-            // تشغيل الأنظمة الفرعية
             listenForUserAlerts();
             checkForBroadcastMessage();
             listenForDevAlerts();
-            
-            // العودة لآخر صفحة كان فيها المستخدم أو الرئيسية
             render(localStorage.getItem('last_view') || 'home', localStorage.getItem('last_extra'));
         } else {
-            // إذا كان المستخدم جديداً تماماً (أول مرة يسجل بجوجل)
+            // كود المستخدم الجديد...
             const newUser = {
                 n: auth.currentUser.displayName || "مستخدم جديد",
                 p: uid,
@@ -715,8 +712,9 @@ function startApp(uid) {
             db.ref('users/' + uid).set(newUser);
         }
     }, error => {
+        // في حالة حدوث خطأ في القاعدة، أخفِ الشاشة أيضاً واظهر تنبيه
         if (preloader) preloader.style.display = 'none';
-        console.error("خطأ في الوصول لقاعدة البيانات:", error);
+        console.error("خطأ قاعدة بيانات:", error);
     });
 }
     // دالة معالجة الصور المحسنة (لا تمسح الحقول)
@@ -2640,17 +2638,11 @@ function resolveByAdmin(dealId, winner) {
     });
 }
     // أضف هذا الكود في نهاية ملف الجافاسكريبت
+// أضف هذا الكود في نهاية ملف الجافاسكريبت أو داخل DOMContentLoaded
 setTimeout(() => {
     const preloader = document.getElementById('main-preloader');
-    if (preloader && preloader.style.display !== 'none') {
-        preloader.style.display = 'none'; // إخفاء الشاشة إجبارياً
-        // إذا لم يسجل الدخول بعد، أظهر شاشة الدخول
-        if (!auth.currentUser) {
-            document.getElementById('auth-screen').classList.remove('hidden');
-            document.getElementById('auth-screen').style.display = 'flex';
-        }
-    }
-}, 5000); // 5 ثوانٍ كحد أقصى للانتظار
+    if (preloader) preloader.style.display = 'none'; 
+}, 8000); // 8 ثوانٍ كحد أقصى لإخفاء الشاشة إجبارياً
 </script>
 </body>
 </html>
