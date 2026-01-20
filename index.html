@@ -984,114 +984,78 @@
         postsArray.forEach(p => {
             if (path === 'posts' && sub && p.sub !== sub) return;
 
-            // --- إعداد المتغيرات الأساسية ---
             const isOwner = me && me.p === p.userId;
             const isAdmin = me && me.role === 'admin';
             const isBuyer = me && me.p === p.buyerId;
             
-            // التحكم في القائمة (تعديل/حذف): تظهر فقط إذا كان المنشور متاحاً أو كان المستخدم أدمن
-            const canControl = isOwner && !p.pending && !p.sold;
-            const showMenu = canControl || isAdmin;
-
-            // --- منطق الأزرار (نظام الوسيط) ---
             let actionButtons = "";
-            if (p.sold) {
-                // حالة تم البيع
-                actionButtons = `
-                    <div style="background:rgba(16, 185, 129, 0.1); color:var(--green); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--green); font-weight:bold; margin-top:10px;">
-                        <i class="fas fa-check-double"></i> تمت عملية البيع بنجاح
-                    </div>`;
-            // --- استبدل منطقة p.pending في دالة loadPosts بهذا الكود الصارم ---
 
-    else if (p.pending) {
-      if (me && me.p === p.buyerId) {
-        // ما يراه المشتري فقط: زر التأكيد
-        actionButtons = `
-            <div style="background:rgba(59, 130, 246, 0.1); padding:10px; border-radius:10px; border:1px solid var(--primary); margin-top:10px;">
-                <p style="color:var(--text-main); font-size:12px; margin:0; text-align:center;">🔒 المال محجوز الآن لدى الوسيط.</p>
-                <p style="color:var(--text-sec); font-size:11px; margin:5px 0 0 0; text-align:center;">اضغط أدناه "فقط" بعد استلامك الغرض بنجاح:</p>
-            </div>
-            <button class="btn-main" style="background:var(--green); margin-top:10px;" onclick="confirmReceipt('${p.id}')">✅ تأكيد استلام البضاعة</button>`;
-      } 
-      else if (me && me.p === p.userId) {
-        // ما يراه البائع: حالة انتظار فقط
-        actionButtons = `
-            <div style="background:rgba(245, 158, 11, 0.1); color:var(--accent); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--accent); margin-top:10px;">
-                <i class="fas fa-hourglass-start"></i> بانتظار تأكيد المشتري..
-                <p style="font-size:10px; margin-top:5px; color:var(--text-main);">المال محجوز في النظام، يرجى تسليم البضاعة للمشتري.</p>
-            </div>`;
-      } 
-      else {
-        // ما يراه بقية المستخدمين
-        actionButtons = `
-            <div style="background:rgba(245, 158, 11, 0.1); color:var(--accent); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--accent); margin-top:10px; opacity:0.8;">
-                <i class="fas fa-lock"></i> عذراً، هذا المنشور محجوز (قيد الشراء)
-            </div>`;
-      }
-  }
-            // --- بناء تصميم المنشور ---
+            // --- منطق الحالات (الوسيط) ---
+            if (p.sold) {
+                // حالة 1: تم البيع نهائياً
+                actionButtons = `
+                    <div style="background:rgba(239, 68, 68, 0.1); color:var(--red); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--red); font-weight:bold; margin-top:10px;">
+                        <i class="fas fa-check-double"></i> تم البيع بنجاح
+                    </div>`;
+            } 
+            else if (p.pending) {
+                // حالة 2: المنشور قيد الشراء (المال محجوز عند البوت)
+                if (isBuyer) {
+                    actionButtons = `
+                        <div style="background:rgba(59, 130, 246, 0.1); padding:10px; border-radius:10px; border:1px solid var(--primary); margin-top:10px; text-align:center;">
+                            <p style="color:var(--text-main); font-size:12px; margin-bottom:10px;">🔒 المال محجوز الآن في أمان الوسيط.</p>
+                            <button class="btn-main" style="background:var(--green); margin:0;" onclick="confirmReceipt('${p.id}', '${path}')">✅ تأكيد استلام البضاعة</button>
+                            <p style="color:var(--text-sec); font-size:10px; margin-top:5px;">بمجرد الضغط سيتم تحويل المال للبائع</p>
+                        </div>`;
+                } else if (isOwner) {
+                    actionButtons = `
+                        <div style="background:rgba(245, 158, 11, 0.1); color:var(--accent); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--accent); margin-top:10px;">
+                            <i class="fas fa-hourglass-start"></i> المنشور قيد الشراء..
+                            <p style="font-size:10px; margin-top:5px; color:white;">المال محجوز في النظام، يرجى تسليم البضاعة للمشتري.</p>
+                        </div>`;
+                } else {
+                    actionButtons = `
+                        <div style="background:rgba(255, 255, 255, 0.05); color:var(--text-sec); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--border); margin-top:10px;">
+                            <i class="fas fa-lock"></i> عذراً، هذا المنشور محجوز حالياً
+                        </div>`;
+                }
+            } 
+            else {
+                // حالة 3: المنشور متاح للجميع
+                actionButtons = `
+                    <div style="display:flex; gap:10px; margin-top:10px;">
+                        <button class="btn-main" style="flex:2;" onclick="buyItem('${path}', '${p.id}', ${p.price}, '${p.userId}', '${p.title}')">
+                            <i class="fas fa-shopping-cart"></i> شراء عبر الوسيط
+                        </button>
+                        <a href="https://wa.me/249${p.userWa}" class="btn-main" style="flex:1; background:#25d366; text-decoration:none; display:flex; align-items:center; justify-content:center;">
+                            <i class="fab fa-whatsapp"></i>
+                        </a>
+                    </div>`;
+            }
+
+            // بناء تصميم الكارت
             const postHtml = `
-                <div class="post" id="post-${p.id}" style="${p.sold ? 'opacity:0.8;' : ''}">
-                    ${showMenu ? `
-                        <div class="post-menu">
-                            <div class="post-menu-btn" onclick="togglePostMenu('${p.id}')">
-                                <i class="fas fa-ellipsis-v"></i>
-                            </div>
-                            <div class="post-menu-dropdown" id="menu-${p.id}">
-                                ${canControl ? `
-                                    <div class="post-menu-item" onclick="editPost('${path}', '${p.id}')">
-                                        <i class="fas fa-edit"></i> تعديل المنشور
-                                    </div>
-                                    <div class="post-menu-item" onclick="deletePost('${path}', '${p.id}')" style="color:var(--red)">
-                                        <i class="fas fa-trash"></i> حذف المنشور
-                                    </div>
-                                ` : ''}
-                                ${isAdmin ? `
-                                    <div class="post-menu-item" onclick="deletePost('${path}', '${p.id}', true)" style="color:var(--red); font-weight:bold;">
-                                        <i class="fas fa-shield-alt"></i> حذف نهائي (إدارة)
-                                    </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                    ` : ''}
-                    
+                <div class="post" id="post-${p.id}">
                     <div class="post-img-container">
-                        ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="height:100%; background:#2d3748; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image" style="font-size:40px; color:#4a5568;"></i></div>`}
+                        ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="height:100%; background:#2d3748; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image"></i></div>`}
                         ${p.sold ? '<div class="sold-overlay">تم البيع</div>' : p.pending ? '<div class="sold-overlay" style="background:rgba(245,158,11,0.7)">قيد الشراء</div>' : ''}
                     </div>
-
                     <div style="padding:15px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <h3 style="margin:0; font-size:16px;">${escapeHtml(p.title)}</h3>
-                            <b style="color:var(--neon-blue); font-size:16px;">${p.price} SDM</b>
+                        <div style="display:flex; justify-content:space-between;">
+                            <h3 style="margin:0; font-size:16px;">${p.title}</h3>
+                            <b style="color:var(--neon-blue);">${p.price} SDM</b>
                         </div>
-                        <p style="font-size:13px; color:var(--text-sec); margin:10px 0; line-height:1.4;">${escapeHtml(p.desc)}</p>
+                        <p style="font-size:12px; color:var(--text-sec); margin:10px 0;">${p.desc}</p>
                         
-                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; background:rgba(255,255,255,0.03); padding:8px; border-radius:10px;">
-                            <img src="${p.userPic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" style="width:30px; height:30px; border-radius:50%; object-fit:cover; border:1px solid var(--border);">
-                            <div style="flex:1;">
-                                <span style="font-size:12px; color:var(--accent); font-weight:bold; cursor:pointer;" onclick="nav('profile', '${p.userId}')">${escapeHtml(p.userName)}</span>
-                                <div style="font-size:10px; color:var(--text-sec);">ID: ${p.numericId || '000000'}</div>
-                            </div>
-                            <div class="post-date" style="margin:0; font-size:9px;">
-                                ${new Date(p.date).toLocaleDateString('ar-EG')}
-                            </div>
-                        </div>
-
-                        <!-- منطقة الأزرار الديناميكية -->
-                        <div id="actions-${p.id}">
-                            ${actionButtons}
-                        </div>
+                        <div id="actions-${p.id}">${actionButtons}</div>
                         
-                        <!-- قسم التعليقات -->
                         <div class="comments-section" id="comments-${p.id}">
-                            <div id="comments-list-${p.id}" style="max-height:150px; overflow-y:auto;"></div>
+                            <div id="comments-list-${p.id}"></div>
                             ${!isGuest ? `
                                 <div class="comment-input-container">
                                     <input type="text" class="comment-input" id="comment-input-${p.id}" placeholder="أضف تعليقاً...">
                                     <button class="comment-send-btn" onclick="addComment('${path}', '${p.id}')"><i class="fas fa-paper-plane"></i></button>
-                                </div>
-                            ` : ''}
+                                </div>` : ''}
                         </div>
                     </div>
                 </div>`;
@@ -1100,6 +1064,7 @@
         });
     });
 }
+          
     function togglePostMenu(postId) {
         const allMenus = document.querySelectorAll('.post-menu-dropdown');
         allMenus.forEach(menu => {
