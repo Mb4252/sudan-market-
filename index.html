@@ -1275,18 +1275,38 @@
 
     if (result.isConfirmed) {
         showLoginLoading();
-        // البحث عن الصفقة لتحديث حالتها
-        const snap = await db.ref('requests/escrow_deals').orderByChild('postId').equalTo(postId).once('value');
-        if (snap.exists()) {
-            const dealId = Object.keys(snap.val())[0];
-            // نرسل إشارة للبوت ليقوم بنقل الأموال
-            await db.ref(`requests/escrow_deals/${dealId}`).update({ status: 'confirmed_by_buyer' });
-            hideLoginLoading();
-            Swal.fire('تمت العملية', 'شكراً لك! سيقوم البوت بمعالجة تحويل الرصيد الآن.', 'success');
-        } else {
-            hideLoginLoading();
-            Swal.fire('خطأ', 'لم يتم العثور على بيانات الصفقة', 'error');
-        }
+        
+        // البحث عن الصفقة الخاصة بهذا المنشور والتي حالتها 'secured'
+        db.ref('requests/escrow_deals')
+          .orderByChild('postId')
+          .equalTo(postId)
+          .once('value', snap => {
+            if (snap.exists()) {
+                let dealId = null;
+                snap.forEach(child => {
+                    // نتأكد أننا نحدث الصفقة الخاصة بالمشتري الحالي وهي قيد التنفيذ
+                    if (child.val().buyerId === me.p && child.val().status === 'secured') {
+                        dealId = child.key;
+                    }
+                });
+
+                if (dealId) {
+                    // تحديث الحالة ليعرف البوت أن المشتري أكد الاستلام
+                    db.ref(`requests/escrow_deals/${dealId}`).update({
+                        status: 'confirmed_by_buyer'
+                    }).then(() => {
+                        hideLoginLoading();
+                        Swal.fire('تم التأكيد', 'تم إرسال إشارة التأكيد، سيقوم البوت بتحويل المال للبائع الآن.', 'success');
+                    });
+                } else {
+                    hideLoginLoading();
+                    Swal.fire('خطأ', 'لم يتم العثور على صفقة نشطة لهذا المنشور.', 'error');
+                }
+            } else {
+                hideLoginLoading();
+                Swal.fire('خطأ', 'بيانات الصفقة غير موجودة.', 'error');
+            }
+        });
     }
 }
     function loadComments(path, postId) {
