@@ -968,98 +968,139 @@
     // ======================================================
     // 1. نظام المنشورات
     // ======================================================
-
     function loadPosts(path, sub, containerId) {
-        const container = document.getElementById(containerId);
-        if (!container) return;
+    const container = document.getElementById(containerId);
+    if (!container) return;
 
-        db.ref(path).on('value', snap => {
-            container.innerHTML = "";
-            const data = snap.val();
-            if (!data) {
-                container.innerHTML = `<div style="text-align:center; padding:20px; color:gray;">لا توجد منشورات حالياً</div>`;
-                return;
+    db.ref(path).on('value', snap => {
+        container.innerHTML = "";
+        const data = snap.val();
+        if (!data) {
+            container.innerHTML = `<div style="text-align:center; padding:20px; color:gray;">لا توجد منشورات حالياً</div>`;
+            return;
+        }
+
+        const postsArray = Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse();
+        postsArray.forEach(p => {
+            if (path === 'posts' && sub && p.sub !== sub) return;
+
+            // --- إعداد المتغيرات الأساسية ---
+            const isOwner = me && me.p === p.userId;
+            const isAdmin = me && me.role === 'admin';
+            const isBuyer = me && me.p === p.buyerId;
+            
+            // التحكم في القائمة (تعديل/حذف): تظهر فقط إذا كان المنشور متاحاً أو كان المستخدم أدمن
+            const canControl = isOwner && !p.pending && !p.sold;
+            const showMenu = canControl || isAdmin;
+
+            // --- منطق الأزرار (نظام الوسيط) ---
+            let actionButtons = "";
+            if (p.sold) {
+                // حالة تم البيع
+                actionButtons = `
+                    <div style="background:rgba(16, 185, 129, 0.1); color:var(--green); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--green); font-weight:bold; margin-top:10px;">
+                        <i class="fas fa-check-double"></i> تمت عملية البيع بنجاح
+                    </div>`;
+            } else if (p.pending) {
+                // حالة قيد الشراء (محجوز)
+                if (isBuyer) {
+                    actionButtons = `
+                        <div style="background:rgba(59, 130, 246, 0.1); padding:10px; border-radius:10px; border:1px solid var(--primary); margin-top:10px; margin-bottom:10px;">
+                            <p style="color:var(--text-main); font-size:12px; margin:0; text-align:center;">⚠️ المال محجوز الآن، اضغط أدناه بعد استلام البضاعة</p>
+                        </div>
+                        <button class="btn-main" style="background:var(--primary)" onclick="confirmReceipt('${p.id}')">✅ تأكيد استلام البضاعة</button>`;
+                } else {
+                    actionButtons = `
+                        <div style="background:rgba(245, 158, 11, 0.1); color:var(--accent); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--accent); margin-top:10px; opacity:0.8;">
+                            <i class="fas fa-hourglass-half"></i> عذراً، هذا المنشور محجوز (قيد الشراء)
+                        </div>`;
+                }
+            } else {
+                // الحالة العادية (متاح للعرض)
+                if (isOwner) {
+                    actionButtons = `<p style="text-align:center; color:var(--text-sec); font-size:12px; margin-top:10px;">هذا إعلانك (متاح للعرض الآن)</p>`;
+                } else {
+                    actionButtons = `
+                        <button class="btn-main" style="background:var(--green); color:white;" onclick="buyItem('${path}', '${p.id}', ${p.price}, '${p.userId}', '${p.title}')">
+                            <i class="fas fa-shield-alt"></i> شراء عبر الوسيط الآمن
+                        </button>
+                        <button class="btn-guest" style="width:100%; border-color:var(--text-sec); margin-top:8px;" onclick="window.open('https://wa.me/${p.userWa}?text=بخصوص إعلانك: ${p.title}')">
+                            <i class="fab fa-whatsapp"></i> استفسار عبر واتساب
+                        </button>`;
+                }
             }
 
-            const postsArray = Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse();
-            postsArray.forEach(p => {
-                if (path === 'posts' && sub && p.sub !== sub) return;
+            // --- بناء تصميم المنشور ---
+            const postHtml = `
+                <div class="post" id="post-${p.id}" style="${p.sold ? 'opacity:0.8;' : ''}">
+                    ${showMenu ? `
+                        <div class="post-menu">
+                            <div class="post-menu-btn" onclick="togglePostMenu('${p.id}')">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </div>
+                            <div class="post-menu-dropdown" id="menu-${p.id}">
+                                ${canControl ? `
+                                    <div class="post-menu-item" onclick="editPost('${path}', '${p.id}')">
+                                        <i class="fas fa-edit"></i> تعديل المنشور
+                                    </div>
+                                    <div class="post-menu-item" onclick="deletePost('${path}', '${p.id}')" style="color:var(--red)">
+                                        <i class="fas fa-trash"></i> حذف المنشور
+                                    </div>
+                                ` : ''}
+                                ${isAdmin ? `
+                                    <div class="post-menu-item" onclick="deletePost('${path}', '${p.id}', true)" style="color:var(--red); font-weight:bold;">
+                                        <i class="fas fa-shield-alt"></i> حذف نهائي (إدارة)
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    ` : ''}
+                    
+                    <div class="post-img-container">
+                        ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="height:100%; background:#2d3748; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image" style="font-size:40px; color:#4a5568;"></i></div>`}
+                        ${p.sold ? '<div class="sold-overlay">تم البيع</div>' : p.pending ? '<div class="sold-overlay" style="background:rgba(245,158,11,0.7)">قيد الشراء</div>' : ''}
+                    </div>
 
-                const isOwner = me && me.p === p.userId;
-                const isAdmin = me && me.role === 'admin';
-                const showMenu = isOwner || isAdmin;
-                
-                const postHtml = `
-                    <div class="post" id="post-${p.id}">
-                        ${showMenu ? `
-                            <div class="post-menu">
-                                <div class="post-menu-btn" onclick="togglePostMenu('${p.id}')">
-                                    <i class="fas fa-ellipsis-v"></i>
-                                </div>
-                                <div class="post-menu-dropdown" id="menu-${p.id}">
-                                    ${isOwner ? `
-                                        <div class="post-menu-item" onclick="markAsSold('${path}', '${p.id}')">
-                                            <i class="fas fa-check-circle"></i> تم البيع
-                                        </div>
-                                        <div class="post-menu-item" onclick="editPost('${path}', '${p.id}')">
-                                            <i class="fas fa-edit"></i> تعديل المنشور
-                                        </div>
-                                    ` : ''}
-                                    <div class="post-menu-item" onclick="deletePost('${path}', '${p.id}', ${isAdmin})" style="color:var(--red)">
-                                        <i class="fas fa-trash"></i> ${isAdmin ? 'حذف (أدمن)' : 'حذف المنشور'}
-                                    </div>
-                                </div>
-                            </div>
-                        ` : ''}
-                        <div class="post-img-container">
-                            ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="height:100%; background:#2d3748; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image" style="font-size:40px; color:#4a5568;"></i></div>`}
-                            ${p.sold ? '<div class="sold-overlay">تم البيع</div>' : ''}
-                            ${p.discount ? `<div class="discount-tag" style="position:absolute; top:10px; left:10px;">-${p.discount}%</div>` : ''}
+                    <div style="padding:15px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <h3 style="margin:0; font-size:16px;">${escapeHtml(p.title)}</h3>
+                            <b style="color:var(--neon-blue); font-size:16px;">${p.price} SDM</b>
                         </div>
-                        <div style="padding:15px;">
-                            <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <h3 style="margin:0;">${escapeHtml(p.title)}</h3>
-                                <b style="color:var(--neon-blue);">${p.price} SDM</b>
+                        <p style="font-size:13px; color:var(--text-sec); margin:10px 0; line-height:1.4;">${escapeHtml(p.desc)}</p>
+                        
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; background:rgba(255,255,255,0.03); padding:8px; border-radius:10px;">
+                            <img src="${p.userPic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" style="width:30px; height:30px; border-radius:50%; object-fit:cover; border:1px solid var(--border);">
+                            <div style="flex:1;">
+                                <span style="font-size:12px; color:var(--accent); font-weight:bold; cursor:pointer;" onclick="nav('profile', '${p.userId}')">${escapeHtml(p.userName)}</span>
+                                <div style="font-size:10px; color:var(--text-sec);">ID: ${p.numericId || '000000'}</div>
                             </div>
-                            <p style="font-size:13px; color:var(--text-sec); margin:10px 0;">${escapeHtml(p.desc)}</p>
-                            <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-                                <img src="${p.userPic || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" style="width:25px; height:25px; border-radius:50%; object-fit:cover;">
-                                <span style="font-size:12px; color:var(--accent); cursor:pointer;" onclick="nav('profile', '${p.userId}')">${escapeHtml(p.userName)}</span>
-                                <span style="font-size:10px; color:var(--text-sec);">${p.numericId || '000000'}</span>
-                            </div>
-                            <div class="post-date">
-                                <i class="far fa-clock"></i>
-                                ${new Date(p.date).toLocaleDateString('ar-EG')} - 
-                                ${new Date(p.date).toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'})}
-                            </div>
-                            <button class="btn-main" onclick="window.open('https://wa.me/${p.userWa}?text=بخصوص إعلانك: ${p.title}')"><i class="fab fa-whatsapp"></i> تواصل عبر واتساب</button>
-                            
-                            <!-- قسم التعليقات -->
-                            <div class="comments-section" id="comments-${p.id}">
-                                <div style="font-size:12px; color:var(--text-sec); margin-bottom:10px;">
-                                    <i class="fas fa-comments"></i> التعليقات
-                                </div>
-                                <div id="comments-list-${p.id}" style="max-height:200px; overflow-y:auto; margin-bottom:10px;">
-                                    <!-- التعليقات تظهر هنا -->
-                                </div>
-                                ${!isGuest ? `
-                                    <div class="comment-input-container">
-                                        <input type="text" class="comment-input" id="comment-input-${p.id}" placeholder="أضف تعليقاً...">
-                                        <button class="comment-send-btn" onclick="addComment('${path}', '${p.id}')">
-                                            <i class="fas fa-paper-plane"></i>
-                                        </button>
-                                    </div>
-                                ` : '<div style="text-align:center; color:var(--text-sec); font-size:12px; padding:10px;">سجل الدخول لإضافة تعليق</div>'}
+                            <div class="post-date" style="margin:0; font-size:9px;">
+                                ${new Date(p.date).toLocaleDateString('ar-EG')}
                             </div>
                         </div>
-                    </div>`;
-                container.innerHTML += postHtml;
-                
-                loadComments(path, p.id);
-            });
+
+                        <!-- منطقة الأزرار الديناميكية -->
+                        <div id="actions-${p.id}">
+                            ${actionButtons}
+                        </div>
+                        
+                        <!-- قسم التعليقات -->
+                        <div class="comments-section" id="comments-${p.id}">
+                            <div id="comments-list-${p.id}" style="max-height:150px; overflow-y:auto;"></div>
+                            ${!isGuest ? `
+                                <div class="comment-input-container">
+                                    <input type="text" class="comment-input" id="comment-input-${p.id}" placeholder="أضف تعليقاً...">
+                                    <button class="comment-send-btn" onclick="addComment('${path}', '${p.id}')"><i class="fas fa-paper-plane"></i></button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>`;
+            container.innerHTML += postHtml;
+            loadComments(path, p.id);
         });
-    }
-
+    });
+}
     function togglePostMenu(postId) {
         const allMenus = document.querySelectorAll('.post-menu-dropdown');
         allMenus.forEach(menu => {
