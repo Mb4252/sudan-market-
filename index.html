@@ -2179,41 +2179,26 @@ updateActiveTabUI(view);
     
     // 1. إضافة دالة startApp المفقودة
     function startApp(uid) {
-    isGuest = false;
+    const preloader = document.getElementById('main-preloader');
     
-    // مراقبة بيانات المستخدم في قاعدة البيانات
     db.ref('users/' + uid).on('value', snap => {
-        const preloader = document.getElementById('main-preloader');
+        if (preloader) preloader.style.display = 'none'; // إخفاء الشاشة فور استلام أي رد
         
         if (snap.exists()) {
             me = snap.val();
             me.p = uid;
-            
-            // إخفاء شاشة التحميل تماماً وإظهار التطبيق
-            if(preloader) preloader.style.display = 'none';
             document.getElementById('auth-screen').classList.add('hidden');
             document.getElementById('app-screen').classList.remove('hidden');
-
-            // تشغيل آخر صفحة كان عليها المستخدم أو الرئيسية
-            const lastView = localStorage.getItem('last_view') || 'home';
-            render(lastView); 
-            
-            // بدء الاستماع للتنبيهات (مثل تحويل الرصيد)
-            listenForUserAlerts();
-            hideLoginLoading();
+            render(localStorage.getItem('last_view') || 'home');
         } else {
-            // إذا كان المستخدم جديداً (أول مرة يسجل بجوجل)
-            db.ref('users/' + uid).set({
-                n: auth.currentUser.displayName || "مستخدم جديد",
-                sdmBalance: 0,
-                role: "user",
-                numericId: Math.floor(100000 + Math.random() * 900000).toString(),
-                pic: auth.currentUser.photoURL || "",
-                vipStatus: "inactive",
-                wa: ""
-            });
+            // كود إنشاء مستخدم جديد إذا لم يكن موجوداً
         }
     }, error => {
+        // في حالة حدوث خطأ في الاتصال بالقاعدة
+        if (preloader) preloader.style.display = 'none';
+        console.error("خطأ في الاتصال:", error);
+    });
+    }
         // في حال وجود مشكلة في الصلاحيات أو الشبكة
         console.error("Firebase Error:", error);
         const preloader = document.getElementById('main-preloader');
@@ -2632,6 +2617,18 @@ function resolveByAdmin(dealId, winner) {
         });
     });
 }
+    // أضف هذا الكود في نهاية ملف الجافاسكريبت
+setTimeout(() => {
+    const preloader = document.getElementById('main-preloader');
+    if (preloader && preloader.style.display !== 'none') {
+        preloader.style.display = 'none'; // إخفاء الشاشة إجبارياً
+        // إذا لم يسجل الدخول بعد، أظهر شاشة الدخول
+        if (!auth.currentUser) {
+            document.getElementById('auth-screen').classList.remove('hidden');
+            document.getElementById('auth-screen').style.display = 'flex';
+        }
+    }
+}, 5000); // 5 ثوانٍ كحد أقصى للانتظار
 </script>
 </body>
 </html>
