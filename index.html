@@ -1361,6 +1361,38 @@
         }
     }
 }
+    function showSellerReviews(sellerId, sellerName) {
+    db.ref(`reviews/${sellerId}`).limitToLast(10).once('value', snap => {
+        let reviewsHtml = '<div style="max-height: 400px; overflow-y: auto; text-align: right; direction: rtl; padding: 10px;">';
+        const data = snap.val();
+        
+        if (!data) {
+            reviewsHtml += '<p style="text-align:center;">لا توجد تقييمات لهذا البائع بعد.</p>';
+        } else {
+            Object.values(data).reverse().forEach(rev => {
+                let stars = '⭐'.repeat(rev.stars);
+                reviewsHtml += `
+                    <div style="border-bottom: 1px solid #334155; padding: 10px 0;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <b>${rev.buyerName}</b>
+                            <span>${stars}</span>
+                        </div>
+                        <p style="font-size:13px; color:#cbd5e1; margin:5px 0;">${rev.comment || 'لا يوجد تعليق مكتوب'}</p>
+                        <small style="color:gray; font-size:10px;">${new Date(rev.date).toLocaleDateString()}</small>
+                    </div>`;
+            });
+        }
+        reviewsHtml += '</div>';
+
+        Swal.fire({
+            title: `تقييمات البائع: ${sellerName}`,
+            html: reviewsHtml,
+            confirmButtonText: 'إغلاق',
+            background: '#1e293b',
+            color: '#fff'
+        });
+    });
+}
     async function cancelPurchase(postId, path) {
     const res = await Swal.fire({
         title: 'تأكيد إلغاء الشراء؟',
