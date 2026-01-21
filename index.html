@@ -2911,33 +2911,43 @@ async function showWithdraw() {
                 <option value="بنك الخرطوم">بنك الخرطوم (بنكك)</option>
                 <option value="تطبيق كاشي">تطبيق كاشي (Cashi)</option>
             </select>
-            <textarea id="w-details" class="swal2-input" placeholder="اكتب اسمك الكامل + رقم حسابك البنكي بدقة"></textarea>
+            <!-- الخانات المنفصلة -->
+            <input id="w-full-name" class="swal2-input" type="text" placeholder="الاسم الكامل">
+            <input id="w-acc-number" class="swal2-input" type="text" placeholder="رقم الحساب البنكي">
         `,
         background: '#1e293b', color: '#fff',
         confirmButtonText: 'إرسال طلب السحب',
         preConfirm: () => {
             const amt = parseFloat(document.getElementById('w-amt').value);
-            const details = document.getElementById('w-details').value.trim();
+            const fullName = document.getElementById('w-full-name').value.trim();
+            const accNumber = document.getElementById('w-acc-number').value.trim();
+            
             if (isNaN(amt) || amt < 1) return Swal.showValidationMessage('الحد الأدنى للسحب 1 SDM');
             if (amt > me.sdmBalance) return Swal.showValidationMessage('رصيدك غير كافي');
-            if (!details) return Swal.showValidationMessage('بيانات الحساب مطلوبة');
-            return { amt, method: document.getElementById('w-method').value, details };
+            if (!fullName) return Swal.showValidationMessage('يرجى إدخال الاسم الكامل');
+            if (!accNumber) return Swal.showValidationMessage('يرجى إدخال رقم الحساب');
+            
+            return { amt, method: document.getElementById('w-method').value, fullName, accNumber };
         }
     }).then(res => {
         if(res.isConfirmed) {
             showLoginLoading();
             db.ref('requests/withdrawals').push({
-                userId: me.p, userName: me.n, amount: res.value.amt,
-                method: res.value.method, details: res.value.details,
-                status: 'pending', date: Date.now()
+                userId: me.p, 
+                userName: me.n, 
+                amount: res.value.amt,
+                method: res.value.method, 
+                fullName: res.value.fullName, // حفظ الاسم منفصل
+                accountNumber: res.value.accNumber, // حفظ الحساب منفصل
+                status: 'pending', 
+                date: Date.now()
             }).then(() => {
                 hideLoginLoading();
-                Swal.fire('تم استلام طلبك', 'انتظر، سوف يتم تغذية حسابك قريباً.', 'info');
+                Swal.fire('تم استلام طلبك', 'سيقوم النظام بمراجعة الطلب وتحويل المبلغ قريباً.', 'info');
             });
         }
     });
 }
-
 // --- [جديد] عرض طلبات السحب للأدمن ---
 function loadAdminWithdrawRequests() {
     const container = document.getElementById('admin-withdraw-list');
