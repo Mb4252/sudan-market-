@@ -2541,11 +2541,18 @@ updateActiveTabUI(view);
     
     // 7. إضافة دالة loadUserProfile المفقودة
     function loadUserProfile(uid) {
-        // دالة بسيطة لتحميل ملف تعريف المستخدم
-        // يمكن تطويرها حسب الحاجة
-        document.getElementById('profile-status').innerHTML = 'جاري تحميل الملف الشخصي...';
-    }
-    // دالة حفظ رقم الواتساب وتحديثه في التطبيق
+    const statusEl = document.getElementById('profile-status');
+    db.ref('users/' + uid).once('value', snap => {
+        const userData = snap.val();
+        if (userData) {
+            document.getElementById('profile-img-view').src = userData.pic || userPic;
+            // تحديث حالة الاتصال (افتراضي أو فعلي)
+            statusEl.innerHTML = `<span class="online-dot" style="background:${userData.online ? 'var(--green)' : 'gray'}"></span> ${userData.online ? 'متصل الآن' : 'غير متصل'}`;
+        } else {
+            statusEl.innerText = "مستخدم غير معروف";
+        }
+    });
+}
 function updateProfileData() {
     const waInput = document.getElementById('edit-wa');
     if (!waInput) return;
