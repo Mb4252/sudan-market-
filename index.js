@@ -2,35 +2,21 @@ const admin = require('firebase-admin');
 const express = require('express');
 const app = express();
 
-/**
- * 1. تهيئة النظام
- */
-if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-    console.error("❌ خطأ: لم يتم ضبط متغير FIREBASE_SERVICE_ACCOUNT");
-    process.exit(1);
-}
+// 1. إعداد الاتصال بقاعدة البيانات
+// ملاحظة: تأكد من وضع ملف الخدمة في نفس المجلد أو ضبط المتغير البيئي
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT); 
 
-try {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    if (!admin.apps.length) {
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
-            databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
-        });
-    }
-    console.log("🚀 SDM BOT: المحرك المطور يعمل الآن...");
-} catch (error) {
-    console.error("❌ خطأ في التهيئة:", error.message);
-    process.exit(1);
-}
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
+});
 
 const db = admin.database();
 
 /**
- * دالة التنبيهات
+ * وظيفة إرسال التنبيهات للمستخدمين (تظهر فوراً في التطبيق)
  */
 function sendAlert(uid, msg, type = 'success') {
-    if (!uid) return;
     db.ref(`alerts/${uid}`).push({
         msg: msg,
         type: type,
@@ -39,65 +25,80 @@ function sendAlert(uid, msg, type = 'success') {
 }
 
 /**
- * [1] محرك الوسيط (Escrow)
+ * [1] محرك الوسيط الآمن (Escrow System)
+ * يراقب عمليات الشراء، يحجز المال، ويحوله عند التأكيد
  */
 async function processEscrow() {
     try {
         const escRef = db.ref('requests/escrow_deals');
 
-        // حجز المبلغ
+        // أ- حجز الأموال (عندما يضغط المشتري "شراء عبر الوسيط")
         const pendingLock = await escRef.orderByChild('status').equalTo('pending_delivery').once('value');
         if (pendingLock.exists()) {
             for (const [id, deal] of Object.entries(pendingLock.val())) {
                 const amount = parseFloat(deal.amount);
-                const lockTx = await db.ref(`users/${deal.buyerId}`).transaction(userData => {
-                    if (!userData) return userData;
-                    const balance = parseFloat(userData.sdmBalance || 0);
-                    if (balance < amount) return undefined; 
-                    userData.sdmBalance = Number((balance - amount).toFixed(2));
-                    return userData;
+                
+                // عملية ذرية (Atomic Transaction) لخصم الرصيد
+                const lockTx = await db.ref(`users/${deal.buyerId}`).transaction(user => {
+                    if (!user) return user;
+                    const bal = parseFloat(user.sdmBalance || 0);
+                    if (bal < amount) return undefined; // رصيد غير كافٍ
+                    user.sdmBalance = Number((bal - amount).toFixed(2));
+                    return user;
                 });
 
                 if (lockTx.committed) {
-                    await escRef.child(id).update({ status: 'secured', updatedAt: admin.database.ServerValue.TIMESTAMP });
-                    if (deal.path && deal.postId) {
-                        await db.ref(`${deal.path}/${deal.postId}`).update({ pending: true, buyerId: deal.buyerId });
-                    }
-                    sendAlert(deal.buyerId, `🔒 تم حجز ${amount} SDM للوسيط.`, 'info');
-                    sendAlert(deal.sellerId, `🔔 طلب شراء لـ "${deal.itemTitle}". المبلغ محجوز، سلم السلعة الآن.`, 'success');
+                    await escRef.child(id).update({ 
+                        status: 'secured', 
+                        updatedAt: admin.database.ServerValue.TIMESTAMP 
+                    });
+                    // تحديث حالة المنشور في الأقسام
+                    await db.ref(`${deal.path}/${deal.postId}`).update({ 
+                        pending: true, 
+                        buyerId: deal.buyerId 
+                    });
+                    
+                    sendAlert(deal.buyerId, `🔒 تم حجز ${amount} SDM بنجاح. المال الآن في عهدة الوسيط.`);
+                    sendAlert(deal.sellerId, `🔔 طلب شراء لـ "${deal.itemTitle}". المبلغ محجوز لدى النظام، يمكنك التسليم الآن.`, 'info');
+                    console.log(`[Escrow] Funds locked for deal: ${id}`);
                 } else {
                     await escRef.child(id).update({ status: 'failed_insufficient_funds' });
-                    sendAlert(deal.buyerId, `❌ فشل الحجز: رصيدك أقل من ${amount} SDM`, 'error');
+                    sendAlert(deal.buyerId, `❌ فشل الشراء: رصيدك الحالي لا يكفي.`, 'error');
                 }
             }
         }
 
-        // تحرير المبلغ
+        // ب- تحويل الأموال للبائع (عندما يضغط المشتري "تأكيد الاستلام")
         const pendingRelease = await escRef.orderByChild('status').equalTo('confirmed_by_buyer').once('value');
         if (pendingRelease.exists()) {
             for (const [id, deal] of Object.entries(pendingRelease.val())) {
                 const amount = parseFloat(deal.amount);
-                await db.ref(`users/${deal.sellerId}/sdmBalance`).transaction(curr => Number(((curr || 0) + amount).toFixed(2)));
                 
-                await escRef.child(id).update({ status: 'completed', completedAt: admin.database.ServerValue.TIMESTAMP });
+                // إضافة المال للبائع
+                await db.ref(`users/${deal.sellerId}/sdmBalance`).transaction(b => Number(((b || 0) + amount).toFixed(2)));
+                
+                // إنهاء الصفقة
+                await escRef.child(id).update({ 
+                    status: 'completed', 
+                    completedAt: admin.database.ServerValue.TIMESTAMP 
+                });
+                // وسم المنتج كمباع نهائياً
+                await db.ref(`${deal.path}/${deal.postId}`).update({ 
+                    sold: true, 
+                    pending: false,
+                    soldAt: admin.database.ServerValue.TIMESTAMP
+                });
 
-                if (deal.path && deal.postId) {
-                    await db.ref(`${deal.path}/${deal.postId}`).update({ 
-                        sold: true, 
-                        pending: false,
-                        soldAtTimestamp: Date.now() // تاريخ البيع للمسح التلقائي لاحقاً
-                    });
-                }
-
-                sendAlert(deal.sellerId, `💰 استلمت ${amount} SDM مقابل بيع: ${deal.itemTitle}`, 'success');
-                sendAlert(deal.buyerId, `✅ تم تحويل المال للبائع بنجاح.`, 'success');
+                sendAlert(deal.sellerId, `💰 تم تحويل ${amount} SDM لرصيدك مقابل بيع "${deal.itemTitle}".`, 'success');
+                sendAlert(deal.buyerId, `✅ تم إكمال الصفقة بنجاح. شكراً لاستخدامك الوسيط الآمن.`, 'success');
+                console.log(`[Escrow] Deal completed: ${id}`);
             }
         }
-    } catch (err) { console.error("Escrow Error:", err.message); }
+    } catch (e) { console.error("Escrow Error:", e.message); }
 }
 
 /**
- * [2] محرك التحويل (Transfer) - ميزة إظهار اسم المرسل والكمية
+ * [2] محرك التحويل المباشر (Direct Transfers)
  */
 async function processTransfers() {
     try {
@@ -107,16 +108,24 @@ async function processTransfers() {
         if (snap.exists()) {
             for (const [id, req] of Object.entries(snap.val())) {
                 const amount = parseFloat(req.amount);
+                
+                // البحث عن المستلم بالرقم التعريفي (numericId)
                 const targetSnap = await db.ref('users').orderByChild('numericId').equalTo(req.toId).once('value');
                 
                 if (!targetSnap.exists()) {
-                    await transRef.child(id).update({ status: 'failed_invalid_recipient' });
+                    await transRef.child(id).update({ status: 'failed_target_not_found' });
+                    sendAlert(req.from, `❌ الرقم التعريفي (${req.toId}) غير موجود.`, 'error');
                     continue;
                 }
 
                 const targetUid = Object.keys(targetSnap.val())[0];
-                const senderName = req.fromName || "مستخدم";
+                if (targetUid === req.from) {
+                    await transRef.child(id).update({ status: 'failed_self_transfer' });
+                    sendAlert(req.from, `❌ لا يمكنك التحويل لنفسك!`, 'error');
+                    continue;
+                }
 
+                // تنفيذ عملية التحويل
                 const tx = await db.ref(`users/${req.from}`).transaction(sender => {
                     if (!sender) return sender;
                     const bal = parseFloat(sender.sdmBalance || 0);
@@ -129,11 +138,12 @@ async function processTransfers() {
                     await db.ref(`users/${targetUid}/sdmBalance`).transaction(b => Number(((b || 0) + amount).toFixed(2)));
                     await transRef.child(id).update({ status: 'completed', toUid: targetUid });
                     
-                    sendAlert(req.from, `✅ تم تحويل ${amount} SDM إلى ${req.toId}`, 'success');
-                    // ميزة إظهار اسم المرسل والكمية للمستلم
-                    sendAlert(targetUid, `💰 استلمت مبلغ ${amount} SDM من المرسل: ${senderName}`, 'success');
+                    sendAlert(req.from, `✅ تم تحويل ${amount} SDM للمستخدم ${req.toId}.`, 'success');
+                    sendAlert(targetUid, `💰 استلمت تحويل بقيمة ${amount} SDM من ${req.fromName}.`, 'success');
+                    console.log(`[Transfer] ${amount} SDM from ${req.from} to ${targetUid}`);
                 } else {
                     await transRef.child(id).update({ status: 'insufficient_funds' });
+                    sendAlert(req.from, `❌ فشل التحويل: رصيدك غير كافٍ.`, 'error');
                 }
             }
         }
@@ -141,44 +151,32 @@ async function processTransfers() {
 }
 
 /**
- * [3] محرك VIP - تفعيل + إلغاء تلقائي بعد الانتهاء
+ * [3] محرك الـ VIP
  */
 async function processVIP() {
     try {
-        // تفعيل الاشتراكات الجديدة
-        const vipSnap = await db.ref('requests/vip_subscriptions').orderByChild('status').equalTo('pending').once('value');
-        if (vipSnap.exists()) {
-            for (const [id, req] of Object.entries(vipSnap.val())) {
+        const vipRef = db.ref('requests/vip_subscriptions');
+        const snap = await vipRef.orderByChild('status').equalTo('pending').once('value');
+
+        if (snap.exists()) {
+            for (const [id, req] of Object.entries(snap.val())) {
                 const cost = parseFloat(req.cost);
                 const tx = await db.ref(`users/${req.userId}`).transaction(u => {
                     if (!u) return u;
-                    if (parseFloat(u.sdmBalance || 0) >= cost) {
-                        const now = Date.now();
-                        u.sdmBalance = Number((u.sdmBalance - cost).toFixed(2));
-                        u.vipStatus = 'active';
-                        u.vipExpiry = ((u.vipExpiry > now) ? u.vipExpiry : now) + (req.days * 86400000);
-                        return u;
-                    }
-                    return undefined;
+                    if (parseFloat(u.sdmBalance || 0) < cost) return undefined;
+                    
+                    const now = Date.now();
+                    u.sdmBalance = Number((u.sdmBalance - cost).toFixed(2));
+                    u.vipStatus = 'active';
+                    u.vipExpiry = ((u.vipExpiry > now) ? u.vipExpiry : now) + (req.days * 86400000);
+                    return u;
                 });
-                if (tx.committed) {
-                    await db.ref(`requests/vip_subscriptions/${id}`).update({ status: 'completed' });
-                    sendAlert(req.userId, `👑 تم تفعيل VIP لمدة ${req.days} يوم.`, 'success');
-                } else {
-                    await db.ref(`requests/vip_subscriptions/${id}`).update({ status: 'failed' });
-                }
-            }
-        }
 
-        // ميزة إلغاء الاشتراك التلقائي بعد الانتهاء
-        const now = Date.now();
-        const activeVIPs = await db.ref('users').orderByChild('vipStatus').equalTo('active').once('value');
-        if (activeVIPs.exists()) {
-            for (const [uid, user] of Object.entries(activeVIPs.val())) {
-                if (user.vipExpiry && now > user.vipExpiry) {
-                    await db.ref(`users/${uid}`).update({ vipStatus: 'expired' });
-                    sendAlert(uid, `⚠️ انتهى اشتراك VIP الخاص بك. يمكنك التجديد الآن.`, 'info');
-                    console.log(`🚫 تم إنهاء اشتراك VIP للمستخدم: ${uid}`);
+                if (tx.committed) {
+                    await vipRef.child(id).update({ status: 'completed' });
+                    sendAlert(req.userId, `👑 مبروك! تم تفعيل اشتراك VIP لمدة ${req.days} يوم.`, 'success');
+                } else {
+                    await vipRef.child(id).update({ status: 'failed_balance' });
                 }
             }
         }
@@ -186,36 +184,30 @@ async function processVIP() {
 }
 
 /**
- * [4] محرك مسح المنشورات المباعة بعد يوم (24 ساعة)
+ * [4] فحص انتهاء الصلاحية للـ VIP
  */
-async function cleanupSoldPosts() {
-    try {
-        const categories = ['cars_posts', 'phones_posts', 'realestate_posts', 'electronics_posts', 'others_posts'];
-        const oneDayMs = 24 * 60 * 60 * 1000;
-        const now = Date.now();
-
-        for (const cat of categories) {
-            const soldPosts = await db.ref(cat).orderByChild('sold').equalTo(true).once('value');
-            if (soldPosts.exists()) {
-                for (const [postId, post] of Object.entries(soldPosts.val())) {
-                    if (post.soldAtTimestamp && (now - post.soldAtTimestamp) > oneDayMs) {
-                        await db.ref(`${cat}/${postId}`).remove();
-                        console.log(`🗑️ تم مسح المنشور المبيع: ${postId} من قسم ${cat}`);
-                    }
-                }
+async function checkExpiredVIPs() {
+    const now = Date.now();
+    const usersSnap = await db.ref('users').orderByChild('vipStatus').equalTo('active').once('value');
+    if (usersSnap.exists()) {
+        for (const [uid, user] of Object.entries(usersSnap.val())) {
+            if (user.vipExpiry && now > user.vipExpiry) {
+                await db.ref(`users/${uid}`).update({ vipStatus: 'expired' });
+                sendAlert(uid, `⚠️ انتهى اشتراك VIP الخاص بك. جدد الآن للاحتفاظ بالمزايا.`, 'info');
             }
         }
-    } catch (e) { console.error("Cleanup Error:", e.message); }
+    }
 }
 
 /**
- * المجدولات الزمنية
+ * المجدولات الزمنية (Intervals)
  */
-setInterval(processEscrow, 10000);   
-setInterval(processTransfers, 12000); 
-setInterval(processVIP, 60000);       // فحص الـ VIP كل دقيقة
-setInterval(cleanupSoldPosts, 3600000); // فحص المنشورات الممسوحة كل ساعة
+setInterval(processEscrow, 5000);    // فحص الوسيط كل 5 ثواني
+setInterval(processTransfers, 6000); // فحص التحويلات كل 6 ثواني
+setInterval(processVIP, 10000);      // فحص طلبات VIP كل 10 ثواني
+setInterval(checkExpiredVIPs, 3600000); // فحص انتهاء الـ VIP كل ساعة
 
-app.get('/', (req, res) => res.send('SDM Secure Bot is Online...'));
+// تشغيل سيرفر بسيط للبقاء حياً (لمنصات مثل Render)
+app.get('/', (res, req) => { req.send("SDM Secure Bot Active..."); });
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`✅ Server on port: ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 SDM BOT IS RUNNING ON PORT ${PORT}`));
