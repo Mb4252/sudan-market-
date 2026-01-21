@@ -2111,6 +2111,13 @@ function checkUserOnlineStatus(uid, elementId) {
 
         if(view === 'home') {
             area.innerHTML = `
+                <div class="slider-container">
+                    <img id="slider-img" src="${sliderImages[0]}">
+                    <div class="slider-overlay"><h3 style="margin:0; color:white;">SDM Market المستقبل</h3></div>
+                    <div class="slider-dots"><div class="dot active" id="dot-0"></div><div class="dot" id="dot-1"></div><div class="dot" id="dot-2"></div></div>
+                    ${(!isGuest && me.role === 'admin') ? `<div class="edit-slider-btn" onclick="updateCurrentSliderImg()">✏️ تعديل</div>` : ''}
+                </div>
+
                  <!-- إحصائيات الثقة المباشرة -->
                 <div style="display: flex; gap: 8px; padding: 0 20px; margin-bottom: 20px;">
                     <div style="flex:1; background:rgba(30, 41, 59, 0.5); padding:12px 8px; border-radius:15px; text-align:center; border:1px solid var(--border); backdrop-filter:blur(5px);">
@@ -2125,10 +2132,25 @@ function checkUserOnlineStatus(uid, elementId) {
                         <div style="color:var(--accent); font-weight:800; font-size:16px;">24h</div>
                         <div style="font-size:9px; color:var(--text-sec); margin-top:4px;">دعم وسحب</div>
                     </div>
-                </div>           
+                </div>
+
+                <h3 style="padding:0 20px; margin-bottom:0;">الأقسام</h3>
+                <div class="grid">
+                    ${Object.keys(cats).map(k=> {
+                        const editBtn = (!isGuest && me.role === 'admin') ? `<div class="edit-cat-btn" onclick="event.stopPropagation(); updateCategoryImg('${k}')"><i class="fas fa-edit"></i></div>` : '';
+                        return `<div class="card" onclick="nav('sub','${k}')">${editBtn}<i class="fas fa-${cats[k].i}"></i><b>${k}</b></div>`;
+                    }).join('')}
+                </div>
+                <h3 style="padding:0 20px; margin-top:10px;">أحدث VIP المميزة 💎</h3>
+                <div id="vip-home-list" class="loading">
+                    <div class="loading-spinner"></div>
+                    <div>جاري تحميل المنشورات...</div>
+                </div>`;
+            
             loadHomeData();
             startSlider();
 
+        }
         } else if (view === 'sub') {
             curC = extra || curC;
             area.innerHTML = `<div style="padding:15px;"><h2 style="color:var(--neon-blue)">${curC}</h2></div><div class="grid">${cats[curC].s.map(s=>`<div class="card" onclick="nav('feed','${s}')"><b>${s}</b></div>`).join('')}</div>`;
@@ -2230,12 +2252,21 @@ function checkUserOnlineStatus(uid, elementId) {
                             <input type="file" id="buy-file" style="display:none" accept="image/*" onchange="encode(this, 'buy'); document.getElementById('file-text').innerText='✅ تم اختيار الصورة'">
                         </div>
                         
-                        <button class="btn-main" style="background:linear-gradient(90deg, #10b981, #059669); margin-top:20px;" onclick="request   
+                        <button class="btn-main" style="background:linear-gradient(90deg, #10b981, #059669); margin-top:20px;" onclick="requestCoins()">
+                            <i class="fas fa-paper-plane"></i> إرسال طلب الشحن
+                        </button>
+                    </div>
+
+                    <h3 style="margin-top:30px;">سجل المعاملات</h3>
+                    <div id="transactions-history">جاري التحميل...</div>
+                </div>`;
+            
             loadTransactions(); 
             if(me.role === 'admin') {
-                loadAdminCoinRequests(); // القديمة
-                loadAdminWithdrawRequests(); // الجديدة
+                loadAdminCoinRequests(); 
+                loadAdminWithdrawRequests();
             }
+        }
 function loadAdminWithdrawRequests() {
     const container = document.getElementById('admin-withdraw-list');
     if (!container) return;
