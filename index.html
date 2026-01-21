@@ -1291,6 +1291,19 @@ function checkUserOnlineStatus(uid, elementId) {
 }
     async function buyItem(path, postId, price, sellerId, title) {
     if (isGuest) return Swal.fire('تنبيه', 'يجب تسجيل الدخول أولاً', 'warning');
+    
+    // --- الإضافة الجديدة: منع الشراء من النفس ---
+    if (me.p === sellerId) {
+        return Swal.fire({
+            title: 'عملية غير مسموحة',
+            text: 'لا يمكنك شراء السلعة التي تعرضها بنفسك!',
+            icon: 'error',
+            background: '#1e293b',
+            color: '#fff'
+        });
+    }
+    // ------------------------------------------
+
     if (me.sdmBalance < price) return Swal.fire('رصيد غير كافٍ', `سعر السلعة ${price} SDM ورصيدك ${me.sdmBalance} SDM`, 'error');
 
     const res = await Swal.fire({
@@ -1304,7 +1317,6 @@ function checkUserOnlineStatus(uid, elementId) {
 
     if (res.isConfirmed) {
         showLoginLoading();
-        // إرسال طلب للبوت
         db.ref('requests/escrow_deals').push({
             postId: postId,
             path: path,
@@ -1312,14 +1324,14 @@ function checkUserOnlineStatus(uid, elementId) {
             sellerId: sellerId,
             amount: price,
             itemTitle: title,
-            status: 'pending_delivery', // البوت يبحث عن هذه الحالة
+            status: 'pending_delivery',
             date: Date.now()
         }).then(() => {
             hideLoginLoading();
             Swal.fire('تم إرسال الطلب', 'جاري حجز المبلغ وتحديث حالة المنشور من قبل البوت...', 'success');
         });
     }
-    }
+}
     async function confirmReceipt(postId, path) {
     const res = await Swal.fire({
         title: 'تأكيد استلام السلعة',
