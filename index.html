@@ -1275,53 +1275,90 @@
     async function confirmReceipt(postId, path) {
     const res = await Swal.fire({
         title: 'تأكيد استلام السلعة',
-        text: 'هل استلمت المنتج بالفعل؟ بمجرد التأكيد سيتم تحويل المال للبائع فوراً.',
+        text: 'هل استلمت المنتج بالفعل؟ سيتم تحويل المال للبائع.',
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'نعم، أكد التحويل',
-        cancelButtonText: 'ليس بعد',
-        background: '#1e293b',
-        color: '#fff'
+        cancelButtonText: 'ليس بعد'
     });
 
     if (res.isConfirmed) {
-        showLoginLoading();
-        
-        // البحث عن الصفقة النشطة المرتبطة بهذا المنشور والمشتري
-        db.ref('requests/escrow_deals')
-            .orderByChild('postId')
-            .equalTo(postId)
-            .once('value', snap => {
+        // 1. طلب التقييم والتعليق
+        const { value: reviewData } = await Swal.fire({
+            title: 'تقييم البائع',
+            html: `
+                <div style="margin-bottom:15px;">كيف كانت تجربتك مع البائع؟</div>
+                <select id="rating-stars" class="swal2-input" style="width: 80%; margin: 10px auto; display: block;">
+                    <option value="5">⭐⭐⭐⭐⭐ ممتاز</option>
+                    <option value="4">⭐⭐⭐⭐ جيد جداً</option>
+                    <option value="3">⭐⭐⭐ جيد</option>
+                    <option value="2">⭐⭐ مقبول</option>
+                    <option value="1">⭐ سيء</option>
+                </select>
+                <textarea id="rating-comment" class="swal2-input" placeholder="اترك تعليقاً للبائع..." style="width: 80%; height: 100px;"></textarea>
+            `,
+            focusConfirm: false,
+            confirmButtonText: 'إرسال التقييم والإنهاء',
+            preConfirm: () => {
+                return {
+                    stars: document.getElementById('rating-stars').value,
+                    comment: document.getElementById('rating-comment').value
+                }
+            }
+        });
+
+        if (reviewData) {
+            showLoginLoading();
+            
+            // البحث عن الصفقة لتحديث حالتها (كما في الكود السابق)
+            db.ref('requests/escrow_deals').orderByChild('postId').equalTo(postId).once('value', snap => {
                 let dealKey = null;
+                let sellerId = null;
                 snap.forEach(child => {
-                    const deal = child.val();
-                    // التأكد أن الصفقة تخص المشتري وحالتها "محجوزة بنجاح"
-                    if (deal.buyerId === me.p && deal.status === 'secured') {
+                    if (child.val().buyerId === me.p && child.val().status === 'secured') {
                         dealKey = child.key;
+                        sellerId = child.val().sellerId;
                     }
                 });
 
                 if (dealKey) {
-                    // تحديث الحالة ليراها البوت ويبدأ التحويل
+                    // تحديث حالة الصفقة للبوت
                     db.ref(`requests/escrow_deals/${dealKey}`).update({
                         status: 'confirmed_by_buyer',
+                        reviewStars: parseInt(reviewData.stars),
+                        reviewComment: reviewData.comment,
                         updatedAt: firebase.database.ServerValue.TIMESTAMP
                     }).then(() => {
-                        hideLoginLoading();
-                        Swal.fire({
-                            title: 'تم إرسال التأكيد',
-                            text: 'جاري تحويل المبلغ للبائع وتحديث حالة المنشور خلال ثوانٍ...',
-                            icon: 'success'
+                        // حفظ التقييم في ملف البائع ليراه الآخرون
+                        const reviewRef = db.ref(`reviews/${sellerId}`).push();
+                        reviewRef.set({
+                            buyerName: me.n,
+                            stars: parseInt(reviewData.stars),
+                            comment: reviewData.comment,
+                            date: Date.now(),
+                            postId: postId
                         });
-                    }).catch(err => {
+
+                        // تحديث إجمالي تقييمات البائع (للثوثيق)
+                        db.ref(`users/${sellerId}`).transaction(user => {
+                            if (user) {
+                                user.reviewCount = (user.reviewCount || 0) + 1;
+                                user.ratingSum = (user.ratingSum || 0) + parseInt(reviewData.stars);
+                                user.rating = user.ratingSum / user.reviewCount;
+                                // شرط التوثيق: إذا وصل 100 تقييم
+                                if (user.reviewCount >= 100) {
+                                    user.verified = true;
+                                }
+                            }
+                            return user;
+                        });
+
                         hideLoginLoading();
-                        Swal.fire('خطأ في الصلاحيات', 'تعذر تحديث الحالة: ' + err.message, 'error');
+                        Swal.fire('شكراً لك!', 'تم تحويل المال وإضافة تقييمك بنجاح.', 'success');
                     });
-                } else {
-                    hideLoginLoading();
-                    Swal.fire('خطأ', 'لم يتم العثور على صفقة محجوزة لهذا المنشور. ربما تم تأكيدها مسبقاً.', 'error');
                 }
             });
+        }
     }
 }
     async function cancelPurchase(postId, path) {
