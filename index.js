@@ -2,8 +2,7 @@ const admin = require('firebase-admin');
 const express = require('express');
 const app = express();
 
-// 1. إعداد الاتصال بقاعدة البيانات باستخدام المتغيرات البيئية
-// تأكد من إضافة FIREBASE_SERVICE_ACCOUNT في إعدادات المنصة التي ترفع عليها الكود
+// 1. إعداد الاتصال بقاعدة البيانات
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 admin.initializeApp({
@@ -14,7 +13,7 @@ admin.initializeApp({
 const db = admin.database();
 
 /**
- * دالة مساعدة لإرسال تنبيهات للمستخدمين تظهر في التطبيق فوراً
+ * دالة مساعدة لإرسال تنبيهات للمستخدمين
  */
 function sendAlert(uid, msg, type = 'success') {
     db.ref(`alerts/${uid}`).push({
@@ -25,8 +24,7 @@ function sendAlert(uid, msg, type = 'success') {
 }
 
 /**
- * [1] محرك الوسيط الآمن (Escrow System)
- * مسؤول عن حجز الأموال عند طلب الشراء وتحويلها عند التأكيد
+ * [1] محرك الوسيط الآمن (Escrow System) - المحدث
  */
 async function processEscrow() {
     try {
@@ -74,12 +72,36 @@ async function processEscrow() {
                 sendAlert(deal.buyerId, `✅ تم تأكيد الاستلام بنجاح. نتمنى لك تجربة سعيدة!`, 'success');
             }
         }
+
+        // ج- مرحلة إلغاء الطلب وإرجاع المال للمشتري (Refund Funds) 🌟 [إضافة جديدة]
+        const pendingCancel = await escRef.orderByChild('status').equalTo('cancelled_by_buyer').once('value');
+        if (pendingCancel.exists()) {
+            for (const [id, deal] of Object.entries(pendingCancel.val())) {
+                const amount = parseFloat(deal.amount);
+
+                // 1. إرجاع المال لمحفظة المشتري
+                await db.ref(`users/${deal.buyerId}/sdmBalance`).transaction(b => Number(((b || 0) + amount).toFixed(2)));
+
+                // 2. تحديث حالة الصفقة إلى "تم الإرجاع"
+                await escRef.child(id).update({ status: 'refunded', refundedAt: admin.database.ServerValue.TIMESTAMP });
+
+                // 3. فك حجز المنشور ليعود متاحاً للبيع مرة أخرى
+                await db.ref(`${deal.path}/${deal.postId}`).update({
+                    pending: false,
+                    buyerId: null // إزالة معرف المشتري ليعود المنشور عاماً
+                });
+
+                // 4. إرسال التنبيهات
+                sendAlert(deal.buyerId, `💰 تم إلغاء الطلب وإرجاع ${amount} SDM إلى محفظتك بنجاح.`);
+                sendAlert(deal.sellerId, `⚠️ نأسف، قام المشتري بإلغاء طلب شراء "${deal.itemTitle}". المنشور عاد متاحاً للآخرين الآن.`, 'info');
+            }
+        }
+
     } catch (e) { console.error("Escrow Error:", e.message); }
 }
 
 /**
- * [2] محرك التحويل المباشر (Direct Transfers)
- * يحول الرصيد بين المستخدمين عبر الرقم التعريفي المكون من 6 أرقام
+ * [2] محرك التحويل المباشر
  */
 async function processTransfers() {
     try {
@@ -119,39 +141,26 @@ async function processTransfers() {
         }
     } catch (e) { console.error("Transfer Error:", e.message); }
 }
+
 /**
- * [3] محرك مراقبة النزاعات (المحسن والمحمي من الانهيار)
- */
-/**
- * [3] محرك مراقبة النزاعات (النسخة المحسنة والمحمية من الانهيار)
+ * [3] محرك مراقبة النزاعات
  */
 const DISPUTE_KEYWORDS = ["نصاب", "حرامي", "غش", "كذاب", "بلاغ", "لم يصلني", "ما استلمت", "سرقة", "يا ادمن", "يا ادمين"];
 const recentlyFlagged = new Set();
 
 function startChatMonitor() {
     console.log("🔍 مراقب النزاعات نشط...");
-    
-    // مراقبة مسار الدردشات
     db.ref('chats').on('child_added', (chatSnap) => {
         const chatId = chatSnap.key;
-        
-        // مراقبة الرسائل الجديدة فقط داخل كل دردشة
         db.ref(`chats/${chatId}`).limitToLast(1).on('child_added', async (msgSnap) => {
             const msg = msgSnap.val();
-            
-            // ✅ إضافة فحص الأمان: التأكد أن الرسالة نصية وليست فارغة
             if (!msg || typeof msg.text !== 'string') return; 
-
-            // تجاهل الرسائل القديمة (أقدم من دقيقة) لتفادي التنبيهات المتراكمة عند إعادة التشغيل
             if (msg.date < (Date.now() - 60000)) return;
 
-            const text = msg.text; // لا حاجة لـ toLowerCase مع الكلمات العربية
+            const text = msg.text; 
             const foundKeyword = DISPUTE_KEYWORDS.find(word => text.includes(word));
 
-            // التأكد من وجود الكلمة وأن الدردشة لم يتم التبليغ عنها مؤخراً
             if (foundKeyword && !recentlyFlagged.has(chatId)) {
-                console.log(`⚠️ اكتشاف كلمة محظورة: ${foundKeyword} في المحادثة: ${chatId}`);
-                
                 await db.ref('admin_notifications').push({
                     type: 'dispute_alert',
                     chatId: chatId,
@@ -161,14 +170,13 @@ function startChatMonitor() {
                     date: admin.database.ServerValue.TIMESTAMP,
                     read: false
                 });
-                
                 recentlyFlagged.add(chatId);
-                // منع التكرار لنفس المحادثة لمدة 5 دقائق
                 setTimeout(() => recentlyFlagged.delete(chatId), 300000);
             }
         });
     });
 }
+
 /**
  * [4] محرك الـ VIP
  */
@@ -203,14 +211,13 @@ async function processVIP() {
 }
 
 /**
- * المجدولات الزمنية لتشغيل المهام
+ * المجدولات الزمنية
  */
-setInterval(processEscrow, 5000);    // كل 5 ثواني
-setInterval(processTransfers, 6000); // كل 6 ثواني
-setInterval(processVIP, 10000);      // كل 10 ثواني
-startChatMonitor();                  // يعمل باستمرار (Real-time)
+setInterval(processEscrow, 5000);    
+setInterval(processTransfers, 6000); 
+setInterval(processVIP, 10000);      
+startChatMonitor();                  
 
-// سيرفر للبقاء حياً على الاستضافات
-app.get('/', (req, res) => res.send("🚀 SDM Secure Bot is Online and Guarding Transactions..."));
+app.get('/', (req, res) => res.send("🚀 SDM Secure Bot is Online..."));
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
