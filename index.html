@@ -1016,93 +1016,78 @@
     // 1. نظام المنشورات
     // ======================================================
     function loadPosts(path, sub, containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
+        const container = document.getElementById(containerId);
+        if (!container) return;
 
-    db.ref(path).on('value', snap => {
-        container.innerHTML = "";
-        const data = snap.val();
-        if (!data) {
-            container.innerHTML = `<div style="text-align:center; padding:20px; color:gray;">لا توجد منشورات حالياً</div>`;
-            return;
-        }
-
-        const postsArray = Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse();
-        postsArray.forEach(p => {
-            if (path === 'posts' && sub && p.sub !== sub) return;
-
-            const isOwner = me && me.p === p.userId;
-            const isAdmin = me && me.role === 'admin';
-            const isBuyer = me && me.p === p.buyerId;
-            
-            let actionButtons = "";
-
-            // --- منطق الحالات (الوسيط) ---
-            if (p.sold) {
-                // حالة 1: تم البيع نهائياً
-                actionButtons = `
-                    <div style="background:rgba(239, 68, 68, 0.1); color:var(--red); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--red); font-weight:bold; margin-top:10px;">
-                        <i class="fas fa-check-double"></i> تم البيع بنجاح
-                    </div>`;
-            } 
-            // ابحث عن هذا الجزء داخل loadPosts وعدله:
-else if (p.pending) {
-    if (isBuyer || isOwner || isAdmin) {
-        actionButtons = `
-            <div style="background:rgba(59, 130, 246, 0.1); padding:10px; border-radius:10px; border:1px solid var(--primary); margin-top:10px; text-align:center;">
-                <p style="color:var(--text-main); font-size:12px; margin-bottom:10px;">🔒 المبلغ محجوز. تواصل مع الطرف الآخر عبر الدردشة.</p>
-                <button class="btn-main" style="background:var(--accent); color:black;" onclick="nav('chat', {chatId:'${p.id}_${p.buyerId}', postId:'${p.id}', buyerId:'${p.buyerId}', sellerId:'${p.userId}', itemTitle:'${p.title}'})">
-                    <i class="fas fa-comments"></i> دخول الدردشة والاتفاق
-                </button>
-                ${isBuyer ? `<button class="btn-main" style="background:var(--green); margin-top:10px;" onclick="confirmReceipt('${p.id}', '${path}')">✅ تأكيد استلام البضاعة</button>` : ''}
-            </div>`;
-    }
-}
-            else {
-                // حالة 3: المنشور متاح للجميع
-                actionButtons = `
-                    <div style="display:flex; gap:10px; margin-top:10px;">
-                        <button class="btn-main" style="flex:2;" onclick="buyItem('${path}', '${p.id}', ${p.price}, '${p.userId}', '${p.title}')">
-                            <i class="fas fa-shopping-cart"></i> شراء عبر الوسيط
-                        </button>
-                        <a href="https://wa.me/249${p.userWa}" class="btn-main" style="flex:1; background:#25d366; text-decoration:none; display:flex; align-items:center; justify-content:center;">
-                            <i class="fab fa-whatsapp"></i>
-                        </a>
-                    </div>`;
+        db.ref(path).on('value', snap => {
+            container.innerHTML = "";
+            const data = snap.val();
+            if (!data) {
+                container.innerHTML = `<div style="text-align:center; padding:20px; color:gray;">لا توجد منشورات حالياً</div>`;
+                return;
             }
 
-            // بناء تصميم الكارت
-            const postHtml = `
-                <div class="post" id="post-${p.id}">
-                    <div class="post-img-container">
-                        ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="height:100%; background:#2d3748; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image"></i></div>`}
-                        ${p.sold ? '<div class="sold-overlay">تم البيع</div>' : p.pending ? '<div class="sold-overlay" style="background:rgba(245,158,11,0.7)">قيد الشراء</div>' : ''}
-                    </div>
-                    <div style="padding:15px;">
-                        <div style="display:flex; justify-content:space-between;">
-                            <h3 style="margin:0; font-size:16px;">${p.title}</h3>
-                            <b style="color:var(--neon-blue);">${p.price} SDM</b>
+            const postsArray = Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse();
+            postsArray.forEach(p => {
+                if (path === 'posts' && sub && p.sub !== sub) return;
+
+                const isOwner = me && me.p === p.userId;
+                const isAdmin = me && me.role === 'admin';
+                const isBuyer = me && me.p === p.buyerId;
+                
+                let actionButtons = "";
+
+                if (p.sold) {
+                    actionButtons = `
+                        <div style="background:rgba(16, 185, 129, 0.1); color:var(--green); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--green); font-weight:bold; margin-top:10px;">
+                            <i class="fas fa-check-double"></i> تم البيع بنجاح
+                        </div>`;
+                } 
+                else if (p.pending) {
+                    if (isBuyer || isOwner || isAdmin) {
+                        actionButtons = `
+                            <div style="background:rgba(59, 130, 246, 0.1); padding:10px; border-radius:10px; border:1px solid var(--primary); margin-top:10px; text-align:center;">
+                                <p style="color:var(--text-main); font-size:12px; margin-bottom:10px;">🔒 المبلغ محجوز في النظام.</p>
+                                <button class="btn-main" style="background:var(--accent); color:black;" onclick="nav('chat', {chatId:'${p.id}_${p.buyerId}', postId:'${p.id}', buyerId:'${p.buyerId}', sellerId:'${p.userId}', itemTitle:'${p.title}'})">
+                                    <i class="fas fa-comments"></i> دخول الدردشة للاتفاق
+                                </button>
+                                ${isBuyer ? `<button class="btn-main" style="background:var(--green); margin-top:10px;" onclick="confirmReceipt('${p.id}', '${path}')">✅ تأكيد استلام البضاعة</button>` : ''}
+                            </div>`;
+                    } else {
+                        actionButtons = `<div style="text-align:center; color:var(--accent); padding:10px;">هذه السلعة محجوزة حالياً ⏳</div>`;
+                    }
+                }
+                else {
+                    actionButtons = `
+                        <div style="display:flex; gap:10px; margin-top:10px;">
+                            <button class="btn-main" style="flex:2;" onclick="buyItem('${path}', '${p.id}', ${p.price}, '${p.userId}', '${p.title}')">
+                                <i class="fas fa-shopping-cart"></i> شراء عبر الوسيط
+                            </button>
+                            <a href="https://wa.me/249${p.userWa}" class="btn-main" style="flex:1; background:#25d366; text-decoration:none; display:flex; align-items:center; justify-content:center;">
+                                <i class="fab fa-whatsapp"></i>
+                            </a>
+                        </div>`;
+                }
+
+                const postHtml = `
+                    <div class="post">
+                        <div class="post-img-container">
+                            ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="height:100%; background:#2d3748; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image"></i></div>`}
+                            ${p.sold ? '<div class="sold-overlay">تم البيع</div>' : p.pending ? '<div class="sold-overlay" style="background:rgba(245,158,11,0.7)">قيد الشراء</div>' : ''}
                         </div>
-                        <p style="font-size:12px; color:var(--text-sec); margin:10px 0;">${p.desc}</p>
-                        
-                        <div id="actions-${p.id}">${actionButtons}</div>
-                        
-                        <div class="comments-section" id="comments-${p.id}">
-                            <div id="comments-list-${p.id}"></div>
-                            ${!isGuest ? `
-                                <div class="comment-input-container">
-                                    <input type="text" class="comment-input" id="comment-input-${p.id}" placeholder="أضف تعليقاً...">
-                                    <button class="comment-send-btn" onclick="addComment('${path}', '${p.id}')"><i class="fas fa-paper-plane"></i></button>
-                                </div>` : ''}
+                        <div style="padding:15px;">
+                            <div style="display:flex; justify-content:space-between;">
+                                <h3 style="margin:0; font-size:16px;">${p.title}</h3>
+                                <b style="color:var(--neon-blue);">${p.price} SDM</b>
+                            </div>
+                            <p style="font-size:12px; color:var(--text-sec); margin:10px 0;">${p.desc}</p>
+                            <div id="actions-${p.id}">${actionButtons}</div>
                         </div>
-                    </div>
-                </div>`;
-            container.innerHTML += postHtml;
-            loadComments(path, p.id);
+                    </div>`;
+                container.innerHTML += postHtml;
+            });
         });
-    });
-}
-          
+    }          
     function togglePostMenu(postId) {
         const allMenus = document.querySelectorAll('.post-menu-dropdown');
         allMenus.forEach(menu => {
@@ -1885,39 +1870,48 @@ else if (p.pending) {
         } else if (view === 'sub') {
             curC = extra || curC;
             area.innerHTML = `<div style="padding:15px;"><h2 style="color:var(--neon-blue)">${curC}</h2></div><div class="grid">${cats[curC].s.map(s=>`<div class="card" onclick="nav('feed','${s}')"><b>${s}</b></div>`).join('')}</div>`;
-        
         } else if (view === 'feed') {
             curS = extra || curS;
             area.innerHTML = `
-                ${!isGuest ? `<div class="post" style="padding:20px;"><h4 style="margin-top:0; color:var(--primary)">📝 إضافة إعلان: ${curS}</h4><input id="pt" placeholder="اسم المنتج"><input id="pp" type="number" placeholder="السعر (SDM)"><textarea id="pd" placeholder="وصف المنتج..." rows="3"></textarea><label class="btn-main" style="background:#334155; display:block; text-align:center; margin-top:10px;"><i class="fas fa-camera"></i> إضافة صورة<input type="file" hidden onchange="encode(this, 'post')"></label><button class="btn-main" onclick="publish('posts')">نشر الإعلان</button></div>` : ''}
+                ${!isGuest ? `
+                <div class="post" style="padding:20px;">
+                    <h4 style="margin-top:0; color:var(--primary)">📝 إضافة إعلان: ${curS}</h4>
+                    <input id="pt" placeholder="اسم المنتج">
+                    <input id="pp" type="number" placeholder="السعر (SDM)">
+                    <textarea id="pd" placeholder="وصف المنتج..." rows="3"></textarea>
+                    <label class="btn-main" style="background:#334155; display:block; text-align:center; margin-top:10px;">
+                        <i class="fas fa-camera"></i> إضافة صورة
+                        <input type="file" hidden onchange="encode(this, 'post')">
+                    </label>
+                    <button class="btn-main" onclick="publish('posts')">نشر الإعلان</button>
+                </div>` : ''}
                 <div id="posts-list" class="loading">
                     <div class="loading-spinner"></div>
                     <div>جاري تحميل المنشورات...</div>
                 </div>`;
             loadPosts('posts', curS, 'posts-list');
-               // أضف هذا الجزء داخل دالة render قبل إغلاقها
-else if (view === 'chat') {
-    const {chatId, postId, buyerId, sellerId, itemTitle} = extra;
-    area.innerHTML = `
-        <div style="padding:15px; background:rgba(245, 158, 11, 0.1); border-bottom:1px solid var(--accent); color:var(--accent); font-size:12px; text-align:center;">
-            <i class="fas fa-shield-alt"></i> وسيط SDM يراقب هذه الدردشة لضمان أمان المعاملة
-        </div>
-        <div style="padding:10px 20px; border-bottom:1px solid var(--border);">
-            <h4 style="margin:0;">المنتج: ${itemTitle}</h4>
-        </div>
-        <div class="chat-container">
-            <div id="chat-box" class="chat-messages"></div>
-            <div class="chat-input-area">
-                <input type="text" id="chat-msg-input" placeholder="اكتب رسالتك هنا..." style="margin:0;">
-                <button class="btn-main" onclick="sendChatMessage('${chatId}')" style="width:50px; margin:0; padding:0;"><i class="fas fa-paper-plane"></i></button>
-            </div>
-        </div>
-        <div style="padding:0 15px;">
-            <button class="btn-main" style="background:var(--green);" onclick="confirmReceipt('${postId}', 'posts')">✅ استلمت المنتج (إنهاء الصفقة)</button>
-        </div>
-    `;
-    listenToMessages(chatId);
-}
+
+        } else if (view === 'chat') {
+            const {chatId, postId, buyerId, sellerId, itemTitle} = extra;
+            area.innerHTML = `
+                <div style="padding:15px; background:rgba(245, 158, 11, 0.1); border-bottom:1px solid var(--accent); color:var(--accent); font-size:12px; text-align:center;">
+                    <i class="fas fa-shield-alt"></i> وسيط SDM يراقب هذه الدردشة لضمان أمان المعاملة
+                </div>
+                <div style="padding:10px 20px; border-bottom:1px solid var(--border);">
+                    <h4 style="margin:0;">المنتج: ${itemTitle}</h4>
+                </div>
+                <div class="chat-container">
+                    <div id="chat-box" class="chat-messages"></div>
+                    <div class="chat-input-area" style="display:flex; padding:10px; gap:5px;">
+                        <input type="text" id="chat-msg-input" placeholder="اكتب رسالتك هنا..." style="margin:0; flex:1;">
+                        <button class="btn-main" onclick="sendChatMessage('${chatId}')" style="width:50px; margin:0; padding:0;"><i class="fas fa-paper-plane"></i></button>
+                    </div>
+                </div>
+                <div style="padding:10px 15px;">
+                    <button class="btn-main" style="background:var(--green);" onclick="confirmReceipt('${postId}', 'posts')">✅ استلمت المنتج (إنهاء الصفقة)</button>
+                </div>`;
+            listenToMessages(chatId);
+        
         } else if (view === 'wallet') {
             area.innerHTML = `
                 <div class="wallet-card">
