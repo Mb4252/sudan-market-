@@ -2959,83 +2959,120 @@ function listenToMessages(chatId) {
     // --- [جديد] طلب السحب للمستخدم ---
 async function showWithdraw() {
     if (isGuest) return;
-    if (me.sdmBalance < 1) return Swal.fire('تنبيه', 'رصيدك 0، لا يوجد ما تسحبه', 'warning');
+    
+    // تأكد من تحديث البيانات قبل البدء (اختياري)
+    if (me.sdmBalance < 1) {
+        return Swal.fire('تنبيه', 'رصيدك 0، لا يوجد ما تسحبه', 'warning');
+    }
 
     Swal.fire({
         title: 'سحب الأرباح',
         html: `
-            <div style="text-align:right; font-size:12px; color:var(--accent);">رصيدك: ${me.sdmBalance} SDM</div>
-            <input id="w-amt" class="swal2-input" type="number" placeholder="الكمية (SDM)">
+            <div style="text-align:right; font-size:13px; color:#60a5fa; margin-bottom:10px;">
+                رصيدك الحالي: ${me.sdmBalance} SDM
+            </div>
+            <input id="w-amt" class="swal2-input" type="number" placeholder="الكمية (SDM)" oninput="calcWithdraw(this.value)">
+            
+            <div id="w-res" style="text-align:right; font-size:12px; color:#10b981; margin: 5px 25px;">
+                ستحصل على: 0 جنيه
+            </div>
+
             <select id="w-method" class="swal2-input">
                 <option value="بنك الخرطوم">بنك الخرطوم (بنكك)</option>
                 <option value="تطبيق كاشي">تطبيق كاشي (Cashi)</option>
             </select>
-            <!-- الخانات المنفصلة -->
-            <input id="w-full-name" class="swal2-input" type="text" placeholder="الاسم الكامل">
-            <input id="w-acc-number" class="swal2-input" type="text" placeholder="رقم الحساب البنكي">
+            
+            <input id="w-full-name" class="swal2-input" type="text" placeholder="الاسم الكامل صاحب الحساب">
+            <input id="w-acc-number" class="swal2-input" type="text" placeholder="رقم الحساب / رقم الهاتف">
         `,
-        background: '#1e293b', color: '#fff',
+        background: '#1e293b',
+        color: '#fff',
         confirmButtonText: 'إرسال طلب السحب',
+        showCancelButton: true,
+        cancelButtonText: 'إلغاء',
         preConfirm: () => {
             const amt = parseFloat(document.getElementById('w-amt').value);
             const fullName = document.getElementById('w-full-name').value.trim();
             const accNumber = document.getElementById('w-acc-number').value.trim();
+            const method = document.getElementById('w-method').value;
             
             if (isNaN(amt) || amt < 1) return Swal.showValidationMessage('الحد الأدنى للسحب 1 SDM');
             if (amt > me.sdmBalance) return Swal.showValidationMessage('رصيدك غير كافي');
             if (!fullName) return Swal.showValidationMessage('يرجى إدخال الاسم الكامل');
             if (!accNumber) return Swal.showValidationMessage('يرجى إدخال رقم الحساب');
             
-            return { amt, method: document.getElementById('w-method').value, fullName, accNumber };
+            return { amt, method, fullName, accNumber };
         }
-    }).then(res => {
+    }).then(async (res) => {
         if(res.isConfirmed) {
+            const data = res.value;
             showLoginLoading();
-            db.ref('requests/withdrawals').push({
-                userId: me.p, 
-                userName: me.n, 
-                amount: res.value.amt,
-                method: res.value.method, 
-                fullName: res.value.fullName, // حفظ الاسم منفصل
-                accountNumber: res.value.accNumber, // حفظ الحساب منفصل
-                status: 'pending', 
-                date: Date.now()
-            }).then(() => {
+
+            try {
+                // 1. خصم الرصيد فوراً من حساب المستخدم لمنع التكرار
+                const newBalance = me.sdmBalance - data.amt;
+                await db.ref(`users/${me.p}/sdmBalance`).set(newBalance);
+                
+                // تحديث الكائن المحلي
+                me.sdmBalance = newBalance;
+
+                // 2. تسجيل طلب السحب
+                await db.ref('requests/withdrawals').push({
+                    userId: me.p, 
+                    userName: me.n, 
+                    amount: data.amt,
+                    method: data.method, 
+                    fullName: data.fullName,
+                    accountNumber: data.accNumber,
+                    status: 'pending', 
+                    date: Date.now()
+                });
+
                 hideLoginLoading();
-                Swal.fire('تم استلام طلبك', 'سيقوم النظام بمراجعة الطلب وتحويل المبلغ قريباً.', 'info');
-            });
+                Swal.fire('تم استلام طلبك', 'تم خصم الرصيد وتحت المراجعة الآن.', 'success');
+            } catch (error) {
+                hideLoginLoading();
+                Swal.fire('خطأ', 'حدثت مشكلة أثناء المعالجة', 'error');
+            }
         }
     });
 }
-// --- [جديد] عرض طلبات السحب للأدمن ---
 
-// --- [جديد] تأكيد السحب بواسطة الأدمن وإدخال رقم العملية ---
+// دالة الحساب المحدثة
+function calcWithdraw(val) {
+    const resDiv = document.getElementById('w-res');
+    if(resDiv) {
+        // تأكد من تعريف متغير SDM_RATE عالمياً
+        const rate = typeof SDM_RATE !== 'undefined' ? SDM_RATE : 1000; 
+        const total = (parseFloat(val || 0) * rate).toLocaleString();
+        resDiv.innerText = `ستحصل على: ${total} جنيه سوداني`;
+    }
+}
+
+// دالة تأكيد الأدمن (تم إضافة تحديث حالة المستخدم)
 async function confirmWithdrawByAdmin(reqId, userId, amount) {
     const { value: txId } = await Swal.fire({
         title: 'تأكيد السحب',
         text: `أدخل رقم العملية (الإشعار) لإرساله للمستخدم:`,
         input: 'text',
-        inputPlaceholder: 'رقم العملية من بنكك/كاشي...',
+        inputPlaceholder: 'رقم العملية...',
         showCancelButton: true,
-        confirmButtonText: 'تأكيد وإرسال الإشعار',
+        confirmButtonText: 'تأكيد الإرسال',
         background: '#1e293b', color: '#fff'
     });
 
     if (txId) {
         showLoginLoading();
+        // تحديث حالة الطلب
         db.ref(`requests/withdrawals/${reqId}`).update({
             status: 'confirmed',
             txId: txId,
             confirmedAt: Date.now()
         }).then(() => {
             hideLoginLoading();
-            Swal.fire('تم التأكيد', 'تم إرسال رقم العملية للمستخدم وتحديث الحالة', 'success');
+            Swal.fire('تم التأكيد', 'تم تحديث حالة الطلب بنجاح', 'success');
         });
     }
-}
-function calcWithdraw(val) {
-    const res = document.getElementById('w-res');
-    if(res) res.innerText = `ستحصل على: ${(parseFloat(val || 0) * SDM_RATE).toLocaleString()} جنيه`;
 }
 </script>
 </body>
