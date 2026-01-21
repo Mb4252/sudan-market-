@@ -1318,6 +1318,49 @@ else if (p.pending) {
             });
     }
 }
+    async function cancelPurchase(postId, path) {
+    const res = await Swal.fire({
+        title: 'تأكيد إلغاء الشراء؟',
+        text: 'بمجرد الإلغاء، سيتم إرجاع المبلغ لمحفظتك فوراً وإتاحة السلعة للآخرين.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، إلغاء واستعادة المال',
+        cancelButtonText: 'تراجع',
+        confirmButtonColor: '#ef4444'
+    });
+
+    if (res.isConfirmed) {
+        showLoginLoading();
+        
+        // البحث عن الصفقة النشطة المرتبطة
+        db.ref('requests/escrow_deals')
+            .orderByChild('postId')
+            .equalTo(postId)
+            .once('value', snap => {
+                let dealKey = null;
+                snap.forEach(child => {
+                    const deal = child.val();
+                    if (deal.buyerId === me.p && deal.status === 'secured') {
+                        dealKey = child.key;
+                    }
+                });
+
+                if (dealKey) {
+                    // إرسال طلب إلغاء للبوت
+                    db.ref(`requests/escrow_deals/${dealKey}`).update({
+                        status: 'cancelled_by_buyer',
+                        updatedAt: firebase.database.ServerValue.TIMESTAMP
+                    }).then(() => {
+                        hideLoginLoading();
+                        Swal.fire('تم الإلغاء', 'تم استرجاع المبلغ لمحفظتك بنجاح', 'success');
+                    });
+                } else {
+                    hideLoginLoading();
+                    Swal.fire('خطأ', 'لم يتم العثور على صفقة نشطة لإلغائها', 'error');
+                }
+            });
+    }
+    }
     function loadComments(path, postId) {
         const commentsList = document.getElementById(`comments-list-${postId}`);
         if (!commentsList) return;
