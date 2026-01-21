@@ -2119,27 +2119,24 @@ function checkUserOnlineStatus(uid, elementId) {
         </div>` : ''} 
     `;
     listenToMessages(chatId);      
-        } else if (view === 'wallet') {
+       } else if (view === 'wallet') {
             area.innerHTML = `
                 <div class="wallet-card">
                     <img src="${sdmCoinImage}" class="sdm-logo">
                     <h1 style="font-size:36px; margin:15px 0;">${me.sdmBalance.toFixed(2)} <span style="font-size:16px; color:var(--text-sec)">SDM</span></h1>
                     <p style="font-size:12px; color:var(--accent);">1 SDM = ${SDM_RATE} جنيه</p>
-                    <div style="display:flex; gap:10px; justify-content:center;">
-                        <button class="btn-main" style="background:var(--neon-blue); color:black; width:auto; padding:10px 30px;" onclick="showTransfer()">إرسال <i class="fas fa-paper-plane"></i></button>
+                    <div style="display:flex; gap:10px; justify-content:center; margin-top:10px;">
+                        <button class="btn-main" style="background:var(--neon-blue); color:black; flex:1;" onclick="showTransfer()">إرسال SDM</button>
+                        <button class="btn-main" style="background:var(--accent); color:black; flex:1;" onclick="showWithdrawForm()">سحب (BOK/كاشي)</button>
                     </div>
                 </div>
-                 // ابحث عن أزرار الإرسال في قسم المحفظة وأضف بجانبها زر السحب
-`
-<div style="display:flex; gap:10px; justify-content:center; margin-top:10px;">
-    <button class="btn-main" style="background:var(--neon-blue); color:black; flex:1;" onclick="showTransfer()">إرسال SDM</button>
-    <button class="btn-main" style="background:var(--accent); color:black; flex:1;" onclick="showWithdrawForm()">سحب (BOK/كاشي)</button>
-</div>
-`
+
                 ${(me.role === 'admin') ? `
                 <div style="padding:15px; background:rgba(245, 158, 11, 0.1); border:1px solid var(--accent); border-radius:15px; margin:15px;">
-                    <h3 style="margin-top:0; color:var(--accent);"><i class="fas fa-shield-alt"></i> طلبات الإيداع (للإدارة)</h3>
-                    <div id="admin-coin-requests-list">جاري التحميل...</div>
+                    <h3 style="margin-top:0; color:var(--accent);"><i class="fas fa-shield-alt"></i> لوحة الإدارة</h3>
+                    <div id="admin-coin-requests-list">جاري تحميل طلبات الإيداع...</div>
+                    <hr border="0" style="border-top:1px solid var(--border); margin:15px 0;">
+                    <div id="admin-withdraw-list">جاري تحميل طلبات السحب...</div>
                 </div>
                 ` : ''}
 
@@ -2161,11 +2158,12 @@ function checkUserOnlineStatus(uid, elementId) {
                     <h3>سجل المعاملات</h3>
                     <div id="transactions-history">جاري التحميل...</div>
                 </div>`;
-            // أضف هذا داخل شرط الأدمن في المحفظة
-if(me.role === 'admin') {
-    // دالة لجلب طلبات السحب
-    loadAdminWithdrawRequests();
-}
+            
+            loadTransactions(); 
+            if(me.role === 'admin') {
+                loadAdminCoinRequests();
+                loadAdminWithdrawRequests();
+            } 
 
 function loadAdminWithdrawRequests() {
     db.ref('requests/withdrawals').orderByChild('status').equalTo('pending').on('value', snap => {
