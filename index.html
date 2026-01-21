@@ -2343,6 +2343,13 @@ updateActiveTabUI(view);
         if (snap.exists()) {
             me = snap.val();
             me.p = uid;
+
+            // --- هذا هو الجزء المضاف لمراقبة الإدارة ---
+            if (me && me.role === 'admin') {
+                listenForAdminNotifications(); 
+            }
+            // ----------------------------------------
+
             document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
             if (hStack[hStack.length-1] === 'home') showWelcome();
             hideLoginLoading();
@@ -2357,8 +2364,7 @@ updateActiveTabUI(view);
     
     // التشغيل على الصفحة الأخيرة
     render(lastView, lastExtra);
-}
-    
+    }
     // 2. إضافة دالة listenForUserAlerts المفقودة
     function listenForUserAlerts() {
     if (isGuest || !me) return;
@@ -2635,6 +2641,39 @@ function listenToMessages(chatId) {
         chatBox.scrollTop = chatBox.scrollHeight;
     });
 }
+    function listenForAdminNotifications() {
+    if (isGuest || !me || me.role !== 'admin') return;
+
+    // مراقبة التنبيهات الجديدة من البوت
+    db.ref('admin_notifications').orderByChild('read').equalTo(false).on('child_added', snap => {
+        const notif = snap.val();
+        const notifId = snap.key;
+
+        if (notif.type === 'dispute_alert') {
+            Swal.fire({
+                title: '⚠️ إنذار نزاع في الدردشة!',
+                html: `
+                    <div style="text-align:right; direction:rtl; font-family:'Tajawal';">
+                        <p><b>المستخدم:</b> ${notif.senderName}</p>
+                        <p><b>الرسالة:</b> <span style="color:#ef4444">"${notif.lastMessage}"</span></p>
+                        <p><b>الكلمة المكتشفة:</b> ${notif.keyword}</p>
+                    </div>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'دخول الدردشة الآن',
+                cancelButtonText: 'تجاهل',
+                background: '#1e293b',
+                color: '#fff'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    db.ref(`admin_notifications/${notifId}`).update({ read: true });
+                    nav('chat', { chatId: notif.chatId, itemTitle: "تحقيق نزاع" });
+                }
+            });
+        }
+    });
+    }
 </script>
 </body>
 </html>
