@@ -2097,180 +2097,180 @@ function loadAdminCoinRequests() {
     // 5. باقي الدوال الأساسية
     // ======================================================
 
-    function render(view, extra) {
-        const area = document.getElementById('content-area');
-        const adminArea = document.getElementById('admin-notifications-area');
-        const searchEl = document.getElementById('main-search');
-        
-        if (sliderInterval) clearInterval(sliderInterval);
-        if(view !== 'home') adminArea.innerHTML = "";
-        
-        showWelcome();
-        
-        if(me) {
-            document.getElementById('u-stars').innerText = isGuest ? "زائر" : (me.rating || 0).toFixed(1);
-        }
-        
-        document.getElementById('head-title').innerText = (view==='wallet'?"المحفظة":(view==='games'?"الألعاب":(view==='vip'?"VIP":(view==='profile'?"الملف الشخصي":"الرئيسية"))));
-        searchEl.classList.remove('search-hidden');
+   function render(view, extra) {
+    const area = document.getElementById('content-area');
+    const adminArea = document.getElementById('admin-notifications-area');
+    const searchEl = document.getElementById('main-search');
+    
+    if (sliderInterval) clearInterval(sliderInterval);
+    if(view !== 'home') adminArea.innerHTML = "";
+    
+    showWelcome();
+    
+    if(me) {
+        document.getElementById('u-stars').innerText = isGuest ? "زائر" : (me.rating || 0).toFixed(1);
+    }
+    
+    document.getElementById('head-title').innerText = (view==='wallet'?"المحفظة":(view==='games'?"الألعاب":(view==='vip'?"VIP":(view==='profile'?"الملف الشخصي":"الرئيسية"))));
+    searchEl.classList.remove('search-hidden');
 
-        isAtHomePage = (view === 'home');
+    isAtHomePage = (view === 'home');
 
-        if(view === 'home') {
-            area.innerHTML = `
-                <div class="slider-container">
-                    <img id="slider-img" src="${sliderImages[0]}">
-                    <div class="slider-overlay"><h3 style="margin:0; color:white;">SDM Market المستقبل</h3></div>
-                    <div class="slider-dots"><div class="dot active" id="dot-0"></div><div class="dot" id="dot-1"></div><div class="dot" id="dot-2"></div></div>
-                    ${(!isGuest && me.role === 'admin') ? `<div class="edit-slider-btn" onclick="updateCurrentSliderImg()">✏️ تعديل</div>` : ''}
+    if(view === 'home') {
+        area.innerHTML = `
+            <div class="slider-container">
+                <img id="slider-img" src="${sliderImages[0]}">
+                <div class="slider-overlay"><h3 style="margin:0; color:white;">SDM Market المستقبل</h3></div>
+                <div class="slider-dots"><div class="dot active" id="dot-0"></div><div class="dot" id="dot-1"></div><div class="dot" id="dot-2"></div></div>
+                ${(!isGuest && me.role === 'admin') ? `<div class="edit-slider-btn" onclick="updateCurrentSliderImg()">✏️ تعديل</div>` : ''}
+            </div>
+
+             <!-- إحصائيات الثقة المباشرة -->
+            <div style="display: flex; gap: 8px; padding: 0 20px; margin-bottom: 20px;">
+                <div style="flex:1; background:rgba(30, 41, 59, 0.5); padding:12px 8px; border-radius:15px; text-align:center; border:1px solid var(--border); backdrop-filter:blur(5px);">
+                    <div style="color:var(--neon-blue); font-weight:800; font-size:16px;">+1.2k</div>
+                    <div style="font-size:9px; color:var(--text-sec); margin-top:4px;">مستخدم نشط</div>
                 </div>
-
-                 <!-- إحصائيات الثقة المباشرة -->
-                <div style="display: flex; gap: 8px; padding: 0 20px; margin-bottom: 20px;">
-                    <div style="flex:1; background:rgba(30, 41, 59, 0.5); padding:12px 8px; border-radius:15px; text-align:center; border:1px solid var(--border); backdrop-filter:blur(5px);">
-                        <div style="color:var(--neon-blue); font-weight:800; font-size:16px;">+1.2k</div>
-                        <div style="font-size:9px; color:var(--text-sec); margin-top:4px;">مستخدم نشط</div>
-                    </div>
-                    <div style="flex:1; background:rgba(30, 41, 59, 0.5); padding:12px 8px; border-radius:15px; text-align:center; border:1px solid var(--border); backdrop-filter:blur(5px);">
-                        <div style="color:var(--green); font-weight:800; font-size:16px;">100%</div>
-                        <div style="font-size:9px; color:var(--text-sec); margin-top:4px;">ضمان الوسيط</div>
-                    </div>
-                    <div style="flex:1; background:rgba(30, 41, 59, 0.5); padding:12px 8px; border-radius:15px; text-align:center; border:1px solid var(--border); backdrop-filter:blur(5px);">
-                        <div style="color:var(--accent); font-weight:800; font-size:16px;">24h</div>
-                        <div style="font-size:9px; color:var(--text-sec); margin-top:4px;">دعم وسحب</div>
-                    </div>
+                <div style="flex:1; background:rgba(30, 41, 59, 0.5); padding:12px 8px; border-radius:15px; text-align:center; border:1px solid var(--border); backdrop-filter:blur(5px);">
+                    <div style="color:var(--green); font-weight:800; font-size:16px;">100%</div>
+                    <div style="font-size:9px; color:var(--text-sec); margin-top:4px;">ضمان الوسيط</div>
                 </div>
-
-                <h3 style="padding:0 20px; margin-bottom:0;">الأقسام</h3>
-                <div class="grid">
-                    ${Object.keys(cats).map(k=> {
-                        const editBtn = (!isGuest && me.role === 'admin') ? `<div class="edit-cat-btn" onclick="event.stopPropagation(); updateCategoryImg('${k}')"><i class="fas fa-edit"></i></div>` : '';
-                        return `<div class="card" onclick="nav('sub','${k}')">${editBtn}<i class="fas fa-${cats[k].i}"></i><b>${k}</b></div>`;
-                    }).join('')}
+                <div style="flex:1; background:rgba(30, 41, 59, 0.5); padding:12px 8px; border-radius:15px; text-align:center; border:1px solid var(--border); backdrop-filter:blur(5px);">
+                    <div style="color:var(--accent); font-weight:800; font-size:16px;">24h</div>
+                    <div style="font-size:9px; color:var(--text-sec); margin-top:4px;">دعم وسحب</div>
                 </div>
-                <h3 style="padding:0 20px; margin-top:10px;">أحدث VIP المميزة 💎</h3>
-                <div id="vip-home-list" class="loading">
-                    <div class="loading-spinner"></div>
-                    <div>جاري تحميل المنشورات...</div>
-                </div>`;
+            </div>
+
+            <h3 style="padding:0 20px; margin-bottom:0;">الأقسام</h3>
+            <div class="grid">
+                ${Object.keys(cats).map(k=> {
+                    const editBtn = (!isGuest && me.role === 'admin') ? `<div class="edit-cat-btn" onclick="event.stopPropagation(); updateCategoryImg('${k}')"><i class="fas fa-edit"></i></div>` : '';
+                    return `<div class="card" onclick="nav('sub','${k}')">${editBtn}<i class="fas fa-${cats[k].i}"></i><b>${k}</b></div>`;
+                }).join('')}
+            </div>
+            <h3 style="padding:0 20px; margin-top:10px;">أحدث VIP المميزة 💎</h3>
+            <div id="vip-home-list" class="loading">
+                <div class="loading-spinner"></div>
+                <div>جاري تحميل المنشورات...</div>
+            </div>`;
+        
+        loadHomeData();
+        startSlider();
+    } else if (view === 'sub') {
+        curC = extra || curC;
+        area.innerHTML = `<div style="padding:15px;"><h2 style="color:var(--neon-blue)">${curC}</h2></div><div class="grid">${cats[curC].s.map(s=>`<div class="card" onclick="nav('feed','${s}')"><b>${s}</b></div>`).join('')}</div>`;
+    } else if (view === 'feed') {
+        curS = extra || curS;
+        area.innerHTML = `
+            ${!isGuest ? `
+            <div class="post" style="padding:20px;">
+                <h4 style="margin-top:0; color:var(--primary)">📝 إضافة إعلان: ${curS}</h4>
+                <input id="pt" placeholder="اسم المنتج">
+                <input id="pp" type="number" placeholder="السعر (SDM)">
+                <textarea id="pd" placeholder="وصف المنتج..." rows="3"></textarea>
+                <label class="btn-main" style="background:#334155; display:block; text-align:center; margin-top:10px;">
+                    <i class="fas fa-camera"></i> إضافة صورة
+                    <input type="file" hidden onchange="encode(this, 'post')">
+                </label>
+                <button class="btn-main" onclick="publish('posts')">نشر الإعلان</button>
+            </div>` : ''}
+            <div id="posts-list" class="loading">
+                <div class="loading-spinner"></div>
+                <div>جاري تحميل المنشورات...</div>
+            </div>`;
+        loadPosts('posts', curS, 'posts-list');
+    } else if (view === 'chat') {
+        if(!extra) return nav('home');
+        const {chatId, postId, buyerId, sellerId, itemTitle} = extra;
+        area.innerHTML = `
+            <div style="padding:15px; background:rgba(245, 158, 11, 0.1); border-bottom:1px solid var(--accent); color:var(--accent); font-size:12px; text-align:center;">
+                <i class="fas fa-shield-alt"></i> وسيط SDM يراقب هذه الدردشة لضمان أمان المعاملة
+            </div>
+            <div style="padding:10px 20px; border-bottom:1px solid var(--border);">
+                <h4 style="margin:0;">المنتج: ${itemTitle}</h4>
+            </div>
+            <div class="chat-container">
+                <div id="chat-box" class="chat-messages"></div>
+                <div class="chat-input-area" style="display:flex; padding:10px; gap:5px;">
+                    <input type="text" id="chat-msg-input" placeholder="اكتب رسالتك هنا..." style="margin:0; flex:1;">
+                    <button class="btn-main" onclick="sendChatMessage('${chatId}')" style="width:50px; margin:0; padding:0;"><i class="fas fa-paper-plane"></i></button>
+                </div>
+            </div>
+            ${me.p === buyerId ? `
+            <div style="padding:10px 15px;">
+                <button class="btn-main" style="background:var(--green);" onclick="confirmReceipt('${postId}', 'posts')">✅ استلمت المنتج (إنهاء الصفقة)</button>
+            </div>` : ''} 
+        `;
+        listenToMessages(chatId);
+    } else if (view === 'wallet') {
+        area.innerHTML = `
+         <div class="wallet-card">
+                <img src="${sdmCoinImage}" class="sdm-logo">
+                <h1 style="font-size:36px; margin:15px 0;">${me.sdmBalance.toFixed(2)} <span style="font-size:16px; color:var(--text-sec)">SDM</span></h1>
+                <p style="font-size:12px; color:var(--accent);">1 SDM = ${SDM_RATE} جنيه</p>
+                <div style="display:flex; gap:10px; justify-content:center;">
+                    <button class="btn-main" style="background:var(--neon-blue); color:black; width:auto; padding:10px 20px;" onclick="showTransfer()">تحويل <i class="fas fa-paper-plane"></i></button>
+                    <button class="btn-main" style="background:var(--accent); color:black; width:auto; padding:10px 20px;" onclick="showWithdraw()">سحب <i class="fas fa-university"></i></button>
+                </div>
+            </div>
+
+            ${(me.role === 'admin') ? `
+            <div style="padding:15px; background:rgba(245, 158, 11, 0.1); border:1px solid var(--accent); border-radius:15px; margin:15px;">
+                <h3 style="margin-top:0; color:var(--accent);"><i class="fas fa-shield-alt"></i> طلبات شحن الرصيد (إيداع)</h3>
+                <div id="admin-coin-requests-list">جاري التحميل...</div>
+            </div>
             
-            loadHomeData();
-            startSlider();
-          } else if (view === 'sub') {
-            curC = extra || curC;
-            area.innerHTML = `<div style="padding:15px;"><h2 style="color:var(--neon-blue)">${curC}</h2></div><div class="grid">${cats[curC].s.map(s=>`<div class="card" onclick="nav('feed','${s}')"><b>${s}</b></div>`).join('')}</div>`;
-        } else if (view === 'feed') {
-            curS = extra || curS;
-            area.innerHTML = `
-                ${!isGuest ? `
-                <div class="post" style="padding:20px;">
-                    <h4 style="margin-top:0; color:var(--primary)">📝 إضافة إعلان: ${curS}</h4>
-                    <input id="pt" placeholder="اسم المنتج">
-                    <input id="pp" type="number" placeholder="السعر (SDM)">
-                    <textarea id="pd" placeholder="وصف المنتج..." rows="3"></textarea>
-                    <label class="btn-main" style="background:#334155; display:block; text-align:center; margin-top:10px;">
-                        <i class="fas fa-camera"></i> إضافة صورة
-                        <input type="file" hidden onchange="encode(this, 'post')">
-                    </label>
-                    <button class="btn-main" onclick="publish('posts')">نشر الإعلان</button>
-                </div>` : ''}
-                <div id="posts-list" class="loading">
-                    <div class="loading-spinner"></div>
-                    <div>جاري تحميل المنشورات...</div>
-                </div>`;
-            loadPosts('posts', curS, 'posts-list');
-        } else if (view === 'chat') {
-            if(!extra) return nav('home'); // حماية من الأخطاء إذا كانت البيانات ناقصة
-            const {chatId, postId, buyerId, sellerId, itemTitle} = extra;
-            area.innerHTML = `
-                <div style="padding:15px; background:rgba(245, 158, 11, 0.1); border-bottom:1px solid var(--accent); color:var(--accent); font-size:12px; text-align:center;">
-                    <i class="fas fa-shield-alt"></i> وسيط SDM يراقب هذه الدردشة لضمان أمان المعاملة
-                </div>
-                <div style="padding:10px 20px; border-bottom:1px solid var(--border);">
-                    <h4 style="margin:0;">المنتج: ${itemTitle}</h4>
-                </div>
-                <div class="chat-container">
-                    <div id="chat-box" class="chat-messages"></div>
-                    <div class="chat-input-area" style="display:flex; padding:10px; gap:5px;">
-                        <input type="text" id="chat-msg-input" placeholder="اكتب رسالتك هنا..." style="margin:0; flex:1;">
-                        <button class="btn-main" onclick="sendChatMessage('${chatId}')" style="width:50px; margin:0; padding:0;"><i class="fas fa-paper-plane"></i></button>
+            <div style="padding:15px; background:rgba(16, 185, 129, 0.1); border:1px solid var(--green); border-radius:15px; margin:15px;">
+                <h3 style="margin-top:0; color:var(--green);"><i class="fas fa-university"></i> طلبات السحب (بنكك/كاشي)</h3>
+                <div id="admin-withdraw-list">جاري تحميل الطلبات...</div>
+            </div>
+            ` : ''}
+
+            <div style="padding:20px;">
+                <h3 style="margin-bottom:15px;">إيداع رصيد (شحن المحفظة) 🛡️</h3>
+                <div class="post" style="padding:20px; border: 1px solid rgba(59, 130, 246, 0.3); background: rgba(15, 23, 42, 0.6);">
+                    <div style="background: rgba(16, 185, 129, 0.1); padding: 12px; border-radius: 12px; margin-bottom: 20px; font-size: 12px; color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2);">
+                        <i class="fas fa-check-shield"></i> <b>ضمان SDM:</b> نظامنا يضمن وصول رصيدك خلال 5-30 دقيقة من مراجعة الإشعار.
                     </div>
+                    
+                    <div style="font-size: 13px; margin-bottom: 10px; color: var(--text-sec);">1. حوّل المبلغ عبر تطبيق بنكك:</div>
+                    <div style="background:var(--bg-dark); padding:15px; border-radius:12px; border:1px dashed var(--accent); text-align:center; margin-bottom:20px; position:relative;">
+                        <div style="color:var(--text-sec); font-size:11px; margin-bottom:5px;">رقم الحساب (محمد بشير)</div>
+                        <b style="color:white; font-size:22px; letter-spacing:1px;">4426148</b>
+                        <button onclick="navigator.clipboard.writeText('4426148'); Swal.fire({title:'تم النسخ', icon:'success', toast:true, position:'top', showConfirmButton:false, timer:1500})" 
+                            style="background:var(--accent); border:none; color:black; padding:5px 10px; border-radius:8px; font-size:11px; cursor:pointer; margin-right:10px;"><i class="fas fa-copy"></i> نسخ</button>
+                    </div>
+
+                    <div style="font-size: 13px; margin-bottom: 10px; color: var(--text-sec);">2. أدخل الكمية التي قمت بتحويلها:</div>
+                    <input id="buy-qty" type="number" placeholder="أدخل عدد الـ SDM" oninput="calcBuyCost(this.value)">
+                    <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; margin:10px 0; text-align:center; font-size:13px;">
+                        المبلغ المطلوب بالجنيه: <b id="buy-cost-display" style="color:var(--accent);">0</b> SDG
+                    </div>
+
+                    <div style="font-size: 13px; margin-top: 15px; margin-bottom: 10px; color: var(--text-sec);">3. ارفع صورة إشعار التحويل:</div>
+                    <div class="file-input-container" style="margin-bottom:10px;">
+                        <label class="file-input-label" for="buy-file" id="file-label" style="display:block; background:#334155; padding:10px; border-radius:10px; text-align:center; cursor:pointer;">
+                            <i class="fas fa-camera"></i> <span id="file-text">ارفع صورة الإشعار هنا</span>
+                        </label>
+                        <input type="file" id="buy-file" style="display:none" accept="image/*" onchange="encode(this, 'buy'); document.getElementById('file-text').innerText='✅ تم اختيار الصورة'">
+                    </div>
+                    
+                    <button class="btn-main" style="background:linear-gradient(90deg, #10b981, #059669); margin-top:20px;" onclick="requestCoins()">
+                        <i class="fas fa-paper-plane"></i> إرسال طلب الشحن
+                    </button>
                 </div>
-                ${me.p === buyerId ? `
-                <div style="padding:10px 15px;">
-                    <button class="btn-main" style="background:var(--green);" onclick="confirmReceipt('${postId}', 'posts')">✅ استلمت المنتج (إنهاء الصفقة)</button>
-                </div>` : ''} 
-            `;
-            listenToMessages(chatId);
+
+                <h3 style="margin-top:30px;">سجل المعاملات</h3>
+                <div id="transactions-history">جاري التحميل...</div>
+            </div>`;
         
- } else if (view === 'wallet') {
-            area.innerHTML = `
-             <div class="wallet-card">
-                    <img src="${sdmCoinImage}" class="sdm-logo">
-                    <h1 style="font-size:36px; margin:15px 0;">${me.sdmBalance.toFixed(2)} <span style="font-size:16px; color:var(--text-sec)">SDM</span></h1>
-                    <p style="font-size:12px; color:var(--accent);">1 SDM = ${SDM_RATE} جنيه</p>
-                    <div style="display:flex; gap:10px; justify-content:center;">
-                        <button class="btn-main" style="background:var(--neon-blue); color:black; width:auto; padding:10px 20px;" onclick="showTransfer()">تحويل <i class="fas fa-paper-plane"></i></button>
-                        <button class="btn-main" style="background:var(--accent); color:black; width:auto; padding:10px 20px;" onclick="showWithdraw()">سحب <i class="fas fa-university"></i></button>
-                    </div>
-                </div>
-
-                ${(me.role === 'admin') ? `
-                <div style="padding:15px; background:rgba(245, 158, 11, 0.1); border:1px solid var(--accent); border-radius:15px; margin:15px;">
-                    <h3 style="margin-top:0; color:var(--accent);"><i class="fas fa-shield-alt"></i> طلبات شحن الرصيد (إيداع)</h3>
-                    <div id="admin-coin-requests-list">جاري التحميل...</div>
-                </div>
-                
-                <div style="padding:15px; background:rgba(16, 185, 129, 0.1); border:1px solid var(--green); border-radius:15px; margin:15px;">
-                    <h3 style="margin-top:0; color:var(--green);"><i class="fas fa-university"></i> طلبات السحب (بنكك/كاشي)</h3>
-                    <div id="admin-withdraw-list">جاري تحميل الطلبات...</div>
-                </div>
-                ` : ''}
-
-                <div style="padding:20px;">
-                    <h3 style="margin-bottom:15px;">إيداع رصيد (شحن المحفظة) 🛡️</h3>
-                    <div class="post" style="padding:20px; border: 1px solid rgba(59, 130, 246, 0.3); background: rgba(15, 23, 42, 0.6);">
-                        <div style="background: rgba(16, 185, 129, 0.1); padding: 12px; border-radius: 12px; margin-bottom: 20px; font-size: 12px; color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2);">
-                            <i class="fas fa-check-shield"></i> <b>ضمان SDM:</b> نظامنا يضمن وصول رصيدك خلال 5-30 دقيقة من مراجعة الإشعار.
-                        </div>
-                        
-                        <div style="font-size: 13px; margin-bottom: 10px; color: var(--text-sec);">1. حوّل المبلغ عبر تطبيق بنكك:</div>
-                        <div style="background:var(--bg-dark); padding:15px; border-radius:12px; border:1px dashed var(--accent); text-align:center; margin-bottom:20px; position:relative;">
-                            <div style="color:var(--text-sec); font-size:11px; margin-bottom:5px;">رقم الحساب (محمد بشير)</div>
-                            <b style="color:white; font-size:22px; letter-spacing:1px;">4426148</b>
-                            <button onclick="navigator.clipboard.writeText('4426148'); Swal.fire({title:'تم النسخ', icon:'success', toast:true, position:'top', showConfirmButton:false, timer:1500})" 
-                                style="background:var(--accent); border:none; color:black; padding:5px 10px; border-radius:8px; font-size:11px; cursor:pointer; margin-right:10px;"><i class="fas fa-copy"></i> نسخ</button>
-                        </div>
-
-                        <div style="font-size: 13px; margin-bottom: 10px; color: var(--text-sec);">2. أدخل الكمية التي قمت بتحويلها:</div>
-                        <input id="buy-qty" type="number" placeholder="أدخل عدد الـ SDM" oninput="calcBuyCost(this.value)">
-                        <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; margin:10px 0; text-align:center; font-size:13px;">
-                            المبلغ المطلوب بالجنيه: <b id="buy-cost-display" style="color:var(--accent);">0</b> SDG
-                        </div>
-
-                        <div style="font-size: 13px; margin-top: 15px; margin-bottom: 10px; color: var(--text-sec);">3. ارفع صورة إشعار التحويل:</div>
-                        <div class="file-input-container" style="margin-bottom:10px;">
-                            <label class="file-input-label" for="buy-file" id="file-label" style="display:block; background:#334155; padding:10px; border-radius:10px; text-align:center; cursor:pointer;">
-                                <i class="fas fa-camera"></i> <span id="file-text">ارفع صورة الإشعار هنا</span>
-                            </label>
-                            <input type="file" id="buy-file" style="display:none" accept="image/*" onchange="encode(this, 'buy'); document.getElementById('file-text').innerText='✅ تم اختيار الصورة'">
-                        </div>
-                        
-                        <button class="btn-main" style="background:linear-gradient(90deg, #10b981, #059669); margin-top:20px;" onclick="requestCoins()">
-                            <i class="fas fa-paper-plane"></i> إرسال طلب الشحن
-                        </button>
-                    </div>
-
-                    <h3 style="margin-top:30px;">سجل المعاملات</h3>
-                    <div id="transactions-history">جاري التحميل...</div>
-                </div>`;
-               // ... نهاية كود المحفظة
         loadTransactions(); 
         if(me.role === 'admin') {
             loadAdminCoinRequests(); 
             loadAdminWithdrawRequests();
         }
-    
+    }
+} 
 // ... بداية كود الألعاب          
 function loadAdminWithdrawRequests() {
     const container = document.getElementById('admin-withdraw-list');
