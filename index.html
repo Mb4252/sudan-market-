@@ -3001,28 +3001,6 @@ async function showWithdraw() {
     });
 }
 // --- [جديد] عرض طلبات السحب للأدمن ---
-function loadAdminWithdrawRequests() {
-    const container = document.getElementById('admin-withdraw-list');
-    if (!container) return;
-    db.ref('requests/withdrawals').orderByChild('status').equalTo('pending').on('value', snap => {
-        container.innerHTML = "";
-        const data = snap.val();
-        if (!data) return container.innerHTML = "<p style='text-align:center; font-size:12px; color:gray;'>لا توجد طلبات سحب حالياً</p>";
-        
-        Object.entries(data).forEach(([id, req]) => {
-            container.innerHTML += `
-                <div class="admin-item" style="border:1px solid var(--green); padding:10px; margin-bottom:10px; background:rgba(0,0,0,0.2);">
-                    <div style="display:flex; justify-content:space-between;">
-                        <b>${req.userName}</b>
-                        <b style="color:var(--red);">${req.amount} SDM</b>
-                    </div>
-                    <div style="font-size:11px; margin:5px 0;">الطريقة: ${req.method} <br> البيانات: ${req.details}</div>
-                    <button class="btn-main" style="background:var(--green); padding:8px; font-size:12px;" 
-                        onclick="confirmWithdrawByAdmin('${id}', '${req.userId}', ${req.amount})">تأكيد التحويل (كتابة رقم العملية) ✅</button>
-                </div>`;
-        });
-    });
-}
 
 // --- [جديد] تأكيد السحب بواسطة الأدمن وإدخال رقم العملية ---
 async function confirmWithdrawByAdmin(reqId, userId, amount) {
