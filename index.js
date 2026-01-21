@@ -119,10 +119,8 @@ async function processTransfers() {
         }
     } catch (e) { console.error("Transfer Error:", e.message); }
 }
-
 /**
- * [3] محرك مراقبة النزاعات (Chat Dispute Monitor)
- * يراقب الدردشة ويبحث عن كلمات تدل على وجود مشكلة لتنبيه الإدارة
+ * [3] محرك مراقبة النزاعات (المحسن والمحمي من الانهيار)
  */
 const DISPUTE_KEYWORDS = ["نصاب", "حرامي", "غش", "كذاب", "بلاغ", "لم يصلني", "ما استلمت", "سرقة", "يا ادمن", "يا ادمين"];
 const recentlyFlagged = new Set();
@@ -131,11 +129,18 @@ function startChatMonitor() {
     console.log("🔍 مراقب النزاعات نشط...");
     db.ref('chats').on('child_added', (chatSnap) => {
         const chatId = chatSnap.key;
+        
+        // نراقب آخر رسالة مضافة في كل محادثة
         db.ref(`chats/${chatId}`).limitToLast(1).on('child_added', async (msgSnap) => {
             const msg = msgSnap.val();
-            if (msg.date < (Date.now() - 10000)) return; // تجاهل الرسائل القديمة
+            
+            // 🛑 فحص الأمان: تأكد أن الرسالة موجودة وتحتوي على نص قبل معالجتها
+            if (!msg || !msg.text) return; 
 
-            const text = msg.text.toLowerCase();
+            // تجاهل الرسائل القديمة (أقدم من 10 ثواني من لحظة تشغيل البوت)
+            if (msg.date < (Date.now() - 10000)) return;
+
+            const text = msg.text.toLowerCase(); // الآن هذا السطر آمن
             const foundKeyword = DISPUTE_KEYWORDS.find(word => text.includes(word));
 
             if (foundKeyword && !recentlyFlagged.has(chatId)) {
@@ -148,13 +153,14 @@ function startChatMonitor() {
                     date: admin.database.ServerValue.TIMESTAMP,
                     read: false
                 });
+                
                 recentlyFlagged.add(chatId);
-                setTimeout(() => recentlyFlagged.delete(chatId), 300000); // 5 دقائق سماح
+                // منع التنبيهات المكررة لنفس المحادثة لمدة 5 دقائق
+                setTimeout(() => recentlyFlagged.delete(chatId), 300000);
             }
         });
     });
 }
-
 /**
  * [4] محرك الـ VIP
  */
