@@ -1045,26 +1045,31 @@
                     </div>`;
             } 
             // ... داخل دالة loadPosts ...
-else if (p.pending) {
-    // حالة قيد الشراء
-    if (isBuyer || isOwner || isAdmin) {
-        let buyerActions = "";
-        
-        // إذا كان المستخدم الحالي هو المشتري، تظهر له أزرار التحكم
-        if (isBuyer) {
-            buyerActions = `
+           else if (p.pending) {
+    // حالة قيد الشراء: المبلغ محجوز عند الوسيط
+    let buyerActions = "";
+    
+    // شرط العرض: فقط الشخص الذي اشترى (المشتري) هو من يرى أزرار التحكم في المال
+    if (isBuyer) {
+        buyerActions = `
+            <div style="margin-top: 10px; border-top: 1px dashed rgba(255,255,255,0.1); pt-10">
                 <button class="btn-main" style="background:var(--green); margin-top:10px;" onclick="confirmReceipt('${p.id}', '${path}')">
                     ✅ تم الاستلام (تحويل المال للبائع)
                 </button>
                 <button class="btn-main" style="background:var(--red); margin-top:10px;" onclick="cancelPurchase('${p.id}', '${path}')">
-                    ❌ إلغاء الطلب واستعادة المال فوراً
+                    ❌ إلغاء الطلب واستعادة المال
                 </button>
-            `;
-        }
+            </div>
+        `;
+    }
 
+    // الأطراف المعنية (بائع، مشتري، أدمن) يرى الجميع رسالة "المبلغ محجوز" وزر الدردشة
+    if (isBuyer || isOwner || isAdmin) {
         actionButtons = `
-            <div style="background:rgba(59, 130, 246, 0.1); padding:10px; border-radius:10px; border:1px solid var(--primary); margin-top:10px; text-align:center;">
-                <p style="color:var(--text-main); font-size:12px; margin-bottom:10px;">🔒 المبلغ محجوز في النظام (الوسيط الآمن).</p>
+            <div style="background:rgba(59, 130, 246, 0.1); padding:12px; border-radius:15px; border:1px solid var(--primary); margin-top:10px; text-align:center;">
+                <p style="color:var(--text-main); font-size:12px; margin-bottom:10px;">
+                    <i class="fas fa-lock"></i> المبلغ محجوز في النظام (الوسيط الآمن).
+                </p>
                 
                 <button class="btn-main" style="background:var(--accent); color:black;" 
                     onclick="nav('chat', {
@@ -1077,10 +1082,11 @@ else if (p.pending) {
                     <i class="fas fa-comments"></i> دخول الدردشة للاتفاق
                 </button>
 
-                ${buyerActions}
+                ${buyerActions} 
             </div>`;
     } else {
-        actionButtons = `<div style="text-align:center; color:var(--accent); padding:10px;">هذه السلعة محجوزة حالياً ⏳</div>`;
+        // أي مستخدم آخر يرى أن السلعة محجوزة فقط
+        actionButtons = `<div style="text-align:center; color:var(--accent); padding:10px; background:rgba(245,158,11,0.05); border-radius:10px;">⏳ هذه السلعة محجوزة لمشتري آخر</div>`;
     }
 }
             else {
