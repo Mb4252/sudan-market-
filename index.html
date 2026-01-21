@@ -1016,78 +1016,91 @@
     // 1. نظام المنشورات
     // ======================================================
     function loadPosts(path, sub, containerId) {
-        const container = document.getElementById(containerId);
-        if (!container) return;
+    const container = document.getElementById(containerId);
+    if (!container) return;
 
-        db.ref(path).on('value', snap => {
-            container.innerHTML = "";
-            const data = snap.val();
-            if (!data) {
-                container.innerHTML = `<div style="text-align:center; padding:20px; color:gray;">لا توجد منشورات حالياً</div>`;
-                return;
+    db.ref(path).on('value', snap => {
+        container.innerHTML = "";
+        const data = snap.val();
+        if (!data) {
+            container.innerHTML = `<div style="text-align:center; padding:20px; color:gray;">لا توجد منشورات حالياً</div>`;
+            return;
+        }
+
+        const postsArray = Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse();
+        postsArray.forEach(p => {
+            if (path === 'posts' && sub && p.sub !== sub) return;
+
+            const isOwner = me && me.p === p.userId;
+            const isAdmin = me && me.role === 'admin';
+            const isBuyer = me && me.p === p.buyerId;
+            
+            let actionButtons = "";
+
+            if (p.sold) {
+                // حالة تم البيع
+                actionButtons = `
+                    <div style="background:rgba(16, 185, 129, 0.1); color:var(--green); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--green); font-weight:bold; margin-top:10px;">
+                        <i class="fas fa-check-double"></i> تم البيع بنجاح
+                    </div>`;
+            } 
+            else if (p.pending) {
+                // حالة قيد الشراء (هنا التعديل الجوهري للدردشة)
+                if (isBuyer || isOwner || isAdmin) {
+                    actionButtons = `
+                        <div style="background:rgba(59, 130, 246, 0.1); padding:10px; border-radius:10px; border:1px solid var(--primary); margin-top:10px; text-align:center;">
+                            <p style="color:var(--text-main); font-size:12px; margin-bottom:10px;">🔒 المبلغ محجوز في النظام.</p>
+                            
+                            <!-- التعديل هنا: إضافة p.userId للـ chatId ليتمكن البائع من الكتابة -->
+                            <button class="btn-main" style="background:var(--accent); color:black;" 
+                                onclick="nav('chat', {
+                                    chatId:'${p.id}_${p.buyerId}_${p.userId}', 
+                                    postId:'${p.id}', 
+                                    buyerId:'${p.buyerId}', 
+                                    sellerId:'${p.userId}', 
+                                    itemTitle:'${p.title}'
+                                })">
+                                <i class="fas fa-comments"></i> دخول الدردشة للاتفاق
+                            </button>
+
+                            ${isBuyer ? `<button class="btn-main" style="background:var(--green); margin-top:10px;" onclick="confirmReceipt('${p.id}', '${path}')">✅ تأكيد استلام البضاعة</button>` : ''}
+                        </div>`;
+                } else {
+                    actionButtons = `<div style="text-align:center; color:var(--accent); padding:10px;">هذه السلعة محجوزة حالياً ⏳</div>`;
+                }
+            }
+            else {
+                // حالة العرض العادية
+                actionButtons = `
+                    <div style="display:flex; gap:10px; margin-top:10px;">
+                        <button class="btn-main" style="flex:2;" onclick="buyItem('${path}', '${p.id}', ${p.price}, '${p.userId}', '${p.title}')">
+                            <i class="fas fa-shopping-cart"></i> شراء عبر الوسيط
+                        </button>
+                        <a href="https://wa.me/249${p.userWa}" class="btn-main" style="flex:1; background:#25d366; text-decoration:none; display:flex; align-items:center; justify-content:center;">
+                            <i class="fab fa-whatsapp"></i>
+                        </a>
+                    </div>`;
             }
 
-            const postsArray = Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse();
-            postsArray.forEach(p => {
-                if (path === 'posts' && sub && p.sub !== sub) return;
-
-                const isOwner = me && me.p === p.userId;
-                const isAdmin = me && me.role === 'admin';
-                const isBuyer = me && me.p === p.buyerId;
-                
-                let actionButtons = "";
-
-                if (p.sold) {
-                    actionButtons = `
-                        <div style="background:rgba(16, 185, 129, 0.1); color:var(--green); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--green); font-weight:bold; margin-top:10px;">
-                            <i class="fas fa-check-double"></i> تم البيع بنجاح
-                        </div>`;
-                } 
-                else if (p.pending) {
-                    if (isBuyer || isOwner || isAdmin) {
-                        actionButtons = `
-                            <div style="background:rgba(59, 130, 246, 0.1); padding:10px; border-radius:10px; border:1px solid var(--primary); margin-top:10px; text-align:center;">
-                                <p style="color:var(--text-main); font-size:12px; margin-bottom:10px;">🔒 المبلغ محجوز في النظام.</p>
-                                <button class="btn-main" style="background:var(--accent); color:black;" onclick="nav('chat', {chatId:'${p.id}_${p.buyerId}', postId:'${p.id}', buyerId:'${p.buyerId}', sellerId:'${p.userId}', itemTitle:'${p.title}'})">
-                                    <i class="fas fa-comments"></i> دخول الدردشة للاتفاق
-                                </button>
-                                ${isBuyer ? `<button class="btn-main" style="background:var(--green); margin-top:10px;" onclick="confirmReceipt('${p.id}', '${path}')">✅ تأكيد استلام البضاعة</button>` : ''}
-                            </div>`;
-                    } else {
-                        actionButtons = `<div style="text-align:center; color:var(--accent); padding:10px;">هذه السلعة محجوزة حالياً ⏳</div>`;
-                    }
-                }
-                else {
-                    actionButtons = `
-                        <div style="display:flex; gap:10px; margin-top:10px;">
-                            <button class="btn-main" style="flex:2;" onclick="buyItem('${path}', '${p.id}', ${p.price}, '${p.userId}', '${p.title}')">
-                                <i class="fas fa-shopping-cart"></i> شراء عبر الوسيط
-                            </button>
-                            <a href="https://wa.me/249${p.userWa}" class="btn-main" style="flex:1; background:#25d366; text-decoration:none; display:flex; align-items:center; justify-content:center;">
-                                <i class="fab fa-whatsapp"></i>
-                            </a>
-                        </div>`;
-                }
-
-                const postHtml = `
-                    <div class="post">
-                        <div class="post-img-container">
-                            ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="height:100%; background:#2d3748; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image"></i></div>`}
-                            ${p.sold ? '<div class="sold-overlay">تم البيع</div>' : p.pending ? '<div class="sold-overlay" style="background:rgba(245,158,11,0.7)">قيد الشراء</div>' : ''}
+            const postHtml = `
+                <div class="post">
+                    <div class="post-img-container">
+                        ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="height:100%; background:#2d3748; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image"></i></div>`}
+                        ${p.sold ? '<div class="sold-overlay">تم البيع</div>' : p.pending ? '<div class="sold-overlay" style="background:rgba(245,158,11,0.7)">قيد الشراء</div>' : ''}
+                    </div>
+                    <div style="padding:15px;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <h3 style="margin:0; font-size:16px;">${p.title}</h3>
+                            <b style="color:var(--neon-blue);">${p.price} SDM</b>
                         </div>
-                        <div style="padding:15px;">
-                            <div style="display:flex; justify-content:space-between;">
-                                <h3 style="margin:0; font-size:16px;">${p.title}</h3>
-                                <b style="color:var(--neon-blue);">${p.price} SDM</b>
-                            </div>
-                            <p style="font-size:12px; color:var(--text-sec); margin:10px 0;">${p.desc}</p>
-                            <div id="actions-${p.id}">${actionButtons}</div>
-                        </div>
-                    </div>`;
-                container.innerHTML += postHtml;
-            });
+                        <p style="font-size:12px; color:var(--text-sec); margin:10px 0;">${p.desc}</p>
+                        <div id="actions-${p.id}">${actionButtons}</div>
+                    </div>
+                </div>`;
+            container.innerHTML += postHtml;
         });
-    }          
+    });
+}
     function togglePostMenu(postId) {
         const allMenus = document.querySelectorAll('.post-menu-dropdown');
         allMenus.forEach(menu => {
