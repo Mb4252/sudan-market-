@@ -317,7 +317,7 @@
             font-size: 16px;
             margin-top: 10px;
         }
-    </style>
+        /* تصميم نظام الدردشة الجديد */
 .chat-container { 
     display: flex; 
     flex-direction: column; 
@@ -363,7 +363,8 @@
     color: #00f3ff; 
     margin-left: 5px; 
     font-size: 14px; 
-}
+    }
+    </style>
 </head>
 <body>
 <!-- شاشة التحميل الأولية (يجب أن تكون هنا ليعمل كود منع الوميض) -->
@@ -2584,6 +2585,54 @@ function updateProfileData() {
         });
     }).catch(err => {
         Swal.fire('خطأ', 'تعذر حفظ البيانات: ' + err.message, 'error');
+    });
+}
+    // --- وظائف الدردشة الآمنة ---
+
+function sendChatMessage(chatId) {
+    const input = document.getElementById('chat-msg-input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    const msgData = {
+        senderId: me.p,
+        senderName: me.n,
+        text: text,
+        date: firebase.database.ServerValue.TIMESTAMP
+    };
+
+    db.ref(`chats/${chatId}`).push(msgData).then(() => {
+        input.value = '';
+    });
+}
+
+function listenToMessages(chatId) {
+    const chatBox = document.getElementById('chat-box');
+    if (!chatBox) return;
+
+    db.ref(`chats/${chatId}`).on('value', snap => {
+        chatBox.innerHTML = '';
+        const msgs = snap.val();
+        if (!msgs) {
+            chatBox.innerHTML = '<div style="text-align:center; color:gray; font-size:12px; margin-top:20px;">ابدأ المحادثة الآن للاتفاق على التسليم...</div>';
+            return;
+        }
+
+        Object.values(msgs).forEach(m => {
+            const isMe = m.senderId === me.p;
+            const time = new Date(m.date).toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'});
+            
+            const msgHtml = `
+                <div class="msg ${isMe ? 'me' : 'other'}">
+                    <div style="font-size:10px; font-weight:bold; margin-bottom:3px;">${escapeHtml(m.senderName)}</div>
+                    <div>${escapeHtml(m.text)}</div>
+                    <span class="msg-info">${time}</span>
+                </div>`;
+            chatBox.innerHTML += msgHtml;
+        });
+        
+        // التمرير لأسفل تلقائياً عند وصول رسالة جديدة
+        chatBox.scrollTop = chatBox.scrollHeight;
     });
 }
 </script>
