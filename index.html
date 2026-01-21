@@ -2129,7 +2129,13 @@ function checkUserOnlineStatus(uid, elementId) {
                         <button class="btn-main" style="background:var(--neon-blue); color:black; width:auto; padding:10px 30px;" onclick="showTransfer()">إرسال <i class="fas fa-paper-plane"></i></button>
                     </div>
                 </div>
-
+                 // ابحث عن أزرار الإرسال في قسم المحفظة وأضف بجانبها زر السحب
+`
+<div style="display:flex; gap:10px; justify-content:center; margin-top:10px;">
+    <button class="btn-main" style="background:var(--neon-blue); color:black; flex:1;" onclick="showTransfer()">إرسال SDM</button>
+    <button class="btn-main" style="background:var(--accent); color:black; flex:1;" onclick="showWithdrawForm()">سحب (BOK/كاشي)</button>
+</div>
+`
                 ${(me.role === 'admin') ? `
                 <div style="padding:15px; background:rgba(245, 158, 11, 0.1); border:1px solid var(--accent); border-radius:15px; margin:15px;">
                     <h3 style="margin-top:0; color:var(--accent);"><i class="fas fa-shield-alt"></i> طلبات الإيداع (للإدارة)</h3>
@@ -2155,7 +2161,51 @@ function checkUserOnlineStatus(uid, elementId) {
                     <h3>سجل المعاملات</h3>
                     <div id="transactions-history">جاري التحميل...</div>
                 </div>`;
-            
+            // أضف هذا داخل شرط الأدمن في المحفظة
+if(me.role === 'admin') {
+    // دالة لجلب طلبات السحب
+    loadAdminWithdrawRequests();
+}
+
+function loadAdminWithdrawRequests() {
+    db.ref('requests/withdrawals').orderByChild('status').equalTo('pending').on('value', snap => {
+        const container = document.getElementById('admin-withdraw-list'); // تأكد من إضافة هذا الـ ID في الـ HTML
+        if (!container) return;
+        container.innerHTML = "";
+        const data = snap.val();
+        if (!data) return container.innerHTML = "لا توجد طلبات سحب";
+
+        Object.keys(data).forEach(id => {
+            const req = data[id];
+            container.innerHTML += `
+                <div class="admin-item" style="border:1px solid var(--accent); padding:10px; margin-bottom:10px;">
+                    <p>👤 <b>المستخدم:</b> ${req.userName}</p>
+                    <p>💰 <b>المبلغ:</b> ${req.amountSDG} جنيه (${req.amountSDM} SDM)</p>
+                    <p>🏦 <b>الطريقة:</b> ${req.method}</p>
+                    <p>📝 <b>الحساب:</b> ${req.accountNumber} <br> <b>الاسم:</b> ${req.fullName}</p>
+                    <button class="btn-main" style="background:var(--green)" onclick="confirmWithdraw('${id}', '${req.userId}', ${req.amountSDM})">تم التحويل (تأكيد) ✅</button>
+                </div>`;
+        });
+    });
+}
+
+async function confirmWithdraw(reqId, userId, amount) {
+    const { value: transId } = await Swal.fire({
+        title: 'أدخل رقم العملية (Transaction ID)',
+        input: 'text',
+        inputPlaceholder: 'رقم الإشعار من بنكك...',
+        showCancelButton: true
+    });
+
+    if (transId) {
+        // تحديث الطلب ليقوم البوت بالمعالجة النهائية
+        db.ref(`requests/withdrawals/${reqId}`).update({
+            status: 'confirmed_by_admin',
+            transactionId: transId
+        });
+        Swal.fire('تم التأكيد', 'سيقوم النظام بخصم المبلغ نهائياً وإخطار المستخدم', 'success');
+    }
+}
             loadTransactions(); 
             if(me.role === 'admin') loadAdminCoinRequests(); 
         
@@ -2883,6 +2933,70 @@ function listenToMessages(chatId) {
         }
     });
     }
+    async function showWithdrawForm() {
+    if (isGuest) return;
+
+    Swal.fire({
+        title: 'سحب إلى بنك الخرطوم / كاشي',
+        html: `
+            <select id="w-method" class="swal2-input">
+                <option value="BOK">بنك الخرطوم (BOK)</option>
+                <option value="Kashy">كاشي (Kashy)</option>
+            </select>
+            <input id="w-amount" class="swal2-input" type="number" placeholder="الكمية بـ SDM" oninput="calcWithdraw(this.value)">
+            <div id="w-res" style="color:var(--accent); font-weight:bold; margin:10px 0;">ستحصل على: 0 جنيه</div>
+            <input id="w-name" class="swal2-input" placeholder="الاسم الكامل">
+            <input id="w-acc" class="swal2-input" placeholder="رقم الحساب / الهاتف">
+            <p style="font-size:11px; color:gray;">سيتم تجميد المبلغ حتى يتم التحويل من قبل الإدارة</p>
+        `,
+        confirmButtonText: 'تأكيد طلب السحب',
+        showCancelButton: true,
+        background: '#1e293b',
+        color: '#fff',
+        preConfirm: () => {
+            const amount = parseFloat(document.getElementById('w-amount').value);
+            const name = document.getElementById('w-name').value;
+            const acc = document.getElementById('w-acc').value;
+            const method = document.getElementById('w-method').value;
+
+            if (!amount || amount <= 0 || !name || !acc) {
+                Swal.showValidationMessage('يرجى ملء جميع الحقول');
+                return false;
+            }
+            if (amount > me.sdmBalance) {
+                Swal.showValidationMessage('رصيدك غير كافٍ');
+                return false;
+            }
+            return { amount, name, acc, method };
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const data = result.value;
+            showLoginLoading();
+            
+            // إرسال الطلب لقاعدة البيانات
+            db.ref('requests/withdrawals').push({
+                userId: me.p,
+                userName: me.n,
+                amountSDM: data.amount,
+                amountSDG: data.amount * SDM_RATE,
+                fullName: data.name,
+                accountNumber: data.acc,
+                method: data.method,
+                status: 'pending',
+                date: Date.now()
+            }).then(() => {
+                hideLoginLoading();
+                Swal.fire('تم إرسال الطلب', 'انتظر 5 دقائق حتى يتم معالجة طلبك وتعبئة حسابك. تم تجميد المبلغ بنجاح.', 'info');
+            });
+        }
+    });
+}
+
+function calcWithdraw(val) {
+    const res = document.getElementById('w-res');
+    if(res) res.innerText = `ستحصل على: ${(parseFloat(val || 0) * SDM_RATE).toLocaleString()} جنيه`;
+}
 </script>
 </body>
 </html>
