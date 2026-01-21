@@ -31,48 +31,48 @@ async function processEscrow() {
         const escRef = db.ref('requests/escrow_deals');
 
         // أ- مرحلة حجز الأموال (Securing Funds)
-        const pendingLock = await escRef.orderByChild('status').equalTo('pending_delivery').once('value');
-        if (pendingLock.exists()) {
-            for (const [id, deal] of Object.entries(pendingLock.val())) {
-                const amount = parseFloat(deal.amount);
-                
-                const lockTx = await db.ref(`users/${deal.buyerId}`).transaction(user => {
-                    if (!user) return user;
-                    const bal = parseFloat(user.sdmBalance || 0);
-                    if (bal < amount) return undefined; 
-                    user.sdmBalance = Number((bal - amount).toFixed(2));
-                    return user;
-                });
+        
+         // ب- مرحلة تحويل الأموال للبائع + نظام التقييم والتوثيق المطور
+const pendingRelease = await escRef.orderByChild('status').equalTo('confirmed_by_buyer').once('value');
+if (pendingRelease.exists()) {
+    for (const [id, deal] of Object.entries(pendingRelease.val())) {
+        const amount = parseFloat(deal.amount);
+        const stars = parseInt(deal.reviewStars || 5);
+        const comment = deal.reviewComment || "";
 
-                if (lockTx.committed) {
-                    await escRef.child(id).update({ status: 'secured', updatedAt: admin.database.ServerValue.TIMESTAMP });
-                    await db.ref(`${deal.path}/${deal.postId}`).update({ pending: true, buyerId: deal.buyerId });
-                    
-                    sendAlert(deal.buyerId, `🔒 تم حجز ${amount} SDM. المبلغ في أمان الآن حتى تستلم السلعة.`);
-                    sendAlert(deal.sellerId, `🔔 خبر سار! تم حجز مبلغ "${deal.itemTitle}". يمكنك تسليم السلعة للمشتري الآن.`, 'info');
-                } else {
-                    await escRef.child(id).update({ status: 'failed_insufficient_funds' });
-                    sendAlert(deal.buyerId, `❌ فشل الشراء: رصيدك لا يكفي لإتمام العملية.`, 'error');
+        // 1. تحويل المال للبائع
+        await db.ref(`users/${deal.sellerId}/sdmBalance`).transaction(b => Number(((b || 0) + amount).toFixed(2)));
+
+        // 2. تحديث ملف البائع (التقييم + عدد العمليات + التوثيق)
+        await db.ref(`users/${deal.sellerId}`).transaction(user => {
+            if (user) {
+                user.reviewCount = (user.reviewCount || 0) + 1;
+                user.ratingSum = (user.ratingSum || 0) + stars;
+                user.rating = Number((user.ratingSum / user.reviewCount).toFixed(1));
+                
+                // شرط التوثيق التلقائي عند الوصول لـ 100 تقييم
+                if (user.reviewCount >= 100) {
+                    user.verified = true;
                 }
             }
-        }
+            return user;
+        });
 
-        // ب- مرحلة تحويل الأموال للبائع (Release Funds)
-        const pendingRelease = await escRef.orderByChild('status').equalTo('confirmed_by_buyer').once('value');
-        if (pendingRelease.exists()) {
-            for (const [id, deal] of Object.entries(pendingRelease.val())) {
-                const amount = parseFloat(deal.amount);
-                
-                await db.ref(`users/${deal.sellerId}/sdmBalance`).transaction(b => Number(((b || 0) + amount).toFixed(2)));
-                
-                await escRef.child(id).update({ status: 'completed', completedAt: admin.database.ServerValue.TIMESTAMP });
-                await db.ref(`${deal.path}/${deal.postId}`).update({ sold: true, pending: false, soldAt: admin.database.ServerValue.TIMESTAMP });
+        // 3. حفظ التعليق في سجل التعليقات ليراه الناس
+        await db.ref(`reviews/${deal.sellerId}`).push({
+            buyerName: deal.buyerName || "مشتري",
+            stars: stars,
+            comment: comment,
+            date: admin.database.ServerValue.TIMESTAMP
+        });
 
-                sendAlert(deal.sellerId, `💰 مبروك! استلمت ${amount} SDM في محفظتك مقابل بيع "${deal.itemTitle}".`, 'success');
-                sendAlert(deal.buyerId, `✅ تم تأكيد الاستلام بنجاح. نتمنى لك تجربة سعيدة!`, 'success');
-            }
-        }
+        // 4. إنهاء الطلب
+        await escRef.child(id).update({ status: 'completed', completedAt: admin.database.ServerValue.TIMESTAMP });
+        await db.ref(`${deal.path}/${deal.postId}`).update({ sold: true, pending: false });
 
+        sendAlert(deal.sellerId, `💰 استلمت ${amount} SDM وتقييم جديد (${stars} نجوم)!`);
+    }
+}
         // ج- مرحلة إلغاء الطلب وإرجاع المال للمشتري (Refund Funds) 🌟 [إضافة جديدة]
         const pendingCancel = await escRef.orderByChild('status').equalTo('cancelled_by_buyer').once('value');
         if (pendingCancel.exists()) {
