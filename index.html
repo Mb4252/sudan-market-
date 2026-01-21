@@ -317,6 +317,15 @@
             font-size: 16px;
             margin-top: 10px;
         }
+        /* تصميم نظام الدردشة */
+.chat-container { display: flex; flex-direction: column; height: 70vh; background: var(--bg-card); border-radius: 20px; border: 1px solid var(--border); overflow: hidden; margin: 10px; }
+.chat-messages { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; background: rgba(0,0,0,0.2); }
+.msg { max-width: 85%; padding: 10px 15px; border-radius: 18px; font-size: 14px; line-height: 1.4; position: relative; }
+.msg.me { align-self: flex-start; background: var(--primary); color: white; border-bottom-left-radius: 2px; }
+.msg.other { align-self: flex-end; background: #334155; color: white; border-bottom-right-radius: 2px; }
+.msg-info { font-size: 9px; opacity: 0.7; margin-top: 5px; display: block; text-align: left; }
+.chat-input-area { padding: 15px; display: flex; gap: 10px; border-top: 1px solid var(--border); }
+.verified-badge { color: var(--neon-blue); margin-right: 5px; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -2118,6 +2127,29 @@ updateActiveTabUI(view);
                 });
             }
         });
+        // أضف هذا الجزء داخل دالة render قبل إغلاقها
+else if (view === 'chat') {
+    const {chatId, postId, buyerId, sellerId, itemTitle} = extra;
+    area.innerHTML = `
+        <div style="padding:15px; background:rgba(245, 158, 11, 0.1); border-bottom:1px solid var(--accent); color:var(--accent); font-size:12px; text-align:center;">
+            <i class="fas fa-shield-alt"></i> وسيط SDM يراقب هذه الدردشة لضمان أمان المعاملة
+        </div>
+        <div style="padding:10px 20px; border-bottom:1px solid var(--border);">
+            <h4 style="margin:0;">المنتج: ${itemTitle}</h4>
+        </div>
+        <div class="chat-container">
+            <div id="chat-box" class="chat-messages"></div>
+            <div class="chat-input-area">
+                <input type="text" id="chat-msg-input" placeholder="اكتب رسالتك هنا..." style="margin:0;">
+                <button class="btn-main" onclick="sendChatMessage('${chatId}')" style="width:50px; margin:0; padding:0;"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+        <div style="padding:0 15px;">
+            <button class="btn-main" style="background:var(--green);" onclick="confirmReceipt('${postId}', 'posts')">✅ استلمت المنتج (إنهاء الصفقة)</button>
+        </div>
+    `;
+    listenToMessages(chatId);
+}
     }
 
     function startSlider() { 
@@ -2526,6 +2558,14 @@ function updateProfileData() {
         Swal.fire('خطأ', 'تعذر حفظ البيانات: ' + err.message, 'error');
     });
 }
+    /* تصميم صندوق الدردشة */
+.chat-container { display: flex; flex-direction: column; height: 80vh; background: var(--bg-card); border-radius: 20px; overflow: hidden; }
+.chat-messages { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+.msg { max-width: 80%; padding: 10px 15px; border-radius: 15px; font-size: 14px; position: relative; }
+.msg.me { align-self: flex-start; background: var(--primary); color: white; border-bottom-left-radius: 2px; }
+.msg.other { align-self: flex-end; background: #334155; color: white; border-bottom-right-radius: 2px; }
+.msg-info { font-size: 9px; opacity: 0.7; margin-top: 5px; display: block; }
+.verified-badge { color: #00f3ff; margin-left: 5px; font-size: 14px; }
 </script>
 </body>
 </html>
