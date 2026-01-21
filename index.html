@@ -1028,118 +1028,82 @@
         }
 
         const postsArray = Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse();
+        
         postsArray.forEach(p => {
             if (path === 'posts' && sub && p.sub !== sub) return;
 
-            const isOwner = me && me.p === p.userId;
-            const isAdmin = me && me.role === 'admin';
-            const isBuyer = me && me.p === p.buyerId;
-            
+            // تنسيق التاريخ
+            const postDate = p.date ? new Date(p.date).toLocaleDateString('ar-EG', {
+                year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            }) : "تاريخ غير معروف";
+
+            // تحديد أزرار التحكم (نفس منطقك السابق)
             let actionButtons = "";
+            const isOwner = me && me.p === p.userId;
+            const isBuyer = me && me.p === p.buyerId;
 
             if (p.sold) {
-                // حالة تم البيع
-                actionButtons = `
-                    <div style="background:rgba(16, 185, 129, 0.1); color:var(--green); padding:12px; text-align:center; border-radius:12px; border:1px solid var(--green); font-weight:bold; margin-top:10px;">
-                        <i class="fas fa-check-double"></i> تم البيع بنجاح
-                    </div>`;
-            } 
-            // ... داخل دالة loadPosts ...
-           else if (p.pending) {
-    // حالة قيد الشراء: المبلغ محجوز عند الوسيط
-    let buyerActions = "";
-    
-    // شرط العرض: فقط الشخص الذي اشترى (المشتري) هو من يرى أزرار التحكم في المال
-    if (isBuyer) {
-        buyerActions = `
-            <div style="margin-top: 10px; border-top: 1px dashed rgba(255,255,255,0.1); pt-10">
-                <button class="btn-main" style="background:var(--green); margin-top:10px;" onclick="confirmReceipt('${p.id}', '${path}')">
-                    ✅ تم الاستلام (تحويل المال للبائع)
-                </button>
-                <button class="btn-main" style="background:var(--red); margin-top:10px;" onclick="cancelPurchase('${p.id}', '${path}')">
-                    ❌ إلغاء الطلب واستعادة المال
-                </button>
-            </div>
-        `;
-    }
-
-    // الأطراف المعنية (بائع، مشتري، أدمن) يرى الجميع رسالة "المبلغ محجوز" وزر الدردشة
-    if (isBuyer || isOwner || isAdmin) {
-        actionButtons = `
-            <div style="background:rgba(59, 130, 246, 0.1); padding:12px; border-radius:15px; border:1px solid var(--primary); margin-top:10px; text-align:center;">
-                <p style="color:var(--text-main); font-size:12px; margin-bottom:10px;">
-                    <i class="fas fa-lock"></i> المبلغ محجوز في النظام (الوسيط الآمن).
-                </p>
-                
-                <button class="btn-main" style="background:var(--accent); color:black;" 
-                    onclick="nav('chat', {
-                        chatId:'${p.id}_${p.buyerId}_${p.userId}', 
-                        postId:'${p.id}', 
-                        buyerId:'${p.buyerId}', 
-                        sellerId:'${p.userId}', 
-                        itemTitle:'${p.title}'
-                    })">
-                    <i class="fas fa-comments"></i> دخول الدردشة للاتفاق
-                </button>
-
-                ${buyerActions} 
-            </div>`;
-    } else {
-        // أي مستخدم آخر يرى أن السلعة محجوزة فقط
-        actionButtons = `<div style="text-align:center; color:var(--accent); padding:10px; background:rgba(245,158,11,0.05); border-radius:10px;">⏳ هذه السلعة محجوزة لمشتري آخر</div>`;
-    }
-}
-            else {
-                // حالة العرض العادية
+                actionButtons = `<div style="background:rgba(16, 185, 129, 0.1); color:var(--green); padding:10px; text-align:center; border-radius:12px; border:1px solid var(--green); font-weight:bold; margin-top:10px;">✅ تم البيع</div>`;
+            } else if (p.pending) {
+                actionButtons = `<div style="text-align:center; color:var(--accent); padding:10px; background:rgba(245,158,11,0.05); border-radius:10px;">⏳ محجوز لاتمام الشراء</div>`;
+            } else {
                 actionButtons = `
                     <div style="display:flex; gap:10px; margin-top:10px;">
-                        <button class="btn-main" style="flex:2;" onclick="buyItem('${path}', '${p.id}', ${p.price}, '${p.userId}', '${p.title}')">
-                            <i class="fas fa-shopping-cart"></i> شراء عبر الوسيط
-                        </button>
-                        <a href="https://wa.me/249${p.userWa}" class="btn-main" style="flex:1; background:#25d366; text-decoration:none; display:flex; align-items:center; justify-content:center;">
-                            <i class="fab fa-whatsapp"></i>
-                        </a>
+                        <button class="btn-main" style="flex:2;" onclick="buyItem('${path}', '${p.id}', ${p.price}, '${p.userId}', '${p.title}')">شراء آمن</button>
+                        <a href="https://wa.me/249${p.userWa}" class="btn-main" style="flex:1; background:#25d366; display:flex; align-items:center; justify-content:center;"><i class="fab fa-whatsapp"></i></a>
                     </div>`;
             }
-            // داخل حلقة postsArray.forEach(p => { ...
 
-// 1. تجهيز علامة التوثيق (تظهر إذا كان verified = true)
-const verifiedBadge = p.verified ? '<i class="fas fa-check-circle" style="color:#00f3ff; margin-right:5px;" title="بائع موثوق"></i>' : '';
-
-// 2. تحديث الـ HTML لعرض التقييم بجانب الاسم
-const sellerInfoHtml = `
-    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #ffffff0a;">
-        <img src="${p.userPic || userPic}" style="width:35px; height:35px; border-radius:50%; border:1px solid var(--accent);">
-        <div style="flex:1;">
-            <div style="display:flex; align-items:center;">
-                <b style="font-size:14px;">${p.userName}</b>
-                ${verifiedBadge} 
-            </div>
-            <div style="font-size:11px; color:var(--accent); cursor:pointer;" onclick="showSellerReviews('${p.userId}', '${p.userName}')">
-                ⭐ ${(p.rating || 5).toFixed(1)} (${p.reviewCount || 0} تقييم) - <span style="text-decoration:underline;">عرض الكل</span>
-            </div>
-        </div>
-    </div>
-`;
-
-// ثم ضع sellerInfoHtml داخل متغير postHtml في المكان المناسب (عادة فوق العنوان)
+            // إنشاء الكارت مع إضافة اسم الناشر، التاريخ، وحالة الاتصال
             const postHtml = `
-                <div class="post">
+                <div class="post" id="post-${p.id}">
                     <div class="post-img-container">
                         ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="height:100%; background:#2d3748; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image"></i></div>`}
-                        ${p.sold ? '<div class="sold-overlay">تم البيع</div>' : p.pending ? '<div class="sold-overlay" style="background:rgba(245,158,11,0.7)">قيد الشراء</div>' : ''}
+                        ${p.sold ? '<div class="sold-overlay">تم البيع</div>' : ''}
                     </div>
                     <div style="padding:15px;">
-                        <div style="display:flex; justify-content:space-between;">
-                            <h3 style="margin:0; font-size:16px;">${p.title}</h3>
-                            <b style="color:var(--neon-blue);">${p.price} SDM</b>
+                        <!-- معلومات الناشر والتاريخ -->
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:10px;">
+                            <img src="${p.userPic || userPic}" style="width:35px; height:35px; border-radius:50%; border:1px solid var(--accent);">
+                            <div style="flex:1;">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <b style="font-size:13px; color:white;">${p.userName}</b>
+                                    <span style="font-size:10px; color:var(--text-sec);">${postDate}</span>
+                                </div>
+                                <div id="status-${p.id}-${p.userId}" class="status-indicator">
+                                    <span class="dot-offline"></span> <span style="color:gray">جاري التحقق..</span>
+                                </div>
+                            </div>
                         </div>
-                        <p style="font-size:12px; color:var(--text-sec); margin:10px 0;">${p.desc}</p>
+
+                        <div style="display:flex; justify-content:space-between; align-items:start;">
+                            <h3 style="margin:0; font-size:15px; color:var(--text-main);">${p.title}</h3>
+                            <b style="color:var(--neon-blue); font-size:16px;">${p.price} SDM</b>
+                        </div>
+                        <p style="font-size:12px; color:var(--text-sec); margin:8px 0; line-height:1.4;">${p.desc}</p>
+                        
                         <div id="actions-${p.id}">${actionButtons}</div>
                     </div>
                 </div>`;
+            
             container.innerHTML += postHtml;
+
+            // تحديث حالة الاتصال فورياً لكل ناشر
+            checkUserOnlineStatus(p.userId, `status-${p.id}-${p.userId}`);
         });
+    });
+}
+
+// دالة فرعية للتحقق من حالة الاتصال من جدول المستخدمين
+function checkUserOnlineStatus(uid, elementId) {
+    db.ref(`users/${uid}/online`).on('value', snap => {
+        const isOnline = snap.val() === true;
+        const el = document.getElementById(elementId);
+        if (el) {
+            el.innerHTML = isOnline 
+                ? `<span class="dot-online"></span> <span style="color:#10b981">متصل الآن</span>` 
+                : `<span class="dot-offline"></span> <span style="color:gray">غير متصل</span>`;
+        }
     });
 }
     function togglePostMenu(postId) {
