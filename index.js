@@ -3,6 +3,7 @@ const express = require('express');
 const app = express();
 
 // 1. إعداد الاتصال بقاعدة البيانات
+// تأكد من وضع ملف الخدمة JSON في المتغيرات البيئية (Environment Variables) في Render
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 admin.initializeApp({
@@ -24,13 +25,13 @@ function sendAlert(uid, msg, type = 'success') {
 }
 
 /**
- * [1] محرك الوسيط الآمن (Escrow System) - النسخة النهائية المتكاملة
+ * [1] محرك الوسيط الآمن (Escrow System)
  */
 async function processEscrow() {
     try {
         const escRef = db.ref('requests/escrow_deals');
 
-        // أ- مرحلة حجز الأموال (Securing Funds) - [تمت استعادتها]
+        // أ- مرحلة حجز الأموال
         const pendingLock = await escRef.orderByChild('status').equalTo('pending_delivery').once('value');
         if (pendingLock.exists()) {
             for (const [id, deal] of Object.entries(pendingLock.val())) {
@@ -57,50 +58,34 @@ async function processEscrow() {
             }
         }
 
-        // ب- مرحلة تحويل الأموال للبائع + نظام التقييم والتوثيق المطور
+        // ب- مرحلة تحويل الأموال للبائع
         const pendingRelease = await escRef.orderByChild('status').equalTo('confirmed_by_buyer').once('value');
         if (pendingRelease.exists()) {
             for (const [id, deal] of Object.entries(pendingRelease.val())) {
                 const amount = parseFloat(deal.amount);
                 const stars = parseInt(deal.reviewStars || 5);
-                const comment = deal.reviewComment || "";
 
-                // 1. تحويل المال للبائع
                 await db.ref(`users/${deal.sellerId}/sdmBalance`).transaction(b => Number(((b || 0) + amount).toFixed(2)));
 
-                // 2. تحديث ملف البائع (التقييم + عدد العمليات + التوثيق)
                 await db.ref(`users/${deal.sellerId}`).transaction(user => {
                     if (user) {
                         user.reviewCount = (user.reviewCount || 0) + 1;
                         user.ratingSum = (user.ratingSum || 0) + stars;
                         user.rating = Number((user.ratingSum / user.reviewCount).toFixed(1));
-                        
-                        // التوثيق التلقائي عند الوصول لـ 100 تقييم
-                        if (user.reviewCount >= 100) {
-                            user.verified = true;
-                        }
+                        if (user.reviewCount >= 100) user.verified = true;
                     }
                     return user;
                 });
 
-                // 3. حفظ التعليق في سجل التعليقات ليراه الناس
-                await db.ref(`reviews/${deal.sellerId}`).push({
-                    buyerName: deal.buyerName || "مشتري",
-                    stars: stars,
-                    comment: comment,
-                    date: admin.database.ServerValue.TIMESTAMP
-                });
-
-                // 4. إنهاء الطلب وتحديث حالة المنشور
                 await escRef.child(id).update({ status: 'completed', completedAt: admin.database.ServerValue.TIMESTAMP });
                 await db.ref(`${deal.path}/${deal.postId}`).update({ sold: true, pending: false });
 
-                sendAlert(deal.sellerId, `💰 استلمت ${amount} SDM وتقييم جديد (${stars} نجوم)!`, 'success');
-                sendAlert(deal.buyerId, `✅ تم تأكيد الاستلام، شكراً لتقييمك!`, 'success');
+                sendAlert(deal.sellerId, `💰 استلمت ${amount} SDM وتقييم جديد!`, 'success');
+                sendAlert(deal.buyerId, `✅ تم تأكيد الاستلام بنجاح.`, 'success');
             }
         }
 
-        // ج- مرحلة إلغاء الطلب (Refund)
+        // ج- مرحلة إلغاء الطلب
         const pendingCancel = await escRef.orderByChild('status').equalTo('cancelled_by_buyer').once('value');
         if (pendingCancel.exists()) {
             for (const [id, deal] of Object.entries(pendingCancel.val())) {
@@ -108,8 +93,7 @@ async function processEscrow() {
                 await db.ref(`users/${deal.buyerId}/sdmBalance`).transaction(b => Number(((b || 0) + amount).toFixed(2)));
                 await escRef.child(id).update({ status: 'refunded', refundedAt: admin.database.ServerValue.TIMESTAMP });
                 await db.ref(`${deal.path}/${deal.postId}`).update({ pending: false, buyerId: null });
-                sendAlert(deal.buyerId, `💰 تم إلغاء الطلب وإرجاع ${amount} SDM لمحفظتك.`);
-                sendAlert(deal.sellerId, `⚠️ قام المشتري بإلغاء طلب الشراء لـ "${deal.itemTitle}".`, 'info');
+                sendAlert(deal.buyerId, `💰 تم إرجاع ${amount} SDM لمحفظتك.`);
             }
         }
 
@@ -127,11 +111,13 @@ async function processTransfers() {
             for (const [id, req] of Object.entries(snap.val())) {
                 const amount = parseFloat(req.amount);
                 const targetSnap = await db.ref('users').orderByChild('numericId').equalTo(req.toId).once('value');
+                
                 if (!targetSnap.exists()) {
                     await transRef.child(id).update({ status: 'failed_target_not_found' });
                     sendAlert(req.from, `❌ الرقم غير موجود.`, 'error');
                     continue;
                 }
+
                 const targetUid = Object.keys(targetSnap.val())[0];
                 const tx = await db.ref(`users/${req.from}`).transaction(sender => {
                     if (!sender) return sender;
@@ -139,6 +125,7 @@ async function processTransfers() {
                     sender.sdmBalance = Number((sender.sdmBalance - amount).toFixed(2));
                     return sender;
                 });
+
                 if (tx.committed) {
                     await db.ref(`users/${targetUid}/sdmBalance`).transaction(b => Number(((b || 0) + amount).toFixed(2)));
                     await transRef.child(id).update({ status: 'completed', toUid: targetUid });
@@ -153,16 +140,22 @@ async function processTransfers() {
 }
 
 /**
- * [3] مراقب النزاعات والـ VIP
+ * [3] مراقب النزاعات (تم إصلاح الخطأ هنا)
  */
 const DISPUTE_KEYWORDS = ["نصاب", "حرامي", "غش", "كذاب", "بلاغ"];
 const recentlyFlagged = new Set();
+
 function startChatMonitor() {
     db.ref('chats').on('child_added', (chatSnap) => {
         db.ref(`chats/${chatSnap.key}`).limitToLast(1).on('child_added', async (msgSnap) => {
             const msg = msgSnap.val();
-            if (!msg || msg.date < (Date.now() - 60000)) return;
-            const foundKeyword = DISPUTE_KEYWORDS.find(word => msg.text.includes(word));
+            
+            // الإصلاح: التحقق من وجود الكائن msg ووجود الحقل text قبل استخدام includes
+            if (!msg || !msg.text || msg.date < (Date.now() - 60000)) return;
+            
+            // تأمين الفحص لمنع توقف البوت في حال كانت الرسالة فارغة أو صورة
+            const foundKeyword = DISPUTE_KEYWORDS.find(word => msg.text && msg.text.includes(word));
+            
             if (foundKeyword && !recentlyFlagged.has(chatSnap.key)) {
                 await db.ref('admin_notifications').push({
                     type: 'dispute_alert',
@@ -178,6 +171,9 @@ function startChatMonitor() {
     });
 }
 
+/**
+ * [4] محرك الـ VIP
+ */
 async function processVIP() {
     try {
         const snap = await db.ref('requests/vip_subscriptions').orderByChild('status').equalTo('pending').once('value');
@@ -200,12 +196,13 @@ async function processVIP() {
     } catch (e) {}
 }
 
-// المجدولات
+// تشغيل المحركات والمراقبين
 setInterval(processEscrow, 5000);    
 setInterval(processTransfers, 6000); 
 setInterval(processVIP, 10000);      
 startChatMonitor();                  
 
-app.get('/', (req, res) => res.send("🚀 SDM Bot Online"));
+// إعداد السيرفر
+app.get('/', (req, res) => res.send("🚀 SDM Security Bot is Running Smoothly"));
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Running on ${PORT}`));
+app.listen(PORT, () => console.log(`Bot server listening on port ${PORT}`));
