@@ -1594,6 +1594,43 @@ function checkUserOnlineStatus(uid, elementId) {
             });
         });
     }   
+    // دالة عرض طلبات الإيداع للأدمن
+function loadAdminCoinRequests() {
+    const container = document.getElementById('admin-coin-requests-list');
+    if (!container) return;
+
+    db.ref('coin_requests').orderByChild('status').equalTo('pending').on('value', snap => {
+        container.innerHTML = "";
+        const data = snap.val();
+        
+        if (!data) {
+            container.innerHTML = "<p style='text-align:center; font-size:12px; color:gray;'>لا توجد طلبات إيداع معلقة</p>";
+            return;
+        }
+
+        Object.entries(data).forEach(([id, req]) => {
+            container.innerHTML += `
+                <div class="admin-item" style="border:1px solid var(--primary); padding:15px; margin-bottom:10px; background:rgba(0,0,0,0.2); border-radius:12px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                        <b style="color:var(--neon-blue);">${req.uN}</b>
+                        <b style="color:var(--accent); font-size:16px;">${req.qty} SDM</b>
+                    </div>
+                    <div style="font-size:11px; color:var(--text-sec); margin-bottom:10px;">
+                        ID: ${req.uNumericId} | التاريخ: ${new Date(req.date).toLocaleString('ar-EG')}
+                    </div>
+                    <img src="${req.img}" style="width:100%; max-height:150px; object-fit:contain; border-radius:8px; cursor:pointer; background:#000; margin-bottom:10px;" 
+                         onclick="Swal.fire({imageUrl: this.src, background:'#000', showConfirmButton:false})">
+                    
+                    <div style="display:flex; gap:10px;">
+                        <button class="btn-main" style="background:var(--green); flex:1; padding:8px; font-size:12px;" 
+                                onclick="approveCoins('${id}', '${req.uP}', ${req.qty})">تأكيد ✅</button>
+                        <button class="btn-main" style="background:var(--red); flex:1; padding:8px; font-size:12px;" 
+                                onclick="rejectCoins('${id}', '${req.uP}')">رفض ❌</button>
+                    </div>
+                </div>`;
+        });
+    });
+}
     async function approveCoins(reqId, userId, qty) {
         Swal.fire({ title: 'جاري المعالجة...', didOpen: () => Swal.showLoading() });
         const userRef = db.ref(`users/${userId}/sdmBalance`);
