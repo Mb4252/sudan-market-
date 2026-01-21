@@ -1593,37 +1593,7 @@ function checkUserOnlineStatus(uid, elementId) {
                 }
             });
         });
-    }
-
-    function loadAdminCoinRequests() {
-        if (me.role !== 'admin') return;
-        const container = document.getElementById('admin-coin-requests-list');
-        if (!container) return;
-
-        db.ref('coin_requests').on('value', snap => {
-            container.innerHTML = "";
-            const requests = snap.val();
-            if (!requests) return container.innerHTML = "<p style='color:gray; text-align:center;'>لا توجد طلبات</p>";
-
-            Object.keys(requests).forEach(reqId => {
-                const req = requests[reqId];
-                if (req.status !== 'pending') return;
-                container.innerHTML += `
-                    <div class="admin-item" style="border:1px solid var(--accent); padding:10px; margin-bottom:10px; background:rgba(0,0,0,0.2);">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <b>${escapeHtml(req.uN)}</b>
-                            <span class="badge badge-gold">${req.qty} SDM</span>
-                        </div>
-                        <img src="${req.img}" style="width:100%; max-height:150px; object-fit:contain; margin:10px 0; border-radius:5px; cursor:pointer;" onclick="Swal.fire({imageUrl:'${req.img}', background:'#1e293b'})">
-                        <div style="display:flex; gap:5px;">
-                            <button class="btn-main" style="background:var(--green); flex:1; padding:8px;" onclick="approveCoins('${reqId}', '${req.uP}', ${req.qty})">تأكيد ✅</button>
-                            <button class="btn-main" style="background:var(--red); flex:1; padding:8px;" onclick="rejectCoins('${reqId}', '${req.uP}')">رفض ❌</button>
-                        </div>
-                    </div>`;
-            });
-        });
-    }
-
+    }   
     async function approveCoins(reqId, userId, qty) {
         Swal.fire({ title: 'جاري المعالجة...', didOpen: () => Swal.showLoading() });
         const userRef = db.ref(`users/${userId}/sdmBalance`);
@@ -2257,13 +2227,14 @@ function checkUserOnlineStatus(uid, elementId) {
                     <h3 style="margin-top:30px;">سجل المعاملات</h3>
                     <div id="transactions-history">جاري التحميل...</div>
                 </div>`;
-            
-            loadTransactions(); 
-            if(me.role === 'admin') {
-                loadAdminCoinRequests(); 
-                loadAdminWithdrawRequests();
-            }
+               // ... نهاية كود المحفظة
+        loadTransactions(); 
+        if(me.role === 'admin') {
+            loadAdminCoinRequests(); 
+            loadAdminWithdrawRequests();
         }
+    
+// ... بداية كود الألعاب          
 function loadAdminWithdrawRequests() {
     const container = document.getElementById('admin-withdraw-list');
     if (!container) return;
