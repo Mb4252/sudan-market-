@@ -2217,27 +2217,31 @@ function checkUserOnlineStatus(uid, elementId) {
                 loadAdminWithdrawRequests(); // الجديدة
             }
 function loadAdminWithdrawRequests() {
+    const container = document.getElementById('admin-withdraw-list');
+    if (!container) return;
     db.ref('requests/withdrawals').orderByChild('status').equalTo('pending').on('value', snap => {
-        const container = document.getElementById('admin-withdraw-list'); // تأكد من إضافة هذا الـ ID في الـ HTML
-        if (!container) return;
         container.innerHTML = "";
         const data = snap.val();
-        if (!data) return container.innerHTML = "لا توجد طلبات سحب";
-
-        Object.keys(data).forEach(id => {
-            const req = data[id];
+        if (!data) return container.innerHTML = "<p style='text-align:center; font-size:12px; color:gray;'>لا توجد طلبات سحب حالياً</p>";
+        
+        Object.entries(data).forEach(([id, req]) => {
             container.innerHTML += `
-                <div class="admin-item" style="border:1px solid var(--accent); padding:10px; margin-bottom:10px;">
-                    <p>👤 <b>المستخدم:</b> ${req.userName}</p>
-                    <p>💰 <b>المبلغ:</b> ${req.amountSDG} جنيه (${req.amountSDM} SDM)</p>
-                    <p>🏦 <b>الطريقة:</b> ${req.method}</p>
-                    <p>📝 <b>الحساب:</b> ${req.accountNumber} <br> <b>الاسم:</b> ${req.fullName}</p>
-                    <button class="btn-main" style="background:var(--green)" onclick="confirmWithdraw('${id}', '${req.userId}', ${req.amountSDM})">تم التحويل (تأكيد) ✅</button>
+                <div class="admin-item" style="border:1px solid var(--green); padding:15px; margin-bottom:10px; background:rgba(0,0,0,0.2); border-radius:12px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                        <b style="color:var(--neon-blue);">${req.userName}</b>
+                        <b style="color:var(--red); font-size:16px;">${req.amount} SDM</b>
+                    </div>
+                    <div style="font-size:13px; color:#fff; background:rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                        <div>🏦 <b>الطريقة:</b> ${req.method}</div>
+                        <div style="margin-top:5px;">👤 <b>الاسم:</b> ${req.fullName}</div>
+                        <div style="margin-top:5px;">💳 <b>الحساب:</b> <span style="color:var(--accent); font-family:monospace; font-size:15px;">${req.accountNumber}</span></div>
+                    </div>
+                    <button class="btn-main" style="background:var(--green); padding:10px; margin-top:10px; font-size:13px;" 
+                        onclick="confirmWithdrawByAdmin('${id}', '${req.userId}', ${req.amount})">تأكيد التحويل ✅</button>
                 </div>`;
         });
     });
 }
-
 async function confirmWithdraw(reqId, userId, amount) {
     const { value: transId } = await Swal.fire({
         title: 'أدخل رقم العملية (Transaction ID)',
