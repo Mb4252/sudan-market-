@@ -1644,7 +1644,60 @@ function checkUserOnlineStatus(uid, elementId) {
             Swal.fire('تم الرفض', 'أرسلنا تنبيه للمستخدم', 'info');
         }
     }
+     function requestCoins() {
+    const qtyInput = document.getElementById('buy-qty');
+    const qty = qtyInput ? parseFloat(qtyInput.value) : 0;
+    
+    if(!qty || qty <= 0) {
+        Swal.fire('تنبيه', 'يرجى إدخال كمية صحيحة', 'warning');
+        return;
+    }
+    
+    if(!tempBuyImg) {
+        Swal.fire('تنبيه', 'مطلوب اختيار صورة إشعار الدفع', 'warning');
+        return;
+    }
+    
+    Swal.fire({
+        title: 'تأكيد طلب الإيداع',
+        html: `سيتم إرسال طلب لشحن <b>${qty} SDM</b> <br> انتظر رسالة التأكيد بعد الإرسال.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، أرسل الطلب',
+        cancelButtonText: 'إلغاء'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            showLoginLoading(); // تشغيل مؤشر التحميل
+            
+            db.ref('coin_requests').push({ 
+                uP: me.p, 
+                uN: me.n, 
+                uNumericId: me.numericId,
+                qty: qty, 
+                img: tempBuyImg, 
+                status: 'pending', 
+                date: Date.now() 
+            }).then(() => {
+                hideLoginLoading(); // إخفاء مؤشر التحميل
+                
+                // رسالة "البوت" التي طلبتها تظهر هنا بعد نجاح الإرسال
+                Swal.fire({
+                    title: 'تم استلام طلبك 🤖',
+                    text: 'انتظر قليلاً، سيقوم النظام بمراجعة التحويل وشحن حسابك فوراً.',
+                    icon: 'info',
+                    background: '#1e293b',
+                    color: '#fff'
+                });
 
+                // تصفير الحقول بعد الإرسال
+                tempBuyImg = '';
+                if (qtyInput) qtyInput.value = '';
+                const fileDisplay = document.getElementById('file-name-display');
+                if (fileDisplay) fileDisplay.textContent = 'لم يتم اختيار صورة';
+            });
+        }
+    });
+}
     // ======================================================
     // 3. نظام الألعاب
     // ======================================================
@@ -2372,63 +2425,7 @@ updateActiveTabUI(view);
         document.getElementById('buy-cost-display').innerText = isNaN(cost) ? "0" : cost.toLocaleString(); 
     }
     
-    function requestCoins() {
-        const qtyInput = document.getElementById('buy-qty');
-        const qty = qtyInput ? parseFloat(qtyInput.value) : 0;
-        
-        if(!qty || qty <= 0) {
-            Swal.fire('تنبيه', 'يرجى إدخال كمية صحيحة', 'warning');
-            return;
-        }
-        
-        if(!tempBuyImg) {
-            Swal.fire('تنبيه', 'مطلوب اختيار صورة إشعار الدفع', 'warning');
-            return;
-        }
-        
-        Swal.fire({
-            title: 'تأكيد طلب الإيداع',
-            html: `
-                <div style="text-align:right;">
-                    <p><b>الكمية:</b> ${qty} SDM</p>
-                    <p><b>المبلغ بالجنيه:</b> ${(qty * SDM_RATE).toLocaleString()} SDG</p>
-                    <p style="color:var(--accent); font-size:12px;">هل أنت متأكد من إرسال طلب الإيداع؟</p>
-                </div>
-            `,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'نعم، أرسل الطلب',
-            cancelButtonText: 'إلغاء',
-            background: '#1e293b',
-            color: '#fff'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                Swal.fire({ title: 'جاري إرسال الطلب...', didOpen: () => Swal.showLoading() });
-                
-                db.ref('coin_requests').push({ 
-                    uP: me.p, 
-                    uN: me.n, 
-                    uNumericId: me.numericId,
-                    qty: qty, 
-                    img: tempBuyImg, 
-                    status: 'pending', 
-                    date: Date.now() 
-                }).then(() => {
-                    Swal.fire('تم الإرسال', 'سيقوم المشرف بمراجعة طلبك قريباً', 'success');
-                    tempBuyImg = '';
-                    if (qtyInput) qtyInput.value = '';
-                    const fileDisplay = document.getElementById('file-name-display');
-                    if (fileDisplay) {
-                        fileDisplay.textContent = 'لم يتم اختيار صورة';
-                        fileDisplay.style.color = 'var(--text-sec)';
-                    }
-                }).catch(error => {
-                    Swal.fire('خطأ', 'فشل في إرسال الطلب: ' + error.message, 'error');
-                });
-            }
-        });
-    }
-
+    
     function startSlider() { 
         const imgEl = document.getElementById('slider-img'); 
         if(!imgEl) return; 
