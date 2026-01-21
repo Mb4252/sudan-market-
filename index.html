@@ -2096,33 +2096,37 @@ function loadAdminCoinRequests() {
     // ======================================================
     // 5. باقي الدوال الأساسية
     // ======================================================
-
 function render(view, extra) {
     const area = document.getElementById('content-area');
     const adminArea = document.getElementById('admin-notifications-area');
     const searchEl = document.getElementById('main-search');
     
-    if (sliderInterval) clearInterval(sliderInterval);
-    if(view !== 'home') adminArea.innerHTML = "";
+    if (typeof sliderInterval !== 'undefined' && sliderInterval) clearInterval(sliderInterval);
+    if(view !== 'home' && adminArea) adminArea.innerHTML = "";
     
     showWelcome();
     
-    if(me) {
-        document.getElementById('u-stars').innerText = isGuest ? "زائر" : (me.rating || 0).toFixed(1);
+    const uStarsEl = document.getElementById('u-stars');
+    if(uStarsEl && typeof me !== 'undefined' && me) {
+        uStarsEl.innerText = (typeof isGuest !== 'undefined' && isGuest) ? "زائر" : (me.rating || 0).toFixed(1);
     }
     
-    document.getElementById('head-title').innerText = (view==='wallet'?"المحفظة":(view==='games'?"الألعاب":(view==='vip'?"VIP":(view==='profile'?"الملف الشخصي":"الرئيسية"))));
-    searchEl.classList.remove('search-hidden');
+    const headTitleEl = document.getElementById('head-title');
+    if(headTitleEl) {
+        headTitleEl.innerText = (view==='wallet'?"المحفظة":(view==='games'?"الألعاب":(view==='vip'?"VIP":(view==='profile'?"الملف الشخصي":"الرئيسية"))));
+    }
+    
+    if(searchEl) searchEl.classList.remove('search-hidden');
 
     isAtHomePage = (view === 'home');
 
     if(view === 'home') {
         area.innerHTML = `
             <div class="slider-container">
-                <img id="slider-img" src="${sliderImages[0]}">
+                <img id="slider-img" src="${typeof sliderImages !== 'undefined' ? sliderImages[0] : ''}">
                 <div class="slider-overlay"><h3 style="margin:0; color:white;">SDM Market المستقبل</h3></div>
                 <div class="slider-dots"><div class="dot active" id="dot-0"></div><div class="dot" id="dot-1"></div><div class="dot" id="dot-2"></div></div>
-                ${(!isGuest && me.role === 'admin') ? `<div class="edit-slider-btn" onclick="updateCurrentSliderImg()">✏️ تعديل</div>` : ''}
+                ${(!isGuest && me && me.role === 'admin') ? `<div class="edit-slider-btn" onclick="updateCurrentSliderImg()">✏️ تعديل</div>` : ''}
             </div>
 
              <!-- إحصائيات الثقة المباشرة -->
@@ -2143,10 +2147,10 @@ function render(view, extra) {
 
             <h3 style="padding:0 20px; margin-bottom:0;">الأقسام</h3>
             <div class="grid">
-                ${Object.keys(cats).map(k=> {
-                    const editBtn = (!isGuest && me.role === 'admin') ? `<div class="edit-cat-btn" onclick="event.stopPropagation(); updateCategoryImg('${k}')"><i class="fas fa-edit"></i></div>` : '';
+                ${(typeof cats !== 'undefined') ? Object.keys(cats).map(k=> {
+                    const editBtn = (!isGuest && me && me.role === 'admin') ? `<div class="edit-cat-btn" onclick="event.stopPropagation(); updateCategoryImg('${k}')"><i class="fas fa-edit"></i></div>` : '';
                     return `<div class="card" onclick="nav('sub','${k}')">${editBtn}<i class="fas fa-${cats[k].i}"></i><b>${k}</b></div>`;
-                }).join('')}
+                }).join('') : ''}
             </div>
             <h3 style="padding:0 20px; margin-top:10px;">أحدث VIP المميزة 💎</h3>
             <div id="vip-home-list" class="loading">
@@ -2158,7 +2162,7 @@ function render(view, extra) {
         startSlider();
     } else if (view === 'sub') {
         curC = extra || curC;
-        area.innerHTML = `<div style="padding:15px;"><h2 style="color:var(--neon-blue)">${curC}</h2></div><div class="grid">${cats[curC].s.map(s=>`<div class="card" onclick="nav('feed','${s}')"><b>${s}</b></div>`).join('')}</div>`;
+        area.innerHTML = `<div style="padding:15px;"><h2 style="color:var(--neon-blue)">${curC}</h2></div><div class="grid">${(cats[curC]) ? cats[curC].s.map(s=>`<div class="card" onclick="nav('feed','${s}')"><b>${s}</b></div>`).join('') : ''}</div>`;
     } else if (view === 'feed') {
         curS = extra || curS;
         area.innerHTML = `
@@ -2196,7 +2200,7 @@ function render(view, extra) {
                     <button class="btn-main" onclick="sendChatMessage('${chatId}')" style="width:50px; margin:0; padding:0;"><i class="fas fa-paper-plane"></i></button>
                 </div>
             </div>
-            ${me.p === buyerId ? `
+            ${(me && me.p === buyerId) ? `
             <div style="padding:10px 15px;">
                 <button class="btn-main" style="background:var(--green);" onclick="confirmReceipt('${postId}', 'posts')">✅ استلمت المنتج (إنهاء الصفقة)</button>
             </div>` : ''} 
@@ -2205,16 +2209,16 @@ function render(view, extra) {
     } else if (view === 'wallet') {
         area.innerHTML = `
          <div class="wallet-card">
-                <img src="${sdmCoinImage}" class="sdm-logo">
-                <h1 style="font-size:36px; margin:15px 0;">${me.sdmBalance.toFixed(2)} <span style="font-size:16px; color:var(--text-sec)">SDM</span></h1>
-                <p style="font-size:12px; color:var(--accent);">1 SDM = ${SDM_RATE} جنيه</p>
+                <img src="${typeof sdmCoinImage !== 'undefined' ? sdmCoinImage : ''}" class="sdm-logo">
+                <h1 style="font-size:36px; margin:15px 0;">${(me && me.sdmBalance ? me.sdmBalance : 0).toFixed(2)} <span style="font-size:16px; color:var(--text-sec)">SDM</span></h1>
+                <p style="font-size:12px; color:var(--accent);">1 SDM = ${typeof SDM_RATE !== 'undefined' ? SDM_RATE : 0} جنيه</p>
                 <div style="display:flex; gap:10px; justify-content:center;">
                     <button class="btn-main" style="background:var(--neon-blue); color:black; width:auto; padding:10px 20px;" onclick="showTransfer()">تحويل <i class="fas fa-paper-plane"></i></button>
                     <button class="btn-main" style="background:var(--accent); color:black; width:auto; padding:10px 20px;" onclick="showWithdraw()">سحب <i class="fas fa-university"></i></button>
                 </div>
             </div>
 
-            ${(me.role === 'admin') ? `
+            ${(me && me.role === 'admin') ? `
             <div style="padding:15px; background:rgba(245, 158, 11, 0.1); border:1px solid var(--accent); border-radius:15px; margin:15px;">
                 <h3 style="margin-top:0; color:var(--accent);"><i class="fas fa-shield-alt"></i> طلبات شحن الرصيد (إيداع)</h3>
                 <div id="admin-coin-requests-list">جاري التحميل...</div>
@@ -2265,12 +2269,12 @@ function render(view, extra) {
             </div>`;
         
         loadTransactions(); 
-        if(me.role === 'admin') {
+        if(me && me.role === 'admin') {
             loadAdminCoinRequests(); 
             loadAdminWithdrawRequests();
         }
     }
-}   
+}
 function loadAdminWithdrawRequests() {
     const container = document.getElementById('admin-withdraw-list');
     if (!container) return;
