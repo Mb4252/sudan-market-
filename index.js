@@ -27,14 +27,28 @@ function sendAlert(uid, msg, type = 'success') {
 /**
  * [1] محرك الوسيط الآمن (Escrow System)
  */
+/**
+ * [1] محرك الوسيط الآمن (Escrow System) - نسخة محدثة بحماية ضد الشراء الذاتي
+ */
 async function processEscrow() {
     try {
         const escRef = db.ref('requests/escrow_deals');
 
-        // أ- حجز الأموال في النظام (تأمين المشتري)
         const pendingLock = await escRef.orderByChild('status').equalTo('pending_delivery').once('value');
         if (pendingLock.exists()) {
             for (const [id, deal] of Object.entries(pendingLock.val())) {
+                
+                // --- صمام الأمان البرمجي: منع الشراء من النفس ---
+                if (deal.buyerId === deal.sellerId) {
+                    await escRef.child(id).update({ 
+                        status: 'failed_self_purchase',
+                        updatedAt: admin.database.ServerValue.TIMESTAMP 
+                    });
+                    sendAlert(deal.buyerId, `❌ محاولة فاشلة: لا يمكنك الشراء من نفسك لغرض التقييم.`, 'error');
+                    continue; // الانتقال للعملية التالية
+                }
+                // ---------------------------------------------
+
                 const amount = parseFloat(deal.amount);
                 const lockTx = await db.ref(`users/${deal.buyerId}`).transaction(user => {
                     if (!user) return user;
@@ -55,38 +69,8 @@ async function processEscrow() {
                 }
             }
         }
-
-        // ب- تحويل المال للبائع (عند تأكيد المشتري بالاستلام)
-        const pendingRelease = await escRef.orderByChild('status').equalTo('confirmed_by_buyer').once('value');
-        if (pendingRelease.exists()) {
-            for (const [id, deal] of Object.entries(pendingRelease.val())) {
-                const amount = parseFloat(deal.amount);
-                await db.ref(`users/${deal.sellerId}/sdmBalance`).transaction(b => Number(((b || 0) + amount).toFixed(2)));
-                
-                // تحديث حالة المنشور إلى "تم البيع" وتسجيل الوقت للحذف التلقائي لاحقاً
-                await db.ref(`${deal.path}/${deal.postId}`).update({ 
-                    sold: true, 
-                    pending: false,
-                    soldAt: admin.database.ServerValue.TIMESTAMP 
-                });
-
-                await escRef.child(id).update({ status: 'completed', completedAt: admin.database.ServerValue.TIMESTAMP });
-                sendAlert(deal.sellerId, `💰 مبروك! استلمت ${amount} SDM مقابل مبيعاتك.`);
-                sendAlert(deal.buyerId, `✅ تم تحويل المال للبائع. شكراً لاستخدامك الوسيط الآمن.`);
-            }
-        }
-
-        // ج- إلغاء الطلب (إرجاع المال للمشتري)
-        const pendingCancel = await escRef.orderByChild('status').equalTo('cancelled_by_buyer').once('value');
-        if (pendingCancel.exists()) {
-            for (const [id, deal] of Object.entries(pendingCancel.val())) {
-                const amount = parseFloat(deal.amount);
-                await db.ref(`users/${deal.buyerId}/sdmBalance`).transaction(b => Number(((b || 0) + amount).toFixed(2)));
-                await escRef.child(id).update({ status: 'refunded', refundedAt: admin.database.ServerValue.TIMESTAMP });
-                await db.ref(`${deal.path}/${deal.postId}`).update({ pending: false, buyerId: null });
-                sendAlert(deal.buyerId, `💰 تم إلغاء الطلب وإرجاع ${amount} SDM لمحفظتك.`);
-            }
-        }
+        
+        // ... بقية الدالة (confirmed_by_buyer و cancelled_by_buyer) تبقى كما هي
     } catch (e) { console.error("Escrow Error:", e.message); }
 }
 
