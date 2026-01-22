@@ -1706,7 +1706,150 @@ function loadBankTransferRequests() {
             Swal.fire('تم الرفض', 'أرسلنا تنبيه للمستخدم', 'info');
         }
     }
+     /**
+ * تأكيد تحويل بنكي من قبل الإدمن
+ */
+async function confirmBankTransfer(requestId, userId, amountSDM, amountSDG, transferType, fullName, accountNumber) {
+    Swal.fire({
+        title: 'تأكيد إتمام التحويل',
+        html: `
+            <div style="text-align:right; direction:rtl;">
+                <p><strong>الاسم:</strong> ${fullName}</p>
+                <p><strong>النوع:</strong> ${transferType}</p>
+                <p><strong>المبلغ:</strong> ${amountSDG.toLocaleString()} جنيه</p>
+                <p><strong>المطلوب من المستخدم:</strong> ${amountSDM} SDM</p>
+                <hr style="border-color:var(--border);">
+                <p style="color:var(--accent); font-weight:bold;">أدخل رقم العملية/التحويل:</p>
+                <input id="operation-number" class="swal2-input" placeholder="مثال: TRX123456789">
+                <p style="font-size:12px; color:var(--text-sec);">سيتم إرسال هذا الرقم للمستخدم كإثبات للتحويل</p>
+            </div>
+        `,
+        background: '#1e293b',
+        color: '#fff',
+        showCancelButton: true,
+        confirmButtonText: 'تأكيد الإرسال',
+        cancelButtonText: 'إلغاء',
+        preConfirm: () => {
+            const operationNumber = document.getElementById('operation-number').value.trim();
+            
+            if (!operationNumber || operationNumber.length < 3) {
+                Swal.showValidationMessage('رقم العملية مطلوب');
+                return false;
+            }
+            
+            return { operationNumber };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const { operationNumber } = result.value;
+            
+            Swal.fire({ title: 'جاري معالجة التحويل...', didOpen: () => Swal.showLoading() });
+            
+            try {
+                // 1. تحديث حالة الطلب
+                await db.ref(`bank_transfer_requests/${requestId}`).update({
+                    status: 'completed',
+                    operationNumber: operationNumber,
+                    processedBy: me.n,
+                    processedAt: admin.database.ServerValue.TIMESTAMP || Date.now()
+                });
+                
+                // 2. خصم المبلغ من رصيد المستخدم
+                const userRef = db.ref(`users/${userId}`);
+                const userSnap = await userRef.once('value');
+                const user = userSnap.val();
+                const newBalance = (user.sdmBalance || 0) - amountSDM;
+                
+                await userRef.update({ sdmBalance: newBalance });
+                
+                // 3. إضافة إلى سجل المعاملات
+                await db.ref('transactions').push({
+                    type: 'bank_transfer',
+                    from: userId,
+                    to: 'SYSTEM',
+                    amount: amountSDM,
+                    details: `تحويل إلى ${transferType} - ${amountSDG} جنيه`,
+                    date: admin.database.ServerValue.TIMESTAMP || Date.now()
+                });
+                
+                // 4. إرسال تنبيه للمستخدم بالتفاصيل
+                await db.ref(`alerts/${userId}`).push({
+                    msg: `✅ تم تحويل ${amountSDG.toLocaleString()} جنيه إلى ${fullName} عبر ${transferType}. رقم العملية: ${operationNumber}`,
+                    type: 'success',
+                    date: admin.database.ServerValue.TIMESTAMP || Date.now()
+                });
+                
+                // 5. إرسال رسالة مباشرة عبر البوت (إنشاء رسالة جديدة)
+                await db.ref(`user_messages/${userId}`).push({
+                    title: 'تم إتمام تحويلك',
+                    message: `مبروك! تم إتمام تحويل ${amountSDG.toLocaleString()} جنيه إلى ${fullName} عبر ${transferType}.<br><br>
+                    <strong>رقم العملية:</strong> ${operationNumber}<br>
+                    <strong>الاسم المستلم:</strong> ${fullName}<br>
+                    <strong>رقم الحساب/الهاتف:</strong> ${accountNumber}<br>
+                    <strong>المبلغ المحول:</strong> ${amountSDG.toLocaleString()} جنيه<br>
+                    <strong>المبلغ المخصوم:</strong> ${amountSDM} SDM<br><br>
+                    شكراً لاستخدامك خدمات SDM Market.`,
+                    type: 'transfer_confirmation',
+                    date: admin.database.ServerValue.TIMESTAMP || Date.now(),
+                    read: false
+                });
+                
+                Swal.fire('نجاح', 'تم تأكيد التحويل وإرسال التفاصيل للمستخدم', 'success');
+                
+                // تحديث القائمة
+                loadBankTransferRequests();
+                
+            } catch (error) {
+                Swal.fire('خطأ', 'فشل في معالجة التحويل: ' + error.message, 'error');
+            }
+        }
+    });
+}
 
+/**
+ * رفض طلب التحويل
+ */
+async function rejectBankTransfer(requestId, userId) {
+    const { value: reason } = await Swal.fire({
+        title: 'سبب الرفض',
+        input: 'text',
+        inputPlaceholder: 'اكتب سبب رفض التحويل...',
+        showCancelButton: true,
+        confirmButtonText: 'رفض الطلب',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff'
+    });
+    
+    if (reason) {
+        Swal.fire({ title: 'جاري الرفض...', didOpen: () => Swal.showLoading() });
+        
+        try {
+            // تحديث حالة الطلب
+            await db.ref(`bank_transfer_requests/${requestId}`).update({
+                status: 'rejected',
+                rejectionReason: reason,
+                processedBy: me.n,
+                processedAt: admin.database.ServerValue.TIMESTAMP || Date.now()
+            });
+            
+            // إرسال تنبيه للمستخدم
+            await db.ref(`alerts/${userId}`).push({
+                msg: `❌ تم رفض طلب التحويل: ${reason}`,
+                type: 'error',
+                date: admin.database.ServerValue.TIMESTAMP || Date.now()
+            });
+            
+            Swal.fire('تم الرفض', 'تم إرسال سبب الرفض للمستخدم', 'info');
+            
+            // تحديث القائمة
+            loadBankTransferRequests();
+            
+        } catch (error) {
+            Swal.fire('خطأ', 'فشل في رفض الطلب: ' + error.message, 'error');
+        }
+    }
+}
     // ======================================================
     // 3. نظام الألعاب
     // ======================================================
