@@ -1773,7 +1773,7 @@ async function confirmBankTransfer(requestId, userId, amountSDM, amountSDG, tran
                     status: 'completed',
                     operationNumber: operationNumber,
                     processedBy: me.n,
-                    processedAt: admin.database.ServerValue.TIMESTAMP || Date.now()
+                    processedAt: firebase.database.ServerValue.TIMESTAMP || Date.now()
                 });
                 
                 // 2. خصم المبلغ من رصيد المستخدم
@@ -1791,14 +1791,14 @@ async function confirmBankTransfer(requestId, userId, amountSDM, amountSDG, tran
                     to: 'SYSTEM',
                     amount: amountSDM,
                     details: `تحويل إلى ${transferType} - ${amountSDG} جنيه`,
-                    date: admin.database.ServerValue.TIMESTAMP || Date.now()
+                    processedAt: firebase.database.ServerValue.TIMESTAMP || Date.now()
                 });
                 
                 // 4. إرسال تنبيه للمستخدم بالتفاصيل
                 await db.ref(`alerts/${userId}`).push({
                     msg: `✅ تم تحويل ${amountSDG.toLocaleString()} جنيه إلى ${fullName} عبر ${transferType}. رقم العملية: ${operationNumber}`,
                     type: 'success',
-                    date: admin.database.ServerValue.TIMESTAMP || Date.now()
+                    processedAt: firebase.database.ServerValue.TIMESTAMP || Date.now()
                 });
                 
                 // 5. إرسال رسالة مباشرة عبر البوت (إنشاء رسالة جديدة)
@@ -1812,7 +1812,7 @@ async function confirmBankTransfer(requestId, userId, amountSDM, amountSDG, tran
                     <strong>المبلغ المخصوم:</strong> ${amountSDM} SDM<br><br>
                     شكراً لاستخدامك خدمات SDM Market.`,
                     type: 'transfer_confirmation',
-                    date: admin.database.ServerValue.TIMESTAMP || Date.now(),
+                    processedAt: firebase.database.ServerValue.TIMESTAMP || Date.now()
                     read: false
                 });
                 
@@ -1852,14 +1852,14 @@ async function rejectBankTransfer(requestId, userId) {
                 status: 'rejected',
                 rejectionReason: reason,
                 processedBy: me.n,
-                processedAt: admin.database.ServerValue.TIMESTAMP || Date.now()
+                processedAt: firebase.database.ServerValue.TIMESTAMP || Date.now()
             });
             
             // إرسال تنبيه للمستخدم
             await db.ref(`alerts/${userId}`).push({
                 msg: `❌ تم رفض طلب التحويل: ${reason}`,
                 type: 'error',
-                date: admin.database.ServerValue.TIMESTAMP || Date.now()
+                processedAt: firebase.database.ServerValue.TIMESTAMP || Date.now()
             });
             
             Swal.fire('تم الرفض', 'تم إرسال سبب الرفض للمستخدم', 'info');
