@@ -3283,6 +3283,61 @@ function listenToMessages(chatId) {
         chatBox.scrollTop = chatBox.scrollHeight;
     });
 }
+    /**
+ * عرض رسائل المستخدم (مثل تأكيد التحويل)
+ */
+function showUserMessages() {
+    if (isGuest) return;
+    
+    const container = document.getElementById('user-messages-container');
+    if (!container) {
+        // إنشاء كونتينر إذا لم يكن موجوداً
+        const messagesDiv = document.createElement('div');
+        messagesDiv.id = 'user-messages-container';
+        messagesDiv.style.cssText = 'position:fixed; top:100px; right:20px; left:20px; z-index:10000; max-width:500px; margin:0 auto;';
+        document.body.appendChild(messagesDiv);
+    }
+    
+    db.ref(`user_messages/${me.p}`).orderByChild('read').equalTo(false).on('value', snap => {
+        const messages = snap.val();
+        const container = document.getElementById('user-messages-container');
+        
+        if (!messages) {
+            if (container) container.innerHTML = '';
+            return;
+        }
+        
+        let html = '';
+        Object.entries(messages).forEach(([msgId, msg]) => {
+            if (msg.read) return;
+            
+            html += `
+                <div style="background:rgba(16, 185, 129, 0.2); border:2px solid var(--green); border-radius:15px; padding:20px; margin-bottom:15px; backdrop-filter:blur(10px);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <h4 style="margin:0; color:var(--neon-blue);">
+                            <i class="fas fa-envelope-circle-check"></i> ${msg.title || 'رسالة جديدة'}
+                        </h4>
+                        <button onclick="markMessageAsRead('${msgId}')" style="background:transparent; border:none; color:var(--text-sec); cursor:pointer; font-size:20px;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div style="color:white; font-size:14px; line-height:1.6;">${msg.message}</div>
+                    <div style="font-size:11px; color:var(--text-sec); margin-top:15px; text-align:left;">
+                        ${new Date(msg.date).toLocaleString('ar-EG')}
+                    </div>
+                </div>`;
+        });
+        
+        if (container) container.innerHTML = html;
+    });
+}
+
+/**
+ * تعليم الرسالة كمقروءة
+ */
+function markMessageAsRead(msgId) {
+    db.ref(`user_messages/${me.p}/${msgId}`).update({ read: true });
+}
     function listenForAdminNotifications() {
     if (isGuest || !me || me.role !== 'admin') return;
 
