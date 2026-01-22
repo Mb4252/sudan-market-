@@ -792,16 +792,38 @@
     function publish(path) {
     if (isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
     
-    // 1. التحقق من وجود رقم الواتساب (مهم جداً للمستخدم الجديد)
     if (!me.wa || me.wa.trim() === "") {
         return Swal.fire({
             title: 'رقم الهاتف مطلوب',
-            text: 'يجب إضافة رقم الواتساب في ملفك الشخصي أولاً ليتمكن المشترون من التواصل معك.',
+            text: 'يجب إضافة رقم الواتساب في ملفك الشخصي أولاً ليتمكن المشترين من التواصل معك.',
             icon: 'warning',
             confirmButtonText: 'الذهاب للملف الشخصي'
         }).then(() => nav('profile'));
     }
+    
+    // ⭐⭐⭐ التحقق من VIP ⭐⭐⭐
+    if (path === 'vip_posts') {
+        if (!checkVIPBeforePost()) return;
+    }
+    
+    const titleField = document.getElementById(path === 'posts' ? 'pt' : 'v-t');
+    // ... باقي الكود
+}
 
+// ⭐⭐⭐ دالة checkVIPBeforePost هنا ⭐⭐⭐
+function checkVIPBeforePost() {
+    if (!me || !me.vipStatus || me.vipStatus !== 'active') {
+        Swal.fire({
+            title: '❌ اشتراك VIP مطلوب',
+            html: `<div>...</div>`,
+            icon: 'error'
+        }).then((result) => {
+            if (result.isConfirmed) nav('vip');
+        });
+        return false;
+    }
+    return true;
+}
     const titleField = document.getElementById(path === 'posts' ? 'pt' : 'v-t');
     const priceField = document.getElementById(path === 'posts' ? 'pp' : 'v-pr');
     const descField = document.getElementById(path === 'posts' ? 'pd' : 'v-d');
