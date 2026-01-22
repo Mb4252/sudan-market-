@@ -2120,45 +2120,61 @@ function checkUserOnlineStatus(uid, elementId) {
     `;
     listenToMessages(chatId);      
         } else if (view === 'wallet') {
-            area.innerHTML = `
-                <div class="wallet-card">
-                    <img src="${sdmCoinImage}" class="sdm-logo">
-                    <h1 style="font-size:36px; margin:15px 0;">${me.sdmBalance.toFixed(2)} <span style="font-size:16px; color:var(--text-sec)">SDM</span></h1>
-                    <p style="font-size:12px; color:var(--accent);">1 SDM = ${SDM_RATE} جنيه</p>
-                    <div style="display:flex; gap:10px; justify-content:center;">
-                        <button class="btn-main" style="background:var(--neon-blue); color:black; width:auto; padding:10px 30px;" onclick="showTransfer()">إرسال <i class="fas fa-paper-plane"></i></button>
-                    </div>
-                </div>
+    area.innerHTML = `
+        <div class="wallet-card">
+            <img src="${sdmCoinImage}" class="sdm-logo">
+            <h1 style="font-size:36px; margin:15px 0;">${me.sdmBalance.toFixed(2)} <span style="font-size:16px; color:var(--text-sec)">SDM</span></h1>
+            <p style="font-size:12px; color:var(--accent);">1 SDM = ${SDM_RATE} جنيه</p>
+            <div style="display:flex; gap:10px; justify-content:center;">
+                <button class="btn-main" style="background:var(--neon-blue); color:black; width:auto; padding:10px 30px;" onclick="showTransfer()">إرسال <i class="fas fa-paper-plane"></i></button>
+                <!-- إضافة زر التحويل للبنوك -->
+                <button class="btn-main" style="background:var(--accent); color:black; width:auto; padding:10px 30px;" onclick="showBankTransfer()">تحويل للبنوك <i class="fas fa-university"></i></button>
+            </div>
+        </div>
 
-                ${(me.role === 'admin') ? `
-                <div style="padding:15px; background:rgba(245, 158, 11, 0.1); border:1px solid var(--accent); border-radius:15px; margin:15px;">
-                    <h3 style="margin-top:0; color:var(--accent);"><i class="fas fa-shield-alt"></i> طلبات الإيداع (للإدارة)</h3>
-                    <div id="admin-coin-requests-list">جاري التحميل...</div>
-                </div>
-                ` : ''}
+        ${(me.role === 'admin') ? `
+        <div style="padding:15px; background:rgba(245, 158, 11, 0.1); border:1px solid var(--accent); border-radius:15px; margin:15px;">
+            <h3 style="margin-top:0; color:var(--accent);"><i class="fas fa-shield-alt"></i> طلبات الإيداع (للإدارة)</h3>
+            <div id="admin-coin-requests-list">جاري التحميل...</div>
+        </div>
+        ` : ''}
 
-                <div style="padding:20px;">
-                    <h3>شراء عملة من المطور</h3>
-                    <div class="post" style="padding:20px;">
-                        <p style="color:var(--text-sec)">بنك الخرطوم: <b style="color:white; font-size:18px;">4426148</b> (محمد)</p>
-                        <input id="buy-qty" type="number" placeholder="أدخل الكمية (SDM)" oninput="calcBuyCost(this.value)">
-                        <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; margin:10px 0; text-align:center;">المطلوب: <b id="buy-cost-display" style="color:var(--accent);">0</b> جنيه</div>
-                        <div class="file-input-container">
-                            <label class="file-input-label">
-                                <i class="fas fa-receipt"></i> إرفاق الإشعار
-                                <input type="file" class="file-input" onchange="encode(this, 'buy')" id="deposit-file">
-                            </label>
-                            <div id="file-name-display" class="file-name">لم يتم اختيار صورة</div>
-                        </div>
-                        <button class="btn-main" onclick="requestCoins()">إرسال الطلب</button>
-                    </div>
-                    <h3>سجل المعاملات</h3>
-                    <div id="transactions-history">جاري التحميل...</div>
-                </div>`;
+        <div style="padding:20px;">
+            <h3>شراء عملة من المطور</h3>
+            <div class="post" style="padding:20px;">
+                <p style="color:var(--text-sec)">بنك الخرطوم: <b style="color:white; font-size:18px;">4426148</b> (محمد)</p>
+                <input id="buy-qty" type="number" placeholder="أدخل الكمية (SDM)" oninput="calcBuyCost(this.value)">
+                <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; margin:10px 0; text-align:center;">المطلوب: <b id="buy-cost-display" style="color:var(--accent);">0</b> جنيه</div>
+                <div class="file-input-container">
+                    <label class="file-input-label">
+                        <i class="fas fa-receipt"></i> إرفاق الإشعار
+                        <input type="file" class="file-input" onchange="encode(this, 'buy')" id="deposit-file">
+                    </label>
+                    <div id="file-name-display" class="file-name">لم يتم اختيار صورة</div>
+                </div>
+                <button class="btn-main" onclick="requestCoins()">إرسال الطلب</button>
+            </div>
             
-            loadTransactions(); 
-            if(me.role === 'admin') loadAdminCoinRequests(); 
-        
+            <!-- قسم جديد: طلبات التحويل إلى البنوك -->
+            ${(me.role === 'admin') ? `
+            <div style="margin-top:30px; border-top:2px solid var(--border); padding-top:20px;">
+                <h3><i class="fas fa-university"></i> طلبات التحويل للبنوك (للإدارة)</h3>
+                <div id="bank-transfer-requests-list" style="margin-top:15px;">
+                    جاري تحميل الطلبات...
+                </div>
+            </div>
+            ` : ''}
+            
+            <h3 style="margin-top:30px;">سجل المعاملات</h3>
+            <div id="transactions-history">جاري التحميل...</div>
+        </div>`;
+    
+    loadTransactions(); 
+    if(me.role === 'admin') {
+        loadAdminCoinRequests();
+        loadBankTransferRequests(); // تحميل طلبات التحويل للبنوك
+    }
+}
         } else if (view === 'games') {
             const gamesHTML = renderGames();
             area.innerHTML = `
