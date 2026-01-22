@@ -12,7 +12,15 @@ admin.initializeApp({
 });
 
 const db = admin.database();
+// أضف في الأعلى
+const admin = require('firebase-admin');
 
+// استخدم Admin SDK للكتابة
+async function updateUserBalance(uid, amount) {
+  const userRef = admin.database().ref(`users/${uid}`);
+  await userRef.update({ sdmBalance: amount });
+  // البوت لديه صلاحيات خاصة
+}
 /**
  * دالة مساعدة لإرسال تنبيهات فورية للمستخدمين
  */
