@@ -1,21 +1,24 @@
 const admin = require('firebase-admin');
 const express = require('express');
 const cors = require('cors');
-const crypto = require('crypto'); // مضافة من الكود الأول
 const multer = require('multer');
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// --- [1] فك تشفير مفتاح الخدمة بأمان (Base64) ---
-// تم استخدام منطق الكود الأول في فك التشفير مع نظام الحماية من الكود الثاني
+// --- [1] فك تشفير مفتاح الخدمة بأمان (دعم JSON مباشر أو Base64) ---
 let serviceAccount;
 try {
-    const base64Key = process.env.FIREBASE_SERVICE_ACCOUNT;
-    if (!base64Key) throw new Error("FIREBASE_SERVICE_ACCOUNT is missing in Render variables!");
-    
-    // استخدام Buffer.from كما في الكود الأول
-    serviceAccount = JSON.parse(Buffer.from(base64Key, 'base64').toString());
+    const rawKey = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (!rawKey) throw new Error("FIREBASE_SERVICE_ACCOUNT is missing in Render variables!");
+
+    // التحقق إذا كان النص JSON مباشر أو مشفر Base64
+    if (rawKey.trim().startsWith('{')) {
+        serviceAccount = JSON.parse(rawKey);
+    } else {
+        const decodedKey = Buffer.from(rawKey, 'base64').toString('utf-8');
+        serviceAccount = JSON.parse(decodedKey);
+    }
     console.log("✅ Firebase Service Account Loaded Successfully");
 } catch (error) {
     console.error("❌ Critical Error: Could not load Firebase Key:", error.message);
@@ -26,7 +29,7 @@ try {
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
-    storageBucket: "sudan-market-6b122.appspot.com" // تم تغييره إلى الرابط الموجود في الكود الأول
+    storageBucket: "sudan-market-6b122.firebasestorage.app"
 });
 
 const db = admin.database();
@@ -48,7 +51,10 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
             public: true
         });
 
-        blobStream.on('error', (err) => res.status(500).json({ error: err.message }));
+        blobStream.on('error', (err) => {
+            console.error("Upload Error:", err);
+            res.status(500).json({ error: err.message });
+        });
 
         blobStream.on('finish', () => {
             const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
@@ -75,7 +81,7 @@ async function processEscrow() {
                 const tx = await buyerRef.transaction(user => {
                     if (!user) return user;
                     const bal = parseFloat(user.sdmBalance || 0);
-                    if (bal < amount) return undefined; // رصيد غير كافٍ
+                    if (bal < amount) return undefined; 
                     user.sdmBalance = Number((bal - amount).toFixed(2));
                     return user;
                 });
@@ -121,39 +127,42 @@ async function processTransfers() {
                         await db.ref(`users/${targetUid}/sdmBalance`).transaction(b => Number(((b || 0) + amount).toFixed(2)));
                         await db.ref(`requests/transfers/${id}`).update({ status: 'completed' });
                         sendAlert(targetUid, `💰 استلمت ${amount} SDM من ${req.fromName}`);
+                        sendAlert(req.from, `✅ تم تحويل ${amount} SDM بنجاح.`);
                     }
                 }
             }
         }
-    } catch (e) {}
+    } catch (e) { console.error("Transfer Error:", e.message); }
 }
 
-// --- [6] محرك الـ VIP والتحويلات البنكية ---
+// --- [6] محرك الـ VIP ---
 async function processVIP() {
-    const snap = await db.ref('requests/vip_subscriptions').orderByChild('status').equalTo('pending').once('value');
-    if (snap.exists()) {
-        for (const [id, req] of Object.entries(snap.val())) {
-            const cost = parseFloat(req.cost);
-            const userRef = db.ref(`users/${req.userId}`);
-            
-            const tx = await userRef.transaction(u => {
-                if (!u || (u.sdmBalance || 0) < cost) return undefined;
-                u.sdmBalance = Number((u.sdmBalance - cost).toFixed(2));
-                u.vipStatus = 'active';
-                u.vipExpiry = (Math.max(u.vipExpiry || 0, Date.now())) + (req.days * 86400000);
-                return u;
-            });
+    try {
+        const snap = await db.ref('requests/vip_subscriptions').orderByChild('status').equalTo('pending').once('value');
+        if (snap.exists()) {
+            for (const [id, req] of Object.entries(snap.val())) {
+                const cost = parseFloat(req.cost);
+                const userRef = db.ref(`users/${req.userId}`);
+                
+                const tx = await userRef.transaction(u => {
+                    if (!u || (u.sdmBalance || 0) < cost) return undefined;
+                    u.sdmBalance = Number((u.sdmBalance - cost).toFixed(2));
+                    u.vipStatus = 'active';
+                    u.vipExpiry = (Math.max(u.vipExpiry || 0, Date.now())) + (req.days * 86400000);
+                    return u;
+                });
 
-            if (tx.committed) {
-                await db.ref(`requests/vip_subscriptions/${id}`).update({ status: 'completed' });
-                sendAlert(req.userId, "👑 تم تفعيل اشتراك VIP بنجاح!");
+                if (tx.committed) {
+                    await db.ref(`requests/vip_subscriptions/${id}`).update({ status: 'completed' });
+                    sendAlert(req.userId, "👑 تم تفعيل اشتراك VIP بنجاح!");
+                }
             }
         }
-    }
+    } catch (e) { console.error("VIP Process Error:", e.message); }
 }
 
-// --- [7] مراقب الدردشة والنزاعات (أمني) ---
-const SUSPICIOUS_WORDS = ["نصاب", "كذاب", "غش", "سرقة", "كاشي", "رقمك"];
+// --- [7] مراقب الدردشة والنزاعات ---
+const SUSPICIOUS_WORDS = ["نصاب", "كذاب", "غش", "سرقة", "حرامي"];
 function startChatMonitor() {
     db.ref('chats').on('child_added', (chatSnap) => {
         db.ref(`chats/${chatSnap.key}`).limitToLast(1).on('child_added', async (msgSnap) => {
@@ -166,7 +175,8 @@ function startChatMonitor() {
                     chatId: chatSnap.key,
                     senderName: msg.senderName,
                     lastMessage: msg.text,
-                    date: admin.database.ServerValue.TIMESTAMP
+                    date: admin.database.ServerValue.TIMESTAMP,
+                    read: false
                 });
             }
         });
@@ -182,25 +192,14 @@ function sendAlert(uid, message) {
     });
 }
 
-// --- [9] مسارات الـ API العامة ---
-app.get('/api/posts', async (req, res) => {
-    try {
-        const { path, sub } = req.query;
-        let query = db.ref(path);
-        if (sub && sub !== 'null') query = query.orderByChild('sub').equalTo(sub);
-        const snapshot = await query.limitToLast(40).once('value');
-        const posts = snapshot.exists() ? Object.keys(snapshot.val()).map(k => ({ id: k, ...snapshot.val()[k] })).reverse() : [];
-        res.json(posts);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/', (req, res) => res.send("🚀 SDM Full Bot System is Active"));
+// --- [9] مسارات الـ API ---
+app.get('/', (req, res) => res.send("🚀 SDM Full Bot System is Active and Fixed"));
 
 // --- [10] تشغيل المجدولات الزمنية ---
-setInterval(processEscrow, 5000);
-setInterval(processTransfers, 6000);
-setInterval(processVIP, 15000);
-startChatMonitor();
+setInterval(processEscrow, 5000); 
+setInterval(processTransfers, 6000); 
+setInterval(processVIP, 15000); 
+startChatMonitor(); 
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Backend Live on Port ${PORT}`));
