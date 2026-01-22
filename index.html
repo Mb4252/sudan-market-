@@ -1621,7 +1621,69 @@ function checkUserOnlineStatus(uid, elementId) {
             });
         });
     }
-
+    /**
+ * تحميل طلبات التحويل للبنوك للإدمن
+ */
+function loadBankTransferRequests() {
+    if (me.role !== 'admin') return;
+    
+    const container = document.getElementById('bank-transfer-requests-list');
+    if (!container) return;
+    
+    container.innerHTML = '<div class="loading"><div class="loading-spinner"></div><div>جاري تحميل الطلبات...</div></div>';
+    
+    db.ref('bank_transfer_requests').orderByChild('date').on('value', snap => {
+        const requests = snap.val();
+        
+        if (!requests) {
+            container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-sec)">لا توجد طلبات تحويل</div>';
+            return;
+        }
+        
+        let html = '';
+        const requestsArray = Object.entries(requests).reverse();
+        
+        requestsArray.forEach(([requestId, request]) => {
+            if (request.status !== 'pending') return;
+            
+            const transferTypeText = request.transferType === 'khartoum_bank' ? 'بنك الخرطوم' : 'كاشي';
+            const accountLabel = request.transferType === 'khartoum_bank' ? 'رقم الحساب' : 'رقم الهاتف';
+            const date = new Date(request.date).toLocaleString('ar-EG');
+            
+            html += `
+                <div class="admin-item" style="border:1px solid var(--accent); padding:15px; margin-bottom:15px; background:rgba(0,0,0,0.2); border-radius:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <div>
+                            <b style="color:var(--neon-blue);">${escapeHtml(request.userName)}</b>
+                            <div style="font-size:11px; color:var(--text-sec);">ID: ${request.userNumericId}</div>
+                        </div>
+                        <div style="text-align:left;">
+                            <span class="badge badge-gold">${transferTypeText}</span>
+                            <div style="font-size:14px; color:var(--accent); font-weight:bold; margin-top:5px;">${request.amountSDG.toLocaleString()} جنيه</div>
+                        </div>
+                    </div>
+                    
+                    <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; margin-bottom:10px;">
+                        <p style="margin:5px 0;"><strong>الاسم:</strong> ${escapeHtml(request.fullName)}</p>
+                        <p style="margin:5px 0;"><strong>${accountLabel}:</strong> ${request.accountNumber}</p>
+                        <p style="margin:5px 0;"><strong>المبلغ المطلوب:</strong> ${request.amountSDM} SDM</p>
+                        <p style="margin:5px 0; font-size:11px; color:var(--text-sec);">${date}</p>
+                    </div>
+                    
+                    <div style="display:flex; gap:10px;">
+                        <button class="btn-main" style="background:var(--green); flex:1; padding:10px;" onclick="confirmBankTransfer('${requestId}', '${request.userId}', ${request.amountSDM}, ${request.amountSDG}, '${transferTypeText}', '${escapeHtml(request.fullName)}', '${request.accountNumber}')">
+                            <i class="fas fa-check-circle"></i> تأكيد التحويل
+                        </button>
+                        <button class="btn-main" style="background:var(--red); flex:1; padding:10px;" onclick="rejectBankTransfer('${requestId}', '${request.userId}')">
+                            <i class="fas fa-times-circle"></i> رفض
+                        </button>
+                    </div>
+                </div>`;
+        });
+        
+        container.innerHTML = html || '<div style="text-align:center; padding:20px; color:var(--text-sec)">لا توجد طلبات تحويل معلقة</div>';
+    });
+}
     async function approveCoins(reqId, userId, qty) {
         Swal.fire({ title: 'جاري المعالجة...', didOpen: () => Swal.showLoading() });
         const userRef = db.ref(`users/${userId}/sdmBalance`);
