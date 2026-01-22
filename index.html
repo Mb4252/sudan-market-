@@ -455,7 +455,65 @@
       messagingSenderId: "66729481566",
       appId: "1:66729481566:web:93393f28dc22d32cceebcf"
     };
+    // ============ أضف هذا الكود هنا ============
+// بعد firebaseConfig وقبل document.addEventListener مباشرة
+
+// دالة لإصلاح مشكلة التعليق
+function setupFastLoading() {
+    console.log("⚡ بدء التحميل السريع...");
     
+    // إخفاء شاشة التحميل بعد 5 ثوانٍ كحد أقصى
+    setTimeout(() => {
+        const preloader = document.getElementById('main-preloader');
+        if (preloader && preloader.style.display !== 'none') {
+            console.log("⏰ انتهت مهلة التحميل - إظهار خيارات بديلة");
+            preloader.innerHTML = `
+                <div style="text-align:center; color:white; padding:20px;">
+                    <i class="fas fa-exclamation-circle" style="font-size:50px; color:var(--accent); margin-bottom:20px;"></i>
+                    <h3>تأخير في الاتصال</h3>
+                    <p style="color:var(--text-sec); margin-bottom:30px;">جاري انتظار الخادم. يمكنك:</p>
+                    <div style="display:flex; flex-direction:column; gap:10px; max-width:300px; margin:0 auto;">
+                        <button onclick="window.location.reload()" 
+                                style="background:var(--accent); color:black; border:none; padding:12px; border-radius:10px; font-family:'Tajawal'; font-weight:bold; cursor:pointer;">
+                            <i class="fas fa-redo"></i> إعادة تحميل الصفحة
+                        </button>
+                        <button onclick="enterGuestMode()" 
+                                style="background:var(--primary); color:white; border:none; padding:12px; border-radius:10px; font-family:'Tajawal'; font-weight:bold; cursor:pointer;">
+                            <i class="fas fa-user"></i> الدخول كزائر
+                        </button>
+                        <button onclick="tryGoogleLogin()" 
+                                style="background:white; color:black; border:none; padding:12px; border-radius:10px; font-family:'Tajawal'; font-weight:bold; cursor:pointer;">
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" style="width:16px; height:16px; margin-right:8px; vertical-align:middle;">
+                            تسجيل الدخول يدوياً
+                        </button>
+                    </div>
+                    <p style="font-size:12px; color:var(--text-sec); margin-top:30px;">
+                        إذا استمرت المشكلة: 1️⃣ تحقق من اتصال الإنترنت 2️⃣ أعد فتح المتصفح 3️⃣ امسح ذاكرة التخزين المؤقت
+                    </p>
+                </div>
+            `;
+        }
+    }, 5000);
+    
+    // محاولة الاتصال بسرعة
+    setTimeout(initializeAuthObserver, 1000);
+}
+
+// دالة تسجيل الدخول اليدوي
+async function tryGoogleLogin() {
+    try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        await auth.signInWithPopup(provider);
+        console.log("✅ تم تسجيل الدخول يدوياً");
+    } catch (error) {
+        console.error("❌ فشل تسجيل الدخول:", error);
+        Swal.fire({
+            title: 'خطأ في تسجيل الدخول',
+            text: 'حدث خطأ. حاول مرة أخرى أو اتصل بالدعم.',
+            icon: 'error'
+        });
+    }
+}
     // تهيئة Firebase
     if (!firebase.apps.length) {
         firebase.initializeApp(firebaseConfig);
