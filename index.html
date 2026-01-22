@@ -774,18 +774,21 @@
     
     // دالة معالجة الصور المحسنة
     // دالة لرفع الصورة والحصول على الرابط
-async function uploadImageAndGetURL(file, folder = "images") {
-    const storageRef = firebase.storage().ref();
-    const fileName = folder + "/" + Date.now() + "_" + Math.random().toString(36).substring(7);
-    const fileRef = storageRef.child(fileName);
-    
-    // ضغط الصورة قبل الرفع (اختياري ولكن مفضل)
-    const compressedBlob = await compressImageToBlob(file);
-    
-    const snapshot = await fileRef.put(compressedBlob);
-    return await snapshot.ref.getDownloadURL();
+async function uploadImageAndGetURL(file) {
+    const formData = new FormData();
+    formData.append('image', file);
+    try {
+        const response = await fetch('https://sdm-security-bot.onrender.com/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+        return data.url; 
+    } catch (e) {
+        console.error("فشل الرفع عبر البوت", e);
+        throw e;
+    }
 }
-
 // دالة مساعدة لتحويل الصورة إلى Blob للرفع
 async function compressImageToBlob(file) {
     return new Promise((resolve) => {
