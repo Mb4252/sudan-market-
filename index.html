@@ -55,6 +55,7 @@
 }
 
 /* شاشة التحميل الأولية */
+/* شاشة التحميل الأولية */
 #main-preloader {
     position: fixed;
     top: 0; left: 0; width: 100%; height: 100%;
@@ -64,6 +65,7 @@
     align-items: center;
     justify-content: center;
     z-index: 99999;
+    transition: opacity 0.5s ease;
 }
         .search-hidden { display: none !important; }
 
@@ -445,6 +447,30 @@
 </div>
 
 <script>
+    // ===== [ حل مشكلة تعليق شاشة التحميل ] =====
+window.addEventListener('load', function() {
+    console.log('تم تحميل الصفحة بالكامل');
+    
+    // إخفاء شاشة التحميل بعد 3 ثوانٍ كحد أقصى (حماية)
+    setTimeout(function() {
+        const preloader = document.getElementById('main-preloader');
+        if (preloader) {
+            preloader.style.opacity = '0';
+            setTimeout(() => {
+                preloader.style.display = 'none';
+            }, 500);
+        }
+    }, 3000);
+});
+
+// التحقق من اتصال الإنترنت
+function checkConnection() {
+    if (!navigator.onLine) {
+        document.getElementById('offline-guard').classList.remove('hidden');
+        return false;
+    }
+    return true;
+}
     // وضع التطوير
 const DEV_MODE = true;
 if(DEV_MODE) {
@@ -724,32 +750,67 @@ if(DEV_MODE) {
     if (authObserverInitialized) return;
     authObserverInitialized = true;
     
+    // إخفاء شاشة التحميل بعد فترة قصيرة (خط الدفاع الأول)
+    setTimeout(() => {
+        const preloader = document.getElementById('main-preloader');
+        if (preloader && preloader.style.display !== 'none') {
+            preloader.style.opacity = '0';
+            setTimeout(() => {
+                preloader.style.display = 'none';
+                document.getElementById('auth-screen').style.display = 'block';
+            }, 500);
+        }
+    }, 2000);
+    
     auth.onAuthStateChanged(async user => {
         const preloader = document.getElementById('main-preloader');
         const authScreen = document.getElementById('auth-screen');
         const appScreen = document.getElementById('app-screen');
 
+        // إخفاء شاشة التحميل فوراً
+        if(preloader) {
+            preloader.style.opacity = '0';
+            setTimeout(() => {
+                preloader.style.display = 'none';
+            }, 300);
+        }
+
         if (user) {
+            console.log('مستخدم مسجل:', user.email);
             const uid = user.uid;
+            
             try {
-                const snap = await db.ref('users/' + uid).once('value');
+                // محاولة جلب بيانات المستخدم مع مهلة
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('انتهت مهلة الاتصال')), 5000)
+                );
+                
+                const userPromise = db.ref('users/' + uid).once('value');
+                const snap = await Promise.race([userPromise, timeoutPromise]);
                 
                 if (snap.exists()) {
                     me = snap.val();
                     me.p = uid;
+                    
                     // تحديث الصلاحيات إذا كان المسؤول
                     if (user.email === ADMIN_EMAIL && me.role !== 'admin') {
                         me.role = 'admin';
                         await db.ref('users/' + uid).update({ role: 'admin' });
                     }
                 } else {
-                    // إنشاء حساب جديد إذا لم يكن موجوداً
+                    // إنشاء حساب جديد
                     const numericId = generate6DigitNumericId(uid);
                     const newUser = { 
-                        n: user.displayName || 'مستخدم جديد', p: uid, email: user.email, 
-                        pic: user.photoURL || userPic, sdmBalance: 0, rating: 5.0, 
+                        n: user.displayName || 'مستخدم جديد', 
+                        p: uid, 
+                        email: user.email, 
+                        pic: user.photoURL || userPic, 
+                        sdmBalance: 0, 
+                        rating: 5.0, 
                         role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
-                        numericId: numericId, joinDate: Date.now() 
+                        numericId: numericId, 
+                        joinDate: Date.now(),
+                        wa: '' // إضافة حقل واتساب فارغ
                     };
                     await db.ref('users/' + uid).set(newUser);
                     me = newUser;
@@ -758,25 +819,36 @@ if(DEV_MODE) {
                 // تشغيل التطبيق
                 startApp(uid);
 
-                // إظهار الشاشة فوراً وإخفاء التحميل
-                if(preloader) preloader.style.display = 'none';
-                appScreen.style.setProperty('display', 'block', 'important');
-                authScreen.style.setProperty('display', 'none', 'important');
+                // إظهار الشاشة الرئيسية
+                authScreen.style.display = 'none';
+                appScreen.style.display = 'block';
 
             } catch (error) {
                 console.error("خطأ في جلب البيانات:", error);
-                if(preloader) preloader.style.display = 'none';
+                
+                // في حالة الخطأ، نعرض شاشة الدخول
+                authScreen.style.display = 'block';
+                appScreen.style.display = 'none';
+                
+                Swal.fire({
+                    title: 'تنبيه',
+                    text: 'حدث خطأ في الاتصال. جرب الدخول كزائر أو حاول لاحقاً.',
+                    icon: 'warning',
+                    confirmButtonText: 'دخول كزائر'
+                }).then(() => {
+                    enterGuestMode();
+                });
             }
         } else {
-            // لا يوجد مستخدم - إظهار شاشة الدخول فقط
+            // لا يوجد مستخدم - إظهار شاشة الدخول
             if(!isGuest) { 
-                if(preloader) preloader.style.display = 'none';
-                authScreen.style.setProperty('display', 'block', 'important');
-                appScreen.style.setProperty('display', 'none', 'important');
+                authScreen.style.display = 'block';
+                appScreen.style.display = 'none';
             }
         }
     });
-    }                             
+}
+    
     // دالة معالجة الصور المحسنة (لا تمسح الحقول)
     async function encode(i, t) {
         if(!i.files[0]) return;
