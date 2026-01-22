@@ -2711,6 +2711,218 @@ updateActiveTabUI(view);
         }
     });
 }
+    /**
+ * عرض نافذة التحويل إلى البنوك
+ */
+function showBankTransfer() {
+    if (isGuest) {
+        Swal.fire('تنبيه', 'يجب تسجيل الدخول أولاً', 'warning');
+        return;
+    }
+    
+    Swal.fire({
+        title: 'تحويل إلى بنك الخرطوم أو كاشي',
+        html: `
+            <div style="text-align:right; direction:rtl;">
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; margin-bottom:8px; color:var(--neon-blue); font-weight:bold;">نوع التحويل:</label>
+                    <select id="transfer-type" class="swal2-input" style="text-align:right;">
+                        <option value="khartoum_bank">بنك الخرطوم</option>
+                        <option value="cashy">كاشي</option>
+                    </select>
+                </div>
+                
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; margin-bottom:8px; color:var(--neon-blue); font-weight:bold;">الاسم الكامل:</label>
+                    <input id="full-name" class="swal2-input" placeholder="أدخل الاسم الكامل للمستلم">
+                </div>
+                
+                <div style="margin-bottom:15px;">
+                    <label id="account-label" style="display:block; margin-bottom:8px; color:var(--neon-blue); font-weight:bold;">رقم الحساب / الهاتف:</label>
+                    <input id="account-number" class="swal2-input" placeholder="أدخل رقم الحساب">
+                </div>
+                
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; margin-bottom:8px; color:var(--neon-blue); font-weight:bold;">المبلغ بالجنيه السوداني:</label>
+                    <input id="transfer-amount-sdg" class="swal2-input" type="number" placeholder="أدخل المبلغ بالجنيه" oninput="calculateTransferSDM(this.value)">
+                </div>
+                
+                <div style="background:rgba(59, 130, 246, 0.1); padding:15px; border-radius:10px; margin-bottom:15px; text-align:center;">
+                    <div style="font-size:12px; color:var(--text-sec);">المبلغ المطلوب:</div>
+                    <div id="sdm-required" style="font-size:24px; font-weight:bold; color:var(--accent);">0 SDM</div>
+                    <div style="font-size:11px; color:var(--neon-blue); margin-top:5px;">رصيدك الحالي: ${me.sdmBalance} SDM</div>
+                </div>
+                
+                <div id="bank-details-info" style="font-size:12px; color:var(--text-sec); text-align:center; margin-top:10px;">
+                    سيتم التحويل خلال 1-2 ساعة عمل
+                </div>
+            </div>
+        `,
+        background: '#1e293b',
+        color: '#fff',
+        width: '90%',
+        confirmButtonText: 'تأكيد التحويل',
+        showCancelButton: true,
+        cancelButtonText: 'إلغاء',
+        didOpen: () => {
+            // تحديث النص حسب نوع التحويل
+            const transferType = document.getElementById('transfer-type');
+            const accountLabel = document.getElementById('account-label');
+            const accountNumber = document.getElementById('account-number');
+            
+            transferType.addEventListener('change', function() {
+                if (this.value === 'khartoum_bank') {
+                    accountLabel.innerHTML = 'رقم الحساب:';
+                    accountNumber.placeholder = 'أدخل رقم الحساب في بنك الخرطوم';
+                } else {
+                    accountLabel.innerHTML = 'رقم الهاتف:';
+                    accountNumber.placeholder = 'أدخل رقم الهاتف المسجل في كاشي';
+                }
+            });
+            
+            // تفعيل النوع الافتراضي
+            transferType.dispatchEvent(new Event('change'));
+        },
+        preConfirm: () => {
+            const fullName = document.getElementById('full-name').value.trim();
+            const accountNumber = document.getElementById('account-number').value.trim();
+            const amountSDG = parseFloat(document.getElementById('transfer-amount-sdg').value);
+            const transferType = document.getElementById('transfer-type').value;
+            const requiredSDM = parseFloat(document.getElementById('sdm-required').innerText.replace(' SDM', ''));
+            
+            // التحقق من البيانات
+            if (!fullName || fullName.length < 3) {
+                Swal.showValidationMessage('الاسم الكامل مطلوب (3 أحرف على الأقل)');
+                return false;
+            }
+            
+            if (!accountNumber || accountNumber.length < 3) {
+                Swal.showValidationMessage('رقم الحساب/الهاتف مطلوب');
+                return false;
+            }
+            
+            if (!amountSDG || amountSDG <= 0) {
+                Swal.showValidationMessage('المبلغ يجب أن يكون أكبر من صفر');
+                return false;
+            }
+            
+            if (requiredSDM > me.sdmBalance) {
+                Swal.showValidationMessage(`رصيدك غير كافٍ. تحتاج إلى ${requiredSDM} SDM`);
+                return false;
+            }
+            
+            return {
+                fullName,
+                accountNumber,
+                amountSDG,
+                transferType,
+                requiredSDM
+            };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const { fullName, accountNumber, amountSDG, transferType, requiredSDM } = result.value;
+            
+            // تأكيد نهائي
+            const confirmResult = await Swal.fire({
+                title: 'تأكيد التحويل',
+                html: `
+                    <div style="text-align:right; direction:rtl;">
+                        <p><strong>الاسم:</strong> ${fullName}</p>
+                        <p><strong>${transferType === 'khartoum_bank' ? 'رقم الحساب' : 'رقم الهاتف'}:</strong> ${accountNumber}</p>
+                        <p><strong>المبلغ:</strong> ${amountSDG.toLocaleString()} جنيه سوداني</p>
+                        <p><strong>المطلوب:</strong> ${requiredSDM} SDM</p>
+                        <p style="color:var(--accent); font-size:12px;">سيتم خصم ${requiredSDM} SDM من رصيدك</p>
+                    </div>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'نعم، تأكيد التحويل',
+                cancelButtonText: 'مراجعة',
+                background: '#1e293b',
+                color: '#fff'
+            });
+            
+            if (confirmResult.isConfirmed) {
+                showLoginLoading();
+                
+                try {
+                    // إرسال طلب التحويل
+                    const transferRef = await db.ref('bank_transfer_requests').push({
+                        userId: me.p,
+                        userName: me.n,
+                        userNumericId: me.numericId,
+                        fullName: fullName,
+                        accountNumber: accountNumber,
+                        amountSDG: amountSDG,
+                        amountSDM: requiredSDM,
+                        transferType: transferType,
+                        status: 'pending',
+                        date: admin.database.ServerValue.TIMESTAMP || Date.now()
+                    });
+                    
+                    // إرسال تنبيه للمستخدم
+                    sendAlert(me.p, `✅ تم إرسال طلب التحويل بنجاح. سيتم معالجة طلبك خلال دقائق.`);
+                    
+                    // إرسال تنبيه للإدمن
+                    const adminNotificationRef = await db.ref('admin_notifications').push({
+                        type: 'bank_transfer_request',
+                        userId: me.p,
+                        userName: me.n,
+                        userNumericId: me.numericId,
+                        fullName: fullName,
+                        accountNumber: accountNumber,
+                        amountSDG: amountSDG,
+                        amountSDM: requiredSDM,
+                        transferType: transferType,
+                        transferId: transferRef.key,
+                        status: 'pending',
+                        date: admin.database.ServerValue.TIMESTAMP || Date.now()
+                    });
+                    
+                    hideLoginLoading();
+                    
+                    Swal.fire({
+                        title: 'تم إرسال الطلب',
+                        text: 'سيتم معالجة طلبك خلال دقائق. ستتلقى إشعاراً عند التأكيد.',
+                        icon: 'success',
+                        timer: 3000,
+                        background: '#1e293b',
+                        color: '#fff'
+                    });
+                    
+                } catch (error) {
+                    hideLoginLoading();
+                    Swal.fire('خطأ', 'فشل في إرسال طلب التحويل: ' + error.message, 'error');
+                }
+            }
+        }
+    });
+}
+
+/**
+ * حساب المبلغ المطلوب بالـ SDM عند إدخال المبلغ بالجنيه
+ */
+function calculateTransferSDM(amountSDG) {
+    const sdmRequired = amountSDG / SDM_RATE;
+    const sdmElement = document.getElementById('sdm-required');
+    
+    if (sdmElement) {
+        if (amountSDG && !isNaN(sdmRequired) && sdmRequired > 0) {
+            sdmElement.innerText = sdmRequired.toFixed(2) + ' SDM';
+            
+            // تغيير اللون إذا كان الرصيد غير كافٍ
+            if (sdmRequired > me.sdmBalance) {
+                sdmElement.style.color = 'var(--red)';
+            } else {
+                sdmElement.style.color = 'var(--accent)';
+            }
+        } else {
+            sdmElement.innerText = '0 SDM';
+            sdmElement.style.color = 'var(--accent)';
+        }
+    }
+}
     // 4. إضافة دالة compressImage المفقودة
     async function compressImage(file) {
         return new Promise((resolve, reject) => {
