@@ -773,74 +773,84 @@
     }                             
     
     // دالة معالجة الصور المحسنة
-    async function encode(i, t) {
-        if(!i.files[0]) return;
-        
-        const Toast = Swal.mixin({
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: false,
-            timer: 2000
-        });
-        Toast.fire({ icon: 'info', title: 'جاري تجهيز الصورة...' });
+    // دالة لرفع الصورة والحصول على الرابط
+async function uploadImageAndGetURL(file, folder = "images") {
+    const storageRef = firebase.storage().ref();
+    const fileName = folder + "/" + Date.now() + "_" + Math.random().toString(36).substring(7);
+    const fileRef = storageRef.child(fileName);
+    
+    // ضغط الصورة قبل الرفع (اختياري ولكن مفضل)
+    const compressedBlob = await compressImageToBlob(file);
+    
+    const snapshot = await fileRef.put(compressedBlob);
+    return await snapshot.ref.getDownloadURL();
+}
 
-        try {
-            const compressed = await compressImage(i.files[0]);
-            if(t === 'post') {
-                tempImg = compressed;
-                Toast.fire({ icon: 'success', title: 'تمت إضافة الصورة بنجاح' });
-            } else if(t === 'buy') {
-                tempBuyImg = compressed;
-                if(document.getElementById('file-name-display')) {
-                    document.getElementById('file-name-display').innerText = "✅ تم اختيار الصورة";
-                }
-            }
-        } catch(e) {
-            Swal.fire('خطأ', 'فشل في ضغط الصورة', 'error');
-        }
+// دالة مساعدة لتحويل الصورة إلى Blob للرفع
+async function compressImageToBlob(file) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 800; // حجم مناسب للمتجر
+                const scaleSize = MAX_WIDTH / img.width;
+                canvas.width = MAX_WIDTH;
+                canvas.height = img.height * scaleSize;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.8);
+            };
+        };
+    });
+}
+
+// تعديل دالة encode لتخزين "الملف" وليس "النص"
+let selectedFile = null;
+let selectedBuyFile = null;
+
+async function encode(input, type) {
+    if (!input.files[0]) return;
+    
+    if (type === 'post') {
+        selectedFile = input.files[0];
+        Swal.fire({ icon: 'success', title: 'تم اختيار الصورة بنجاح', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+    } else if (type === 'buy') {
+        selectedBuyFile = input.files[0];
+        document.getElementById('file-name-display').innerText = "✅ تم اختيار الإشعار";
     }
+}
 
     // دالة النشر المحسنة
-    function publish(path) {
-        if (isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
-        
-        if (!me.wa || me.wa.trim() === "") {
-            return Swal.fire({
-                title: 'رقم الهاتف مطلوب',
-                text: 'يجب إضافة رقم الواتساب في ملفك الشخصي أولاً ليتمكن المشترين من التواصل معك.',
-                icon: 'warning',
-                confirmButtonText: 'الذهاب للملف الشخصي'
-            }).then(() => nav('profile'));
-        }
-        
-        // التحقق من VIP
-        if (path === 'vip_posts') {
-            if (!checkVIPBeforePost()) return;
-        }
-        
-        const titleField = document.getElementById(path === 'posts' ? 'pt' : 'v-t');
-        const priceField = document.getElementById(path === 'posts' ? 'pp' : 'v-pr');
-        const descField = document.getElementById(path === 'posts' ? 'pd' : 'v-d');
+    async function publish(path) {
+    if (isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول', 'error');
+    
+    const titleField = document.getElementById(path === 'posts' ? 'pt' : 'v-t');
+    const priceField = document.getElementById(path === 'posts' ? 'pp' : 'v-pr');
+    const descField = document.getElementById(path === 'posts' ? 'pd' : 'v-d');
 
-        if (!titleField.value || !priceField.value || !descField.value) {
-            return Swal.fire('تنبيه', 'أكمل بيانات العنوان والسعر والوصف أولاً', 'warning');
-        }
+    if (!titleField.value || !priceField.value || !selectedFile) {
+        return Swal.fire('تنبيه', 'أكمل البيانات واختر صورة', 'warning');
+    }
 
-        Swal.fire({ 
-            title: 'جاري النشر الآن...', 
-            text: 'يرجى الانتظار، قد يستغرق الأمر ثوانٍ حسب حجم الصورة',
-            allowOutsideClick: false,
-            didOpen: () => Swal.showLoading() 
-        });
+    Swal.fire({ title: 'جاري رفع الصورة والنشر...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
+    try {
+        // 1. رفع الصورة أولاً
+        const imageURL = await uploadImageAndGetURL(selectedFile, "post_images");
+
+        // 2. إرسال البيانات مع الرابط فقط
         const postData = {
-            title: titleField.value, 
-            price: parseFloat(priceField.value), 
-            desc: descField.value, 
-            img: tempImg || "", 
-            userId: me.p, 
-            userName: me.n, 
-            userPic: me.pic || "", 
+            title: titleField.value,
+            price: parseFloat(priceField.value),
+            desc: descField.value,
+            img: imageURL, // الرابط هنا
+            userId: me.p,
+            userName: me.n,
+            userPic: me.pic || "",
             userWa: me.wa,
             sub: (path === 'posts' ? curS : "VIP"),
             date: firebase.database.ServerValue.TIMESTAMP,
@@ -848,29 +858,14 @@
             numericId: me.numericId || "000000"
         };
 
-        db.ref(path).push(postData)
-            .then(() => {
-                Swal.fire({
-                    title: 'تم بنجاح',
-                    text: 'تم نشر إعلانك بنجاح وهو متاح للجميع الآن',
-                    icon: 'success',
-                    timer: 2000
-                });
-                tempImg = ""; 
-                titleField.value = "";
-                priceField.value = "";
-                descField.value = "";
-                goBack(); 
-            })
-            .catch(e => {
-                console.error(e);
-                let errorMsg = "حدث خطأ أثناء النشر";
-                if (e.message.includes("PERMISSION_DENIED")) {
-                    errorMsg = "عذراً، ليس لديك صلاحية النشر هنا. تأكد من تفعيل اشتراك VIP";
-                }
-                Swal.fire('فشل النشر', errorMsg, 'error');
-            });
+        await db.ref(path).push(postData);
+        Swal.fire('تم بنجاح', 'تم النشر باستخدام رابط الصورة', 'success');
+        selectedFile = null; 
+        goBack();
+    } catch (e) {
+        Swal.fire('خطأ', 'فشل الرفع: ' + e.message, 'error');
     }
+}
 
     // إصلاح: دالة للتحقق من الـ VIP
     function checkVIPAccess() {
@@ -1526,14 +1521,30 @@
         Swal.fire('نجاح', 'تم شحن الرصيد للمستخدم', 'success');
     }
 
-    async function rejectCoins(reqId, userId) {
-        const { value: reason } = await Swal.fire({ title: 'سبب الرفض؟', input: 'text', showCancelButton: true });
-        if (reason) {
-            await db.ref(`coin_requests/${reqId}`).update({ status: 'rejected', reason: reason });
-            await db.ref(`alerts/${userId}`).push({ msg: `❌ تم رفض طلب الإيداع: ${reason}`, type: 'error', date: Date.now() });
-            Swal.fire('تم الرفض', 'أرسلنا تنبيه للمستخدم', 'info');
-        }
+    async function requestCoins() {
+    const qty = parseFloat(document.getElementById('buy-qty').value);
+    if (!qty || !selectedBuyFile) return Swal.fire('تنبيه', 'أدخل الكمية وصورة الإيصال', 'warning');
+
+    Swal.fire({ title: 'جاري إرسال الإيصال...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+    try {
+        const receiptURL = await uploadImageAndGetURL(selectedBuyFile, "receipts");
+        
+        await db.ref('coin_requests').push({
+            uP: me.p,
+            uN: me.n,
+            qty: qty,
+            img: receiptURL, // الرابط بدلاً من النص
+            status: 'pending',
+            date: Date.now()
+        });
+        
+        Swal.fire('تم الإرسال', 'سيراجع المشرف الرابط للتأكد', 'success');
+        selectedBuyFile = null;
+    } catch (e) {
+        Swal.fire('خطأ', 'فشل الرفع: ' + e.message, 'error');
     }
+}
     
     // ======================================================
     // 3. نظام الألعاب
