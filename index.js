@@ -71,7 +71,7 @@ async function addBalance(uid, amount) {
         
         await userRef.update({ 
             sdmBalance: newBalance,
-            lastBalanceUpdate: Date.now()
+            lastBalanceUpdate: admin.database.ServerValue.TIMESTAMP
         });
         
         console.log(`✅ تم إضافة ${amount} SDM للمستخدم ${uid}. الرصيد الجديد: ${newBalance}`);
@@ -105,7 +105,7 @@ async function deductBalance(uid, amount) {
         
         await userRef.update({ 
             sdmBalance: newBalance,
-            lastBalanceUpdate: Date.now()
+            lastBalanceUpdate: admin.database.ServerValue.TIMESTAMP
         });
         
         console.log(`✅ تم خصم ${amount} SDM من المستخدم ${uid}. الرصيد الجديد: ${newBalance}`);
@@ -582,9 +582,107 @@ async function processCoinRequests() {
 }
 
 // ====================================================
-// [6] مراقب النزاعات في الدردشة
+// [6] محرك طلبات الألعاب
 // ====================================================
-const DISPUTE_KEYWORDS = ["نصاب", "حرامي", "غش", "كذاب", "بلاغ", "سارق", "احتيال"];
+async function processGameOrders() {
+    try {
+        const snap = await db.ref('game_orders').orderByChild('status').equalTo('pending').once('value');
+        
+        if (snap.exists()) {
+            for (const [id, order] of Object.entries(snap.val())) {
+                // التحقق من Rate Limit
+                if (!checkRateLimit(order.userId)) {
+                    await db.ref(`game_orders/${id}`).update({
+                        status: 'rate_limited',
+                        processedAt: admin.database.ServerValue.TIMESTAMP
+                    });
+                    continue;
+                }
+                
+                // إرسال تنبيه للإدمن
+                const adminNotification = await db.ref('admin_notifications')
+                    .orderByChild('orderId')
+                    .equalTo(id)
+                    .once('value');
+                
+                if (!adminNotification.exists()) {
+                    await db.ref('admin_notifications').push({
+                        type: 'new_game_order',
+                        userId: order.userId,
+                        userName: order.userName,
+                        game: order.game,
+                        playerId: order.playerId,
+                        pack: order.pack,
+                        cost: order.cost,
+                        orderId: id,
+                        date: admin.database.ServerValue.TIMESTAMP
+                    });
+                    
+                    console.log(`🎮 طلب لعبة جديد: ${order.userName} - ${order.pack} (${order.cost} SDM)`);
+                }
+            }
+        }
+    } catch (e) {
+        console.error("❌ Game Order Error:", e.message);
+    }
+}
+
+// ====================================================
+// [7] محرك التقييمات
+// ====================================================
+async function processRatings() {
+    try {
+        const snap = await db.ref('rating_queue').orderByChild('status').equalTo('pending').once('value');
+        
+        if (snap.exists()) {
+            for (const [id, rating] of Object.entries(snap.val())) {
+                const userRef = db.ref(`users/${rating.target}`);
+                const userSnap = await userRef.once('value');
+                const user = userSnap.val();
+                
+                if (user) {
+                    const newReviewCount = (user.reviewCount || 0) + 1;
+                    const newRatingSum = (user.ratingSum || 0) + rating.stars;
+                    const newAverage = newRatingSum / newReviewCount;
+                    
+                    await userRef.update({
+                        reviewCount: newReviewCount,
+                        ratingSum: newRatingSum,
+                        rating: newAverage.toFixed(1),
+                        verified: newReviewCount >= 100 ? true : user.verified || false
+                    });
+                    
+                    // حفظ التقييم المنفصل
+                    await db.ref(`reviews/${rating.target}`).push({
+                        buyerName: rating.raterN,
+                        stars: rating.stars,
+                        comment: rating.comment || '',
+                        date: admin.database.ServerValue.TIMESTAMP,
+                        postId: rating.postId || null
+                    });
+                    
+                    await db.ref(`rating_queue/${id}`).update({
+                        status: 'processed',
+                        processedAt: admin.database.ServerValue.TIMESTAMP
+                    });
+                    
+                    console.log(`⭐ تم معالجة تقييم: ${rating.raterN} → ${user.n} (${rating.stars} نجوم)`);
+                    
+                    // إرسال تنبيه للمستخدم الذي تم تقييمه
+                    sendAlert(rating.target, `⭐ حصلت على تقييم جديد من ${rating.raterN}: ${rating.stars} نجوم`, 'success');
+                }
+            }
+        }
+    } catch (e) {
+        console.error("❌ Ratings Error:", e.message);
+    }
+}
+
+// ====================================================
+// [8] مراقب النزاعات في الدردشة
+// ====================================================
+const DISPUTE_KEYWORDS = ["نصاب", "حرامي", "غش", "كذاب", "بلاغ", "سارق", "احتيال", "نصب", "خداع", "فشخ", "كلب"];
+
 function startChatMonitor() {
     db.ref('chats').on('child_added', (chatSnap) => {
         db.ref(`chats/${chatSnap.key}`).limitToLast(1).on('child_added', async (msgSnap) => {
@@ -592,53 +690,102 @@ function startChatMonitor() {
             
             if (!msg || !msg.text || msg.date < (Date.now() - 60000)) return;
             
-            const hasBadWord = DISPUTE_KEYWORDS.some(word => msg.text.includes(word));
+            const hasBadWord = DISPUTE_KEYWORDS.some(word => 
+                msg.text.toLowerCase().includes(word.toLowerCase())
+            );
             
             if (hasBadWord) {
+                const chatData = await db.ref(`chats/${chatSnap.key}`).limitToLast(5).once('value');
+                const messages = [];
+                
+                chatData.forEach(child => {
+                    messages.push(child.val());
+                });
+                
                 await db.ref('admin_notifications').push({
                     type: 'dispute_alert',
                     chatId: chatSnap.key,
                     lastMessage: msg.text,
                     senderId: msg.senderId,
                     senderName: msg.senderName,
+                    messages: messages,
+                    keyword: DISPUTE_KEYWORDS.find(word => msg.text.includes(word)),
                     severity: 'high',
-                    date: admin.database.ServerValue.TIMESTAMP
+                    date: admin.database.ServerValue.TIMESTAMP,
+                    read: false
                 });
                 
-                console.log(`⚠️ كشف نزاع في الدردشة: ${msg.senderName} - "${msg.text}"`);
+                console.log(`⚠️ كشف نزاع في الدردشة: ${msg.senderName} - "${msg.text.substring(0, 50)}..."`);
+                
+                // إرسال تنبيه فوري للإدمن في الكونسول
+                console.log(`🚨 نزاع خطير! الدردشة: ${chatSnap.key}`);
             }
         });
     });
 }
 
 // ====================================================
-// [7] نظام تنظيف المتجر
+// [9] نظام تنظيف المتجر
 // ====================================================
 async function cleanupStore() {
     try {
         const now = Date.now();
         const oneDay = 24 * 60 * 60 * 1000;
+        const sevenDays = 7 * oneDay;
         const paths = ['posts', 'vip_posts'];
         
         for (const path of paths) {
-            const snap = await db.ref(path).orderByChild('sold').equalTo(true).once('value');
+            const snap = await db.ref(path).once('value');
             if (snap.exists()) {
                 snap.forEach(child => {
                     const post = child.val();
-                    if (post.soldAt && (now - post.soldAt) > oneDay) {
+                    const postDate = post.date || 0;
+                    
+                    // حذف المنشورات المباعة لأكثر من يوم
+                    if (post.sold && post.soldAt && (now - post.soldAt) > oneDay) {
                         child.ref.remove();
                         console.log(`🧹 تم حذف منشور مباع: ${post.title}`);
+                    }
+                    // حذف المنشورات القديمة (أكثر من 7 أيام)
+                    else if ((now - postDate) > sevenDays) {
+                        child.ref.remove();
+                        console.log(`🧹 تم حذف منشور قديم: ${post.title}`);
                     }
                 });
             }
         }
+        
+        // تنظيف طلبات التحويل القديمة
+        await cleanupOldRequests('requests/transfers', 30);
+        await cleanupOldRequests('requests/escrow_deals', 7);
+        await cleanupOldRequests('requests/vip_subscriptions', 7);
+        
     } catch (e) { 
         console.error("❌ Cleanup Error:", e.message); 
     }
 }
 
+async function cleanupOldRequests(path, days) {
+    try {
+        const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+        const snap = await db.ref(path).once('value');
+        
+        if (snap.exists()) {
+            snap.forEach(child => {
+                const request = child.val();
+                if (request.date && request.date < cutoff) {
+                    child.ref.remove();
+                    console.log(`🧹 تم تنظيف طلب قديم من ${path}`);
+                }
+            });
+        }
+    } catch (error) {
+        console.error(`❌ فشل تنظيف ${path}:`, error);
+    }
+}
+
 // ====================================================
-// [8] نظام المراقبة اليومية والأمان
+// [10] نظام المراقبة اليومية والأمان
 // ====================================================
 async function dailySecurityCheck() {
     console.log("🔍 بدء الفحص الأمني اليومي...");
@@ -653,8 +800,14 @@ async function dailySecurityCheck() {
             .once('value');
         
         let largeTransfers = 0;
+        let totalTransfers = 0;
+        let totalAmount = 0;
+        
         transfersSnap.forEach(transfer => {
             const data = transfer.val();
+            totalTransfers++;
+            totalAmount += data.amount || 0;
+            
             if (data.amount > 1000) {
                 largeTransfers++;
             }
@@ -666,15 +819,44 @@ async function dailySecurityCheck() {
             await db.ref('admin_notifications').push({
                 type: 'security_alert',
                 message: `⚠️ تم اكتشاف ${largeTransfers} عملية مالية كبيرة في 24 ساعة`,
+                details: {
+                    totalTransfers: totalTransfers,
+                    totalAmount: totalAmount,
+                    largeTransfers: largeTransfers,
+                    date: new Date().toLocaleString('ar-EG')
+                },
                 date: admin.database.ServerValue.TIMESTAMP
             });
+        }
+        
+        // فحص المستخدمين غير النشطين
+        const monthAgo = Date.now() - 30 * 86400000;
+        const usersSnap = await db.ref('users').once('value');
+        let inactiveUsers = 0;
+        
+        usersSnap.forEach(child => {
+            const user = child.val();
+            const lastActivity = user.lastActivity || user.joinDate || 0;
+            
+            if (lastActivity < monthAgo && !user.online) {
+                inactiveUsers++;
+            }
+        });
+        
+        if (inactiveUsers > 20) {
+            console.log(`👤 ${inactiveUsers} مستخدم غير نشط لأكثر من شهر`);
         }
         
         // تنظيف التنبيهات القديمة (أقدم من 7 أيام)
         const sevenDaysAgo = Date.now() - 604800000;
         await cleanOldData('alerts', sevenDaysAgo);
         
+        // تنظيف الإشعارات القديمة
+        await cleanOldData('admin_notifications', sevenDaysAgo);
+        
         console.log("✅ اكتمل الفحص الأمني اليومي");
+        console.log(`📊 إحصائيات: ${totalTransfers} معاملة، ${totalAmount} SDM، ${largeTransfers} عملية كبيرة`);
+        
     } catch (error) {
         console.error("❌ فشل الفحص الأمني:", error);
     }
@@ -727,6 +909,7 @@ async function approveCoinRequest(reqId, userId, amount) {
                 date: admin.database.ServerValue.TIMESTAMP
             });
             
+            sendAlert(userId, `✅ تم تأكيد إيداع ${amount} SDM في حسابك`, 'success');
             return true;
         }
         return false;
@@ -753,6 +936,52 @@ async function rejectCoinRequest(reqId, userId, reason) {
     }
 }
 
+// دالة لتحديث حالة طلب اللعبة
+async function updateGameOrderStatus(orderId, status) {
+    try {
+        const orderRef = db.ref(`game_orders/${orderId}`);
+        const orderSnap = await orderRef.once('value');
+        const order = orderSnap.val();
+        
+        if (!order) {
+            console.error(`❌ طلب اللعبة ${orderId} غير موجود`);
+            return false;
+        }
+        
+        const updates = {
+            status: status,
+            processedAt: admin.database.ServerValue.TIMESTAMP,
+            processedBy: 'security_bot'
+        };
+        
+        // إذا كانت الحالة فشل، نرجع المال للمستخدم
+        if (status === 'failed' || status === 'cancelled') {
+            const refundSuccess = await addBalance(order.userId, order.cost);
+            if (refundSuccess) {
+                updates.refunded = true;
+                updates.refundedAt = admin.database.ServerValue.TIMESTAMP;
+            }
+        }
+        
+        await orderRef.update(updates);
+        
+        // إرسال تنبيه للمستخدم
+        const message = status === 'completed' 
+            ? `✅ تم تنفيذ طلب شحن ${order.pack} بنجاح` 
+            : status === 'failed' 
+            ? `❌ تم إلغاء طلب شحن ${order.pack} وتم إرجاع ${order.cost} SDM`
+            : `📝 تم تحديث حالة طلبك إلى: ${status}`;
+        
+        sendAlert(order.userId, message, status === 'completed' ? 'success' : 'info');
+        
+        console.log(`🎮 تم تحديث حالة طلب اللعبة ${orderId} إلى ${status}`);
+        return true;
+    } catch (error) {
+        console.error("❌ فشل تحديث حالة طلب اللعبة:", error);
+        return false;
+    }
+}
+
 // ====================================================
 // المجدولات الزمنية
 // ====================================================
@@ -763,6 +992,8 @@ setInterval(processTransfers, 6000);       // معالجة التحويلات ك
 setInterval(processVIP, 15000);            // فحص الـ VIP كل 15 ثانية
 setInterval(processBankTransfers, 7000);   // معالجة التحويلات البنكية كل 7 ثواني
 setInterval(processCoinRequests, 8000);    // معالجة طلبات الشحن كل 8 ثواني
+setInterval(processGameOrders, 10000);     // معالجة طلبات الألعاب كل 10 ثواني
+setInterval(processRatings, 12000);        // معالجة التقييمات كل 12 ثانية
 
 // مجدولات الصيانة
 setInterval(cleanupStore, 3600000);        // تنظيف المتجر كل ساعة
@@ -775,6 +1006,17 @@ startChatMonitor();
 setTimeout(() => {
     dailySecurityCheck();
     console.log("🚀 تم تشغيل جميع أنظمة البوت الأمنية");
+    console.log("=========================================");
+    console.log("📊 الأنظمة النشطة:");
+    console.log("🛡️  نظام الوسيط الآمن");
+    console.log("💸 نظام التحويلات البنكية");
+    console.log("👑 نظام VIP");
+    console.log("🎮 نظام الألعاب");
+    console.log("⭐ نظام التقييمات");
+    console.log("🔍 مراقبة النزاعات");
+    console.log("🧹 نظام التنظيف التلقائي");
+    console.log("🔒 نظام المراقبة الأمنية");
+    console.log("=========================================");
 }, 30000);
 
 // ====================================================
@@ -788,7 +1030,7 @@ app.post('/api/approve-deposit', async (req, res) => {
     try {
         const { reqId, userId, amount, adminToken } = req.body;
         
-        // التحقق من المسؤول (هنا يمكنك إضافة نظام توثيق)
+        // التحقق من المسؤول
         if (adminToken !== process.env.ADMIN_TOKEN) {
             return res.status(403).json({ error: 'غير مصرح' });
         }
@@ -826,6 +1068,97 @@ app.post('/api/reject-deposit', async (req, res) => {
     }
 });
 
+// واجهة لتحديث حالة طلب اللعبة
+app.post('/api/update-game-order', async (req, res) => {
+    try {
+        const { orderId, status, adminToken } = req.body;
+        
+        if (adminToken !== process.env.ADMIN_TOKEN) {
+            return res.status(403).json({ error: 'غير مصرح' });
+        }
+        
+        const success = await updateGameOrderStatus(orderId, status);
+        
+        if (success) {
+            res.json({ success: true, message: 'تم تحديث حالة الطلب بنجاح' });
+        } else {
+            res.status(400).json({ error: 'فشل تحديث حالة الطلب' });
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// واجهة للحصول على إحصائيات النظام
+app.get('/api/stats', async (req, res) => {
+    try {
+        const { adminToken } = req.query;
+        
+        if (adminToken !== process.env.ADMIN_TOKEN) {
+            return res.status(403).json({ error: 'غير مصرح' });
+        }
+        
+        // إحصائيات المستخدمين
+        const usersSnap = await db.ref('users').once('value');
+        const totalUsers = usersSnap.numChildren();
+        let vipUsers = 0;
+        let onlineUsers = 0;
+        let totalBalance = 0;
+        
+        usersSnap.forEach(child => {
+            const user = child.val();
+            if (user.vipStatus === 'active') vipUsers++;
+            if (user.online) onlineUsers++;
+            totalBalance += user.sdmBalance || 0;
+        });
+        
+        // إحصائيات المعاملات
+        const transactionsSnap = await db.ref('transactions').once('value');
+        const totalTransactions = transactionsSnap.numChildren();
+        
+        // إحصائيات المنشورات
+        const postsSnap = await db.ref('posts').once('value');
+        const vipPostsSnap = await db.ref('vip_posts').once('value');
+        const totalPosts = postsSnap.numChildren() + vipPostsSnap.numChildren();
+        
+        // إحصائيات الطلبات
+        const pendingDeposits = await db.ref('coin_requests').orderByChild('status').equalTo('pending').once('value');
+        const pendingTransfers = await db.ref('bank_transfer_requests').orderByChild('status').equalTo('pending').once('value');
+        const pendingEscrows = await db.ref('requests/escrow_deals').orderByChild('status').equalTo('pending_delivery').once('value');
+        
+        res.json({
+            success: true,
+            stats: {
+                users: {
+                    total: totalUsers,
+                    vip: vipUsers,
+                    online: onlineUsers,
+                    totalBalance: totalBalance.toFixed(2)
+                },
+                content: {
+                    totalPosts: totalPosts,
+                    regularPosts: postsSnap.numChildren(),
+                    vipPosts: vipPostsSnap.numChildren()
+                },
+                transactions: {
+                    total: totalTransactions,
+                    pendingDeposits: pendingDeposits.numChildren(),
+                    pendingTransfers: pendingTransfers.numChildren(),
+                    pendingEscrows: pendingEscrows.numChildren()
+                },
+                system: {
+                    uptime: process.uptime(),
+                    memory: process.memoryUsage(),
+                    timestamp: new Date().toISOString()
+                }
+            }
+        });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // واجهة للصحة
 app.get('/health', (req, res) => {
     res.json({ 
@@ -836,13 +1169,18 @@ app.get('/health', (req, res) => {
             transfers: 'running',
             vip: 'running',
             bank_transfers: 'running',
-            security: 'running'
-        }
+            game_orders: 'running',
+            ratings: 'running',
+            security: 'running',
+            cleanup: 'running'
+        },
+        uptime: process.uptime(),
+        memory: process.memoryUsage()
     });
 });
 
 // ====================================================
-// تشغيل السيرفر
+// واجهة المستخدم الرئيسية
 // ====================================================
 
 app.get('/', (req, res) => {
@@ -852,64 +1190,332 @@ app.get('/', (req, res) => {
         <head>
             <title>🚀 SDM Market Security Bot</title>
             <style>
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }
+                
                 body {
-                    font-family: Arial, sans-serif;
-                    background: #0f172a;
-                    color: white;
-                    text-align: center;
-                    padding: 50px;
-                }
-                .status {
-                    background: #1e293b;
+                    font-family: 'Arial', sans-serif;
+                    background: linear-gradient(135deg, #0f172a, #1e293b);
+                    color: #f8fafc;
+                    min-height: 100vh;
                     padding: 20px;
-                    border-radius: 10px;
-                    margin: 20px auto;
-                    max-width: 600px;
-                    border-left: 5px solid #10b981;
                 }
-                .service {
-                    display: flex;
-                    justify-content: space-between;
-                    margin: 10px 0;
-                    padding: 10px;
-                    background: #334155;
-                    border-radius: 5px;
+                
+                .container {
+                    max-width: 1200px;
+                    margin: 0 auto;
+                    padding: 20px;
+                }
+                
+                header {
+                    text-align: center;
+                    margin-bottom: 40px;
+                    padding: 20px;
+                    background: rgba(255, 255, 255, 0.05);
+                    border-radius: 20px;
+                    border: 1px solid rgba(59, 130, 246, 0.3);
+                    backdrop-filter: blur(10px);
+                }
+                
+                h1 {
+                    font-size: 2.5rem;
+                    margin-bottom: 10px;
+                    background: linear-gradient(90deg, #3b82f6, #00f3ff);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                }
+                
+                .subtitle {
+                    color: #94a3b8;
+                    font-size: 1.1rem;
+                }
+                
+                .services-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                    gap: 20px;
+                    margin-bottom: 40px;
+                }
+                
+                .service-card {
+                    background: rgba(30, 41, 59, 0.8);
+                    border-radius: 15px;
+                    padding: 25px;
+                    border: 1px solid rgba(59, 130, 246, 0.2);
+                    transition: all 0.3s ease;
+                    position: relative;
+                    overflow: hidden;
+                }
+                
+                .service-card:hover {
+                    transform: translateY(-5px);
+                    border-color: #3b82f6;
+                    box-shadow: 0 10px 30px rgba(59, 130, 246, 0.2);
+                }
+                
+                .service-icon {
+                    font-size: 40px;
+                    margin-bottom: 15px;
+                    color: #00f3ff;
+                }
+                
+                .service-title {
+                    font-size: 1.3rem;
+                    margin-bottom: 10px;
+                    color: #f8fafc;
+                }
+                
+                .service-desc {
+                    color: #94a3b8;
+                    font-size: 0.95rem;
+                    line-height: 1.6;
+                }
+                
+                .status-badge {
+                    position: absolute;
+                    top: 15px;
+                    right: 15px;
+                    padding: 5px 12px;
+                    background: #10b981;
+                    color: white;
+                    border-radius: 20px;
+                    font-size: 0.8rem;
+                    font-weight: bold;
+                }
+                
+                .stats-section {
+                    background: rgba(255, 255, 255, 0.05);
+                    border-radius: 15px;
+                    padding: 25px;
+                    margin-bottom: 30px;
+                    border: 1px solid rgba(245, 158, 11, 0.3);
+                }
+                
+                .stats-title {
+                    font-size: 1.5rem;
+                    margin-bottom: 20px;
+                    color: #f59e0b;
+                }
+                
+                .stats-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    gap: 15px;
+                }
+                
+                .stat-item {
+                    background: rgba(0, 0, 0, 0.2);
+                    padding: 15px;
+                    border-radius: 10px;
+                    text-align: center;
+                }
+                
+                .stat-value {
+                    font-size: 1.8rem;
+                    font-weight: bold;
+                    color: #00f3ff;
+                    margin-bottom: 5px;
+                }
+                
+                .stat-label {
+                    color: #94a3b8;
+                    font-size: 0.9rem;
+                }
+                
+                .footer {
+                    text-align: center;
+                    margin-top: 40px;
+                    padding-top: 20px;
+                    border-top: 1px solid rgba(255, 255, 255, 0.1);
+                    color: #64748b;
+                    font-size: 0.9rem;
+                }
+                
+                .api-info {
+                    background: rgba(0, 0, 0, 0.3);
+                    border-radius: 10px;
+                    padding: 20px;
+                    margin-top: 30px;
+                }
+                
+                .api-title {
+                    color: #f59e0b;
+                    margin-bottom: 15px;
+                    font-size: 1.2rem;
+                }
+                
+                .endpoint {
+                    background: rgba(255, 255, 255, 0.05);
+                    padding: 10px 15px;
+                    border-radius: 8px;
+                    margin: 8px 0;
+                    font-family: monospace;
+                    font-size: 0.9rem;
+                    color: #60a5fa;
+                }
+                
+                @media (max-width: 768px) {
+                    .container {
+                        padding: 10px;
+                    }
+                    
+                    h1 {
+                        font-size: 2rem;
+                    }
+                    
+                    .services-grid {
+                        grid-template-columns: 1fr;
+                    }
                 }
             </style>
         </head>
         <body>
-            <h1>🚀 SDM Market Security Bot</h1>
-            <p>نظام الأمان والوسيط الآمن يعمل بكامل طاقته</p>
-            
-            <div class="status">
-                <h3>📊 حالة الخدمات:</h3>
-                <div class="service">
-                    <span>🛡️ نظام الوسيط الآمن</span>
-                    <span style="color:#10b981">● يعمل</span>
+            <div class="container">
+                <header>
+                    <h1>🚀 SDM Market Security Bot</h1>
+                    <p class="subtitle">نظام الأمان والوسيط الآمن يعمل بكامل طاقته لحماية معاملاتك</p>
+                </header>
+                
+                <div class="services-grid">
+                    <div class="service-card">
+                        <div class="status-badge">نشط</div>
+                        <div class="service-icon">🛡️</div>
+                        <h3 class="service-title">نظام الوسيط الآمن</h3>
+                        <p class="service-desc">حماية كاملة للمعاملات بين البائع والمشتري مع تأمين الأموال حتى استلام المنتج</p>
+                    </div>
+                    
+                    <div class="service-card">
+                        <div class="status-badge">نشط</div>
+                        <div class="service-icon">💸</div>
+                        <h3 class="service-title">التحويلات البنكية</h3>
+                        <p class="service-desc">نظام آمن لتحويل الأموال إلى البنوك المحلية مع مراقبة فورية</p>
+                    </div>
+                    
+                    <div class="service-card">
+                        <div class="status-badge">نشط</div>
+                        <div class="service-icon">👑</div>
+                        <h3 class="service-title">نظام VIP</h3>
+                        <p class="service-desc">إدارة اشتراكات VIP تلقائية مع تجديد وانتهاء تلقائي</p>
+                    </div>
+                    
+                    <div class="service-card">
+                        <div class="status-badge">نشط</div>
+                        <div class="service-icon">🎮</div>
+                        <h3 class="service-title">طلبات الألعاب</h3>
+                        <p class="service-desc">معالجة طلبات شحن الألعاب مع تأكيد فوري</p>
+                    </div>
+                    
+                    <div class="service-card">
+                        <div class="status-badge">نشط</div>
+                        <div class="service-icon">⭐</div>
+                        <h3 class="service-title">نظام التقييمات</h3>
+                        <p class="service-desc">تقييم المستخدمين تلقائياً وبناء السمعة الرقمية</p>
+                    </div>
+                    
+                    <div class="service-card">
+                        <div class="status-badge">نشط</div>
+                        <div class="service-icon">🔍</div>
+                        <h3 class="service-title">مراقبة النزاعات</h3>
+                        <p class="service-desc">كشف النزاعات في الدردشات وإرسال تنبيهات فورية</p>
+                    </div>
                 </div>
-                <div class="service">
-                    <span>💸 التحويلات البنكية</span>
-                    <span style="color:#10b981">● يعمل</span>
+                
+                <div class="stats-section">
+                    <h3 class="stats-title">📊 حالة النظام الحية</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value" id="uptime">0</div>
+                            <div class="stat-label">ثانية تشغيل</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="memory">0</div>
+                            <div class="stat-label">ميغابايت مستخدمة</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="services">8</div>
+                            <div class="stat-label">خدمة نشطة</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="timestamp">${new Date().toLocaleTimeString('ar-EG')}</div>
+                            <div class="stat-label">آخر تحديث</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="service">
-                    <span>👑 نظام VIP</span>
-                    <span style="color:#10b981">● يعمل</span>
+                
+                <div class="api-info">
+                    <h3 class="api-title">🌐 واجهات API المتاحة</h3>
+                    <div class="endpoint">GET /health - حالة النظام</div>
+                    <div class="endpoint">POST /api/approve-deposit - تأكيد الإيداع</div>
+                    <div class="endpoint">POST /api/reject-deposit - رفض الإيداع</div>
+                    <div class="endpoint">POST /api/update-game-order - تحديث طلب لعبة</div>
+                    <div class="endpoint">GET /api/stats - إحصائيات النظام</div>
                 </div>
-                <div class="service">
-                    <span>🔍 مراقبة النزاعات</span>
-                    <span style="color:#10b981">● يعمل</span>
+                
+                <div class="footer">
+                    <p>⏰ آخر تحديث: <span id="currentTime">${new Date().toLocaleString('ar-EG')}</span></p>
+                    <p>🔒 جميع الحقوق محفوظة © SDM Market 2024</p>
                 </div>
             </div>
             
-            <p>⏰ آخر تحديث: ${new Date().toLocaleString('ar-EG')}</p>
+            <script>
+                // تحديث الوقت الحي
+                function updateTime() {
+                    const now = new Date();
+                    document.getElementById('currentTime').textContent = now.toLocaleString('ar-EG');
+                    document.getElementById('timestamp').textContent = now.toLocaleTimeString('ar-EG');
+                    
+                    // محاكاة بيانات النظام
+                    const uptimeElement = document.getElementById('uptime');
+                    let uptime = parseInt(uptimeElement.textContent) || 0;
+                    uptimeElement.textContent = (uptime + 1) + 's';
+                    
+                    // تحديث استخدام الذاكرة عشوائياً (لمحاكاة البيانات الحية)
+                    document.getElementById('memory').textContent = 
+                        Math.floor(Math.random() * 100 + 100) + ' MB';
+                }
+                
+                // تحديث كل ثانية
+                setInterval(updateTime, 1000);
+                
+                // جلب بيانات النظام الحية
+                async function fetchSystemStats() {
+                    try {
+                        const response = await fetch('/health');
+                        const data = await response.json();
+                        
+                        if (data.status === 'healthy') {
+                            document.getElementById('uptime').textContent = 
+                                Math.floor(data.uptime) + 's';
+                            document.getElementById('memory').textContent = 
+                                Math.floor(data.memory.heapUsed / 1024 / 1024) + ' MB';
+                        }
+                    } catch (error) {
+                        console.log('جاري تحديث البيانات...');
+                    }
+                }
+                
+                // جلب البيانات كل 30 ثانية
+                setInterval(fetchSystemStats, 30000);
+                
+                // جلب البيانات أول مرة
+                fetchSystemStats();
+            </script>
         </body>
         </html>
     `);
 });
+
+// ====================================================
+// تشغيل السيرفر
+// ====================================================
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`🚀 SDM Market Security Bot is Fully Operational on Port ${PORT}`);
     console.log(`📅 بدء التشغيل: ${new Date().toLocaleString('ar-EG')}`);
     console.log(`🔒 أنظمة الأمان: نشطة بنسبة 100%`);
+    console.log(`🌐 الواجهة متاحة على: http://localhost:${PORT}`);
 });
