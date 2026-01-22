@@ -683,23 +683,35 @@
             Swal.fire('خطأ', 'فشل تسجيل الخروج: ' + error.message, 'error');
         });
     }
-
     function enterGuestMode() {
+    try {
         isGuest = true;
         me = { 
             n: 'زائر', 
-            p: 'guest', 
+            p: 'guest_' + Date.now(), // إضافة timestamp لمنع التكرار
             role: 'guest', 
             sdmBalance: 0,
             rating: 0,
             pic: 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
-            numericId: '000000'
+            numericId: '000000',
+            wa: '' // إضافة حقل فارغ لتجنب الأخطاء
         };
-        document.getElementById('auth-screen').classList.add('hidden');
-        document.getElementById('app-screen').classList.remove('hidden');
+        
+        // التأكد من إخفاء الشاشات بشكل صحيح
+        document.getElementById('auth-screen').style.display = 'none';
+        document.getElementById('app-screen').style.display = 'block';
+        
+        // إخفاء شاشة التحميل
+        const preloader = document.getElementById('main-preloader');
+        if(preloader) preloader.style.display = 'none';
+        
         document.getElementById('u-stars').innerText = "زائر";
         render('home');
+    } catch (error) {
+        console.error("Guest mode error:", error);
+        location.reload();
     }
+}
 
     // --- مراقبة حالة المصادقة - النسخة المحسنة ---
     function initializeAuthObserver() {
