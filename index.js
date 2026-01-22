@@ -1,9 +1,67 @@
 const admin = require('firebase-admin');
 const express = require('express');
-const app = express();
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
+const winston = require('winston');
+const { OAuth2Client } = require('google-auth-library');
+const Joi = require('joi');
 
-// إعداد الاتصال بقاعدة البيانات
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+// إعداد logging آمن
+const logger = winston.createLogger({
+    level: 'info',
+    format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.errors({ stack: true }),
+        winston.format.json()
+    ),
+    defaultMeta: { service: 'sdm-security-bot' },
+    transports: [
+        new winston.transports.File({ 
+            filename: 'logs/error.log', 
+            level: 'error',
+            maxsize: 5242880,
+            maxFiles: 5
+        }),
+        new winston.transports.File({ 
+            filename: 'logs/combined.log',
+            maxsize: 5242880,
+            maxFiles: 5
+        })
+    ]
+});
+
+if (process.env.NODE_ENV !== 'production') {
+    logger.add(new winston.transports.Console({
+        format: winston.format.simple()
+    }));
+}
+
+// التحقق من environment variables
+const requiredEnvVars = [
+    'FIREBASE_SERVICE_ACCOUNT',
+    'ADMIN_API_KEY',
+    'ENCRYPTION_KEY',
+    'GOOGLE_CLIENT_ID'
+];
+
+for (const envVar of requiredEnvVar) {
+    if (!process.env[envVar]) {
+        logger.error(`❌ Missing required environment variable: ${envVar}`);
+        process.exit(1);
+    }
+}
+
+// إعداد Firebase Admin SDK
+let serviceAccount;
+try {
+    serviceAccount = JSON.parse(
+        Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString()
+    );
+} catch (error) {
+    logger.error('❌ Failed to parse Firebase service account', { error });
+    process.exit(1);
+}
 
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
@@ -11,1511 +69,1105 @@ admin.initializeApp({
 });
 
 const db = admin.database();
+const auth = admin.auth();
+
+// إعداد Google OAuth للتحقق
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // ====================================================
-// نظام Rate Limiting في البوت
-// ====================================================
-const requestLimits = new Map();
-
-function checkRateLimit(uid) {
-    const now = Date.now();
-    const userLimit = requestLimits.get(uid);
-    
-    if (!userLimit) {
-        requestLimits.set(uid, { count: 1, timestamp: now });
-        return true;
-    }
-    
-    if (now - userLimit.timestamp > 60000) {
-        userLimit.count = 1;
-        userLimit.timestamp = now;
-        return true;
-    }
-    
-    if (userLimit.count >= 20) {
-        return false;
-    }
-    
-    userLimit.count++;
-    return true;
-}
-
-// تنظيف ذاكرة Rate Limit كل ساعة
-setInterval(() => {
-    const now = Date.now();
-    for (const [uid, limit] of requestLimits.entries()) {
-        if (now - limit.timestamp > 3600000) {
-            requestLimits.delete(uid);
-        }
-    }
-}, 3600000);
-
-// ====================================================
-// دوال البوت لمعالجة الرصيد (Admin SDK فقط)
+// نظام Rate Limiting المتقدم (مخزن في Firebase)
 // ====================================================
 
-// 1. دالة زيادة الرصيد
-async function addBalance(uid, amount) {
-    try {
-        const userRef = db.ref(`users/${uid}`);
-        const snapshot = await userRef.once('value');
-        const user = snapshot.val();
-        
-        if (!user) {
-            console.error(`❌ المستخدم ${uid} غير موجود`);
-            return false;
-        }
-        
-        const currentBalance = user.sdmBalance || 0;
-        const newBalance = currentBalance + amount;
-        
-        await userRef.update({ 
-            sdmBalance: newBalance,
-            lastBalanceUpdate: admin.database.ServerValue.TIMESTAMP
-        });
-        
-        console.log(`✅ تم إضافة ${amount} SDM للمستخدم ${uid}. الرصيد الجديد: ${newBalance}`);
-        return true;
-    } catch (error) {
-        console.error(`❌ فشل إضافة الرصيد:`, error);
-        return false;
-    }
-}
-
-// 2. دالة خصم الرصيد
-async function deductBalance(uid, amount) {
-    try {
-        const userRef = db.ref(`users/${uid}`);
-        const snapshot = await userRef.once('value');
-        const user = snapshot.val();
-        
-        if (!user) {
-            console.error(`❌ المستخدم ${uid} غير موجود`);
-            return false;
-        }
-        
-        const currentBalance = user.sdmBalance || 0;
-        
-        if (currentBalance < amount) {
-            console.error(`❌ الرصيد غير كافٍ: ${currentBalance} < ${amount}`);
-            return false;
-        }
-        
-        const newBalance = currentBalance - amount;
-        
-        await userRef.update({ 
-            sdmBalance: newBalance,
-            lastBalanceUpdate: admin.database.ServerValue.TIMESTAMP
-        });
-        
-        console.log(`✅ تم خصم ${amount} SDM من المستخدم ${uid}. الرصيد الجديد: ${newBalance}`);
-        return true;
-    } catch (error) {
-        console.error(`❌ فشل خصم الرصيد:`, error);
-        return false;
-    }
-}
-
-// 3. دالة التحويل بين المستخدمين
-async function transferBalance(fromUid, toUid, amount) {
-    try {
-        const fromRef = db.ref(`users/${fromUid}`);
-        const fromSnap = await fromRef.once('value');
-        const fromUser = fromSnap.val();
-        
-        if (!fromUser) {
-            console.error(`❌ المرسل ${fromUid} غير موجود`);
-            return false;
-        }
-        
-        if ((fromUser.sdmBalance || 0) < amount) {
-            console.error(`❌ رصيد المرسل غير كافٍ: ${fromUser.sdmBalance} < ${amount}`);
-            return false;
-        }
-        
-        const toRef = db.ref(`users/${toUid}`);
-        const toSnap = await toRef.once('value');
-        const toUser = toSnap.val();
-        
-        if (!toUser) {
-            console.error(`❌ المستقبل ${toUid} غير موجود`);
-            return false;
-        }
-        
-        await fromRef.update({ 
-            sdmBalance: (fromUser.sdmBalance || 0) - amount
-        });
-        
-        await toRef.update({ 
-            sdmBalance: (toUser.sdmBalance || 0) + amount
-        });
-        
-        console.log(`✅ تم التحويل: ${amount} SDM من ${fromUid} إلى ${toUid}`);
-        return true;
-    } catch (error) {
-        console.error(`❌ فشل التحويل:`, error);
-        return false;
-    }
-}
-
-// ====================================================
-// دالة إرسال التنبيهات
-// ====================================================
-function sendAlert(uid, msg, type = 'success') {
-    db.ref(`alerts/${uid}`).push({
-        msg: msg,
-        type: type,
-        date: admin.database.ServerValue.TIMESTAMP
-    });
-}
-
-// ====================================================
-// [1] محرك الوسيط الآمن (Escrow System)
-// ====================================================
-async function processEscrow() {
-    try {
-        const escRef = db.ref('requests/escrow_deals');
-        const pendingLock = await escRef.orderByChild('status').equalTo('pending_delivery').once('value');
-        
-        if (pendingLock.exists()) {
-            for (const [id, deal] of Object.entries(pendingLock.val())) {
-                
-                // التحقق من Rate Limit
-                if (!checkRateLimit(deal.buyerId)) {
-                    await escRef.child(id).update({ 
-                        status: 'rate_limited',
-                        updatedAt: admin.database.ServerValue.TIMESTAMP 
-                    });
-                    sendAlert(deal.buyerId, `⏳ تم إيقاف الطلب مؤقتاً بسبب كثرة المحاولات`, 'warning');
-                    continue;
-                }
-                
-                // منع الشراء من النفس
-                if (deal.buyerId === deal.sellerId) {
-                    await escRef.child(id).update({ 
-                        status: 'failed_self_purchase',
-                        updatedAt: admin.database.ServerValue.TIMESTAMP 
-                    });
-                    sendAlert(deal.buyerId, `❌ لا يمكنك الشراء من نفسك`, 'error');
-                    continue;
-                }
-
-                const amount = parseFloat(deal.amount);
-                
-                // استخدام دالة البوت الآمنة لخصم الرصيد
-                const deductionSuccess = await deductBalance(deal.buyerId, amount);
-                
-                if (deductionSuccess) {
-                    await escRef.child(id).update({ 
-                        status: 'secured', 
-                        updatedAt: admin.database.ServerValue.TIMESTAMP 
-                    });
-                    
-                    await db.ref(`${deal.path}/${deal.postId}`).update({ 
-                        pending: true, 
-                        buyerId: deal.buyerId,
-                        lockedPrice: amount
-                    });
-                    
-                    sendAlert(deal.buyerId, `🔒 تم حجز ${amount} SDM للسلعة "${deal.itemTitle}"`);
-                    sendAlert(deal.sellerId, `💰 تم دفع ${amount} SDM للسلعة "${deal.itemTitle}". يمكنك تسليمها للمشتري.`);
-                    
-                    // تسجيل المعاملة
-                    await db.ref('transactions').push({
-                        type: 'escrow_lock',
-                        from: deal.buyerId,
-                        to: 'ESCROW_SYSTEM',
-                        amount: amount,
-                        postId: deal.postId,
-                        date: admin.database.ServerValue.TIMESTAMP
-                    });
-                } else {
-                    await escRef.child(id).update({ status: 'failed_insufficient_funds' });
-                    sendAlert(deal.buyerId, `❌ رصيدك غير كافٍ لإتمام عملية الشراء`, 'error');
-                }
-            }
-        }
-        
-        // معالجة الطلبات المؤكدة من المشتري
-        const confirmedDeals = await escRef.orderByChild('status').equalTo('confirmed_by_buyer').once('value');
-        if (confirmedDeals.exists()) {
-            for (const [id, deal] of Object.entries(confirmedDeals.val())) {
-                const amount = parseFloat(deal.amount);
-                
-                // تحويل المال للبائع
-                const transferSuccess = await addBalance(deal.sellerId, amount);
-                
-                if (transferSuccess) {
-                    await escRef.child(id).update({ 
-                        status: 'completed',
-                        completedAt: admin.database.ServerValue.TIMESTAMP 
-                    });
-                    
-                    await db.ref(`${deal.path}/${deal.postId}`).update({ 
-                        sold: true,
-                        pending: false,
-                        soldAt: admin.database.ServerValue.TIMESTAMP 
-                    });
-                    
-                    sendAlert(deal.sellerId, `✅ تم استلام ${amount} SDM مقابل بيع "${deal.itemTitle}"`);
-                    
-                    // تسجيل المعاملة النهائية
-                    await db.ref('transactions').push({
-                        type: 'escrow_release',
-                        from: 'ESCROW_SYSTEM',
-                        to: deal.sellerId,
-                        amount: amount,
-                        postId: deal.postId,
-                        date: admin.database.ServerValue.TIMESTAMP
-                    });
-                }
-            }
-        }
-        
-        // معالجة الطلبات الملغاة
-        const cancelledDeals = await escRef.orderByChild('status').equalTo('cancelled_by_buyer').once('value');
-        if (cancelledDeals.exists()) {
-            for (const [id, deal] of Object.entries(cancelledDeals.val())) {
-                const amount = parseFloat(deal.amount);
-                
-                // إرجاع المال للمشتري
-                const refundSuccess = await addBalance(deal.buyerId, amount);
-                
-                if (refundSuccess) {
-                    await escRef.child(id).update({ 
-                        status: 'refunded',
-                        refundedAt: admin.database.ServerValue.TIMESTAMP 
-                    });
-                    
-                    await db.ref(`${deal.path}/${deal.postId}`).update({ 
-                        pending: false,
-                        buyerId: null
-                    });
-                    
-                    sendAlert(deal.buyerId, `↩️ تم إرجاع ${amount} SDM إلى رصيدك`);
-                    
-                    // تسجيل استرجاع الأموال
-                    await db.ref('transactions').push({
-                        type: 'escrow_refund',
-                        from: 'ESCROW_SYSTEM',
-                        to: deal.buyerId,
-                        amount: amount,
-                        postId: deal.postId,
-                        date: admin.database.ServerValue.TIMESTAMP
-                    });
-                }
-            }
-        }
-        
-    } catch (e) { 
-        console.error("❌ Escrow Error:", e.message); 
-    }
-}
-
-// ====================================================
-// [2] محرك التحويلات البنكية المحدث
-// ====================================================
-async function processBankTransfers() {
-    try {
-        const snap = await db.ref('bank_transfer_requests').orderByChild('status').equalTo('pending').once('value');
-        
-        if (snap.exists()) {
-            for (const [id, req] of Object.entries(snap.val())) {
-                
-                // التحقق من Rate Limit
-                if (!checkRateLimit(req.userId)) {
-                    await db.ref(`bank_transfer_requests/${id}`).update({
-                        status: 'rate_limited',
-                        reason: 'تجاوز الحد المسموح للطلبات',
-                        processedAt: admin.database.ServerValue.TIMESTAMP
-                    });
-                    continue;
-                }
-                
-                const userSnap = await db.ref(`users/${req.userId}`).once('value');
-                const user = userSnap.val();
-                
-                // التحقق من الرصيد
-                if (!user || (user.sdmBalance || 0) < req.amountSDM) {
-                    await db.ref(`bank_transfer_requests/${id}`).update({
-                        status: 'auto_rejected',
-                        reason: 'رصيد غير كافٍ',
-                        processedAt: admin.database.ServerValue.TIMESTAMP
-                    });
-                    
-                    sendAlert(req.userId, `❌ تم رفض طلب التحويل: رصيدك غير كافٍ`, 'error');
-                    continue;
-                }
-                
-                // التحقق من حدود التحويل
-                if (req.amountSDM < 1 || req.amountSDM > 10000) {
-                    await db.ref(`bank_transfer_requests/${id}`).update({
-                        status: 'auto_rejected',
-                        reason: 'المبلغ خارج النطاق المسموح (1-10000 SDM)',
-                        processedAt: admin.database.ServerValue.TIMESTAMP
-                    });
-                    continue;
-                }
-                
-                // إرسال تنبيه للإدمن
-                const adminNotification = await db.ref('admin_notifications')
-                    .orderByChild('transferId')
-                    .equalTo(id)
-                    .once('value');
-                
-                if (!adminNotification.exists()) {
-                    await db.ref('admin_notifications').push({
-                        type: 'bank_transfer_request',
-                        userId: req.userId,
-                        userName: req.userName,
-                        userNumericId: req.userNumericId,
-                        fullName: req.fullName,
-                        accountNumber: req.accountNumber,
-                        amountSDG: req.amountSDG,
-                        amountSDM: req.amountSDM,
-                        transferType: req.transferType,
-                        transferId: id,
-                        status: 'pending',
-                        date: admin.database.ServerValue.TIMESTAMP
-                    });
-                    
-                    console.log(`📋 طلب تحويل جديد: ${req.userName} - ${req.amountSDM} SDM`);
-                }
-            }
-        }
-    } catch (e) {
-        console.error("❌ Bank Transfer Error:", e.message);
-    }
-}
-
-// ====================================================
-// [3] محرك التحويل المباشر بين المستخدمين
-// ====================================================
-async function processTransfers() {
-    try {
-        const snap = await db.ref('requests/transfers').orderByChild('status').equalTo('pending').once('value');
-        
-        if (snap.exists()) {
-            for (const [id, req] of Object.entries(snap.val())) {
-                
-                // التحقق من Rate Limit
-                if (!checkRateLimit(req.from)) {
-                    await db.ref(`requests/transfers/${id}`).update({ 
-                        status: 'rate_limited' 
-                    });
-                    continue;
-                }
-                
-                const amount = parseFloat(req.amount);
-                const targetSnap = await db.ref('users').orderByChild('numericId').equalTo(req.toId).once('value');
-                
-                if (!targetSnap.exists()) {
-                    await db.ref(`requests/transfers/${id}`).update({ 
-                        status: 'failed_not_found' 
-                    });
-                    sendAlert(req.from, `❌ لم نجد مستخدماً يحمل الرقم ${req.toId}`, 'error');
-                    continue;
-                }
-
-                const targetUid = Object.keys(targetSnap.val())[0];
-                const targetUser = targetSnap.val()[targetUid];
-                
-                // منع التحويل للنفس
-                if (req.from === targetUid) {
-                    await db.ref(`requests/transfers/${id}`).update({ 
-                        status: 'failed_self_transfer' 
-                    });
-                    sendAlert(req.from, `❌ لا يمكنك التحويل لنفسك`, 'error');
-                    continue;
-                }
-                
-                // استخدام دالة البوت الآمنة للتحويل
-                const transferSuccess = await transferBalance(req.from, targetUid, amount);
-                
-                if (transferSuccess) {
-                    await db.ref(`requests/transfers/${id}`).update({ 
-                        status: 'completed',
-                        toUid: targetUid,
-                        completedAt: admin.database.ServerValue.TIMESTAMP
-                    });
-                    
-                    // تسجيل المعاملة
-                    await db.ref('transactions').push({
-                        type: 'user_transfer',
-                        from: req.from,
-                        to: targetUid,
-                        amount: amount,
-                        fromName: req.fromName,
-                        toName: targetUser.n,
-                        date: admin.database.ServerValue.TIMESTAMP
-                    });
-                    
-                    sendAlert(req.from, `✅ تم تحويل ${amount} SDM إلى ${targetUser.n}`);
-                    sendAlert(targetUid, `💰 وصلك تحويل ${amount} SDM من ${req.fromName}`);
-                    
-                } else {
-                    await db.ref(`requests/transfers/${id}`).update({ 
-                        status: 'failed_insufficient_funds' 
-                    });
-                    sendAlert(req.from, `❌ فشل التحويل: رصيدك غير كافٍ`, 'error');
-                }
-            }
-        }
-    } catch (e) { 
-        console.error("❌ Transfer Error:", e.message); 
-    }
-}
-
-// ====================================================
-// [4] محرك الـ VIP المحدث
-// ====================================================
-async function processVIP() {
-    try {
-        // معالجة طلبات الشراء الجديدة
-        const snap = await db.ref('requests/vip_subscriptions').orderByChild('status').equalTo('pending').once('value');
-        
-        if (snap.exists()) {
-            for (const [id, req] of Object.entries(snap.val())) {
-                const cost = parseFloat(req.cost);
-                
-                // استخدام دالة البوت الآمنة لخصم الرصيد
-                const deductionSuccess = await deductBalance(req.userId, cost);
-                
-                if (deductionSuccess) {
-                    const userRef = db.ref(`users/${req.userId}`);
-                    const userSnap = await userRef.once('value');
-                    const user = userSnap.val();
-                    
-                    const currentExpiry = user.vipExpiry || 0;
-                    const newExpiry = Math.max(currentExpiry, Date.now()) + (req.days * 86400000);
-                    
-                    await userRef.update({ 
-                        vipStatus: 'active',
-                        vipExpiry: newExpiry,
-                        vipPurchasedAt: admin.database.ServerValue.TIMESTAMP
-                    });
-                    
-                    await db.ref(`requests/vip_subscriptions/${id}`).update({ 
-                        status: 'completed',
-                        processedAt: admin.database.ServerValue.TIMESTAMP 
-                    });
-                    
-                    // تسجيل المعاملة
-                    await db.ref('transactions').push({
-                        type: 'vip_purchase',
-                        from: req.userId,
-                        to: 'SYSTEM',
-                        amount: cost,
-                        days: req.days,
-                        date: admin.database.ServerValue.TIMESTAMP
-                    });
-                    
-                    sendAlert(req.userId, `👑 مبروك! تم تفعيل VIP لمدة ${req.days} يوم. تنتهي في ${new Date(newExpiry).toLocaleDateString('ar-EG')}`);
-                    
-                } else {
-                    await db.ref(`requests/vip_subscriptions/${id}`).update({ 
-                        status: 'failed_insufficient_funds' 
-                    });
-                    sendAlert(req.userId, `❌ فشل شراء VIP: رصيدك غير كافٍ`, 'error');
-                }
-            }
-        }
-
-        // فحص انتهاء صلاحية الـ VIP
-        const now = Date.now();
-        const activeVips = await db.ref('users').orderByChild('vipStatus').equalTo('active').once('value');
-        
-        if (activeVips.exists()) {
-            activeVips.forEach(async (child) => {
-                const user = child.val();
-                if (user.vipExpiry && now > user.vipExpiry) {
-                    await child.ref.update({ 
-                        vipStatus: 'expired',
-                        vipExpiredAt: admin.database.ServerValue.TIMESTAMP
-                    });
-                    
-                    sendAlert(child.key, "⚠️ انتهى اشتراك VIP الخاص بك. يمكنك التجديد من لوحة VIP.", "info");
-                }
-            });
-        }
-    } catch (e) { 
-        console.error("❌ VIP Error:", e); 
-    }
-}
-
-// ====================================================
-// [5] نظام المعاملات المالية (Coin Requests)
-// ====================================================
-async function processCoinRequests() {
-    try {
-        const snap = await db.ref('coin_requests').orderByChild('status').equalTo('pending').once('value');
-        
-        if (snap.exists()) {
-            for (const [id, req] of Object.entries(snap.val())) {
-                
-                // إرسال تنبيه للإدمن
-                const adminNotification = await db.ref('admin_notifications')
-                    .orderByChild('requestId')
-                    .equalTo(id)
-                    .once('value');
-                
-                if (!adminNotification.exists()) {
-                    await db.ref('admin_notifications').push({
-                        type: 'coin_request',
-                        userId: req.uP,
-                        userName: req.uN,
-                        userNumericId: req.uNumericId,
-                        amount: req.qty,
-                        image: req.img,
-                        requestId: id,
-                        status: 'pending',
-                        date: admin.database.ServerValue.TIMESTAMP
-                    });
-                    
-                    console.log(`💰 طلب شحن جديد: ${req.uN} - ${req.qty} SDM`);
-                }
-            }
-        }
-    } catch (e) {
-        console.error("❌ Coin Request Error:", e.message);
-    }
-}
-
-// ====================================================
-// [6] محرك طلبات الألعاب
-// ====================================================
-async function processGameOrders() {
-    try {
-        const snap = await db.ref('game_orders').orderByChild('status').equalTo('pending').once('value');
-        
-        if (snap.exists()) {
-            for (const [id, order] of Object.entries(snap.val())) {
-                // التحقق من Rate Limit
-                if (!checkRateLimit(order.userId)) {
-                    await db.ref(`game_orders/${id}`).update({
-                        status: 'rate_limited',
-                        processedAt: admin.database.ServerValue.TIMESTAMP
-                    });
-                    continue;
-                }
-                
-                // إرسال تنبيه للإدمن
-                const adminNotification = await db.ref('admin_notifications')
-                    .orderByChild('orderId')
-                    .equalTo(id)
-                    .once('value');
-                
-                if (!adminNotification.exists()) {
-                    await db.ref('admin_notifications').push({
-                        type: 'new_game_order',
-                        userId: order.userId,
-                        userName: order.userName,
-                        game: order.game,
-                        playerId: order.playerId,
-                        pack: order.pack,
-                        cost: order.cost,
-                        orderId: id,
-                        date: admin.database.ServerValue.TIMESTAMP
-                    });
-                    
-                    console.log(`🎮 طلب لعبة جديد: ${order.userName} - ${order.pack} (${order.cost} SDM)`);
-                }
-            }
-        }
-    } catch (e) {
-        console.error("❌ Game Order Error:", e.message);
-    }
-}
-
-// ====================================================
-// [7] محرك التقييمات
-// ====================================================
-async function processRatings() {
-    try {
-        const snap = await db.ref('rating_queue').orderByChild('status').equalTo('pending').once('value');
-        
-        if (snap.exists()) {
-            for (const [id, rating] of Object.entries(snap.val())) {
-                const userRef = db.ref(`users/${rating.target}`);
-                const userSnap = await userRef.once('value');
-                const user = userSnap.val();
-                
-                if (user) {
-                    const newReviewCount = (user.reviewCount || 0) + 1;
-                    const newRatingSum = (user.ratingSum || 0) + rating.stars;
-                    const newAverage = newRatingSum / newReviewCount;
-                    
-                    await userRef.update({
-                        reviewCount: newReviewCount,
-                        ratingSum: newRatingSum,
-                        rating: newAverage.toFixed(1),
-                        verified: newReviewCount >= 100 ? true : user.verified || false
-                    });
-                    
-                    // حفظ التقييم المنفصل
-                    await db.ref(`reviews/${rating.target}`).push({
-                        buyerName: rating.raterN,
-                        stars: rating.stars,
-                        comment: rating.comment || '',
-                        date: admin.database.ServerValue.TIMESTAMP,
-                        postId: rating.postId || null
-                    });
-                    
-                    await db.ref(`rating_queue/${id}`).update({
-                        status: 'processed',
-                        processedAt: admin.database.ServerValue.TIMESTAMP
-                    });
-                    
-                    console.log(`⭐ تم معالجة تقييم: ${rating.raterN} → ${user.n} (${rating.stars} نجوم)`);
-                    
-                    // إرسال تنبيه للمستخدم الذي تم تقييمه
-                    sendAlert(rating.target, `⭐ حصلت على تقييم جديد من ${rating.raterN}: ${rating.stars} نجوم`, 'success');
-                }
-            }
-        }
-    } catch (e) {
-        console.error("❌ Ratings Error:", e.message);
-    }
-}
-
-// ====================================================
-// [8] مراقب النزاعات في الدردشة
-// ====================================================
-const DISPUTE_KEYWORDS = ["نصاب", "حرامي", "غش", "كذاب", "بلاغ", "سارق", "احتيال", "نصب", "خداع", "فشخ", "كلب"];
-
-function startChatMonitor() {
-    db.ref('chats').on('child_added', (chatSnap) => {
-        db.ref(`chats/${chatSnap.key}`).limitToLast(1).on('child_added', async (msgSnap) => {
-            const msg = msgSnap.val();
-            
-            if (!msg || !msg.text || msg.date < (Date.now() - 60000)) return;
-            
-            const hasBadWord = DISPUTE_KEYWORDS.some(word => 
-                msg.text.toLowerCase().includes(word.toLowerCase())
-            );
-            
-            if (hasBadWord) {
-                const chatData = await db.ref(`chats/${chatSnap.key}`).limitToLast(5).once('value');
-                const messages = [];
-                
-                chatData.forEach(child => {
-                    messages.push(child.val());
-                });
-                
-                await db.ref('admin_notifications').push({
-                    type: 'dispute_alert',
-                    chatId: chatSnap.key,
-                    lastMessage: msg.text,
-                    senderId: msg.senderId,
-                    senderName: msg.senderName,
-                    messages: messages,
-                    keyword: DISPUTE_KEYWORDS.find(word => msg.text.includes(word)),
-                    severity: 'high',
-                    date: admin.database.ServerValue.TIMESTAMP,
-                    read: false
-                });
-                
-                console.log(`⚠️ كشف نزاع في الدردشة: ${msg.senderName} - "${msg.text.substring(0, 50)}..."`);
-                
-                // إرسال تنبيه فوري للإدمن في الكونسول
-                console.log(`🚨 نزاع خطير! الدردشة: ${chatSnap.key}`);
-            }
-        });
-    });
-}
-
-// ====================================================
-// [9] نظام تنظيف المتجر
-// ====================================================
-async function cleanupStore() {
+async function checkRateLimit(uid, action, windowMs = 60000, maxRequests = 20) {
     try {
         const now = Date.now();
-        const oneDay = 24 * 60 * 60 * 1000;
-        const sevenDays = 7 * oneDay;
-        const paths = ['posts', 'vip_posts'];
+        const key = crypto.createHash('sha256')
+            .update(`${uid}:${action}`)
+            .digest('hex');
         
-        for (const path of paths) {
-            const snap = await db.ref(path).once('value');
-            if (snap.exists()) {
-                snap.forEach(child => {
-                    const post = child.val();
-                    const postDate = post.date || 0;
-                    
-                    // حذف المنشورات المباعة لأكثر من يوم
-                    if (post.sold && post.soldAt && (now - post.soldAt) > oneDay) {
-                        child.ref.remove();
-                        console.log(`🧹 تم حذف منشور مباع: ${post.title}`);
-                    }
-                    // حذف المنشورات القديمة (أكثر من 7 أيام)
-                    else if ((now - postDate) > sevenDays) {
-                        child.ref.remove();
-                        console.log(`🧹 تم حذف منشور قديم: ${post.title}`);
-                    }
-                });
-            }
+        const ref = db.ref(`rate_limits/${key}`);
+        const snapshot = await ref.once('value');
+        const data = snapshot.val() || { count: 0, timestamp: now, blocked: false };
+        
+        // التحقق من الحظر
+        if (data.blocked && now - data.blockTime < 3600000) {
+            logger.warn(`Rate limit blocked: ${uid} - ${action}`);
+            return false;
         }
         
-        // تنظيف طلبات التحويل القديمة
-        await cleanupOldRequests('requests/transfers', 30);
-        await cleanupOldRequests('requests/escrow_deals', 7);
-        await cleanupOldRequests('requests/vip_subscriptions', 7);
-        
-    } catch (e) { 
-        console.error("❌ Cleanup Error:", e.message); 
-    }
-}
-
-async function cleanupOldRequests(path, days) {
-    try {
-        const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-        const snap = await db.ref(path).once('value');
-        
-        if (snap.exists()) {
-            snap.forEach(child => {
-                const request = child.val();
-                if (request.date && request.date < cutoff) {
-                    child.ref.remove();
-                    console.log(`🧹 تم تنظيف طلب قديم من ${path}`);
-                }
+        // إعادة تعيين العد إذا انتهت النافذة
+        if (now - data.timestamp > windowMs) {
+            await ref.set({ 
+                count: 1, 
+                timestamp: now,
+                blocked: false,
+                blockTime: null
             });
-        }
-    } catch (error) {
-        console.error(`❌ فشل تنظيف ${path}:`, error);
-    }
-}
-
-// ====================================================
-// [10] نظام المراقبة اليومية والأمان
-// ====================================================
-async function dailySecurityCheck() {
-    console.log("🔍 بدء الفحص الأمني اليومي...");
-    
-    try {
-        // فحص التحويلات الكبيرة
-        const oneDayAgo = Date.now() - 86400000;
-        const transfersRef = db.ref('transactions');
-        const transfersSnap = await transfersRef
-            .orderByChild('date')
-            .startAt(oneDayAgo)
-            .once('value');
-        
-        let largeTransfers = 0;
-        let totalTransfers = 0;
-        let totalAmount = 0;
-        
-        transfersSnap.forEach(transfer => {
-            const data = transfer.val();
-            totalTransfers++;
-            totalAmount += data.amount || 0;
-            
-            if (data.amount > 1000) {
-                largeTransfers++;
-            }
-        });
-        
-        if (largeTransfers > 10) {
-            console.warn(`⚠️ تحذير: ${largeTransfers} عملية كبيرة في 24 ساعة`);
-            
-            await db.ref('admin_notifications').push({
-                type: 'security_alert',
-                message: `⚠️ تم اكتشاف ${largeTransfers} عملية مالية كبيرة في 24 ساعة`,
-                details: {
-                    totalTransfers: totalTransfers,
-                    totalAmount: totalAmount,
-                    largeTransfers: largeTransfers,
-                    date: new Date().toLocaleString('ar-EG')
-                },
-                date: admin.database.ServerValue.TIMESTAMP
-            });
-        }
-        
-        // فحص المستخدمين غير النشطين
-        const monthAgo = Date.now() - 30 * 86400000;
-        const usersSnap = await db.ref('users').once('value');
-        let inactiveUsers = 0;
-        
-        usersSnap.forEach(child => {
-            const user = child.val();
-            const lastActivity = user.lastActivity || user.joinDate || 0;
-            
-            if (lastActivity < monthAgo && !user.online) {
-                inactiveUsers++;
-            }
-        });
-        
-        if (inactiveUsers > 20) {
-            console.log(`👤 ${inactiveUsers} مستخدم غير نشط لأكثر من شهر`);
-        }
-        
-        // تنظيف التنبيهات القديمة (أقدم من 7 أيام)
-        const sevenDaysAgo = Date.now() - 604800000;
-        await cleanOldData('alerts', sevenDaysAgo);
-        
-        // تنظيف الإشعارات القديمة
-        await cleanOldData('admin_notifications', sevenDaysAgo);
-        
-        console.log("✅ اكتمل الفحص الأمني اليومي");
-        console.log(`📊 إحصائيات: ${totalTransfers} معاملة، ${totalAmount} SDM، ${largeTransfers} عملية كبيرة`);
-        
-    } catch (error) {
-        console.error("❌ فشل الفحص الأمني:", error);
-    }
-}
-
-async function cleanOldData(path, timestamp) {
-    try {
-        const ref = db.ref(path);
-        const snap = await ref.once('value');
-        
-        const updates = {};
-        snap.forEach(child => {
-            child.forEach(item => {
-                if (item.val().date < timestamp) {
-                    updates[`${child.key}/${item.key}`] = null;
-                }
-            });
-        });
-        
-        if (Object.keys(updates).length > 0) {
-            await ref.update(updates);
-            console.log(`🧹 تم تنظيف ${Object.keys(updates).length} سجل قديم من ${path}`);
-        }
-    } catch (error) {
-        console.error(`❌ فشل تنظيف ${path}:`, error);
-    }
-}
-
-// ====================================================
-// دوال مساعدة للإدارة
-// ====================================================
-
-// دالة لتأكيد طلب الإيداع (للاستخدام من قبل الإدمن)
-async function approveCoinRequest(reqId, userId, amount) {
-    try {
-        const success = await addBalance(userId, amount);
-        
-        if (success) {
-            await db.ref(`coin_requests/${reqId}`).update({
-                status: 'approved',
-                approvedAt: admin.database.ServerValue.TIMESTAMP,
-                approvedBy: 'admin_bot'
-            });
-            
-            await db.ref('transactions').push({
-                type: 'deposit_approved',
-                to: userId,
-                amount: amount,
-                requestId: reqId,
-                date: admin.database.ServerValue.TIMESTAMP
-            });
-            
-            sendAlert(userId, `✅ تم تأكيد إيداع ${amount} SDM في حسابك`, 'success');
             return true;
         }
-        return false;
-    } catch (error) {
-        console.error("❌ فشل تأكيد الإيداع:", error);
-        return false;
-    }
-}
-
-// دالة لرفض طلب الإيداع
-async function rejectCoinRequest(reqId, userId, reason) {
-    try {
-        await db.ref(`coin_requests/${reqId}`).update({
-            status: 'rejected',
-            rejectionReason: reason,
-            rejectedAt: admin.database.ServerValue.TIMESTAMP
-        });
         
-        sendAlert(userId, `❌ تم رفض طلب الإيداع: ${reason}`, 'error');
-        return true;
-    } catch (error) {
-        console.error("❌ فشل رفض الإيداع:", error);
-        return false;
-    }
-}
-
-// دالة لتحديث حالة طلب اللعبة
-async function updateGameOrderStatus(orderId, status) {
-    try {
-        const orderRef = db.ref(`game_orders/${orderId}`);
-        const orderSnap = await orderRef.once('value');
-        const order = orderSnap.val();
-        
-        if (!order) {
-            console.error(`❌ طلب اللعبة ${orderId} غير موجود`);
+        // زيادة العد والتحقق
+        if (data.count >= maxRequests) {
+            // حظر مؤقت بعد 3 تجاوزات
+            const violations = data.violations || 0;
+            if (violations >= 2) {
+                await ref.update({ 
+                    blocked: true,
+                    blockTime: now,
+                    violations: violations + 1
+                });
+                logger.warn(`User blocked: ${uid} - ${action}`, { violations });
+            } else {
+                await ref.update({ 
+                    violations: violations + 1 
+                });
+            }
             return false;
         }
         
-        const updates = {
-            status: status,
-            processedAt: admin.database.ServerValue.TIMESTAMP,
-            processedBy: 'security_bot'
-        };
+        await ref.update({ 
+            count: data.count + 1,
+            violations: data.violations || 0
+        });
         
-        // إذا كانت الحالة فشل، نرجع المال للمستخدم
-        if (status === 'failed' || status === 'cancelled') {
-            const refundSuccess = await addBalance(order.userId, order.cost);
-            if (refundSuccess) {
-                updates.refunded = true;
-                updates.refundedAt = admin.database.ServerValue.TIMESTAMP;
-            }
-        }
-        
-        await orderRef.update(updates);
-        
-        // إرسال تنبيه للمستخدم
-        const message = status === 'completed' 
-            ? `✅ تم تنفيذ طلب شحن ${order.pack} بنجاح` 
-            : status === 'failed' 
-            ? `❌ تم إلغاء طلب شحن ${order.pack} وتم إرجاع ${order.cost} SDM`
-            : `📝 تم تحديث حالة طلبك إلى: ${status}`;
-        
-        sendAlert(order.userId, message, status === 'completed' ? 'success' : 'info');
-        
-        console.log(`🎮 تم تحديث حالة طلب اللعبة ${orderId} إلى ${status}`);
         return true;
     } catch (error) {
-        console.error("❌ فشل تحديث حالة طلب اللعبة:", error);
-        return false;
+        logger.error('Rate limit check failed', { error, uid, action });
+        return false; // Fail secure
     }
 }
 
 // ====================================================
-// المجدولات الزمنية
+// دوال التحقق والصلاحيات المتقدمة
 // ====================================================
 
-// مجدولات المعالجة الأساسية
-setInterval(processEscrow, 5000);          // معالجة الوسيط كل 5 ثواني
-setInterval(processTransfers, 6000);       // معالجة التحويلات كل 6 ثواني
-setInterval(processVIP, 15000);            // فحص الـ VIP كل 15 ثانية
-setInterval(processBankTransfers, 7000);   // معالجة التحويلات البنكية كل 7 ثواني
-setInterval(processCoinRequests, 8000);    // معالجة طلبات الشحن كل 8 ثواني
-setInterval(processGameOrders, 10000);     // معالجة طلبات الألعاب كل 10 ثواني
-setInterval(processRatings, 12000);        // معالجة التقييمات كل 12 ثانية
-
-// مجدولات الصيانة
-setInterval(cleanupStore, 3600000);        // تنظيف المتجر كل ساعة
-setInterval(dailySecurityCheck, 86400000); // فحص أمني يومي
-
-// تشغيل المراقبة الفورية
-startChatMonitor();
-
-// تشغيل الفحص الأولي بعد 30 ثانية
-setTimeout(() => {
-    dailySecurityCheck();
-    console.log("🚀 تم تشغيل جميع أنظمة البوت الأمنية");
-    console.log("=========================================");
-    console.log("📊 الأنظمة النشطة:");
-    console.log("🛡️  نظام الوسيط الآمن");
-    console.log("💸 نظام التحويلات البنكية");
-    console.log("👑 نظام VIP");
-    console.log("🎮 نظام الألعاب");
-    console.log("⭐ نظام التقييمات");
-    console.log("🔍 مراقبة النزاعات");
-    console.log("🧹 نظام التنظيف التلقائي");
-    console.log("🔒 نظام المراقبة الأمنية");
-    console.log("=========================================");
-}, 30000);
-
-// ====================================================
-// واجهة API للإدارة
-// ====================================================
-
-app.use(express.json());
-
-// واجهة لتأكيد الإيداع (للإدمن فقط)
-app.post('/api/approve-deposit', async (req, res) => {
+// 1. التحقق من هوية المستخدم وعنوان IP
+async function validateUserRequest(uid, ip, action) {
     try {
-        const { reqId, userId, amount, adminToken } = req.body;
-        
-        // التحقق من المسؤول
-        if (adminToken !== process.env.ADMIN_TOKEN) {
-            return res.status(403).json({ error: 'غير مصرح' });
+        // التحقق من Rate Limit
+        if (!await checkRateLimit(uid, action)) {
+            throw new Error('TOO_MANY_REQUESTS');
         }
         
-        const success = await approveCoinRequest(reqId, userId, amount);
+        // التحقق من حالة المستخدم
+        const userRef = db.ref(`users/${uid}`);
+        const userSnap = await userRef.once('value');
         
-        if (success) {
-            res.json({ success: true, message: 'تم تأكيد الإيداع بنجاح' });
-        } else {
-            res.status(400).json({ error: 'فشل تأكيد الإيداع' });
-        }
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// واجهة لرفض الإيداع
-app.post('/api/reject-deposit', async (req, res) => {
-    try {
-        const { reqId, userId, reason, adminToken } = req.body;
-        
-        if (adminToken !== process.env.ADMIN_TOKEN) {
-            return res.status(403).json({ error: 'غير مصرح' });
+        if (!userSnap.exists()) {
+            throw new Error('USER_NOT_FOUND');
         }
         
-        const success = await rejectCoinRequest(reqId, userId, reason);
+        const user = userSnap.val();
         
-        if (success) {
-            res.json({ success: true, message: 'تم رفض الإيداع بنجاح' });
-        } else {
-            res.status(400).json({ error: 'فشل رفض الإيداع' });
-        }
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// واجهة لتحديث حالة طلب اللعبة
-app.post('/api/update-game-order', async (req, res) => {
-    try {
-        const { orderId, status, adminToken } = req.body;
-        
-        if (adminToken !== process.env.ADMIN_TOKEN) {
-            return res.status(403).json({ error: 'غير مصرح' });
+        // التحقق من الحظر
+        if (user.blocked) {
+            throw new Error('USER_BLOCKED');
         }
         
-        const success = await updateGameOrderStatus(orderId, status);
-        
-        if (success) {
-            res.json({ success: true, message: 'تم تحديث حالة الطلب بنجاح' });
-        } else {
-            res.status(400).json({ error: 'فشل تحديث حالة الطلب' });
-        }
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// واجهة للحصول على إحصائيات النظام
-app.get('/api/stats', async (req, res) => {
-    try {
-        const { adminToken } = req.query;
-        
-        if (adminToken !== process.env.ADMIN_TOKEN) {
-            return res.status(403).json({ error: 'غير مصرح' });
-        }
-        
-        // إحصائيات المستخدمين
-        const usersSnap = await db.ref('users').once('value');
-        const totalUsers = usersSnap.numChildren();
-        let vipUsers = 0;
-        let onlineUsers = 0;
-        let totalBalance = 0;
-        
-        usersSnap.forEach(child => {
-            const user = child.val();
-            if (user.vipStatus === 'active') vipUsers++;
-            if (user.online) onlineUsers++;
-            totalBalance += user.sdmBalance || 0;
+        // تحديث آخر نشاط
+        await userRef.update({
+            lastActivity: admin.database.ServerValue.TIMESTAMP,
+            lastIP: ip
         });
         
-        // إحصائيات المعاملات
-        const transactionsSnap = await db.ref('transactions').once('value');
-        const totalTransactions = transactionsSnap.numChildren();
+        // تسجيل النشاط (بدون بيانات حساسة)
+        await db.ref(`user_activity/${uid}`).push({
+            action: action,
+            timestamp: admin.database.ServerValue.TIMESTAMP,
+            ipHash: crypto.createHash('sha256').update(ip).digest('hex').substring(0, 16)
+        });
         
-        // إحصائيات المنشورات
-        const postsSnap = await db.ref('posts').once('value');
-        const vipPostsSnap = await db.ref('vip_posts').once('value');
-        const totalPosts = postsSnap.numChildren() + vipPostsSnap.numChildren();
+        return user;
+    } catch (error) {
+        logger.error('User validation failed', { uid, ip, action, error: error.message });
+        throw error;
+    }
+}
+
+// 2. التحقق من صلاحيات الإدمن
+async function validateAdmin(uid, token) {
+    try {
+        // التحقق من token
+        const expectedHash = crypto.createHash('sha256')
+            .update(process.env.ADMIN_API_KEY + uid + Date.now())
+            .digest('hex');
         
-        // إحصائيات الطلبات
-        const pendingDeposits = await db.ref('coin_requests').orderByChild('status').equalTo('pending').once('value');
-        const pendingTransfers = await db.ref('bank_transfer_requests').orderByChild('status').equalTo('pending').once('value');
-        const pendingEscrows = await db.ref('requests/escrow_deals').orderByChild('status').equalTo('pending_delivery').once('value');
+        if (token !== expectedHash) {
+            throw new Error('INVALID_ADMIN_TOKEN');
+        }
         
-        res.json({
-            success: true,
-            stats: {
-                users: {
-                    total: totalUsers,
-                    vip: vipUsers,
-                    online: onlineUsers,
-                    totalBalance: totalBalance.toFixed(2)
-                },
-                content: {
-                    totalPosts: totalPosts,
-                    regularPosts: postsSnap.numChildren(),
-                    vipPosts: vipPostsSnap.numChildren()
-                },
-                transactions: {
-                    total: totalTransactions,
-                    pendingDeposits: pendingDeposits.numChildren(),
-                    pendingTransfers: pendingTransfers.numChildren(),
-                    pendingEscrows: pendingEscrows.numChildren()
-                },
-                system: {
-                    uptime: process.uptime(),
-                    memory: process.memoryUsage(),
-                    timestamp: new Date().toISOString()
+        // التحقق من دور المستخدم في قاعدة البيانات
+        const adminRef = db.ref(`admins/${uid}`);
+        const adminSnap = await adminRef.once('value');
+        
+        if (!adminSnap.exists() || !adminSnap.val().active) {
+            throw new Error('UNAUTHORIZED_ADMIN');
+        }
+        
+        return true;
+    } catch (error) {
+        logger.error('Admin validation failed', { uid, error: error.message });
+        throw error;
+    }
+}
+
+// ====================================================
+// نظام التشفير للبيانات الحساسة
+// ====================================================
+
+class EncryptionService {
+    constructor() {
+        this.algorithm = 'aes-256-gcm';
+        this.key = crypto.scryptSync(process.env.ENCRYPTION_KEY, 'salt', 32);
+    }
+    
+    encrypt(text) {
+        try {
+            const iv = crypto.randomBytes(16);
+            const cipher = crypto.createCipheriv(this.algorithm, this.key, iv);
+            
+            let encrypted = cipher.update(text, 'utf8', 'hex');
+            encrypted += cipher.final('hex');
+            
+            const authTag = cipher.getAuthTag();
+            
+            return {
+                iv: iv.toString('hex'),
+                encrypted: encrypted,
+                authTag: authTag.toString('hex')
+            };
+        } catch (error) {
+            logger.error('Encryption failed', { error });
+            throw new Error('ENCRYPTION_FAILED');
+        }
+    }
+    
+    decrypt(encryptedData) {
+        try {
+            const decipher = crypto.createDecipheriv(
+                this.algorithm, 
+                this.key, 
+                Buffer.from(encryptedData.iv, 'hex')
+            );
+            
+            decipher.setAuthTag(Buffer.from(encryptedData.authTag, 'hex'));
+            
+            let decrypted = decipher.update(encryptedData.encrypted, 'hex', 'utf8');
+            decrypted += decipher.final('utf8');
+            
+            return decrypted;
+        } catch (error) {
+            logger.error('Decryption failed', { error });
+            throw new Error('DECRYPTION_FAILED');
+        }
+    }
+    
+    hashData(data) {
+        return crypto.createHash('sha256')
+            .update(data + process.env.ENCRYPTION_KEY)
+            .digest('hex');
+    }
+}
+
+const encryptionService = new EncryptionService();
+
+// ====================================================
+// نظام الوسيط الآمن المحسن
+// ====================================================
+
+class EscrowSystem {
+    constructor() {
+        this.minAmount = 0.01;
+        this.maxAmount = 100000;
+    }
+    
+    async processEscrow() {
+        try {
+            // البحث عن الطلبات الجديدة
+            const escrowRef = db.ref('requests/escrow_deals');
+            const pendingSnap = await escrowRef
+                .orderByChild('status')
+                .equalTo('pending_delivery')
+                .once('value');
+            
+            if (!pendingSnap.exists()) return;
+            
+            const now = Date.now();
+            const hourAgo = now - 3600000;
+            
+            for (const [id, deal] of Object.entries(pendingSnap.val())) {
+                // التحقق من عدم معالجة الطلب سابقاً
+                if (deal.processedAt) continue;
+                
+                // التحقق من مدة الطلب
+                if (deal.date < hourAgo) {
+                    await escrowRef.child(id).update({
+                        status: 'expired',
+                        updatedAt: now
+                    });
+                    continue;
+                }
+                
+                // التحقق من البيانات
+                const validation = this.validateDeal(deal);
+                if (!validation.valid) {
+                    await escrowRef.child(id).update({
+                        status: 'validation_failed',
+                        reason: validation.reason,
+                        updatedAt: now
+                    });
+                    continue;
+                }
+                
+                // معالجة الطلب
+                await this.processDeal(id, deal);
+            }
+        } catch (error) {
+            logger.error('Escrow processing failed', { error });
+        }
+    }
+    
+    validateDeal(deal) {
+        try {
+            // التحقق من المبلغ
+            const amount = parseFloat(deal.amount);
+            if (amount < this.minAmount || amount > this.maxAmount) {
+                return { valid: false, reason: 'INVALID_AMOUNT' };
+            }
+            
+            // منع الشراء من النفس
+            if (deal.buyerId === deal.sellerId) {
+                return { valid: false, reason: 'SELF_PURCHASE' };
+            }
+            
+            // التحقق من وجود المستخدمين
+            if (!deal.buyerId || !deal.sellerId || !deal.postId) {
+                return { valid: false, reason: 'INVALID_DATA' };
+            }
+            
+            return { valid: true };
+        } catch (error) {
+            return { valid: false, reason: 'VALIDATION_ERROR' };
+        }
+    }
+    
+    async processDeal(dealId, deal) {
+        const dbBatch = db.ref();
+        const updates = {};
+        const now = Date.now();
+        
+        try {
+            // التحقق من رصيد المشتري
+            const buyerRef = db.ref(`users/${deal.buyerId}/sdmBalance`);
+            const buyerSnap = await buyerRef.once('value');
+            const buyerBalance = buyerSnap.val() || 0;
+            
+            if (buyerBalance < deal.amount) {
+                updates[`requests/escrow_deals/${dealId}/status`] = 'failed_insufficient_funds';
+                updates[`requests/escrow_deals/${dealId}/updatedAt`] = now;
+                await dbBatch.update(updates);
+                return;
+            }
+            
+            // إعداد عمليات الخصم والإضافة
+            updates[`users/${deal.buyerId}/sdmBalance`] = buyerBalance - deal.amount;
+            updates[`users/${deal.sellerId}/sdmBalance`] = 
+                admin.database.ServerValue.increment(deal.amount);
+            
+            // تحديث حالة الصفقة
+            updates[`requests/escrow_deals/${dealId}/status`] = 'secured';
+            updates[`requests/escrow_deals/${dealId}/updatedAt`] = now;
+            updates[`requests/escrow_deals/${dealId}/processedAt`] = now;
+            
+            // تحديث المنشور
+            updates[`${deal.path}/${deal.postId}/pending`] = true;
+            updates[`${deal.path}/${deal.postId}/buyerId`] = deal.buyerId;
+            updates[`${deal.path}/${deal.postId}/lockedPrice`] = deal.amount;
+            updates[`${deal.path}/${deal.postId}/lockedAt`] = now;
+            
+            // تسجيل المعاملة
+            const transactionId = crypto.randomBytes(16).toString('hex');
+            updates[`transactions/${transactionId}`] = {
+                type: 'escrow_lock',
+                from: deal.buyerId,
+                to: deal.sellerId,
+                amount: deal.amount,
+                postId: deal.postId,
+                dealId: dealId,
+                status: 'locked',
+                timestamp: now
+            };
+            
+            // تنفيذ جميع العمليات دفعة واحدة
+            await dbBatch.update(updates);
+            
+            logger.info('Escrow deal processed successfully', {
+                dealId,
+                amount: deal.amount,
+                buyer: deal.buyerId.substring(0, 8),
+                seller: deal.sellerId.substring(0, 8)
+            });
+            
+        } catch (error) {
+            logger.error('Escrow deal processing failed', { dealId, error });
+            
+            // التراجع عن العملية في حالة الفشل
+            updates[`requests/escrow_deals/${dealId}/status`] = 'processing_failed';
+            updates[`requests/escrow_deals/${dealId}/updatedAt`] = now;
+            await dbBatch.update(updates);
+        }
+    }
+}
+
+const escrowSystem = new EscrowSystem();
+
+// ====================================================
+// نظام التحويلات البنكية الآمن
+// ====================================================
+
+class BankTransferSystem {
+    constructor() {
+        this.transferTypes = {
+            'khartoum_bank': 'بنك الخرطوم',
+            'cashy': 'كاشي'
+        };
+    }
+    
+    async processTransfers() {
+        try {
+            const transfersRef = db.ref('bank_transfer_requests');
+            const pendingSnap = await transfersRef
+                .orderByChild('status')
+                .equalTo('pending')
+                .once('value');
+            
+            if (!pendingSnap.exists()) return;
+            
+            const now = Date.now();
+            
+            for (const [id, transfer] of Object.entries(pendingSnap.val())) {
+                // التحقق من البيانات
+                const validation = this.validateTransfer(transfer);
+                if (!validation.valid) {
+                    await transfersRef.child(id).update({
+                        status: 'validation_failed',
+                        reason: validation.reason,
+                        processedAt: now
+                    });
+                    continue;
+                }
+                
+                // إشعار الإدمن
+                await this.notifyAdmin(id, transfer);
+            }
+        } catch (error) {
+            logger.error('Bank transfer processing failed', { error });
+        }
+    }
+    
+    validateTransfer(transfer) {
+        try {
+            // التحقق من المبلغ
+            if (transfer.amountSDM < 1 || transfer.amountSDM > 10000) {
+                return { valid: false, reason: 'INVALID_AMOUNT_RANGE' };
+            }
+            
+            // التحقق من الاسم
+            if (!transfer.fullName || transfer.fullName.length < 3) {
+                return { valid: false, reason: 'INVALID_NAME' };
+            }
+            
+            // التحقق من رقم الحساب/الهاتف
+            if (!transfer.accountNumber || transfer.accountNumber.length < 3) {
+                return { valid: false, reason: 'INVALID_ACCOUNT' };
+            }
+            
+            // التحقق من نوع التحويل
+            if (!this.transferTypes[transfer.transferType]) {
+                return { valid: false, reason: 'INVALID_TRANSFER_TYPE' };
+            }
+            
+            return { valid: true };
+        } catch (error) {
+            return { valid: false, reason: 'VALIDATION_ERROR' };
+        }
+    }
+    
+    async notifyAdmin(transferId, transfer) {
+        try {
+            const notificationId = crypto.randomBytes(16).toString('hex');
+            const now = Date.now();
+            
+            await db.ref(`admin_notifications/${notificationId}`).set({
+                type: 'bank_transfer_request',
+                transferId: transferId,
+                userId: transfer.userId,
+                userName: transfer.userName,
+                userNumericId: transfer.userNumericId,
+                fullName: transfer.fullName,
+                accountNumber: encryptionService.encrypt(transfer.accountNumber),
+                amountSDG: transfer.amountSDG,
+                amountSDM: transfer.amountSDM,
+                transferType: transfer.transferType,
+                status: 'pending',
+                priority: transfer.amountSDM > 1000 ? 'high' : 'normal',
+                createdAt: transfer.date,
+                notifiedAt: now
+            });
+            
+            logger.info('Bank transfer notification sent to admin', { 
+                transferId, 
+                amount: transfer.amountSDM,
+                userId: transfer.userId.substring(0, 8)
+            });
+            
+        } catch (error) {
+            logger.error('Failed to notify admin', { transferId, error });
+        }
+    }
+}
+
+const bankTransferSystem = new BankTransferSystem();
+
+// ====================================================
+// نظام VIP المحسن
+// ====================================================
+
+class VIPSystem {
+    constructor() {
+        this.vipPackages = {
+            '1': { days: 1, price: 1, features: ['vip_badge', 'unlimited_posts'] },
+            '7': { days: 7, price: 7, features: ['vip_badge', 'unlimited_posts', 'priority_support'] },
+            '30': { days: 30, price: 30, features: ['vip_badge', 'unlimited_posts', 'priority_support', 'profile_highlight'] }
+        };
+    }
+    
+    async processVIPRequests() {
+        try {
+            const vipRef = db.ref('requests/vip_subscriptions');
+            const pendingSnap = await vipRef
+                .orderByChild('status')
+                .equalTo('pending')
+                .once('value');
+            
+            if (!pendingSnap.exists()) return;
+            
+            const now = Date.now();
+            
+            for (const [id, request] of Object.entries(pendingSnap.val())) {
+                // التحقق من البيانات
+                const packageInfo = this.vipPackages[request.days];
+                if (!packageInfo || request.cost !== packageInfo.price) {
+                    await vipRef.child(id).update({
+                        status: 'invalid_package',
+                        updatedAt: now
+                    });
+                    continue;
+                }
+                
+                // معالجة الطلب
+                await this.processVIPRequest(id, request, packageInfo);
+            }
+            
+            // فحص انتهاء صلاحية VIP
+            await this.checkExpiredVIP();
+            
+        } catch (error) {
+            logger.error('VIP processing failed', { error });
+        }
+    }
+    
+    async processVIPRequest(requestId, request, packageInfo) {
+        const dbBatch = db.ref();
+        const updates = {};
+        const now = Date.now();
+        
+        try {
+            // التحقق من رصيد المستخدم
+            const userRef = db.ref(`users/${request.userId}`);
+            const userSnap = await userRef.once('value');
+            const user = userSnap.val();
+            
+            if (!user || (user.sdmBalance || 0) < request.cost) {
+                updates[`requests/vip_subscriptions/${requestId}/status`] = 'failed_insufficient_funds';
+                updates[`requests/vip_subscriptions/${requestId}/updatedAt`] = now;
+                await dbBatch.update(updates);
+                return;
+            }
+            
+            // حساب تاريخ الانتهاء
+            const currentExpiry = user.vipExpiry || 0;
+            let newExpiry;
+            
+            if (currentExpiry > now) {
+                // تجديد
+                newExpiry = currentExpiry + (packageInfo.days * 86400000);
+            } else {
+                // اشتراك جديد
+                newExpiry = now + (packageInfo.days * 86400000);
+            }
+            
+            // إعداد التحديثات
+            updates[`users/${request.userId}/sdmBalance`] = 
+                admin.database.ServerValue.increment(-request.cost);
+            
+            updates[`users/${request.userId}/vipStatus`] = 'active';
+            updates[`users/${request.userId}/vipExpiry`] = newExpiry;
+            updates[`users/${request.userId}/vipFeatures`] = packageInfo.features;
+            updates[`users/${request.userId}/vipSince`] = user.vipSince || now;
+            updates[`users/${request.userId}/vipLastRenewal`] = now;
+            
+            updates[`requests/vip_subscriptions/${requestId}/status`] = 'completed';
+            updates[`requests/vip_subscriptions/${requestId}/processedAt`] = now;
+            updates[`requests/vip_subscriptions/${requestId}/expiry`] = newExpiry;
+            
+            // تسجيل المعاملة
+            const transactionId = crypto.randomBytes(16).toString('hex');
+            updates[`transactions/${transactionId}`] = {
+                type: 'vip_purchase',
+                userId: request.userId,
+                amount: request.cost,
+                days: packageInfo.days,
+                expiry: newExpiry,
+                status: 'completed',
+                timestamp: now
+            };
+            
+            // التنفيذ
+            await dbBatch.update(updates);
+            
+            logger.info('VIP subscription processed', {
+                userId: request.userId.substring(0, 8),
+                days: packageInfo.days,
+                cost: request.cost
+            });
+            
+        } catch (error) {
+            logger.error('VIP request processing failed', { requestId, error });
+        }
+    }
+    
+    async checkExpiredVIP() {
+        try {
+            const now = Date.now();
+            const usersRef = db.ref('users');
+            const vipUsers = await usersRef
+                .orderByChild('vipStatus')
+                .equalTo('active')
+                .once('value');
+            
+            if (!vipUsers.exists()) return;
+            
+            for (const [uid, user] of Object.entries(vipUsers.val())) {
+                if (user.vipExpiry && user.vipExpiry < now) {
+                    await usersRef.child(uid).update({
+                        vipStatus: 'expired',
+                        vipExpiredAt: now
+                    });
+                    
+                    logger.info('VIP expired', { userId: uid.substring(0, 8) });
                 }
             }
-        });
-        
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+        } catch (error) {
+            logger.error('VIP expiration check failed', { error });
+        }
     }
+}
+
+const vipSystem = new VIPSystem();
+
+// ====================================================
+// نظام مراقبة الأمان
+// ====================================================
+
+class SecurityMonitor {
+    constructor() {
+        this.suspiciousPatterns = [
+            { pattern: /transfer.*10000/, action: 'HIGH_AMOUNT_TRANSFER' },
+            { pattern: /(نصاب|حرامي|غش|كذاب)/i, action: 'DISPUTE_KEYWORD' },
+            { pattern: /<script>|javascript:/i, action: 'XSS_ATTEMPT' },
+            { pattern: /union.*select|select.*from/i, action: 'SQL_INJECTION_ATTEMPT' }
+        ];
+    }
+    
+    async monitorActivity() {
+        try {
+            const now = Date.now();
+            const hourAgo = now - 3600000;
+            
+            // مراقبة النشاط المالي
+            await this.monitorFinancialActivity(hourAgo, now);
+            
+            // مراقبة محاولات الدخول
+            await this.monitorLoginAttempts(hourAgo, now);
+            
+            // تنظيف السجلات القديمة
+            await this.cleanOldLogs();
+            
+        } catch (error) {
+            logger.error('Security monitoring failed', { error });
+        }
+    }
+    
+    async monitorFinancialActivity(startTime, endTime) {
+        try {
+            const transactionsRef = db.ref('transactions');
+            const recentTrans = await transactionsRef
+                .orderByChild('timestamp')
+                .startAt(startTime)
+                .endAt(endTime)
+                .once('value');
+            
+            if (!recentTrans.exists()) return;
+            
+            const stats = {
+                total: 0,
+                totalAmount: 0,
+                largeTransactions: 0,
+                users: new Set()
+            };
+            
+            recentTrans.forEach(transaction => {
+                const trans = transaction.val();
+                stats.total++;
+                stats.totalAmount += trans.amount || 0;
+                stats.users.add(trans.from);
+                stats.users.add(trans.to);
+                
+                if (trans.amount > 1000) {
+                    stats.largeTransactions++;
+                }
+            });
+            
+            // تحليل الإحصائيات
+            if (stats.largeTransactions > 10) {
+                await this.alertAdmin('HIGH_FREQUENCY_LARGE_TRANSACTIONS', {
+                    period: '1 hour',
+                    count: stats.largeTransactions,
+                    totalAmount: stats.totalAmount,
+                    uniqueUsers: stats.users.size
+                });
+            }
+            
+        } catch (error) {
+            logger.error('Financial monitoring failed', { error });
+        }
+    }
+    
+    async monitorLoginAttempts(startTime, endTime) {
+        try {
+            const authLogsRef = db.ref('auth_logs');
+            const failedLogins = await authLogsRef
+                .orderByChild('timestamp')
+                .startAt(startTime)
+                .endAt(endTime)
+                .once('value');
+            
+            if (!failedLogins.exists()) return;
+            
+            const ipAttempts = {};
+            
+            failedLogins.forEach(log => {
+                const entry = log.val();
+                if (entry.success === false) {
+                    const ip = entry.ip || 'unknown';
+                    ipAttempts[ip] = (ipAttempts[ip] || 0) + 1;
+                }
+            });
+            
+            // اكتشاف هجمات Brute Force
+            for (const [ip, attempts] of Object.entries(ipAttempts)) {
+                if (attempts > 10) {
+                    await this.blockIP(ip, 'BRUTE_FORCE_ATTEMPT');
+                }
+            }
+            
+        } catch (error) {
+            logger.error('Login monitoring failed', { error });
+        }
+    }
+    
+    async blockIP(ip, reason) {
+        try {
+            const blockId = crypto.createHash('sha256')
+                .update(ip)
+                .digest('hex');
+            
+            await db.ref(`blocked_ips/${blockId}`).set({
+                ip: encryptionService.encrypt(ip),
+                reason: reason,
+                blockedAt: Date.now(),
+                expiresAt: Date.now() + 3600000 // ساعة واحدة
+            });
+            
+            logger.warn('IP blocked', { ipHash: blockId, reason });
+            
+        } catch (error) {
+            logger.error('IP blocking failed', { ip, error });
+        }
+    }
+    
+    async alertAdmin(alertType, data) {
+        try {
+            const alertId = crypto.randomBytes(16).toString('hex');
+            
+            await db.ref(`security_alerts/${alertId}`).set({
+                type: alertType,
+                data: data,
+                timestamp: Date.now(),
+                priority: 'high',
+                acknowledged: false
+            });
+            
+            logger.warn('Security alert raised', { alertType, data });
+            
+        } catch (error) {
+            logger.error('Security alert failed', { alertType, error });
+        }
+    }
+    
+    async cleanOldLogs() {
+        try {
+            const now = Date.now();
+            const monthAgo = now - 2592000000; // 30 يوم
+            
+            const paths = ['auth_logs', 'user_activity', 'security_alerts'];
+            
+            for (const path of paths) {
+                const ref = db.ref(path);
+                const snapshot = await ref.once('value');
+                
+                if (!snapshot.exists()) continue;
+                
+                const updates = {};
+                snapshot.forEach(child => {
+                    const data = child.val();
+                    if (data.timestamp && data.timestamp < monthAgo) {
+                        updates[child.key] = null;
+                    }
+                });
+                
+                if (Object.keys(updates).length > 0) {
+                    await ref.update(updates);
+                    logger.info(`Cleaned old logs from ${path}`, { count: Object.keys(updates).length });
+                }
+            }
+        } catch (error) {
+            logger.error('Log cleaning failed', { error });
+        }
+    }
+}
+
+const securityMonitor = new SecurityMonitor();
+
+// ====================================================
+// إعداد Express App مع الحماية القصوى
+// ====================================================
+
+const app = express();
+
+// إضافة حماية Helmet
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://www.gstatic.com"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
+            imgSrc: ["'self'", "data:", "https:", "blob:"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com"],
+            connectSrc: ["'self'", "https://sudan-market-6b122-default-rtdb.firebaseio.com"],
+            frameSrc: ["'none'"],
+            objectSrc: ["'none'"]
+        }
+    },
+    hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true
+    }
+}));
+
+// Rate Limiting للـ API
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 دقيقة
+    max: 100, // 100 طلب لكل IP
+    message: { error: 'TOO_MANY_REQUESTS', message: 'لقد تجاوزت الحد المسموح من الطلبات' },
+    standardHeaders: true,
+    legacyHeaders: false
 });
 
-// واجهة للصحة
+app.use('/api/', apiLimiter);
+
+// Middleware للتحقق من الصحة
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+
+// Middleware للتحقق من API Key
+const validateAPIKey = (req, res, next) => {
+    const apiKey = req.headers['x-api-key'];
+    
+    if (!apiKey || apiKey !== process.env.API_KEY) {
+        return res.status(401).json({
+            error: 'UNAUTHORIZED',
+            message: 'مفتاح API غير صالح'
+        });
+    }
+    
+    next();
+};
+
+// ====================================================
+// API Routes المحمية
+// ====================================================
+
+// Health check
 app.get('/health', (req, res) => {
-    res.json({ 
+    res.json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
         services: {
+            database: 'connected',
+            security: 'active',
             escrow: 'running',
-            transfers: 'running',
-            vip: 'running',
-            bank_transfers: 'running',
-            game_orders: 'running',
-            ratings: 'running',
-            security: 'running',
-            cleanup: 'running'
+            monitoring: 'active'
         },
-        uptime: process.uptime(),
-        memory: process.memoryUsage()
+        uptime: process.uptime()
     });
 });
 
-// ====================================================
-// واجهة المستخدم الرئيسية
-// ====================================================
+// API لإدارة الإيداع (للإدمن فقط)
+app.post('/api/admin/deposit/approve', validateAPIKey, async (req, res) => {
+    try {
+        const schema = Joi.object({
+            requestId: Joi.string().required(),
+            adminToken: Joi.string().required(),
+            amount: Joi.number().min(1).max(10000).required()
+        });
+        
+        const { error, value } = schema.validate(req.body);
+        if (error) {
+            return res.status(400).json({
+                error: 'VALIDATION_ERROR',
+                details: error.details
+            });
+        }
+        
+        const { requestId, adminToken, amount } = value;
+        
+        // التحقق من صلاحيات الإدمن
+        const adminUid = req.headers['x-admin-uid'];
+        if (!await validateAdmin(adminUid, adminToken)) {
+            return res.status(403).json({
+                error: 'FORBIDDEN',
+                message: 'صلاحيات غير كافية'
+            });
+        }
+        
+        // البحث عن الطلب
+        const requestRef = db.ref(`coin_requests/${requestId}`);
+        const requestSnap = await requestRef.once('value');
+        
+        if (!requestSnap.exists()) {
+            return res.status(404).json({
+                error: 'NOT_FOUND',
+                message: 'طلب الإيداع غير موجود'
+            });
+        }
+        
+        const request = requestSnap.val();
+        
+        if (request.status !== 'pending') {
+            return res.status(400).json({
+                error: 'INVALID_STATUS',
+                message: 'حالة الطلب غير صالحة'
+            });
+        }
+        
+        // تأكيد الإيداع
+        const userRef = db.ref(`users/${request.uP}/sdmBalance`);
+        await userRef.set(admin.database.ServerValue.increment(amount));
+        
+        // تحديث حالة الطلب
+        await requestRef.update({
+            status: 'approved',
+            approvedAt: Date.now(),
+            approvedBy: adminUid,
+            approvedAmount: amount
+        });
+        
+        // تسجيل المعاملة
+        await db.ref('transactions').push({
+            type: 'deposit_approved',
+            userId: request.uP,
+            amount: amount,
+            requestId: requestId,
+            approvedBy: adminUid,
+            timestamp: Date.now()
+        });
+        
+        res.json({
+            success: true,
+            message: 'تم تأكيد الإيداع بنجاح'
+        });
+        
+    } catch (error) {
+        logger.error('Deposit approval failed', { error, body: req.body });
+        res.status(500).json({
+            error: 'INTERNAL_ERROR',
+            message: 'حدث خطأ أثناء معالجة الطلب'
+        });
+    }
+});
 
-app.get('/', (req, res) => {
-    res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>🚀 SDM Market Security Bot</title>
-            <style>
-                * {
-                    margin: 0;
-                    padding: 0;
-                    box-sizing: border-box;
-                }
-                
-                body {
-                    font-family: 'Arial', sans-serif;
-                    background: linear-gradient(135deg, #0f172a, #1e293b);
-                    color: #f8fafc;
-                    min-height: 100vh;
-                    padding: 20px;
-                }
-                
-                .container {
-                    max-width: 1200px;
-                    margin: 0 auto;
-                    padding: 20px;
-                }
-                
-                header {
-                    text-align: center;
-                    margin-bottom: 40px;
-                    padding: 20px;
-                    background: rgba(255, 255, 255, 0.05);
-                    border-radius: 20px;
-                    border: 1px solid rgba(59, 130, 246, 0.3);
-                    backdrop-filter: blur(10px);
-                }
-                
-                h1 {
-                    font-size: 2.5rem;
-                    margin-bottom: 10px;
-                    background: linear-gradient(90deg, #3b82f6, #00f3ff);
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                }
-                
-                .subtitle {
-                    color: #94a3b8;
-                    font-size: 1.1rem;
-                }
-                
-                .services-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-                    gap: 20px;
-                    margin-bottom: 40px;
-                }
-                
-                .service-card {
-                    background: rgba(30, 41, 59, 0.8);
-                    border-radius: 15px;
-                    padding: 25px;
-                    border: 1px solid rgba(59, 130, 246, 0.2);
-                    transition: all 0.3s ease;
-                    position: relative;
-                    overflow: hidden;
-                }
-                
-                .service-card:hover {
-                    transform: translateY(-5px);
-                    border-color: #3b82f6;
-                    box-shadow: 0 10px 30px rgba(59, 130, 246, 0.2);
-                }
-                
-                .service-icon {
-                    font-size: 40px;
-                    margin-bottom: 15px;
-                    color: #00f3ff;
-                }
-                
-                .service-title {
-                    font-size: 1.3rem;
-                    margin-bottom: 10px;
-                    color: #f8fafc;
-                }
-                
-                .service-desc {
-                    color: #94a3b8;
-                    font-size: 0.95rem;
-                    line-height: 1.6;
-                }
-                
-                .status-badge {
-                    position: absolute;
-                    top: 15px;
-                    right: 15px;
-                    padding: 5px 12px;
-                    background: #10b981;
-                    color: white;
-                    border-radius: 20px;
-                    font-size: 0.8rem;
-                    font-weight: bold;
-                }
-                
-                .stats-section {
-                    background: rgba(255, 255, 255, 0.05);
-                    border-radius: 15px;
-                    padding: 25px;
-                    margin-bottom: 30px;
-                    border: 1px solid rgba(245, 158, 11, 0.3);
-                }
-                
-                .stats-title {
-                    font-size: 1.5rem;
-                    margin-bottom: 20px;
-                    color: #f59e0b;
-                }
-                
-                .stats-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                    gap: 15px;
-                }
-                
-                .stat-item {
-                    background: rgba(0, 0, 0, 0.2);
-                    padding: 15px;
-                    border-radius: 10px;
-                    text-align: center;
-                }
-                
-                .stat-value {
-                    font-size: 1.8rem;
-                    font-weight: bold;
-                    color: #00f3ff;
-                    margin-bottom: 5px;
-                }
-                
-                .stat-label {
-                    color: #94a3b8;
-                    font-size: 0.9rem;
-                }
-                
-                .footer {
-                    text-align: center;
-                    margin-top: 40px;
-                    padding-top: 20px;
-                    border-top: 1px solid rgba(255, 255, 255, 0.1);
-                    color: #64748b;
-                    font-size: 0.9rem;
-                }
-                
-                .api-info {
-                    background: rgba(0, 0, 0, 0.3);
-                    border-radius: 10px;
-                    padding: 20px;
-                    margin-top: 30px;
-                }
-                
-                .api-title {
-                    color: #f59e0b;
-                    margin-bottom: 15px;
-                    font-size: 1.2rem;
-                }
-                
-                .endpoint {
-                    background: rgba(255, 255, 255, 0.05);
-                    padding: 10px 15px;
-                    border-radius: 8px;
-                    margin: 8px 0;
-                    font-family: monospace;
-                    font-size: 0.9rem;
-                    color: #60a5fa;
-                }
-                
-                @media (max-width: 768px) {
-                    .container {
-                        padding: 10px;
-                    }
-                    
-                    h1 {
-                        font-size: 2rem;
-                    }
-                    
-                    .services-grid {
-                        grid-template-columns: 1fr;
-                    }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <header>
-                    <h1>🚀 SDM Market Security Bot</h1>
-                    <p class="subtitle">نظام الأمان والوسيط الآمن يعمل بكامل طاقته لحماية معاملاتك</p>
-                </header>
-                
-                <div class="services-grid">
-                    <div class="service-card">
-                        <div class="status-badge">نشط</div>
-                        <div class="service-icon">🛡️</div>
-                        <h3 class="service-title">نظام الوسيط الآمن</h3>
-                        <p class="service-desc">حماية كاملة للمعاملات بين البائع والمشتري مع تأمين الأموال حتى استلام المنتج</p>
-                    </div>
-                    
-                    <div class="service-card">
-                        <div class="status-badge">نشط</div>
-                        <div class="service-icon">💸</div>
-                        <h3 class="service-title">التحويلات البنكية</h3>
-                        <p class="service-desc">نظام آمن لتحويل الأموال إلى البنوك المحلية مع مراقبة فورية</p>
-                    </div>
-                    
-                    <div class="service-card">
-                        <div class="status-badge">نشط</div>
-                        <div class="service-icon">👑</div>
-                        <h3 class="service-title">نظام VIP</h3>
-                        <p class="service-desc">إدارة اشتراكات VIP تلقائية مع تجديد وانتهاء تلقائي</p>
-                    </div>
-                    
-                    <div class="service-card">
-                        <div class="status-badge">نشط</div>
-                        <div class="service-icon">🎮</div>
-                        <h3 class="service-title">طلبات الألعاب</h3>
-                        <p class="service-desc">معالجة طلبات شحن الألعاب مع تأكيد فوري</p>
-                    </div>
-                    
-                    <div class="service-card">
-                        <div class="status-badge">نشط</div>
-                        <div class="service-icon">⭐</div>
-                        <h3 class="service-title">نظام التقييمات</h3>
-                        <p class="service-desc">تقييم المستخدمين تلقائياً وبناء السمعة الرقمية</p>
-                    </div>
-                    
-                    <div class="service-card">
-                        <div class="status-badge">نشط</div>
-                        <div class="service-icon">🔍</div>
-                        <h3 class="service-title">مراقبة النزاعات</h3>
-                        <p class="service-desc">كشف النزاعات في الدردشات وإرسال تنبيهات فورية</p>
-                    </div>
-                </div>
-                
-                <div class="stats-section">
-                    <h3 class="stats-title">📊 حالة النظام الحية</h3>
-                    <div class="stats-grid">
-                        <div class="stat-item">
-                            <div class="stat-value" id="uptime">0</div>
-                            <div class="stat-label">ثانية تشغيل</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value" id="memory">0</div>
-                            <div class="stat-label">ميغابايت مستخدمة</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value" id="services">8</div>
-                            <div class="stat-label">خدمة نشطة</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value" id="timestamp">${new Date().toLocaleTimeString('ar-EG')}</div>
-                            <div class="stat-label">آخر تحديث</div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="api-info">
-                    <h3 class="api-title">🌐 واجهات API المتاحة</h3>
-                    <div class="endpoint">GET /health - حالة النظام</div>
-                    <div class="endpoint">POST /api/approve-deposit - تأكيد الإيداع</div>
-                    <div class="endpoint">POST /api/reject-deposit - رفض الإيداع</div>
-                    <div class="endpoint">POST /api/update-game-order - تحديث طلب لعبة</div>
-                    <div class="endpoint">GET /api/stats - إحصائيات النظام</div>
-                </div>
-                
-                <div class="footer">
-                    <p>⏰ آخر تحديث: <span id="currentTime">${new Date().toLocaleString('ar-EG')}</span></p>
-                    <p>🔒 جميع الحقوق محفوظة © SDM Market 2024</p>
-                </div>
-            </div>
-            
-            <script>
-                // تحديث الوقت الحي
-                function updateTime() {
-                    const now = new Date();
-                    document.getElementById('currentTime').textContent = now.toLocaleString('ar-EG');
-                    document.getElementById('timestamp').textContent = now.toLocaleTimeString('ar-EG');
-                    
-                    // محاكاة بيانات النظام
-                    const uptimeElement = document.getElementById('uptime');
-                    let uptime = parseInt(uptimeElement.textContent) || 0;
-                    uptimeElement.textContent = (uptime + 1) + 's';
-                    
-                    // تحديث استخدام الذاكرة عشوائياً (لمحاكاة البيانات الحية)
-                    document.getElementById('memory').textContent = 
-                        Math.floor(Math.random() * 100 + 100) + ' MB';
-                }
-                
-                // تحديث كل ثانية
-                setInterval(updateTime, 1000);
-                
-                // جلب بيانات النظام الحية
-                async function fetchSystemStats() {
-                    try {
-                        const response = await fetch('/health');
-                        const data = await response.json();
-                        
-                        if (data.status === 'healthy') {
-                            document.getElementById('uptime').textContent = 
-                                Math.floor(data.uptime) + 's';
-                            document.getElementById('memory').textContent = 
-                                Math.floor(data.memory.heapUsed / 1024 / 1024) + ' MB';
-                        }
-                    } catch (error) {
-                        console.log('جاري تحديث البيانات...');
-                    }
-                }
-                
-                // جلب البيانات كل 30 ثانية
-                setInterval(fetchSystemStats, 30000);
-                
-                // جلب البيانات أول مرة
-                fetchSystemStats();
-            </script>
-        </body>
-        </html>
-    `);
+// API للتحويلات البنكية
+app.post('/api/bank/transfer', validateAPIKey, async (req, res) => {
+    try {
+        const schema = Joi.object({
+            userId: Joi.string().required(),
+            fullName: Joi.string().min(3).max(100).required(),
+            accountNumber: Joi.string().min(3).max(50).required(),
+            amountSDM: Joi.number().min(1).max(10000).required(),
+            transferType: Joi.string().valid('khartoum_bank', 'cashy').required(),
+            csrfToken: Joi.string().required()
+        });
+        
+        const { error, value } = schema.validate(req.body);
+        if (error) {
+            return res.status(400).json({
+                error: 'VALIDATION_ERROR',
+                details: error.details
+            });
+        }
+        
+        const { userId, fullName, accountNumber, amountSDM, transferType, csrfToken } = value;
+        
+        // التحقق من CSRF Token
+        const expectedCSRF = encryptionService.hashData(userId + amountSDM);
+        if (csrfToken !== expectedCSRF) {
+            return res.status(403).json({
+                error: 'INVALID_CSRF',
+                message: 'رمز التحقق غير صالح'
+            });
+        }
+        
+        // التحقق من رصيد المستخدم
+        const userRef = db.ref(`users/${userId}`);
+        const userSnap = await userRef.once('value');
+        const user = userSnap.val();
+        
+        if (!user) {
+            return res.status(404).json({
+                error: 'USER_NOT_FOUND',
+                message: 'المستخدم غير موجود'
+            });
+        }
+        
+        if ((user.sdmBalance || 0) < amountSDM) {
+            return res.status(400).json({
+                error: 'INSUFFICIENT_BALANCE',
+                message: 'رصيدك غير كافٍ'
+            });
+        }
+        
+        // خصم المبلغ
+        await userRef.update({
+            sdmBalance: admin.database.ServerValue.increment(-amountSDM)
+        });
+        
+        // إنشاء طلب التحويل
+        const transferId = crypto.randomBytes(16).toString('hex');
+        await db.ref(`bank_transfer_requests/${transferId}`).set({
+            userId: userId,
+            userName: user.n,
+            userNumericId: user.numericId,
+            fullName: fullName,
+            accountNumber: encryptionService.encrypt(accountNumber),
+            amountSDM: amountSDM,
+            amountSDG: amountSDM * 1000, // معدل التحويل
+            transferType: transferType,
+            status: 'pending',
+            date: Date.now()
+        });
+        
+        res.json({
+            success: true,
+            transferId: transferId,
+            message: 'تم إرسال طلب التحويل بنجاح'
+        });
+        
+    } catch (error) {
+        logger.error('Bank transfer request failed', { error, body: req.body });
+        res.status(500).json({
+            error: 'INTERNAL_ERROR',
+            message: 'حدث خطأ أثناء معالجة الطلب'
+        });
+    }
 });
 
 // ====================================================
-// تشغيل السيرفر
+// نظام المجدولات الزمنية
 // ====================================================
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-    console.log(`🚀 SDM Market Security Bot is Fully Operational on Port ${PORT}`);
-    console.log(`📅 بدء التشغيل: ${new Date().toLocaleString('ar-EG')}`);
-    console.log(`🔒 أنظمة الأمان: نشطة بنسبة 100%`);
-    console.log(`🌐 الواجهة متاحة على: http://localhost:${PORT}`);
+async function startSchedulers() {
+    // تشغيل المجدولات بفواصل مختلفة لمنع الحمل الزائد
+    const schedulers = [
+        { name: 'escrow', interval: 5000, func: () => escrowSystem.processEscrow() },
+        { name: 'bank_transfers', interval: 7000, func: () => bankTransferSystem.processTransfers() },
+        { name: 'vip', interval: 15000, func: () => vipSystem.processVIPRequests() },
+        { name: 'security', interval: 30000, func: () => securityMonitor.monitorActivity() }
+    ];
+    
+    for (const scheduler of schedulers) {
+        setInterval(async () => {
+            try {
+                await scheduler.func();
+                logger.debug(`Scheduler executed: ${scheduler.name}`);
+            } catch (error) {
+                logger.error(`Scheduler failed: ${scheduler.name}`, { error });
+            }
+        }, scheduler.interval);
+    }
+    
+    logger.info('All schedulers started successfully');
+}
+
+// ====================================================
+// تشغيل النظام
+// ====================================================
+
+const PORT = process.env.PORT || 3000;
+
+async function initializeSystem() {
+    try {
+        // التحقق من اتصال قاعدة البيانات
+        await db.ref('.info/connected').once('value');
+        
+        // بدء المجدولات
+        await startSchedulers();
+        
+        // بدء السيرفر
+        app.listen(PORT, () => {
+            logger.info(`🚀 SDM Security Bot running on port ${PORT}`);
+            logger.info(`🛡️  Security systems: ACTIVE`);
+            logger.info(`📊 Monitoring: ENABLED`);
+            logger.info(`🔒 Encryption: ACTIVE`);
+            logger.info(`⏰ Started at: ${new Date().toISOString()}`);
+        });
+        
+    } catch (error) {
+        logger.error('System initialization failed', { error });
+        process.exit(1);
+    }
+}
+
+// معالجة الأخطاء غير المتوقعة
+process.on('uncaughtException', (error) => {
+    logger.error('Uncaught Exception', { error });
 });
+
+process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled Rejection', { reason, promise });
+});
+
+// تشغيل النظام
+initializeSystem();
