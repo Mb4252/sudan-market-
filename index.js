@@ -1,17 +1,21 @@
 const admin = require('firebase-admin');
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto'); // مضافة من الكود الأول
 const multer = require('multer');
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
 // --- [1] فك تشفير مفتاح الخدمة بأمان (Base64) ---
+// تم استخدام منطق الكود الأول في فك التشفير مع نظام الحماية من الكود الثاني
 let serviceAccount;
 try {
     const base64Key = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (!base64Key) throw new Error("FIREBASE_SERVICE_ACCOUNT is missing in Render variables!");
-    serviceAccount = JSON.parse(Buffer.from(base64Key, 'base64').toString('utf-8'));
+    
+    // استخدام Buffer.from كما في الكود الأول
+    serviceAccount = JSON.parse(Buffer.from(base64Key, 'base64').toString());
     console.log("✅ Firebase Service Account Loaded Successfully");
 } catch (error) {
     console.error("❌ Critical Error: Could not load Firebase Key:", error.message);
@@ -22,7 +26,7 @@ try {
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
-    storageBucket: "sudan-market-6b122.firebasestorage.app"
+    storageBucket: "sudan-market-6b122.appspot.com" // تم تغييره إلى الرابط الموجود في الكود الأول
 });
 
 const db = admin.database();
@@ -86,7 +90,6 @@ async function processEscrow() {
                         buyerId: deal.buyerId 
                     });
                     
-                    // إرسال تنبيهات للمستخدمين
                     sendAlert(deal.buyerId, `🔒 تم حجز ${amount} SDM. حقك محفوظ في الوسيط.`);
                     sendAlert(deal.sellerId, `🔔 تم دفع المبلغ للوسيط. يمكنك تسليم المنتج الآن.`);
                 }
@@ -194,10 +197,10 @@ app.get('/api/posts', async (req, res) => {
 app.get('/', (req, res) => res.send("🚀 SDM Full Bot System is Active"));
 
 // --- [10] تشغيل المجدولات الزمنية ---
-setInterval(processEscrow, 5000); // فحص الوسيط كل 5 ثواني
-setInterval(processTransfers, 6000); // فحص التحويلات كل 6 ثواني
-setInterval(processVIP, 15000); // فحص الـ VIP كل 15 ثانية
-startChatMonitor(); // تشغيل مراقب الدردشة فورا
+setInterval(processEscrow, 5000);
+setInterval(processTransfers, 6000);
+setInterval(processVIP, 15000);
+startChatMonitor();
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Backend Live on Port ${PORT}`));
