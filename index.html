@@ -2642,35 +2642,31 @@ updateActiveTabUI(view);
     // ======== الإصلاح هنا: إضافة الدوال المفقودة ========
     
     // 1. إضافة دالة startApp المفقودة
-    function startApp(uid) {
-    isGuest = false;
-    
-    // استعادة الصفحة الأخيرة من الذاكرة
-    const lastView = localStorage.getItem('last_view') || 'home';
-    const lastExtra = localStorage.getItem('last_extra') || null;
-
-    hStack = ['home']; 
-    if(lastView !== 'home') hStack.push(lastView);
-
-    db.ref('users/' + uid).on('value', snap => {
-        if (snap.exists()) {
-            me = snap.val();
+    async function startApp(uid) {
+    try {
+        isGuest = false;
+        
+        // جلب بيانات المستخدم
+        const userSnap = await db.ref('users/' + uid).once('value');
+        if (!userSnap.exists()) {
+            // إنشاء مستخدم جديد
+            await createNewUser(uid);
+        } else {
+            me = userSnap.val();
             me.p = uid;
-
-            // --- الكود الذي سأضيفه هنا ---
-            db.ref(`users/${me.p}/online`).set(true);
-            db.ref(`users/${me.p}/online`).onDisconnect().set(false);
-            // ---------------------------
-
-            if (me && me.role === 'admin') {
-                listenForAdminNotifications(); 
-            }
-
-            document.getElementById('u-stars').innerText = (me.rating || 0).toFixed(1);
-            if (hStack[hStack.length-1] === 'home') showWelcome();
-            hideLoginLoading();
         }
-    });
+        
+        // تحديث حالة الاتصال
+        await updateOnlineStatus(uid);
+        
+        // تحميل الصفحة
+        renderLastView();
+        
+    } catch (error) {
+        console.error("Error starting app:", error);
+        Swal.fire('خطأ', 'حدث خطأ في تحميل التطبيق', 'error');
+    }
+}
 
     document.getElementById('auth-screen').classList.add('hidden');
     document.getElementById('app-screen').classList.remove('hidden');
