@@ -6,13 +6,12 @@ const multer = require('multer');
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// --- [1] فك تشفير مفتاح الخدمة بأمان (دعم JSON مباشر أو Base64) ---
+// --- [1] فك تشفير مفتاح الخدمة بأمان ---
 let serviceAccount;
 try {
     const rawKey = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (!rawKey) throw new Error("FIREBASE_SERVICE_ACCOUNT is missing in Render variables!");
 
-    // التحقق إذا كان النص JSON مباشر أو مشفر Base64
     if (rawKey.trim().startsWith('{')) {
         serviceAccount = JSON.parse(rawKey);
     } else {
@@ -161,23 +160,29 @@ async function processVIP() {
     } catch (e) { console.error("VIP Process Error:", e.message); }
 }
 
-// --- [7] مراقب الدردشة والنزاعات ---
+// --- [7] مراقب الدردشة والنزاعات (تم الإصلاح هنا) ---
 const SUSPICIOUS_WORDS = ["نصاب", "كذاب", "غش", "سرقة", "حرامي"];
 function startChatMonitor() {
     db.ref('chats').on('child_added', (chatSnap) => {
         db.ref(`chats/${chatSnap.key}`).limitToLast(1).on('child_added', async (msgSnap) => {
-            const msg = msgSnap.val();
-            if (!msg || msg.date < (Date.now() - 30000)) return;
-            
-            if (SUSPICIOUS_WORDS.some(word => msg.text.includes(word))) {
-                await db.ref('admin_notifications').push({
-                    type: 'dispute_alert',
-                    chatId: chatSnap.key,
-                    senderName: msg.senderName,
-                    lastMessage: msg.text,
-                    date: admin.database.ServerValue.TIMESTAMP,
-                    read: false
-                });
+            try {
+                const msg = msgSnap.val();
+                // التحقق من وجود الرسالة، وجود نص فيها، وأنها حديثة
+                if (!msg || !msg.text || msg.date < (Date.now() - 30000)) return;
+                
+                const lowerText = msg.text.toLowerCase();
+                if (SUSPICIOUS_WORDS.some(word => lowerText.includes(word))) {
+                    await db.ref('admin_notifications').push({
+                        type: 'dispute_alert',
+                        chatId: chatSnap.key,
+                        senderName: msg.senderName || "مجهول",
+                        lastMessage: msg.text,
+                        date: admin.database.ServerValue.TIMESTAMP,
+                        read: false
+                    });
+                }
+            } catch (err) {
+                console.error("Monitor Error:", err.message);
             }
         });
     });
@@ -193,7 +198,7 @@ function sendAlert(uid, message) {
 }
 
 // --- [9] مسارات الـ API ---
-app.get('/', (req, res) => res.send("🚀 SDM Full Bot System is Active and Fixed"));
+app.get('/', (req, res) => res.send("🚀 SDM Full Bot System is Running Smoothly"));
 
 // --- [10] تشغيل المجدولات الزمنية ---
 setInterval(processEscrow, 5000); 
