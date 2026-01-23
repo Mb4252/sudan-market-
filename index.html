@@ -772,20 +772,8 @@
         });
     }                             
 // دالة مساعدة لتحويل الصورة إلى Blob للرفع
-async function compressImageToBlob(file) {
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const MAX_WIDTH = 800; // حجم مناسب للمتجر
-                const scaleSize = MAX_WIDTH / img.width;
-                canvas.width = MAX_WIDTH;
-                canvas.height = img.height * scaleSize;
-                const ctx = canvas.getContexasync function uploadImageAndGetURL(file) {
+    // --- دالة لرفع الصور إلى السيرفر (Render) ومنه إلى ImgBB ---
+async function uploadImageAndGetURL(file) {
     const formData = new FormData();
     formData.append('image', file);
     
@@ -804,20 +792,14 @@ async function compressImageToBlob(file) {
         }
 
         const data = await response.json();
-        return data.url; // الرابط الذي يرجعه ImgBB
+        return data.url; // الرابط الذي يرجعه السيرفر
     } catch (e) {
         console.error("Upload failed:", e);
         throw e;
     }
-    }t('2d');
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.8);
-            };
-        };
-    });
 }
 
-// تعديل دالة encode لتخزين "الملف" وليس "النص"
+// --- دالة لاختيار الملفات وتخزينها مؤقتاً ---
 let selectedFile = null;
 let selectedBuyFile = null;
 
@@ -830,9 +812,21 @@ async function encode(input, type) {
     } else if (type === 'buy') {
         selectedBuyFile = input.files[0];
         document.getElementById('file-name-display').innerText = "✅ تم اختيار الإشعار";
+    } else if (type === 'user') {
+        // لتغيير صورة الملف الشخصي
+        const file = input.files[0];
+        Swal.fire({ title: 'جاري تحديث الصورة...', didOpen: () => Swal.showLoading() });
+        try {
+            const url = await uploadImageAndGetURL(file);
+            await db.ref('users/' + me.p).update({ pic: url });
+            me.pic = url;
+            document.getElementById('profile-img-view').src = url;
+            Swal.fire('تم', 'تم تحديث الصورة الشخصية', 'success');
+        } catch (e) {
+            Swal.fire('خطأ', 'فشل الرفع', 'error');
+        }
     }
 }
-
     // دالة النشر المحسنة
     async function publish(path) {
     if (isGuest) return Swal.fire('خطأ', 'يجب تسجيل الدخول', 'error');
