@@ -704,78 +704,80 @@
 
     // --- مراقبة حالة المصادقة - النسخة المحسنة ---
     function initializeAuthObserver() {
-        if (authObserverInitialized) return;
-        authObserverInitialized = true;
-        
-        auth.onAuthStateChanged(async user => {
-            const preloader = document.getElementById('main-preloader');
-            const authScreen = document.getElementById('auth-screen');
-            const appScreen = document.getElementById('app-screen');
+    if (authObserverInitialized) return;
+    authObserverInitialized = true;
+    
+    auth.onAuthStateChanged(async user => {
+        const preloader = document.getElementById('main-preloader');
+        const authScreen = document.getElementById('auth-screen');
+        const appScreen = document.getElementById('app-screen');
 
-            if (user) {
-                const uid = user.uid;
-                try {
-                    const snap = await db.ref('users/' + uid).once('value');
-                    
-                    // داخل auth.onAuthStateChanged
-if (!snap.exists()) {
-    const newUser = { 
-        n: user.displayName || 'مستخدم جديد', 
-        email: user.email, 
-        pic: user.photoURL || userPic, 
-        sdmBalance: 0, // البوت سيتولى الباقي
-        role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
-        joinDate: Date.now() 
-    };
-    await db.ref('users/' + uid).set(newUser);
-    // لا نضع numericId هنا، البوت سيراه ويضعه فوراً
-}
-                    } else {
-                        // إنشاء حساب جديد إذا لم يكن موجوداً
-                        const numericId = generate6DigitNumericId(uid);
-                        const newUser = { 
-                            n: user.displayName || 'مستخدم جديد', p: uid, email: user.email, 
-                            pic: user.photoURL || userPic, sdmBalance: 0, rating: 5.0, 
-                            role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
-                            numericId: numericId, joinDate: Date.now() 
-                        };
-                        await db.ref('users/' + uid).set(newUser);
-                        me = newUser;
+        if (user) {
+            const uid = user.uid;
+            try {
+                const snap = await db.ref('users/' + uid).once('value');
+                
+                if (!snap.exists()) {
+                    // --- مستخدم جديد تماماً ---
+                    const newUser = { 
+                        n: user.displayName || 'مستخدم جديد', 
+                        email: user.email, 
+                        pic: user.photoURL || userPic, 
+                        sdmBalance: 0, 
+                        rating: 5.0,
+                        role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
+                        joinDate: Date.now() 
+                        // لاحظ: لم نضع numericId هنا. بمجرد تنفيذ أمر .set بالأسفل، 
+                        // البوت في Render سيكتشف المستخدم الجديد ويضع له الـ ID فوراً.
+                    };
+                    await db.ref('users/' + uid).set(newUser);
+                    me = newUser;
+                    me.p = uid;
+                } else {
+                    // --- مستخدم قديم موجود مسبقاً ---
+                    me = snap.val();
+                    me.p = uid;
+
+                    // تحديث الصلاحيات إذا كان المسؤول
+                    if (user.email === ADMIN_EMAIL && me.role !== 'admin') {
+                        me.role = 'admin';
+                        await db.ref('users/' + uid).update({ role: 'admin' });
                     }
-
-                    // تشغيل التطبيق
-                    startApp(uid);
-
-                    // إخفاء شاشة التحميل وإظهار التطبيق
-                    if(preloader) {
-                        preloader.style.display = 'none';
-                        preloader.classList.add('hidden');
-                    }
-                    
-                    appScreen.classList.remove('hidden');
-                    authScreen.classList.add('hidden');
-
-                } catch (error) {
-                    console.error("خطأ في جلب البيانات:", error);
-                    if(preloader) {
-                        preloader.style.display = 'none';
-                        preloader.classList.add('hidden');
-                    }
-                    authScreen.classList.remove('hidden');
                 }
-            } else {
-                // لا يوجد مستخدم - إظهار شاشة الدخول فقط
-                if(!isGuest) { 
-                    if(preloader) {
-                        preloader.style.display = 'none';
-                        preloader.classList.add('hidden');
-                    }
-                    authScreen.classList.remove('hidden');
-                    appScreen.classList.add('hidden');
+
+                // تشغيل التطبيق بعد جلب البيانات
+                startApp(uid);
+
+                // إخفاء شاشة التحميل وإظهار التطبيق
+                if(preloader) {
+                    preloader.style.display = 'none';
+                    preloader.classList.add('hidden');
                 }
+                
+                appScreen.classList.remove('hidden');
+                authScreen.classList.add('hidden');
+
+            } catch (error) {
+                console.error("خطأ في جلب البيانات:", error);
+                if(preloader) {
+                    preloader.style.display = 'none';
+                    preloader.classList.add('hidden');
+                }
+                authScreen.classList.remove('hidden');
             }
-        });
-    }                             
+        } else {
+            // لا يوجد مستخدم - إظهار شاشة الدخول فقط
+            if(!isGuest) { 
+                if(preloader) {
+                    preloader.style.display = 'none';
+                    preloader.classList.add('hidden');
+                }
+                authScreen.classList.remove('hidden');
+                appScreen.classList.add('hidden');
+            }
+        }
+    });
+}
 // دالة مساعدة لتحويل الصورة إلى Blob للرفع
     // --- دالة لرفع الصور إلى السيرفر (Render) ومنه إلى ImgBB ---
 async function uploadImageAndGetURL(file) {
