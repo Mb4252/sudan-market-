@@ -717,14 +717,19 @@
                 try {
                     const snap = await db.ref('users/' + uid).once('value');
                     
-                    if (snap.exists()) {
-                        me = snap.val();
-                        me.p = uid;
-                        // تحديث الصلاحيات إذا كان المسؤول
-                        if (user.email === ADMIN_EMAIL && me.role !== 'admin') {
-                            me.role = 'admin';
-                            await db.ref('users/' + uid).update({ role: 'admin' });
-                        }
+                    // داخل auth.onAuthStateChanged
+if (!snap.exists()) {
+    const newUser = { 
+        n: user.displayName || 'مستخدم جديد', 
+        email: user.email, 
+        pic: user.photoURL || userPic, 
+        sdmBalance: 0, // البوت سيتولى الباقي
+        role: (user.email === ADMIN_EMAIL ? 'admin' : 'user'),
+        joinDate: Date.now() 
+    };
+    await db.ref('users/' + uid).set(newUser);
+    // لا نضع numericId هنا، البوت سيراه ويضعه فوراً
+}
                     } else {
                         // إنشاء حساب جديد إذا لم يكن موجوداً
                         const numericId = generate6DigitNumericId(uid);
