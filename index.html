@@ -3094,16 +3094,14 @@ async function encode(input, type) {
     // ======================================================
 // 6. نظام طلبات تحويل البنوك للإدارة
 // ======================================================
-
 function loadAdminBankRequests() {
     if (me.role !== 'admin') return;
     const container = document.getElementById('admin-bank-requests-list');
     if (!container) return;
 
-    // طلبات التحويل البنكي قيد المعالجة
+    // جلب جميع الطلبات وفلترتها في الواجهة
     db.ref('bank_transfer_requests')
-        .orderByChild('status')
-        .equalTo('processing')
+        .orderByChild('date')
         .on('value', snap => {
             container.innerHTML = "";
             const requests = snap.val();
@@ -3111,14 +3109,40 @@ function loadAdminBankRequests() {
             if (!requests || Object.keys(requests).length === 0) {
                 container.innerHTML = `
                     <div style="text-align:center; padding:20px; color:var(--text-sec);">
-                        <i class="fas fa-check-circle" style="font-size:24px; color:var(--green); margin-bottom:10px;"></i>
-                        <p>لا توجد طلبات تحويل بنكي قيد المعالجة حالياً</p>
+                        <i class="fas fa-inbox" style="font-size:24px; color:var(--text-sec); margin-bottom:10px;"></i>
+                        <p>لا توجد طلبات تحويل بنكي</p>
                     </div>`;
                 return;
             }
 
+            // عداد للطلبات النشطة
+            let activeRequestsCount = 0;
+            let html = '';
+
+            // تبويب للفلترة
+            html += `
+                <div style="display: flex; gap: 10px; margin-bottom: 15px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px;">
+                    <button id="filter-all" class="btn-main" style="flex:1; padding: 8px; font-size: 12px; background: var(--primary);" onclick="filterBankRequests('all')">
+                        الكل
+                    </button>
+                    <button id="filter-processing" class="btn-main" style="flex:1; padding: 8px; font-size: 12px; background: var(--accent); color: black;" onclick="filterBankRequests('processing')">
+                        قيد المعالجة
+                    </button>
+                    <button id="filter-completed" class="btn-main" style="flex:1; padding: 8px; font-size: 12px; background: var(--green);" onclick="filterBankRequests('completed')">
+                        مكتملة
+                    </button>
+                    <button id="filter-rejected" class="btn-main" style="flex:1; padding: 8px; font-size: 12px; background: var(--red);" onclick="filterBankRequests('rejected')">
+                        مرفوضة
+                    </button>
+                </div>
+            `;
+
             Object.keys(requests).forEach(reqId => {
                 const req = requests[reqId];
+                
+                // تخطي الطلبات المخفية
+                if (req.hidden) return;
+                
                 const bankName = req.transferType === 'khartoum_bank' ? 'بنك الخرطوم' : 'كاشي';
                 const date = req.date ? new Date(req.date).toLocaleString('ar-EG') : 'غير معروف';
                 const userName = req.userName || 'مستخدم غير معروف';
@@ -3127,142 +3151,424 @@ function loadAdminBankRequests() {
                 const amountSDM = req.amountSDM || 0;
                 const accountNumber = req.accountNumber || 'غير معروف';
                 
-                container.innerHTML += `
-                    <div class="admin-item" style="border:1px solid var(--accent); margin-bottom:15px; padding:15px; background:rgba(0,0,0,0.2); border-radius:12px;">
+                // تحديد لون الطلب حسب الحالة
+                let statusColor = '';
+                let statusText = '';
+                let statusIcon = '';
+                
+                switch(req.status) {
+                    case 'processing':
+                        statusColor = 'var(--accent)';
+                        statusText = 'قيد المعالجة';
+                        statusIcon = '⏳';
+                        activeRequestsCount++;
+                        break;
+                    case 'completed':
+                        statusColor = 'var(--green)';
+                        statusText = 'مكتمل';
+                        statusIcon = '✅';
+                        break;
+                    case 'rejected':
+                        statusColor = 'var(--red)';
+                        statusText = 'مرفوض';
+                        statusIcon = '❌';
+                        break;
+                    case 'pending':
+                        statusColor = 'var(--neon-blue)';
+                        statusText = 'بانتظار المعالجة';
+                        statusIcon = '⏱️';
+                        activeRequestsCount++;
+                        break;
+                    default:
+                        statusColor = 'gray';
+                        statusText = req.status || 'غير معروف';
+                        statusIcon = '❓';
+                }
+
+                // زر الإخفاء (للطلبات المكتملة/المرفوضة)
+                const hideButton = (req.status === 'completed' || req.status === 'rejected') ? 
+                    `<button class="btn-main" style="background:#6b7280; margin-top:10px; width:100%;" 
+                        onclick="hideBankRequest('${reqId}')">
+                        <i class="fas fa-eye-slash"></i> إخفاء من القائمة
+                    </button>` : '';
+
+                // أزرار التحكم (تظهر فقط للطلبات قيد المعالجة)
+                const actionButtons = (req.status === 'processing' || req.status === 'pending') ? `
+                    <div style="display:flex; gap:10px; margin-top:10px;">
+                        <button class="btn-main" style="background:var(--green); flex:1; padding:10px;" 
+                            onclick="completeBankTransfer('${reqId}', '${req.userId}', ${amountSDM}, ${amountSDG})">
+                            ✅ تم التحويل
+                        </button>
+                        <button class="btn-main" style="background:var(--red); flex:1; padding:10px;" 
+                            onclick="rejectBankTransfer('${reqId}', '${req.userId}', ${amountSDM})">
+                            ❌ رفض
+                        </button>
+                    </div>` : '';
+
+                // معلومات إضافية للطلبات المكتملة/المرفوضة
+                const additionalInfo = req.status === 'completed' ? `
+                    <div style="background:rgba(16, 185, 129, 0.1); padding:10px; border-radius:8px; margin:10px 0; border:1px solid var(--green);">
+                        <div style="font-size:12px; color:var(--green);">
+                            <i class="fas fa-check-circle"></i> تم التحويل بواسطة: ${req.completedBy || 'غير معروف'}
+                        </div>
+                        ${req.operationNumber ? `<div style="font-size:11px; color:white; margin-top:5px;">رقم العملية: <b>${req.operationNumber}</b></div>` : ''}
+                        ${req.notes ? `<div style="font-size:11px; color:var(--text-sec); margin-top:3px;">ملاحظات: ${req.notes}</div>` : ''}
+                    </div>
+                ` : req.status === 'rejected' ? `
+                    <div style="background:rgba(239, 68, 68, 0.1); padding:10px; border-radius:8px; margin:10px 0; border:1px solid var(--red);">
+                        <div style="font-size:12px; color:var(--red);">
+                            <i class="fas fa-times-circle"></i> مرفوض بواسطة: ${req.rejectedBy || 'غير معروف'}
+                        </div>
+                        ${req.rejectReason ? `<div style="font-size:11px; color:white; margin-top:5px;">السبب: ${req.rejectReason}</div>` : ''}
+                        ${req.operationNumber ? `<div style="font-size:11px; color:var(--text-sec); margin-top:3px;">رقم العملية: ${req.operationNumber}</div>` : ''}
+                    </div>
+                ` : '';
+
+                html += `
+                    <div class="admin-item" style="border:2px solid ${statusColor}; margin-bottom:15px; padding:15px; background:rgba(0,0,0,0.2); border-radius:12px; display: none;" data-status="${req.status}" id="request-${reqId}">
                         <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:10px;">
                             <div>
-                                <b style="color:var(--neon-blue);">👤 ${userName}</b>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    ${statusIcon}
+                                    <b style="color:${statusColor};">${statusText}</b>
+                                </div>
+                                <b style="color:var(--neon-blue); font-size:16px;">👤 ${userName}</b>
                                 <div style="font-size:12px; color:var(--text-sec);">رقم التعريف: ${userNumericId}</div>
                             </div>
-                            <span class="badge badge-gold">${amountSDM} SDM</span>
+                            <div style="text-align:right;">
+                                <span class="badge badge-gold" style="font-size:14px;">${amountSDM} SDM</span>
+                                <div style="font-size:11px; color:var(--text-sec); margin-top:5px;">${amountSDG.toLocaleString()} جنيه</div>
+                            </div>
                         </div>
                         
                         <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; margin-bottom:10px;">
                             <div><i class="fas fa-coins"></i> المبلغ: <b>${amountSDG.toLocaleString()} جنيه</b></div>
                             <div><i class="fas fa-university"></i> البنك: <b>${bankName}</b></div>
-                            <div><i class="fas fa-credit-card"></i> الحساب: <b>${accountNumber}</b></div>
+                            <div><i class="fas fa-credit-card"></i> الحساب/الهاتف: <b>${accountNumber}</b></div>
                             <div><i class="fas fa-user"></i> الاسم: <b>${req.fullName || 'غير معروف'}</b></div>
                             <div style="font-size:11px; color:var(--text-sec); margin-top:5px;">
                                 <i class="fas fa-clock"></i> ${date}
                             </div>
                         </div>
                         
-                        <div style="display:flex; gap:10px;">
-                            <button class="btn-main" style="background:var(--green); flex:1; padding:10px;" 
-                                onclick="completeBankTransfer('${reqId}', '${req.userId}', ${amountSDM}, ${amountSDG})">
-                                ✅ تم التحويل
-                            </button>
-                            <button class="btn-main" style="background:var(--red); flex:1; padding:10px;" 
-                                onclick="rejectBankTransfer('${reqId}', '${req.userId}', ${amountSDM})">
-                                ❌ رفض
-                            </button>
-                        </div>
+                        ${additionalInfo}
+                        ${actionButtons}
+                        ${hideButton}
                     </div>`;
             });
+
+            // إضافة عداد الطلبات النشطة
+            html += `
+                <div style="text-align:center; padding:10px; color:var(--text-sec); font-size:12px; border-top:1px solid var(--border); margin-top:15px;">
+                    <i class="fas fa-info-circle"></i> عرض ${activeRequestsCount} طلب نشط من إجمالي ${Object.keys(requests).length} طلب
+                </div>
+            `;
+
+            container.innerHTML = html;
+            
+            // تطبيق الفلترة الافتراضية (قيد المعالجة)
+            setTimeout(() => filterBankRequests('processing'), 100);
         });
 }
 
-function completeBankTransfer(reqId, userId, amountSDM, amountSDG) {
+// دالة الفلترة
+function filterBankRequests(filterType) {
+    // تحديد الأزرار النشطة
+    document.querySelectorAll('#admin-bank-requests-list .btn-main').forEach(btn => {
+        btn.style.opacity = '0.7';
+        btn.style.transform = 'scale(0.95)';
+    });
+    
+    const activeBtn = document.getElementById(`filter-${filterType}`);
+    if (activeBtn) {
+        activeBtn.style.opacity = '1';
+        activeBtn.style.transform = 'scale(1)';
+        activeBtn.style.boxShadow = '0 0 10px rgba(255,255,255,0.3)';
+    }
+    
+    // إظهار/إخفاء الطلبات حسب الفلتر
+    document.querySelectorAll('#admin-bank-requests-list .admin-item').forEach(item => {
+        const status = item.getAttribute('data-status');
+        
+        switch(filterType) {
+            case 'all':
+                item.style.display = 'block';
+                break;
+            case 'processing':
+                item.style.display = (status === 'processing' || status === 'pending') ? 'block' : 'none';
+                break;
+            case 'completed':
+                item.style.display = status === 'completed' ? 'block' : 'none';
+                break;
+            case 'rejected':
+                item.style.display = status === 'rejected' ? 'block' : 'none';
+                break;
+            default:
+                item.style.display = 'block';
+        }
+    });
+}
+
+// دالة إخفاء الطلب
+function hideBankRequest(reqId) {
     Swal.fire({
-        title: 'تأكيد التحويل',
-        html: `
-            <div style="text-align:right; direction:rtl;">
-                <p>هل قمت بالفعل بتحويل المبلغ إلى الحساب البنكي؟</p>
-                <p><b>المبلغ:</b> ${amountSDG.toLocaleString()} جنيه</p>
-                <p><b>المعادل:</b> ${amountSDM} SDM</p>
-            </div>
-        `,
+        title: 'إخفاء الطلب',
+        text: 'هل تريد إخفاء هذا الطلب من القائمة؟ يمكنك استعادته من قاعدة البيانات إذا احتجت.',
         icon: 'question',
         showCancelButton: true,
-        confirmButtonText: 'نعم، تم التحويل',
+        confirmButtonText: 'نعم، إخفاء',
         cancelButtonText: 'إلغاء',
         background: '#1e293b',
         color: '#fff'
     }).then((result) => {
         if (result.isConfirmed) {
-            showLoginLoading();
-            
-            // تحديث حالة الطلب
             db.ref(`bank_transfer_requests/${reqId}`).update({
-                status: 'completed',
-                completedAt: Date.now(),
-                completedBy: me.n
+                hidden: true,
+                hiddenAt: Date.now(),
+                hiddenBy: me.n
             }).then(() => {
-                // إرسال إشعار للمستخدم
-                db.ref(`alerts/${userId}`).push({
-                    msg: `✅ تم تحويل ${amountSDG.toLocaleString()} جنيه (${amountSDM} SDM) إلى حسابك البنكي بنجاح`,
-                    type: 'success',
-                    date: Date.now()
-                });
+                // إخفاء العنصر مباشرة
+                const element = document.getElementById(`request-${reqId}`);
+                if (element) {
+                    element.style.display = 'none';
+                }
                 
-                hideLoginLoading();
-                Swal.fire('تم', 'تم تأكيد التحويل البنكي بنجاح', 'success');
-            }).catch(error => {
-                hideLoginLoading();
-                Swal.fire('خطأ', 'فشل تحديث الحالة: ' + error.message, 'error');
+                Swal.fire({
+                    title: 'تم الإخفاء',
+                    text: 'تم إخفاء الطلب من القائمة',
+                    icon: 'success',
+                    timer: 1500,
+                    showConfirmButton: false
+                });
             });
         }
     });
 }
 
-function rejectBankTransfer(reqId, userId, amountSDM) {
-    Swal.fire({
-        title: 'رفض الطلب',
+async function completeBankTransfer(reqId, userId, amountSDM, amountSDG) {
+    const { value: operationData } = await Swal.fire({
+        title: 'تأكيد التحويل',
         html: `
             <div style="text-align:right; direction:rtl;">
-                <p>هل تريد رفض هذا الطلب؟</p>
-                <p><b>سيتم إرجاع:</b> ${amountSDM} SDM إلى رصيد المستخدم</p>
-                <textarea id="reject-reason" class="swal2-input" placeholder="سبب الرفض (اختياري)..." rows="2"></textarea>
+                <p style="color:var(--text-sec); margin-bottom:15px;">أدخل معلومات التحويل:</p>
+                
+                <div style="background:rgba(16, 185, 129, 0.1); padding:15px; border-radius:10px; border:1px solid var(--green); margin-bottom:15px;">
+                    <p style="margin:0; color:white;"><b>تفاصيل التحويل:</b></p>
+                    <p style="margin:5px 0; font-size:13px;">المبلغ: <b>${amountSDG.toLocaleString()} جنيه</b></p>
+                    <p style="margin:0; font-size:13px;">المعادل: <b>${amountSDM} SDM</b></p>
+                </div>
+                
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; margin-bottom:5px; color:var(--accent); font-weight:bold;">
+                        <i class="fas fa-receipt"></i> رقم العملية البنكية *
+                    </label>
+                    <input id="operation-number" class="swal2-input" 
+                           placeholder="رقم العملية من البنك" 
+                           required
+                           style="text-align:center; font-family: monospace;">
+                    <p style="font-size:11px; color:var(--text-sec); margin-top:5px;">مثال: TRX-2024-123456</p>
+                </div>
+                
+                <div>
+                    <label style="display:block; margin-bottom:5px; color:var(--accent);">ملاحظات إضافية:</label>
+                    <textarea id="transfer-notes" class="swal2-input" placeholder="أي تفاصيل إضافية..." rows="2"></textarea>
+                </div>
+            </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'تأكيد التحويل',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff',
+        width: '90%',
+        preConfirm: () => {
+            const opNum = document.getElementById('operation-number').value.trim();
+            if (!opNum) {
+                Swal.showValidationMessage('رقم العملية مطلوب!');
+                return false;
+            }
+            return {
+                operationNumber: opNum,
+                notes: document.getElementById('transfer-notes').value.trim()
+            };
+        }
+    });
+
+    if (!operationData) return;
+
+    const confirmResult = await Swal.fire({
+        title: 'التأكيد النهائي',
+        html: `
+            <div style="text-align:right; direction:rtl;">
+                <p>هل تم التحويل البنكي بنجاح؟</p>
+                <div style="background:rgba(59, 130, 246, 0.1); padding:15px; border-radius:8px; margin:15px 0;">
+                    <p style="margin:0; color:white;"><b>رقم العملية:</b> ${operationData.operationNumber}</p>
+                    <p style="margin:5px 0; color:var(--text-sec);">سيتم إغلاق الطلب وإشعار المستخدم</p>
+                </div>
             </div>
         `,
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonText: 'نعم، رفض وإرجاع المبلغ',
+        confirmButtonText: 'نعم، تم التحويل',
+        cancelButtonText: 'مراجعة',
+        confirmButtonColor: '#10b981',
+        background: '#1e293b',
+        color: '#fff'
+    });
+
+    if (confirmResult.isConfirmed) {
+        showLoginLoading();
+        
+        try {
+            // تحديث حالة الطلب إلى 'completed'
+            await db.ref(`bank_transfer_requests/${reqId}`).update({
+                status: 'completed',
+                completedAt: Date.now(),
+                completedBy: me.n,
+                operationNumber: operationData.operationNumber,
+                notes: operationData.notes || '',
+                processed: true
+            });
+            
+            // إرسال إشعار للمستخدم
+            await db.ref(`alerts/${userId}`).push({
+                msg: `✅ تم تحويل ${amountSDG.toLocaleString()} جنيه (${amountSDM} SDM) إلى حسابك البنكي بنجاح. رقم العملية: ${operationData.operationNumber}`,
+                type: 'success',
+                date: Date.now()
+            });
+            
+            hideLoginLoading();
+            
+            Swal.fire({
+                title: 'تم التحويل بنجاح',
+                html: `
+                    <div style="text-align:center;">
+                        <i class="fas fa-check-circle" style="color:var(--green); font-size:50px; margin-bottom:15px;"></i>
+                        <p>✅ تم تأكيد التحويل البنكي</p>
+                        <p style="font-size:12px; color:var(--text-sec);">تم إرسال إشعار للمستخدم برقم العملية</p>
+                    </div>
+                `,
+                timer: 3000,
+                showConfirmButton: false,
+                background: '#1e293b',
+                color: '#fff'
+            });
+            
+            // تحديث القائمة فوراً
+            loadAdminBankRequests();
+            
+        } catch (error) {
+            hideLoginLoading();
+            Swal.fire('خطأ', 'فشل تحديث الحالة: ' + error.message, 'error');
+        }
+    }
+}
+
+async function rejectBankTransfer(reqId, userId, amountSDM) {
+    const { value: reason } = await Swal.fire({
+        title: 'رفض الطلب',
+        html: `
+            <div style="text-align:right; direction:rtl;">
+                <p style="color:var(--text-sec); margin-bottom:15px;">هل تريد رفض هذا الطلب؟</p>
+                
+                <div style="background:rgba(239, 68, 68, 0.1); padding:15px; border-radius:10px; border:1px solid var(--red); margin-bottom:15px;">
+                    <p style="margin:0; color:white;"><b>ملاحظة مهمة:</b></p>
+                    <p style="margin:5px 0 0 0; font-size:12px; color:var(--text-sec);">
+                        سيتم إرجاع <b>${amountSDM} SDM</b> إلى رصيد المستخدم تلقائياً
+                    </p>
+                </div>
+                
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; margin-bottom:5px; color:var(--accent);">رقم العملية البنكية (إذا تم التحويل بالفعل):</label>
+                    <input id="operation-number" class="swal2-input" placeholder="مثال: TRX123456789" style="text-align:center;">
+                </div>
+                
+                <div>
+                    <label style="display:block; margin-bottom:5px; color:var(--accent);">سبب الرفض (اختياري):</label>
+                    <textarea id="reject-reason" class="swal2-input" placeholder="اكتب سبب الرفض..." rows="3"></textarea>
+                </div>
+            </div>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'تأكيد الرفض',
         cancelButtonText: 'إلغاء',
         background: '#1e293b',
         color: '#fff',
+        width: '90%',
         preConfirm: () => {
             return {
-                reason: document.getElementById('reject-reason').value
+                operationNum: document.getElementById('operation-number').value.trim(),
+                reason: document.getElementById('reject-reason').value.trim()
             };
         }
-    }).then((result) => {
-        if (result.isConfirmed) {
-            showLoginLoading();
-            
-            const reason = result.value.reason || 'غير محدد';
-            
-            // إرجاع المبلغ للمستخدم
-            db.ref(`users/${userId}/sdmBalance`).transaction(current => {
-                return (current || 0) + amountSDM;
-            }).then(() => {
-                // تحديث حالة الطلب
-                return db.ref(`bank_transfer_requests/${reqId}`).update({
-                    status: 'rejected',
-                    rejectedAt: Date.now(),
-                    rejectedBy: me.n,
-                    rejectReason: reason
-                });
-            }).then(() => {
-                // إرسال إشعار للمستخدم
-                const alertMsg = reason === 'غير محدد' 
-                    ? `❌ تم رفض طلب تحويلك البنكي. تم إرجاع ${amountSDM} SDM إلى رصيدك.`
-                    : `❌ تم رفض طلب تحويلك البنكي: "${reason}". تم إرجاع ${amountSDM} SDM إلى رصيدك.`;
-                
-                db.ref(`alerts/${userId}`).push({
-                    msg: alertMsg,
-                    type: 'info',
-                    date: Date.now()
-                });
-                
-                hideLoginLoading();
-                Swal.fire('تم', 'تم رفض الطلب وإرجاع المبلغ', 'success');
-            }).catch(error => {
-                hideLoginLoading();
-                Swal.fire('خطأ', 'فشل معالجة الرفض: ' + error.message, 'error');
-            });
-        }
     });
+
+    if (!reason) return; // المستخدم ألغى
+
+    const confirmResult = await Swal.fire({
+        title: 'التأكيد النهائي',
+        html: `
+            <div style="text-align:right; direction:rtl;">
+                <p>هل أنت متأكد من رفض هذا الطلب؟</p>
+                <div style="background:rgba(245, 158, 11, 0.1); padding:10px; border-radius:8px; margin:10px 0;">
+                    <p style="margin:0; color:var(--accent);"><i class="fas fa-exclamation-triangle"></i> هذا الإجراء لا يمكن التراجع عنه</p>
+                </div>
+            </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، رفض نهائياً',
+        cancelButtonText: 'مراجعة',
+        confirmButtonColor: '#ef4444',
+        background: '#1e293b',
+        color: '#fff'
+    });
+
+    if (confirmResult.isConfirmed) {
+        showLoginLoading();
+        
+        try {
+            // تحديث حالة الطلب إلى 'rejected' - البوت سيتلقى التغيير ويرد المبلغ
+            await db.ref(`bank_transfer_requests/${reqId}`).update({
+                status: 'rejected',
+                rejectedAt: Date.now(),
+                rejectedBy: me.n,
+                rejectReason: reason.reason || 'غير محدد',
+                operationNumber: reason.operationNum || null,
+                processed: true
+            });
+            
+            // الانتظار قليلاً للتأكد من معالجة البوت
+            setTimeout(() => {
+                hideLoginLoading();
+                
+                Swal.fire({
+                    title: 'تم الرفض بنجاح',
+                    html: `
+                        <div style="text-align:center;">
+                            <i class="fas fa-check-circle" style="color:var(--green); font-size:50px; margin-bottom:15px;"></i>
+                            <p>✅ تم رفض الطلب وإرجاع ${amountSDM} SDM للمستخدم</p>
+                            <p style="font-size:12px; color:var(--text-sec);">سيتم إشعار المستخدم بالتحديث</p>
+                        </div>
+                    `,
+                    timer: 3000,
+                    showConfirmButton: false,
+                    background: '#1e293b',
+                    color: '#fff'
+                });
+                
+                // تحديث القائمة فوراً
+                loadAdminBankRequests();
+                
+            }, 1500);
+            
+        } catch (error) {
+            hideLoginLoading();
+            Swal.fire('خطأ', 'فشل تحديث حالة الطلب: ' + error.message, 'error');
+        }
+    }
 }
 </script>
 </body>
