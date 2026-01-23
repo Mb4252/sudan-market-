@@ -3085,6 +3085,46 @@ async function encode(input, type) {
             allTabs[index].classList.add('active');
         }
     }
+    function loadAdminBankRequests() {
+    if (me.role !== 'admin') return;
+    const container = document.getElementById('admin-bank-requests-list');
+    if (!container) return;
+
+    // البوت يغير الحالة إلى processing بعد خصم المبلغ، لذا نبحث عن هذه الحالة
+    db.ref('bank_transfer_requests').orderByChild('status').equalTo('processing').on('value', snap => {
+        container.innerHTML = "";
+        const requests = snap.val();
+        if (!requests) {
+            container.innerHTML = "<p style='text-align:center; color:gray;'>لا توجد طلبات سحب حالياً</p>";
+            return;
+        }
+
+        Object.keys(requests).forEach(reqId => {
+            const req = requests[reqId];
+            container.innerHTML += `
+                <div class="admin-item" style="border:1px solid var(--accent); margin-bottom:10px;">
+                    <b>👤 ${req.fullName}</b><br>
+                    💰 المبلغ: ${req.amountSDG} جنيه (${req.amountSM} SDM)<br>
+                    🏦 البنك: ${req.transferType}<br>
+                    🔢 الحساب: ${req.accountNumber}<br>
+                    <div style="display:flex; gap:5px; margin-top:10px;">
+                        <button class="btn-main" style="background:var(--green); padding:5px;" onclick="updateBankStatus('${reqId}', 'completed')">تم التحويل ✅</button>
+                        <button class="btn-main" style="background:var(--red); padding:5px;" onclick="updateBankStatus('${reqId}', 'rejected', '${req.userId}', ${req.amountSDM})">رفض ❌</button>
+                    </div>
+                </div>`;
+        });
+    });
+}
+
+function updateBankStatus(reqId, status, userId, amount) {
+    db.ref(`bank_transfer_requests/${reqId}`).update({ status: status }).then(() => {
+        if (status === 'rejected') {
+            // إرجاع المبلغ للمستخدم في حال الرفض
+            db.ref(`users/${userId}/sdmBalance`).transaction(cur => (cur || 0) + amount);
+        }
+        Swal.fire("تم", "تم تحديث حالة الطلب", "success");
+    });
+}
 </script>
 </body>
 </html>
