@@ -2,112 +2,122 @@ const admin = require('firebase-admin');
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
-const axios = require('axios'); // تم إضافة axios للرفع إلى ImgBB
-const FormData = require('form-data'); // تم إضافة form-data
+const axios = require('axios');
+const FormData = require('form-data');
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// مفتاح ImgBB الخاص بك
+// إعدادات ImgBB
 const IMGBB_API_KEY = 'aa874951c530708a0300fc5401ed7046';
 
-// --- [1] فك تشفير مفتاح الخدمة بأمان ---
+// --- [1] تهيئة Firebase ---
 let serviceAccount;
 try {
     const rawKey = process.env.FIREBASE_SERVICE_ACCOUNT;
-    if (!rawKey) throw new Error("FIREBASE_SERVICE_ACCOUNT is missing in Render variables!");
-
-    if (rawKey.trim().startsWith('{')) {
-        serviceAccount = JSON.parse(rawKey);
-    } else {
-        const decodedKey = Buffer.from(rawKey, 'base64').toString('utf-8');
-        serviceAccount = JSON.parse(decodedKey);
-    }
-    console.log("✅ Firebase Service Account Loaded Successfully");
+    if (!rawKey) throw new Error("FIREBASE_SERVICE_ACCOUNT is missing!");
+    
+    // فك التشفير إذا كان مفتاح الخدمة مضغوطاً أو Base64
+    const keyString = rawKey.trim().startsWith('{') ? rawKey : Buffer.from(rawKey, 'base64').toString('utf-8');
+    serviceAccount = JSON.parse(keyString);
+    
+    console.log("✅ Firebase Service Account Loaded");
 } catch (error) {
-    console.error("❌ Critical Error: Could not load Firebase Key:", error.message);
+    console.error("❌ Firebase Init Error:", error.message);
     process.exit(1);
 }
 
-// --- [2] تهيئة Firebase (قاعدة البيانات فقط) ---
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
 });
 
 const db = admin.database();
-
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json());
 
-// --- [3] نظام رفع الصور الجديد عبر ImgBB (بدون بطاقة بنكية) ---
+// --- [2] نظام رفع الصور (يعمل بنجاح) ---
 app.post('/api/upload', upload.single('image'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).json({ error: "لم يتم رفع ملف" });
-
-        // تحويل الملف إلى Base64
-        const imageBase64 = req.file.buffer.toString('base64');
-
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
         const form = new FormData();
-        form.append('image', imageBase64);
-
-        console.log("⏳ جاري الرفع إلى ImgBB...");
-        
+        form.append('image', req.file.buffer.toString('base64'));
         const response = await axios.post(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, form, {
             headers: form.getHeaders()
         });
-
-        if (response.data && response.data.data.url) {
-            const publicUrl = response.data.data.url;
-            console.log("✅ تم الرفع بنجاح:", publicUrl);
-            res.status(200).json({ url: publicUrl });
-        } else {
-            throw new Error("فشل الحصول على رابط من ImgBB");
-        }
+        res.status(200).json({ url: response.data.data.url });
     } catch (e) {
-        console.error("❌ Upload Error:", e.message);
-        res.status(500).json({ error: "فشل رفع الصورة: " + e.message });
+        res.status(500).json({ error: "Upload failed" });
     }
 });
 
-// --- [4] محرك الوسيط الآمن (Escrow Engine) ---
+// --- [3] محرك الوسيط الآمن (Escrow Engine) - إصدار كامل ---
 async function processEscrow() {
     try {
         const escRef = db.ref('requests/escrow_deals');
-        const snap = await escRef.orderByChild('status').equalTo('pending_delivery').once('value');
         
-        if (snap.exists()) {
-            for (const [id, deal] of Object.entries(snap.val())) {
+        // أ. حجز المبلغ (Pending -> Secured)
+        const pendingSnap = await escRef.orderByChild('status').equalTo('pending_delivery').once('value');
+        if (pendingSnap.exists()) {
+            for (const [id, deal] of Object.entries(pendingSnap.val())) {
                 const amount = parseFloat(deal.amount);
                 const buyerRef = db.ref(`users/${deal.buyerId}`);
                 
                 const tx = await buyerRef.transaction(user => {
                     if (!user) return user;
                     const bal = parseFloat(user.sdmBalance || 0);
-                    if (bal < amount) return undefined; 
+                    if (bal < amount) return undefined; // رصيد غير كافٍ
                     user.sdmBalance = Number((bal - amount).toFixed(2));
                     return user;
                 });
 
                 if (tx.committed) {
-                    await escRef.child(id).update({ 
-                        status: 'secured', 
-                        updatedAt: admin.database.ServerValue.TIMESTAMP 
-                    });
-                    await db.ref(`${deal.path}/${deal.postId}`).update({ 
-                        pending: true, 
-                        buyerId: deal.buyerId 
-                    });
-                    
+                    await escRef.child(id).update({ status: 'secured', updatedAt: admin.database.ServerValue.TIMESTAMP });
+                    await db.ref(`${deal.path}/${deal.postId}`).update({ pending: true, buyerId: deal.buyerId });
                     sendAlert(deal.buyerId, `🔒 تم حجز ${amount} SDM. حقك محفوظ في الوسيط.`);
-                    sendAlert(deal.sellerId, `🔔 تم دفع المبلغ للوسيط. يمكنك تسليم المنتج الآن.`);
+                    sendAlert(deal.sellerId, `🔔 قام مشترٍ بدفع ثمن "${deal.itemTitle}". يمكنك التسليم الآن.`);
+                }
+            }
+        }
+
+        // ب. تحويل المال للبائع بعد الاستلام (Confirmed -> Completed)
+        const confirmSnap = await escRef.orderByChild('status').equalTo('confirmed_by_buyer').once('value');
+        if (confirmSnap.exists()) {
+            for (const [id, deal] of Object.entries(confirmSnap.val())) {
+                const amount = parseFloat(deal.amount);
+                const sellerRef = db.ref(`users/${deal.sellerId}/sdmBalance`);
+                
+                const tx = await sellerRef.transaction(bal => Number(((parseFloat(bal) || 0) + amount).toFixed(2)));
+
+                if (tx.committed) {
+                    await escRef.child(id).update({ status: 'completed' });
+                    await db.ref(`${deal.path}/${deal.postId}`).update({ pending: false, sold: true });
+                    sendAlert(deal.sellerId, `💰 مبروك! استلمت ${amount} SDM ثمن مبيعاتك.`);
+                    sendAlert(deal.buyerId, `✅ تمت الصفقة بنجاح.`);
+                }
+            }
+        }
+
+        // ج. إلغاء الطلب وإرجاع المال للمشتري (Cancelled -> Refunded)
+        const cancelSnap = await escRef.orderByChild('status').equalTo('cancelled_by_buyer').once('value');
+        if (cancelSnap.exists()) {
+            for (const [id, deal] of Object.entries(cancelSnap.val())) {
+                const amount = parseFloat(deal.amount);
+                const buyerRef = db.ref(`users/${deal.buyerId}/sdmBalance`);
+                
+                const tx = await buyerRef.transaction(bal => Number(((parseFloat(bal) || 0) + amount).toFixed(2)));
+
+                if (tx.committed) {
+                    await escRef.child(id).update({ status: 'refunded' });
+                    await db.ref(`${deal.path}/${deal.postId}`).update({ pending: false, buyerId: null });
+                    sendAlert(deal.buyerId, `↩️ تم إلغاء الطلب وإعادة ${amount} SDM لمحفظتك.`);
                 }
             }
         }
     } catch (e) { console.error("Escrow Engine Error:", e.message); }
 }
 
-// --- [5] محرك تحويل العملات المباشر ---
+// --- [4] محرك تحويل العملات المباشر (Direct Transfer) ---
 async function processTransfers() {
     try {
         const snap = await db.ref('requests/transfers').orderByChild('status').equalTo('pending').once('value');
@@ -118,27 +128,36 @@ async function processTransfers() {
                 
                 if (targetSnap.exists()) {
                     const targetUid = Object.keys(targetSnap.val())[0];
+                    if (targetUid === req.from) {
+                        await db.ref(`requests/transfers/${id}`).update({ status: 'failed_self_transfer' });
+                        continue;
+                    }
+
                     const senderRef = db.ref(`users/${req.from}`);
-                    
                     const tx = await senderRef.transaction(u => {
-                        if (!u || (u.sdmBalance || 0) < amount) return undefined;
-                        u.sdmBalance = Number((u.sdmBalance - amount).toFixed(2));
+                        if (!u || parseFloat(u.sdmBalance || 0) < amount) return undefined;
+                        u.sdmBalance = Number((parseFloat(u.sdmBalance) - amount).toFixed(2));
                         return u;
                     });
 
                     if (tx.committed) {
-                        await db.ref(`users/${targetUid}/sdmBalance`).transaction(b => Number(((b || 0) + amount).toFixed(2)));
+                        await db.ref(`users/${targetUid}/sdmBalance`).transaction(b => Number(((parseFloat(b) || 0) + amount).toFixed(2)));
                         await db.ref(`requests/transfers/${id}`).update({ status: 'completed' });
-                        sendAlert(targetUid, `💰 استلمت ${amount} SDM من ${req.fromName}`);
-                        sendAlert(req.from, `✅ تم تحويل ${amount} SDM بنجاح.`);
+                        // إضافة سجل في المعاملات
+                        await db.ref('transactions').push({ from: req.from, to: targetUid, amount, type: 'transfer', date: Date.now() });
+                        sendAlert(targetUid, `💰 استلمت ${amount} SDM من ${req.fromName}`, 'success');
+                        sendAlert(req.from, `✅ تم تحويل ${amount} SDM بنجاح.`, 'success');
                     }
+                } else {
+                    await db.ref(`requests/transfers/${id}`).update({ status: 'failed_not_found' });
+                    sendAlert(req.from, `❌ الرقم ${req.toId} غير مسجل لدينا.`, 'error');
                 }
             }
         }
     } catch (e) { console.error("Transfer Error:", e.message); }
 }
 
-// --- [6] محرك الـ VIP ---
+// --- [5] محرك الـ VIP ---
 async function processVIP() {
     try {
         const snap = await db.ref('requests/vip_subscriptions').orderByChild('status').equalTo('pending').once('value');
@@ -148,8 +167,8 @@ async function processVIP() {
                 const userRef = db.ref(`users/${req.userId}`);
                 
                 const tx = await userRef.transaction(u => {
-                    if (!u || (u.sdmBalance || 0) < cost) return undefined;
-                    u.sdmBalance = Number((u.sdmBalance - cost).toFixed(2));
+                    if (!u || parseFloat(u.sdmBalance || 0) < cost) return undefined;
+                    u.sdmBalance = Number((parseFloat(u.sdmBalance) - cost).toFixed(2));
                     u.vipStatus = 'active';
                     u.vipExpiry = (Math.max(u.vipExpiry || 0, Date.now())) + (req.days * 86400000);
                     return u;
@@ -157,57 +176,53 @@ async function processVIP() {
 
                 if (tx.committed) {
                     await db.ref(`requests/vip_subscriptions/${id}`).update({ status: 'completed' });
-                    sendAlert(req.userId, "👑 تم تفعيل اشتراك VIP بنجاح!");
+                    sendAlert(req.userId, "👑 مبروك! تم تفعيل اشتراك VIP بنجاح.");
                 }
             }
         }
     } catch (e) { console.error("VIP Process Error:", e.message); }
 }
 
-// --- [7] مراقب الدردشة والنزاعات ---
-const SUSPICIOUS_WORDS = ["نصاب", "كذاب", "غش", "سرقة", "حرامي"];
+// --- [6] مراقب الدردشة (Dispute Monitor) ---
+const SUSPICIOUS_WORDS = ["نصاب", "كذاب", "غش", "سرقة", "حرامي", "بلاغ"];
 function startChatMonitor() {
     db.ref('chats').on('child_added', (chatSnap) => {
         db.ref(`chats/${chatSnap.key}`).limitToLast(1).on('child_added', async (msgSnap) => {
-            try {
-                const msg = msgSnap.val();
-                if (!msg || !msg.text || msg.date < (Date.now() - 30000)) return;
-                
-                const lowerText = msg.text.toLowerCase();
-                if (SUSPICIOUS_WORDS.some(word => lowerText.includes(word))) {
-                    await db.ref('admin_notifications').push({
-                        type: 'dispute_alert',
-                        chatId: chatSnap.key,
-                        senderName: msg.senderName || "مجهول",
-                        lastMessage: msg.text,
-                        date: admin.database.ServerValue.TIMESTAMP,
-                        read: false
-                    });
-                }
-            } catch (err) {
-                console.error("Monitor Error:", err.message);
+            const msg = msgSnap.val();
+            if (!msg || !msg.text || msg.date < (Date.now() - 60000)) return;
+            
+            if (SUSPICIOUS_WORDS.some(word => msg.text.includes(word))) {
+                await db.ref('admin_notifications').push({
+                    type: 'dispute_alert',
+                    chatId: chatSnap.key,
+                    senderName: msg.senderName,
+                    lastMessage: msg.text,
+                    keyword: "كلمة مشبوهة",
+                    date: admin.database.ServerValue.TIMESTAMP,
+                    read: false
+                });
             }
         });
     });
 }
 
-// --- [8] دوال مساعدة ---
-function sendAlert(uid, message) {
+// --- [7] دوال مساعدة ---
+function sendAlert(uid, message, type = 'success') {
     db.ref(`alerts/${uid}`).push({
         msg: message,
-        type: 'success',
+        type: type,
         date: admin.database.ServerValue.TIMESTAMP
     });
 }
 
-// --- [9] مسارات الـ API ---
-app.get('/', (req, res) => res.send("🚀 SDM Bot with ImgBB Support is Running Smoothly"));
+// --- [8] تشغيل المجدولات والمسارات ---
+app.get('/', (req, res) => res.send("🤖 SDM Secure Bot is Active"));
 
-// --- [10] تشغيل المجدولات الزمنية ---
+// تشغيل المحركات كل عدة ثوانٍ
 setInterval(processEscrow, 5000); 
-setInterval(processTransfers, 6000); 
-setInterval(processVIP, 15000); 
-startChatMonitor(); 
+setInterval(processTransfers, 7000); 
+setInterval(processVIP, 10000); 
+startChatMonitor();
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Backend Live on Port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Bot is live on port ${PORT}`));
