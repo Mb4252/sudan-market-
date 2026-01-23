@@ -2,9 +2,14 @@ const admin = require('firebase-admin');
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
+const axios = require('axios'); // تم إضافة axios للرفع إلى ImgBB
+const FormData = require('form-data'); // تم إضافة form-data
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
+
+// مفتاح ImgBB الخاص بك
+const IMGBB_API_KEY = 'aa874951c530708a0300fc5401ed7046';
 
 // --- [1] فك تشفير مفتاح الخدمة بأمان ---
 let serviceAccount;
@@ -24,45 +29,44 @@ try {
     process.exit(1);
 }
 
-// --- [2] تهيئة Firebase ---
+// --- [2] تهيئة Firebase (قاعدة البيانات فقط) ---
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
-    storageBucket: "sudan-market-6b122.firebasestorage.app"
+    databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
 });
 
 const db = admin.database();
-const bucket = admin.storage().bucket();
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// --- [3] نظام رفع الصور الاحترافي ---
+// --- [3] نظام رفع الصور الجديد عبر ImgBB (بدون بطاقة بنكية) ---
 app.post('/api/upload', upload.single('image'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+        if (!req.file) return res.status(400).json({ error: "لم يتم رفع ملف" });
 
-        const fileName = `uploads/${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
-        const file = bucket.file(fileName);
+        // تحويل الملف إلى Base64
+        const imageBase64 = req.file.buffer.toString('base64');
 
-        const blobStream = file.createWriteStream({
-            metadata: { contentType: req.file.mimetype },
-            public: true
+        const form = new FormData();
+        form.append('image', imageBase64);
+
+        console.log("⏳ جاري الرفع إلى ImgBB...");
+        
+        const response = await axios.post(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, form, {
+            headers: form.getHeaders()
         });
 
-        blobStream.on('error', (err) => {
-            console.error("Upload Error:", err);
-            res.status(500).json({ error: err.message });
-        });
-
-        blobStream.on('finish', () => {
-            const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+        if (response.data && response.data.data.url) {
+            const publicUrl = response.data.data.url;
+            console.log("✅ تم الرفع بنجاح:", publicUrl);
             res.status(200).json({ url: publicUrl });
-        });
-
-        blobStream.end(req.file.buffer);
+        } else {
+            throw new Error("فشل الحصول على رابط من ImgBB");
+        }
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error("❌ Upload Error:", e.message);
+        res.status(500).json({ error: "فشل رفع الصورة: " + e.message });
     }
 });
 
@@ -160,14 +164,13 @@ async function processVIP() {
     } catch (e) { console.error("VIP Process Error:", e.message); }
 }
 
-// --- [7] مراقب الدردشة والنزاعات (تم الإصلاح هنا) ---
+// --- [7] مراقب الدردشة والنزاعات ---
 const SUSPICIOUS_WORDS = ["نصاب", "كذاب", "غش", "سرقة", "حرامي"];
 function startChatMonitor() {
     db.ref('chats').on('child_added', (chatSnap) => {
         db.ref(`chats/${chatSnap.key}`).limitToLast(1).on('child_added', async (msgSnap) => {
             try {
                 const msg = msgSnap.val();
-                // التحقق من وجود الرسالة، وجود نص فيها، وأنها حديثة
                 if (!msg || !msg.text || msg.date < (Date.now() - 30000)) return;
                 
                 const lowerText = msg.text.toLowerCase();
@@ -198,7 +201,7 @@ function sendAlert(uid, message) {
 }
 
 // --- [9] مسارات الـ API ---
-app.get('/', (req, res) => res.send("🚀 SDM Full Bot System is Running Smoothly"));
+app.get('/', (req, res) => res.send("🚀 SDM Bot with ImgBB Support is Running Smoothly"));
 
 // --- [10] تشغيل المجدولات الزمنية ---
 setInterval(processEscrow, 5000); 
