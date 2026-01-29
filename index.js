@@ -1,6 +1,6 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-const { Configuration, OpenAIApi } = require('openai');
+const OpenAI = require('openai'); // تحديث الاستدعاء للإصدار الجديد
 const cors = require('cors')({ origin: true });
 
 // 1. تهيئة Firebase
@@ -9,14 +9,11 @@ admin.initializeApp();
 // 2. تهيئة قاعدة البيانات
 const db = admin.firestore();
 
-// 3. إعداد OpenAI (متوافق مع الإصدار 3.3.0)
-const configuration = new Configuration({
+// 3. إعداد OpenAI (تحديث: لا حاجة لـ Configuration في الإصدار الجديد)
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY, // يفضل استخدام متغيرات البيئة
-  // أو يمكنك وضع المفتاح مباشرة هنا كـ string إذا كنت تفضل ذلك مؤقتاً:
-  // apiKey: "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  // apiKey: "sk-..." // يمكنك وضع المفتاح هنا إذا لزم الأمر
 });
-
-const openai = new OpenAIApi(configuration);
 
 // 4. الدالة الرئيسية: إنشاء اختبار من كتاب
 exports.createBookQuiz = functions.https.onRequest(async (req, res) => {
@@ -103,8 +100,8 @@ exports.createBookQuiz = functions.https.onRequest(async (req, res) => {
       }
       `;
 
-      // استخدام createChatCompletion المتوافق مع v3
-      const aiResponse = await openai.createChatCompletion({
+      // تحديث: استخدام chat.completions.create بدلاً من createChatCompletion
+      const aiResponse = await openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
         messages: [
           {
@@ -117,8 +114,8 @@ exports.createBookQuiz = functions.https.onRequest(async (req, res) => {
         max_tokens: 3000
       });
 
-      // الوصول للبيانات في v3 يتم عبر .data
-      const aiContent = aiResponse.data.choices[0].message.content;
+      // تحديث: الوصول للبيانات مباشر بدون .data
+      const aiContent = aiResponse.choices[0].message.content;
       
       const jsonMatch = aiContent.match(/\{[\s\S]*\}/);
       
@@ -332,7 +329,8 @@ exports.createChapterFromText = functions.https.onRequest(async (req, res) => {
       }
       `;
 
-      const aiResponse = await openai.createChatCompletion({
+      // تحديث: استخدام chat.completions.create
+      const aiResponse = await openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
         messages: [
           { role: 'system', content: 'أنت محلل تعليمي محترف.' },
@@ -342,8 +340,9 @@ exports.createChapterFromText = functions.https.onRequest(async (req, res) => {
         max_tokens: 1000
       });
 
+      // تحديث: الوصول للبيانات مباشر
       const aiAnalysis = JSON.parse(
-        aiResponse.data.choices[0].message.content.match(/\{[\s\S]*\}/)[0]
+        aiResponse.choices[0].message.content.match(/\{[\s\S]*\}/)[0]
       );
 
       const chapterData = {
