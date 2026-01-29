@@ -6,33 +6,33 @@ const cors = require('cors')({ origin: true });
 // 1. تهيئة Firebase
 admin.initializeApp();
 
-// 2. تهيئة قاعدة البيانات (Firestore أفضل من Realtime)
+// 2. تهيئة قاعدة البيانات
 const db = admin.firestore();
 
-// 3. 🔐 مفتاح OpenAI (هنا فقط - آمن تماماً)
-const openaiConfig = new Configuration({
-  apiKey: "sk-...مفتاح_OpenAI_الحقيقي_هنا..." // ← استبدل هذا
+// 3. إعداد OpenAI (متوافق مع الإصدار 3.3.0)
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY, // يفضل استخدام متغيرات البيئة
+  // أو يمكنك وضع المفتاح مباشرة هنا كـ string إذا كنت تفضل ذلك مؤقتاً:
+  // apiKey: "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 });
 
-const openai = new OpenAIApi(openaiConfig);
+const openai = new OpenAIApi(configuration);
 
-// 4. 🎯 الدالة الرئيسية: إنشاء اختبار من كتاب
+// 4. الدالة الرئيسية: إنشاء اختبار من كتاب
 exports.createBookQuiz = functions.https.onRequest(async (req, res) => {
-  // تفعيل CORS
   cors(req, res, async () => {
     try {
       const {
-        bookId,          // معرف الكتاب
-        chapterId,       // معرف الفصل
-        questionCount = 5, // عدد الأسئلة
-        difficulty = 'medium', // الصعوبة
-        questionType = 'mcq', // نوع الأسئلة
-        userId = 'guest'      // معرف المستخدم
+        bookId,
+        chapterId,
+        questionCount = 5,
+        difficulty = 'medium',
+        questionType = 'mcq',
+        userId = 'guest'
       } = req.body;
 
       console.log('📖 طلب إنشاء اختبار:', { bookId, chapterId, questionCount });
 
-      // 🔍 التحقق من البيانات
       if (!bookId || !chapterId) {
         return res.status(400).json({
           success: false,
@@ -40,7 +40,6 @@ exports.createBookQuiz = functions.https.onRequest(async (req, res) => {
         });
       }
 
-      // 📚 جلب بيانات الكتاب من Firestore
       const bookRef = db.collection('books').doc(bookId);
       const bookSnapshot = await bookRef.get();
 
@@ -53,7 +52,6 @@ exports.createBookQuiz = functions.https.onRequest(async (req, res) => {
 
       const bookData = bookSnapshot.data();
       
-      // 📖 جلب محتوى الفصل
       const chapterRef = bookRef.collection('chapters').doc(chapterId);
       const chapterSnapshot = await chapterRef.get();
 
@@ -66,7 +64,6 @@ exports.createBookQuiz = functions.https.onRequest(async (req, res) => {
 
       const chapterData = chapterSnapshot.data();
 
-      // 🧠 تحضير الرسالة لـ OpenAI
       const arabicDifficulty = {
         'easy': 'سهل',
         'medium': 'متوسط', 
@@ -106,7 +103,7 @@ exports.createBookQuiz = functions.https.onRequest(async (req, res) => {
       }
       `;
 
-      // 🤖 الاتصال بـ OpenAI
+      // استخدام createChatCompletion المتوافق مع v3
       const aiResponse = await openai.createChatCompletion({
         model: 'gpt-3.5-turbo',
         messages: [
@@ -120,9 +117,9 @@ exports.createBookQuiz = functions.https.onRequest(async (req, res) => {
         max_tokens: 3000
       });
 
+      // الوصول للبيانات في v3 يتم عبر .data
       const aiContent = aiResponse.data.choices[0].message.content;
       
-      // 📊 استخراج JSON من الرد
       const jsonMatch = aiContent.match(/\{[\s\S]*\}/);
       
       if (!jsonMatch) {
@@ -131,7 +128,6 @@ exports.createBookQuiz = functions.https.onRequest(async (req, res) => {
 
       const quizData = JSON.parse(jsonMatch[0]);
 
-      // 💾 حفظ الاختبار في قاعدة البيانات
       const quizId = `quiz_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
       const quizToSave = {
@@ -150,13 +146,11 @@ exports.createBookQuiz = functions.https.onRequest(async (req, res) => {
 
       await db.collection('generated_quizzes').doc(quizId).set(quizToSave);
 
-      // 📈 تحديث إحصائيات الكتاب
       await bookRef.update({
         totalQuizzesGenerated: (bookData.totalQuizzesGenerated || 0) + 1,
         lastQuizGenerated: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      // ✅ إرسال النتيجة
       return res.status(200).json({
         success: true,
         message: `✅ تم إنشاء ${quizData.questions?.length || 0} سؤال بنجاح`,
@@ -182,7 +176,7 @@ exports.createBookQuiz = functions.https.onRequest(async (req, res) => {
   });
 });
 
-// 5. 📂 دالة لرفع كتاب جديد
+// 5. دالة لرفع كتاب جديد
 exports.uploadBookWithAI = functions.https.onRequest(async (req, res) => {
   cors(req, res, async () => {
     try {
@@ -201,7 +195,6 @@ exports.uploadBookWithAI = functions.https.onRequest(async (req, res) => {
         });
       }
 
-      // إنشاء معرف فريد للكتاب
       const bookId = `book_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       
       const bookData = {
@@ -215,10 +208,8 @@ exports.uploadBookWithAI = functions.https.onRequest(async (req, res) => {
         aiEnabled: true
       };
 
-      // حفظ الكتاب
       await db.collection('books').doc(bookId).set(bookData);
 
-      // حفظ الفصول
       const chapterPromises = Object.entries(chapters).map(async ([chapterKey, chapterData]) => {
         await db.collection('books').doc(bookId)
           .collection('chapters').doc(chapterKey).set({
@@ -247,7 +238,7 @@ exports.uploadBookWithAI = functions.https.onRequest(async (req, res) => {
   });
 });
 
-// 6. 📊 دالة لجلب اختبارات الكتاب
+// 6. دالة لجلب اختبارات الكتاب
 exports.getBookQuizzes = functions.https.onRequest(async (req, res) => {
   cors(req, res, async () => {
     try {
@@ -289,7 +280,7 @@ exports.getBookQuizzes = functions.https.onRequest(async (req, res) => {
   });
 });
 
-// 7. 🔧 دالة صحية للتحقق من عمل الخادم
+// 7. دالة صحية للتحقق من عمل الخادم
 exports.healthCheck = functions.https.onRequest(async (req, res) => {
   cors(req, res, async () => {
     return res.status(200).json({
@@ -306,7 +297,7 @@ exports.healthCheck = functions.https.onRequest(async (req, res) => {
   });
 });
 
-// 8. 📝 دالة لإنشاء فصل تلقائياً من نص
+// 8. دالة لإنشاء فصل تلقائياً من نص
 exports.createChapterFromText = functions.https.onRequest(async (req, res) => {
   cors(req, res, async () => {
     try {
@@ -319,10 +310,8 @@ exports.createChapterFromText = functions.https.onRequest(async (req, res) => {
         });
       }
 
-      // إنشاء معرف الفصل
       const chapterId = `chapter_${Date.now()}`;
       
-      // تحليل النص باستخدام AI
       const analysisPrompt = `
       قم بتحليل النص التالي وإنشاء هيكل تعليمي له:
       
@@ -357,7 +346,6 @@ exports.createChapterFromText = functions.https.onRequest(async (req, res) => {
         aiResponse.data.choices[0].message.content.match(/\{[\s\S]*\}/)[0]
       );
 
-      // حفظ الفصل
       const chapterData = {
         title: chapterTitle || aiAnalysis.title,
         content: chapterText,
