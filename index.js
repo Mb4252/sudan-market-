@@ -1,268 +1,390 @@
+const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-const express = require('express');
-const cors = require('cors');
-const crypto = require('crypto');
+const { Configuration, OpenAIApi } = require('openai');
+const cors = require('cors')({ origin: true });
 
-const app = express();
+// 1. تهيئة Firebase
+admin.initializeApp();
 
-// 1. إعداد الاتصال بقاعدة البيانات و Firebase Storage
-// يتم استخدام Base64 لفك تشفير مفتاح الخدمة من أجل الأمان في Render
-const serviceAccount = JSON.parse(Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString());
+// 2. تهيئة قاعدة البيانات (Firestore أفضل من Realtime)
+const db = admin.firestore();
 
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
-    storageBucket: "sudan-market-6b122.appspot.com"
+// 3. 🔐 مفتاح OpenAI (هنا فقط - آمن تماماً)
+const openaiConfig = new Configuration({
+  apiKey: "sk-...مفتاح_OpenAI_الحقيقي_هنا..." // ← استبدل هذا
 });
 
-const db = admin.database();
-const bucket = admin.storage().bucket();
+const openai = new OpenAIApi(openaiConfig);
 
-// إعدادات الوسيط (Middleware)
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-
-/**
- * دالة مساعدة لإرسال تنبيهات فورية للمستخدمين
- */
-function sendAlert(uid, msg, type = 'success') {
-    db.ref(`alerts/${uid}`).push({
-        msg: msg,
-        type: type,
-        date: admin.database.ServerValue.TIMESTAMP
-    });
-}
-
-/**
- * Middleware للتحقق من هوية المستخدم عبر Firebase Auth
- */
-async function authenticateUser(req, res, next) {
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: "غير مصرح لك" });
-
+// 4. 🎯 الدالة الرئيسية: إنشاء اختبار من كتاب
+exports.createBookQuiz = functions.https.onRequest(async (req, res) => {
+  // تفعيل CORS
+  cors(req, res, async () => {
     try {
-        const decodedToken = await admin.auth().verifyIdToken(idToken);
-        req.user = decodedToken;
-        next();
-    } catch (error) {
-        res.status(403).json({ error: "انتهت جلسة الدخول" });
-    }
-}
+      const {
+        bookId,          // معرف الكتاب
+        chapterId,       // معرف الفصل
+        questionCount = 5, // عدد الأسئلة
+        difficulty = 'medium', // الصعوبة
+        questionType = 'mcq', // نوع الأسئلة
+        userId = 'guest'      // معرف المستخدم
+      } = req.body;
 
-// ==========================================
-// [1] محرك الوسيط الآمن (Escrow System)
-// ==========================================
-async function processEscrow() {
-    try {
-        const escRef = db.ref('requests/escrow_deals');
-        const pendingLock = await escRef.orderByChild('status').equalTo('pending_delivery').once('value');
-        
-        if (pendingLock.exists()) {
-            for (const [id, deal] of Object.entries(pendingLock.val())) {
-                
-                // صمام الأمان: منع الشراء الذاتي
-                if (deal.buyerId === deal.sellerId) {
-                    await escRef.child(id).update({ 
-                        status: 'failed_self_purchase',
-                        updatedAt: admin.database.ServerValue.TIMESTAMP 
-                    });
-                    sendAlert(deal.buyerId, `❌ محاولة فاشلة: لا يمكنك الشراء من نفسك.`, 'error');
-                    continue;
-                }
+      console.log('📖 طلب إنشاء اختبار:', { bookId, chapterId, questionCount });
 
-                const amount = parseFloat(deal.amount);
-                const lockTx = await db.ref(`users/${deal.buyerId}`).transaction(user => {
-                    if (!user) return user;
-                    const bal = parseFloat(user.sdmBalance || 0);
-                    if (bal < amount) return undefined; 
-                    user.sdmBalance = Number((bal - amount).toFixed(2));
-                    return user;
-                });
-
-                if (lockTx.committed) {
-                    await escRef.child(id).update({ status: 'secured', updatedAt: admin.database.ServerValue.TIMESTAMP });
-                    await db.ref(`${deal.path}/${deal.postId}`).update({ pending: true, buyerId: deal.buyerId });
-                    sendAlert(deal.buyerId, `🔒 تم حجز ${amount} SDM. حقك محفوظ في الوسيط الآن.`);
-                    sendAlert(deal.sellerId, `🔔 تم دفع مبلغ السلعة للوسيط. يمكنك التسليم للمشتري الآن.`);
-                } else {
-                    await escRef.child(id).update({ status: 'failed_insufficient_funds' });
-                    sendAlert(deal.buyerId, `❌ رصيدك غير كافٍ لإتمام عملية الشراء.`, 'error');
-                }
-            }
-        }
-    } catch (e) { console.error("Escrow Error:", e.message); }
-}
-
-// ==========================================
-// [2] محرك التحويل المباشر بين المستخدمين
-// ==========================================
-async function processTransfers() {
-    try {
-        const snap = await db.ref('requests/transfers').orderByChild('status').equalTo('pending').once('value');
-        if (snap.exists()) {
-            for (const [id, req] of Object.entries(snap.val())) {
-                const amount = parseFloat(req.amount);
-                const targetSnap = await db.ref('users').orderByChild('numericId').equalTo(req.toId).once('value');
-                
-                if (!targetSnap.exists()) {
-                    await db.ref(`requests/transfers/${id}`).update({ status: 'failed_not_found' });
-                    sendAlert(req.from, `❌ عذراً، لم نجد مستخدماً يحمل الرقم ${req.toId}`, 'error');
-                    continue;
-                }
-
-                const targetUid = Object.keys(targetSnap.val())[0];
-                const tx = await db.ref(`users/${req.from}`).transaction(u => {
-                    if (!u || (u.sdmBalance || 0) < amount) return undefined;
-                    u.sdmBalance = Number((u.sdmBalance - amount).toFixed(2));
-                    return u;
-                });
-
-                if (tx.committed) {
-                    await db.ref(`users/${targetUid}/sdmBalance`).transaction(b => Number(((b || 0) + amount).toFixed(2)));
-                    await db.ref(`requests/transfers/${id}`).update({ status: 'completed' });
-                    sendAlert(req.from, `✅ تم تحويل ${amount} SDM بنجاح.`);
-                    sendAlert(targetUid, `💰 وصلك تحويل ${amount} SDM من ${req.fromName}.`);
-                } else {
-                    await db.ref(`requests/transfers/${id}`).update({ status: 'failed_insufficient_funds' });
-                    sendAlert(req.from, `❌ فشل التحويل: رصيدك غير كافٍ.`, 'error');
-                }
-            }
-        }
-    } catch (e) { console.error("Transfer Error:", e.message); }
-}
-
-// ==========================================
-// [3] محرك الـ VIP (تفعيل + فحص انتهاء)
-// ==========================================
-async function processVIP() {
-    try {
-        const snap = await db.ref('requests/vip_subscriptions').orderByChild('status').equalTo('pending').once('value');
-        if (snap.exists()) {
-            for (const [id, req] of Object.entries(snap.val())) {
-                const cost = parseFloat(req.cost);
-                const tx = await db.ref(`users/${req.userId}`).transaction(u => {
-                    if (!u || (u.sdmBalance || 0) < cost) return undefined;
-                    u.sdmBalance = Number((u.sdmBalance - cost).toFixed(2));
-                    u.vipStatus = 'active';
-                    u.vipExpiry = (Math.max(u.vipExpiry || 0, Date.now())) + (req.days * 86400000);
-                    return u;
-                });
-                if (tx.committed) {
-                    await db.ref(`requests/vip_subscriptions/${id}`).update({ status: 'completed' });
-                    sendAlert(req.userId, `👑 مبروك! تم تفعيل ميزات VIP لمدة ${req.days} يوم.`);
-                }
-            }
-        }
-
-        const now = Date.now();
-        const activeVips = await db.ref('users').orderByChild('vipStatus').equalTo('active').once('value');
-        if (activeVips.exists()) {
-            activeVips.forEach(child => {
-                const user = child.val();
-                if (user.vipExpiry && now > user.vipExpiry) {
-                    child.ref.update({ vipStatus: 'expired' });
-                    sendAlert(child.key, "⚠️ انتهى اشتراك VIP الخاص بك.", "info");
-                }
-            });
-        }
-    } catch (e) {}
-}
-
-// ==========================================
-// [4] محرك تحويلات البنوك وتنظيف المتجر
-// ==========================================
-async function processBankTransfers() {
-    try {
-        const snap = await db.ref('bank_transfer_requests').orderByChild('status').equalTo('pending').once('value');
-        if (snap.exists()) {
-            for (const [id, req] of Object.entries(snap.val())) {
-                const userSnap = await db.ref(`users/${req.userId}`).once('value');
-                const user = userSnap.val();
-                
-                if (!user || (user.sdmBalance || 0) < req.amountSDM) {
-                    await db.ref(`bank_transfer_requests/${id}`).update({ status: 'auto_rejected', reason: 'رصيد غير كافٍ' });
-                    sendAlert(req.userId, `❌ رفض طلب التحويل: رصيدك غير كافٍ`, 'error');
-                    continue;
-                }
-                
-                const adminNotif = await db.ref('admin_notifications').orderByChild('transferId').equalTo(id).once('value');
-                if (!adminNotif.exists()) {
-                    await db.ref('admin_notifications').push({
-                        ...req, type: 'bank_transfer_request', date: admin.database.ServerValue.TIMESTAMP
-                    });
-                }
-            }
-        }
-    } catch (e) {}
-}
-
-async function cleanupStore() {
-    try {
-        const now = Date.now();
-        const oneDay = 24 * 60 * 60 * 1000;
-        for (const path of ['posts', 'vip_posts']) {
-            const snap = await db.ref(path).orderByChild('sold').equalTo(true).once('value');
-            if (snap.exists()) {
-                snap.forEach(child => {
-                    const post = child.val();
-                    if (post.soldAt && (now - post.soldAt) > oneDay) child.ref.remove();
-                });
-            }
-        }
-    } catch (e) {}
-}
-
-// ==========================================
-// [5] مراقب الدردشة والـ APIs
-// ==========================================
-const DISPUTE_KEYWORDS = ["نصاب", "حرامي", "غش", "كذاب", "بلاغ"];
-function startChatMonitor() {
-    db.ref('chats').on('child_added', (chatSnap) => {
-        db.ref(`chats/${chatSnap.key}`).limitToLast(1).on('child_added', async (msgSnap) => {
-            const msg = msgSnap.val();
-            if (!msg || !msg.text || msg.date < (Date.now() - 60000)) return;
-            if (DISPUTE_KEYWORDS.some(word => msg.text.includes(word))) {
-                await db.ref('admin_notifications').push({
-                    type: 'dispute_alert', chatId: chatSnap.key, lastMessage: msg.text, senderName: msg.senderName, date: admin.database.ServerValue.TIMESTAMP
-                });
-            }
+      // 🔍 التحقق من البيانات
+      if (!bookId || !chapterId) {
+        return res.status(400).json({
+          success: false,
+          error: 'المعرفات المطلوبة: bookId و chapterId'
         });
+      }
+
+      // 📚 جلب بيانات الكتاب من Firestore
+      const bookRef = db.collection('books').doc(bookId);
+      const bookSnapshot = await bookRef.get();
+
+      if (!bookSnapshot.exists) {
+        return res.status(404).json({
+          success: false,
+          error: 'الكتاب غير موجود'
+        });
+      }
+
+      const bookData = bookSnapshot.data();
+      
+      // 📖 جلب محتوى الفصل
+      const chapterRef = bookRef.collection('chapters').doc(chapterId);
+      const chapterSnapshot = await chapterRef.get();
+
+      if (!chapterSnapshot.exists) {
+        return res.status(404).json({
+          success: false,
+          error: 'الفصل غير موجود'
+        });
+      }
+
+      const chapterData = chapterSnapshot.data();
+
+      // 🧠 تحضير الرسالة لـ OpenAI
+      const arabicDifficulty = {
+        'easy': 'سهل',
+        'medium': 'متوسط', 
+        'hard': 'صعب'
+      }[difficulty] || 'متوسط';
+
+      const prompt = `
+      أنت معلم خبير في مادة "${bookData.subject || 'المواد الدراسية'}" للصف "${bookData.grade || 'المستوى التعليمي'}".
+
+      **الكتاب:** ${bookData.title}
+      **الفصل:** ${chapterData.title || 'الفصل الدراسي'}
+      **المحتوى:** "${chapterData.content?.substring(0, 2000) || 'نص الفصل'}"
+
+      **المهمة:**
+      1. أنشئ ${questionCount} سؤالاً تعليمياً من نوع "${questionType === 'mcq' ? 'اختيار من متعدد' : 'صح وخطأ'}"
+      2. مستوى الصعوبة: **${arabicDifficulty}**
+      3. كل سؤال يجب أن:
+         - يكون مباشراً من محتوى الفصل
+         - له 4 خيارات (للمتعدد) أو خيارين (لصح/خطأ)
+         - الإجابة الصحيحة واضحة
+         - شرح مختصر للإجابة
+      4. ركز على النقاط التعليمية الأساسية في النص
+
+      **مثال للهيكل المطلوب:**
+      {
+        "bookTitle": "اسم الكتاب",
+        "chapterTitle": "اسم الفصل", 
+        "questions": [
+          {
+            "id": 1,
+            "question": "نص السؤال",
+            "options": ["الخيار 1", "الخيار 2", "الخيار 3", "الخيار 4"],
+            "correctAnswer": 0,
+            "explanation": "شرح الإجابة"
+          }
+        ]
+      }
+      `;
+
+      // 🤖 الاتصال بـ OpenAI
+      const aiResponse = await openai.createChatCompletion({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: 'أنت معلم ذكي. أجب دائمًا بتنسيق JSON فقط دون أي نص إضافي.'
+          },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 3000
+      });
+
+      const aiContent = aiResponse.data.choices[0].message.content;
+      
+      // 📊 استخراج JSON من الرد
+      const jsonMatch = aiContent.match(/\{[\s\S]*\}/);
+      
+      if (!jsonMatch) {
+        throw new Error('فشل تحويل رد الذكاء الاصطناعي إلى JSON');
+      }
+
+      const quizData = JSON.parse(jsonMatch[0]);
+
+      // 💾 حفظ الاختبار في قاعدة البيانات
+      const quizId = `quiz_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      const quizToSave = {
+        ...quizData,
+        bookId: bookId,
+        chapterId: chapterId,
+        questionCount: parseInt(questionCount),
+        difficulty: difficulty,
+        questionType: questionType,
+        generatedFor: userId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        status: 'active',
+        views: 0,
+        attempts: 0
+      };
+
+      await db.collection('generated_quizzes').doc(quizId).set(quizToSave);
+
+      // 📈 تحديث إحصائيات الكتاب
+      await bookRef.update({
+        totalQuizzesGenerated: (bookData.totalQuizzesGenerated || 0) + 1,
+        lastQuizGenerated: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // ✅ إرسال النتيجة
+      return res.status(200).json({
+        success: true,
+        message: `✅ تم إنشاء ${quizData.questions?.length || 0} سؤال بنجاح`,
+        quizId: quizId,
+        quiz: quizData,
+        metadata: {
+          bookTitle: bookData.title,
+          chapterTitle: chapterData.title,
+          generatedAt: new Date().toISOString()
+        }
+      });
+
+    } catch (error) {
+      console.error('🔥 خطأ في الخادم:', error);
+      
+      return res.status(500).json({
+        success: false,
+        error: 'فشل إنشاء الاختبار',
+        details: error.message,
+        code: error.code || 'UNKNOWN_ERROR'
+      });
+    }
+  });
+});
+
+// 5. 📂 دالة لرفع كتاب جديد
+exports.uploadBookWithAI = functions.https.onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      const { 
+        title, 
+        author, 
+        subject, 
+        grade, 
+        chapters 
+      } = req.body;
+
+      if (!title || !chapters) {
+        return res.status(400).json({
+          success: false,
+          error: 'العنوان والفصول مطلوبة'
+        });
+      }
+
+      // إنشاء معرف فريد للكتاب
+      const bookId = `book_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+      
+      const bookData = {
+        title: title,
+        author: author || 'مؤلف غير معروف',
+        subject: subject || 'عام',
+        grade: grade || 'جميع المستويات',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        totalChapters: Object.keys(chapters).length,
+        status: 'active',
+        aiEnabled: true
+      };
+
+      // حفظ الكتاب
+      await db.collection('books').doc(bookId).set(bookData);
+
+      // حفظ الفصول
+      const chapterPromises = Object.entries(chapters).map(async ([chapterKey, chapterData]) => {
+        await db.collection('books').doc(bookId)
+          .collection('chapters').doc(chapterKey).set({
+            ...chapterData,
+            bookId: bookId,
+            order: parseInt(chapterKey.split('_')[1]) || 0
+          });
+      });
+
+      await Promise.all(chapterPromises);
+
+      return res.status(200).json({
+        success: true,
+        message: `تم رفع الكتاب "${title}" بنجاح`,
+        bookId: bookId,
+        totalChapters: Object.keys(chapters).length
+      });
+
+    } catch (error) {
+      console.error('خطأ في رفع الكتاب:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'فشل رفع الكتاب'
+      });
+    }
+  });
+});
+
+// 6. 📊 دالة لجلب اختبارات الكتاب
+exports.getBookQuizzes = functions.https.onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      const { bookId, limit = 10 } = req.query;
+
+      if (!bookId) {
+        return res.status(400).json({
+          success: false,
+          error: 'معرف الكتاب مطلوب'
+        });
+      }
+
+      const quizzesSnapshot = await db.collection('generated_quizzes')
+        .where('bookId', '==', bookId)
+        .orderBy('createdAt', 'desc')
+        .limit(parseInt(limit))
+        .get();
+
+      const quizzes = [];
+      quizzesSnapshot.forEach(doc => {
+        quizzes.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+
+      return res.status(200).json({
+        success: true,
+        quizzes: quizzes,
+        total: quizzes.length
+      });
+
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        error: 'فشل جلب الاختبارات'
+      });
+    }
+  });
+});
+
+// 7. 🔧 دالة صحية للتحقق من عمل الخادم
+exports.healthCheck = functions.https.onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    return res.status(200).json({
+      success: true,
+      message: '✅ خادم البوت التعليمي يعمل بشكل صحيح',
+      timestamp: new Date().toISOString(),
+      services: {
+        firestore: '🟢 نشط',
+        openai: '🟢 متصل',
+        functions: '🟢 جاهز'
+      },
+      version: '1.0.0'
     });
-}
-
-// --- مسارات الـ API ---
-app.get('/api/posts', async (req, res) => {
-    try {
-        const { path, sub } = req.query;
-        let query = db.ref(path);
-        if (sub && sub !== 'null') query = query.orderByChild('sub').equalTo(sub);
-        const snapshot = await query.limitToLast(50).once('value');
-        const posts = snapshot.exists() ? Object.keys(snapshot.val()).map(k => ({ id: k, ...snapshot.val()[k] })).reverse() : [];
-        res.json(posts);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
 });
 
-app.post('/api/publish', authenticateUser, async (req, res) => {
+// 8. 📝 دالة لإنشاء فصل تلقائياً من نص
+exports.createChapterFromText = functions.https.onRequest(async (req, res) => {
+  cors(req, res, async () => {
     try {
-        const { path, postData } = req.body;
-        postData.userId = req.user.uid;
-        postData.date = admin.database.ServerValue.TIMESTAMP;
-        const newPostRef = await db.ref(path).push(postData);
-        res.json({ success: true, id: newPostRef.key });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+      const { bookId, chapterTitle, chapterText } = req.body;
+
+      if (!bookId || !chapterText) {
+        return res.status(400).json({
+          success: false,
+          error: 'معرف الكتاب ونص الفصل مطلوبان'
+        });
+      }
+
+      // إنشاء معرف الفصل
+      const chapterId = `chapter_${Date.now()}`;
+      
+      // تحليل النص باستخدام AI
+      const analysisPrompt = `
+      قم بتحليل النص التالي وإنشاء هيكل تعليمي له:
+      
+      "${chapterText.substring(0, 1500)}"
+      
+      المطلوب:
+      1. عنوان مناسب للفصل
+      2. 3-5 نقاط تعليمية رئيسية
+      3. مستوى الصعوبة المقترح
+      4. الكلمات المفتاحية التعليمية
+      
+      أخرج النتيجة كـ JSON:
+      {
+        "title": "عنوان الفصل",
+        "keyPoints": ["النقطة 1", "النقطة 2"],
+        "difficulty": "easy/medium/hard",
+        "keywords": ["الكلمة 1", "الكلمة 2"]
+      }
+      `;
+
+      const aiResponse = await openai.createChatCompletion({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          { role: 'system', content: 'أنت محلل تعليمي محترف.' },
+          { role: 'user', content: analysisPrompt }
+        ],
+        temperature: 0.6,
+        max_tokens: 1000
+      });
+
+      const aiAnalysis = JSON.parse(
+        aiResponse.data.choices[0].message.content.match(/\{[\s\S]*\}/)[0]
+      );
+
+      // حفظ الفصل
+      const chapterData = {
+        title: chapterTitle || aiAnalysis.title,
+        content: chapterText,
+        keyPoints: aiAnalysis.keyPoints || [],
+        difficulty: aiAnalysis.difficulty || 'medium',
+        keywords: aiAnalysis.keywords || [],
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        wordCount: chapterText.split(' ').length,
+        aiGenerated: true
+      };
+
+      await db.collection('books').doc(bookId)
+        .collection('chapters').doc(chapterId).set(chapterData);
+
+      return res.status(200).json({
+        success: true,
+        message: 'تم إنشاء الفصل بنجاح',
+        chapterId: chapterId,
+        analysis: aiAnalysis
+      });
+
+    } catch (error) {
+      console.error('خطأ في إنشاء الفصل:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'فشل إنشاء الفصل'
+      });
+    }
+  });
 });
-
-app.get('/', (req, res) => res.send("🚀 SDM Market Security & API System is Live"));
-
-// ---------------------------------------------------------
-// المجدولات الزمنية وتشغيل السيرفر
-// ---------------------------------------------------------
-setInterval(processEscrow, 5000);
-setInterval(processTransfers, 6000);
-setInterval(processVIP, 15000);
-setInterval(processBankTransfers, 7000);
-setInterval(cleanupStore, 3600000);
-startChatMonitor();
-
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Backend Server Live on Port ${PORT}`));
