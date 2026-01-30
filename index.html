@@ -1715,83 +1715,47 @@ function renderAIAssistant() {
             </div>
         </div>`;
 }
-
+// استبدل الدالة القديمة بهذه الدالة الجديدة داخل ملف HTML
 async function generateAIQuiz() {
     const subject = document.getElementById('ai-subject').value;
     const chapter = document.getElementById('ai-chapter').value;
     const count = parseInt(document.getElementById('ai-question-count').value);
     
-    showLoading('جاري إنشاء اختبار ذكي...');
+    showLoading('جاري الاتصال بالذكاء الاصطناعي وإنشاء أسئلة حقيقية...');
     
     try {
-        // إنشاء أسئلة ذكية (محاكاة)
-        const questions = [];
-        const questionTypes = ['اختيار من متعدد', 'صح أم خطأ', 'ملء الفراغات'];
-        
-        for (let i = 1; i <= count; i++) {
-            const type = questionTypes[Math.floor(Math.random() * questionTypes.length)];
-            let question, options, correctAnswer;
-            
-            switch(type) {
-                case 'اختيار من متعدد':
-                    question = `سؤال ${i}: ما هو مفهوم ${subject} في الفصل ${chapter === 'all' ? 'الدراسي' : chapter}؟`;
-                    options = ['الإجابة الأولى', 'الإجابة الثانية', 'الإجابة الصحيحة', 'الإجابة الرابعة'];
-                    correctAnswer = 2; // الفهرس الثاني (0-based)
-                    break;
-                    
-                case 'صح أم خطأ':
-                    question = `سؤال ${i}: هذه الجملة صحيحة أم خاطئة حول ${subject}؟`;
-                    options = ['صح', 'خطأ'];
-                    correctAnswer = Math.random() > 0.5 ? 0 : 1;
-                    break;
-                    
-                case 'ملء الفراغات':
-                    question = `سؤال ${i}: أكمل الفراغ في درس ${subject}: ________`;
-                    options = ['الإجابة الأولى', 'الإجابة الصحيحة', 'الإجابة الثالثة'];
-                    correctAnswer = 1;
-                    break;
-            }
-            
-            questions.push({
-                question: question,
-                options: options,
-                correctAnswer: correctAnswer,
-                type: type,
-                explanation: `هذا السؤال يتعلق بـ ${subject} في المنهج الدراسي`
-            });
-        }
-        
-        hideLoading();
-        
-        currentQuiz = {
-            id: `quiz_${Date.now()}`,
-            subject: subject,
-            chapter: chapter,
-            questions: questions,
-            generatedAt: Date.now(),
-            userAnswers: {},
-            score: 0
-        };
-        
-        displayAIQuiz(questions);
-        
-        // تسجيل إنشاء الاختبار
-        await db.ref(`ai_quizzes/${me.uid}/${currentQuiz.id}`).set({
-            subject: subject,
-            chapter: chapter,
-            questionCount: count,
-            generatedAt: Date.now(),
-            completed: false
+        // الاتصال بالسيرفر الخلفي (server.js)
+        const response = await fetch('/api/generate-quiz', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ subject, chapter, count })
         });
         
-        // تحديث إحصائيات المستخدم
-        await db.ref(`users/${me.uid}/aiQuizzesCount`).transaction(current => (current || 0) + 1);
+        const data = await response.json();
+        
+        if (data.success) {
+            // تم جلب الأسئلة الحقيقية من GPT
+            currentQuiz = {
+                id: `quiz_${Date.now()}`,
+                subject: subject,
+                chapter: chapter,
+                questions: data.questions, // الأسئلة القادمة من السيرفر
+                generatedAt: Date.now(),
+                userAnswers: {},
+                score: 0
+            };
+            hideLoading();
+            displayAIQuiz(currentQuiz.questions);
+        } else {
+            throw new Error('فشل في جلب الأسئلة');
+        }
         
     } catch (error) {
         hideLoading();
-        showError('حدث خطأ أثناء إنشاء الاختبار: ' + error.message);
+        showError('حدث خطأ: ' + error.message);
     }
 }
+
 
 function displayAIQuiz(questions) {
     let quizHtml = `
