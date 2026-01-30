@@ -371,6 +371,73 @@
             .grid { grid-template-columns: 1fr; }
             header { padding: 12px 15px; }
         }
+
+        /* ========== عناصر الصوت ========== */
+        .audio-player {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            padding: 15px;
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .audio-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+        
+        .audio-progress {
+            flex: 1;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            cursor: pointer;
+        }
+        
+        .audio-progress-bar {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 3px;
+            width: 0%;
+            transition: width 0.1s;
+        }
+        
+        .file-upload-area {
+            border: 3px dashed var(--accent);
+            border-radius: 20px;
+            padding: 40px 20px;
+            text-align: center;
+            background: rgba(245, 158, 11, 0.05);
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        
+        .file-upload-area:hover {
+            background: rgba(245, 158, 11, 0.1);
+            border-color: var(--neon-blue);
+        }
+        
+        .uploaded-file {
+            background: var(--bg-card);
+            border-radius: 15px;
+            padding: 15px;
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .tts-container {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            border-radius: 20px;
+            padding: 20px;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
@@ -464,6 +531,9 @@
     </div>
 </div>
 
+<!-- ملف صوتي للشرح -->
+<audio id="voiceExplanation" style="display:none;"></audio>
+
 <script>
 // ==================== [ 1. إعدادات Firebase ] ====================
 const firebaseConfig = {
@@ -496,6 +566,8 @@ let currentBookId = null;
 let selectedChapter = '';
 let currentQuiz = null;
 let currentLiveRoom = null;
+let currentVoice = null;
+let uploadedFile = null;
 
 // جميع الفصول الدراسية
 const ALL_GRADES = [
@@ -706,7 +778,8 @@ function nav(view, extra) {
         'admin': 'لوحة التحكم',
         'add_book': 'إضافة كتاب جديد',
         'book_detail': 'تفاصيل الكتاب',
-        'subscription': 'الاشتراكات والدفع'
+        'subscription': 'الاشتراكات والدفع',
+        'voice_assistant': 'المساعد الصوتي'
     };
     document.getElementById('head-title').innerText = titles[view] || view;
     
@@ -731,6 +804,8 @@ function nav(view, extra) {
         renderSubscription();
     } else if (view === 'book_detail') {
         if (extra) loadBookDetail(extra);
+    } else if (view === 'voice_assistant') {
+        renderVoiceAssistant();
     }
     
     highlightTab(document.querySelector(`[onclick*="${view}"]`));
@@ -825,6 +900,13 @@ function renderHome() {
                     <i class="fas fa-book-open" style="color:var(--green)"></i>
                     <b>المكتبة العامة</b>
                     <p style="font-size:12px; color:var(--text-sec)">كتب القراءة والإثراء</p>
+                </div>
+
+                <div class="card" onclick="nav('voice_assistant')">
+                    <div class="card-badge" style="background:var(--purple);">🎤</div>
+                    <i class="fas fa-microphone" style="color:var(--purple)"></i>
+                    <b>المساعد الصوتي</b>
+                    <p style="font-size:12px; color:var(--text-sec)">شرح صوتي للكتب</p>
                 </div>
             </div>
             
@@ -1020,6 +1102,80 @@ function renderAIAssistant() {
         </div>`;
     
     loadAIBooks();
+}
+
+function renderVoiceAssistant() {
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
+                <h2 style="margin-top:0;"><i class="fas fa-volume-up"></i> المساعد الصوتي</h2>
+                <p>استمع إلى شرح صوتي للكتب والمواد الدراسية</p>
+            </div>
+            
+            <div class="tts-container">
+                <h3><i class="fas fa-microphone-alt" style="color:white;"></i> توليد شرح صوتي</h3>
+                <div style="margin:15px 0;">
+                    <textarea id="tts-text" rows="5" placeholder="أدخل النص الذي تريد تحويله إلى صوت... (الحد الأقصى 1000 حرف)" style="width:100%;"></textarea>
+                    <div style="display:flex; justify-content:space-between; margin-top:10px; color:white;">
+                        <span id="char-count">0/1000 حرف</span>
+                        <button onclick="generateVoice()" class="btn-main" style="background:white; color:#8b5cf6;">
+                            <i class="fas fa-play"></i> توليد الصوت
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="voice-output" style="display:none;">
+                    <h4><i class="fas fa-headphones" style="color:white;"></i> الاستماع:</h4>
+                    <div class="audio-player">
+                        <button onclick="playVoice()" style="background:white; color:#8b5cf6; border:none; width:50px; height:50px; border-radius:50%; cursor:pointer; font-size:20px;">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <div class="audio-controls">
+                            <div class="audio-progress" onclick="seekVoice(event)">
+                                <div class="audio-progress-bar" id="voice-progress"></div>
+                            </div>
+                            <span id="current-time">0:00</span> / <span id="total-time">0:00</span>
+                        </div>
+                        <button onclick="downloadVoice()" style="background:white; color:#8b5cf6; border:none; padding:10px 15px; border-radius:10px; cursor:pointer;">
+                            <i class="fas fa-download"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top:30px;">
+                <h3><i class="fas fa-book-reader" style="color:var(--accent);"></i> كتب مع شرح صوتي</h3>
+                <div id="audio-books" class="loading">
+                    <div class="loading-spinner"></div>
+                    <div>جاري تحميل الكتب الصوتية...</div>
+                </div>
+            </div>
+            
+            <div style="margin-top:30px; padding:20px; background:var(--bg-card); border-radius:15px;">
+                <h4><i class="fas fa-info-circle" style="color:var(--accent);"></i> كيف يعمل المساعد الصوتي؟</h4>
+                <ul style="color:var(--text-sec); padding-right:20px; line-height:1.8;">
+                    <li>يحول النص العربي إلى كلام طبيعي</li>
+                    <li>يدعم جميع المواد الدراسية</li>
+                    <li>يمكنك تحميل الشرح الصوتي</li>
+                    <li>يضيف نغمات صوتية مختلفة للتركيز</li>
+                    <li>مثالي للمذاكرة أثناء التنقل</li>
+                </ul>
+            </div>
+        </div>`;
+    
+    // تحديث عداد الأحرف
+    document.getElementById('tts-text').addEventListener('input', function() {
+        const count = this.value.length;
+        document.getElementById('char-count').textContent = `${count}/1000 حرف`;
+        if (count > 1000) {
+            this.value = this.value.substring(0, 1000);
+            document.getElementById('char-count').textContent = "1000/1000 حرف (الحد الأقصى)";
+        }
+    });
+    
+    loadAudioBooks();
 }
 
 function renderLiveRooms() {
@@ -1291,17 +1447,68 @@ function renderAddBook() {
                         
                         <div>
                             <label style="display:block; margin-bottom:8px; color:var(--accent);">
-                                <i class="fas fa-file-pdf"></i> رابط الكتاب (PDF)
+                                <i class="fas fa-file-pdf"></i> طريقة إضافة الكتاب
                             </label>
-                            <input type="url" id="book-url" placeholder="رابط تحميل الكتاب">
+                            <select id="upload-method" class="swal2-input" onchange="toggleUploadMethod()">
+                                <option value="link">إضافة رابط</option>
+                                <option value="upload" selected>رفع من الهاتف</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div id="link-upload" style="display:none; margin-bottom:20px;">
+                        <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                            <i class="fas fa-link"></i> رابط الكتاب (PDF)
+                        </label>
+                        <input type="url" id="book-url" placeholder="رابط تحميل الكتاب">
+                    </div>
+                    
+                    <div id="file-upload" style="margin-bottom:20px;">
+                        <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                            <i class="fas fa-cloud-upload-alt"></i> رفع الكتاب من هاتفك
+                        </label>
+                        <div class="file-upload-area" onclick="document.getElementById('book-file').click()" id="file-drop-area">
+                            <i class="fas fa-file-upload" style="font-size:48px; color:var(--accent); margin-bottom:15px;"></i>
+                            <h4 style="color:var(--accent);">انقر أو اسحب لرفع الكتاب</h4>
+                            <p style="color:var(--text-sec); margin:10px 0;">يمكنك رفع ملفات PDF أو صور</p>
+                            <p style="color:var(--text-sec); font-size:12px;">الحجم الأقصى: 10MB</p>
+                            <input type="file" id="book-file" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="handleFileUpload(event)">
+                        </div>
+                        <div id="uploaded-file-info" class="uploaded-file" style="display:none;">
+                            <i class="fas fa-file-pdf" style="font-size:32px; color:var(--accent);"></i>
+                            <div style="flex:1;">
+                                <div style="font-weight:bold;" id="file-name"></div>
+                                <div style="font-size:12px; color:var(--text-sec);" id="file-size"></div>
+                                <div style="font-size:11px; color:var(--green);" id="upload-status"></div>
+                            </div>
+                            <button type="button" class="btn-danger" onclick="removeUploadedFile()" style="width:auto; padding:8px 12px;">
+                                <i class="fas fa-trash"></i> إزالة
+                            </button>
                         </div>
                     </div>
                     
                     <div style="margin-bottom:20px;">
                         <label style="display:block; margin-bottom:8px; color:var(--accent);">
-                            <i class="fas fa-image"></i> رابط غلاف الكتاب (اختياري)
+                            <i class="fas fa-image"></i> رفع غلاف الكتاب
                         </label>
-                        <input type="url" id="book-cover" placeholder="رابط صورة الغلاف">
+                        <div class="file-upload-area" onclick="document.getElementById('cover-file').click()" id="cover-drop-area">
+                            <i class="fas fa-image" style="font-size:48px; color:var(--accent); margin-bottom:15px;"></i>
+                            <h4 style="color:var(--accent);">انقر لرفع صورة الغلاف</h4>
+                            <p style="color:var(--text-sec); margin:10px 0;">الصيغ المدعومة: JPG, PNG</p>
+                            <p style="color:var(--text-sec); font-size:12px;">الحجم الأقصى: 5MB</p>
+                            <input type="file" id="cover-file" accept=".jpg,.jpeg,.png" style="display:none;" onchange="handleCoverUpload(event)">
+                        </div>
+                        <div id="uploaded-cover-info" class="uploaded-file" style="display:none;">
+                            <img id="cover-preview" src="" style="width:60px; height:80px; border-radius:8px; object-fit:cover;">
+                            <div style="flex:1;">
+                                <div style="font-weight:bold;" id="cover-name"></div>
+                                <div style="font-size:12px; color:var(--text-sec);" id="cover-size"></div>
+                                <div style="font-size:11px; color:var(--green);" id="cover-status"></div>
+                            </div>
+                            <button type="button" class="btn-danger" onclick="removeUploadedCover()" style="width:auto; padding:8px 12px;">
+                                <i class="fas fa-trash"></i> إزالة
+                            </button>
+                        </div>
                     </div>
                     
                     <div style="margin-bottom:20px;">
@@ -1329,6 +1536,7 @@ function renderAddBook() {
                     <li>يمكنك إضافة كتب خارج المنهج في المكتبة العامة</li>
                     <li>الكتب المجانية متاحة للجميع للتحميل</li>
                     <li>الكتب المدفوعة تتطلب رصيد SDM</li>
+                    <li>يدعم النظام رفع الملفات من الهاتف مباشرة</li>
                 </ul>
             </div>
         </div>`;
@@ -1676,6 +1884,13 @@ async function loadBookDetail(bookId) {
                     <i class="fas fa-robot"></i> إنشاء اختبار ذكي
                 </button>
                 
+                ${book.bookUrl ? `
+                <button class="btn-main" onclick="explainBookWithAI('${bookId}', '${book.title.replace(/'/g, "\\'")}')" 
+                        style="flex:1; min-width:150px; background:var(--accent); color:black;">
+                    <i class="fas fa-volume-up"></i> شرح صوتي
+                </button>
+                ` : ''}
+                
                 ${me.role === 'admin' ? `
                 <button class="btn-danger" onclick="deleteBook('${bookId}', '${book.title.replace(/'/g, "\\'")}')" 
                         style="flex:1; min-width:150px;">
@@ -1686,6 +1901,120 @@ async function loadBookDetail(bookId) {
         </div>`;
 }
 
+// ==================== [ 9. تحميل الملفات من الهاتف ] ====================
+let uploadedBookFile = null;
+let uploadedCoverFile = null;
+
+function toggleUploadMethod() {
+    const method = document.getElementById('upload-method').value;
+    const linkUpload = document.getElementById('link-upload');
+    const fileUpload = document.getElementById('file-upload');
+    
+    if (method === 'link') {
+        linkUpload.style.display = 'block';
+        fileUpload.style.display = 'none';
+        // حذف الملف المرفوع إذا كان موجوداً
+        uploadedBookFile = null;
+        document.getElementById('uploaded-file-info').style.display = 'none';
+    } else {
+        linkUpload.style.display = 'none';
+        fileUpload.style.display = 'block';
+        // حذف الرابط إذا كان موجوداً
+        document.getElementById('book-url').value = '';
+    }
+}
+
+function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // التحقق من نوع الملف
+    const validTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    if (!validTypes.includes(file.type)) {
+        showError('نوع الملف غير مدعوم. يرجى رفع ملف PDF أو صورة');
+        return;
+    }
+    
+    // التحقق من حجم الملف (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+        showError('حجم الملف كبير جداً. الحد الأقصى 10MB');
+        return;
+    }
+    
+    uploadedBookFile = file;
+    
+    // عرض معلومات الملف
+    document.getElementById('file-name').textContent = file.name;
+    document.getElementById('file-size').textContent = formatFileSize(file.size);
+    document.getElementById('upload-status').textContent = 'جاهز للرفع';
+    document.getElementById('uploaded-file-info').style.display = 'flex';
+    
+    // تغيير نمط منطقة السحب
+    document.getElementById('file-drop-area').style.borderColor = 'var(--green)';
+    document.getElementById('file-drop-area').style.background = 'rgba(16, 185, 129, 0.1)';
+}
+
+function handleCoverUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // التحقق من نوع الملف
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+    if (!validTypes.includes(file.type)) {
+        showError('نوع الملف غير مدعوم. يرجى رفع صورة JPG أو PNG');
+        return;
+    }
+    
+    // التحقق من حجم الملف (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+        showError('حجم الصورة كبير جداً. الحد الأقصى 5MB');
+        return;
+    }
+    
+    uploadedCoverFile = file;
+    
+    // عرض معلومات الصورة
+    document.getElementById('cover-name').textContent = file.name;
+    document.getElementById('cover-size').textContent = formatFileSize(file.size);
+    document.getElementById('cover-status').textContent = 'جاهز للرفع';
+    
+    // عرض معاينة الصورة
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        document.getElementById('cover-preview').src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+    
+    document.getElementById('uploaded-cover-info').style.display = 'flex';
+    
+    // تغيير نمط منطقة السحب
+    document.getElementById('cover-drop-area').style.borderColor = 'var(--green)';
+    document.getElementById('cover-drop-area').style.background = 'rgba(16, 185, 129, 0.1)';
+}
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' بايت';
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' كيلوبايت';
+    else return (bytes / 1048576).toFixed(1) + ' ميجابايت';
+}
+
+function removeUploadedFile() {
+    uploadedBookFile = null;
+    document.getElementById('book-file').value = '';
+    document.getElementById('uploaded-file-info').style.display = 'none';
+    document.getElementById('file-drop-area').style.borderColor = 'var(--accent)';
+    document.getElementById('file-drop-area').style.background = 'rgba(245, 158, 11, 0.05)';
+}
+
+function removeUploadedCover() {
+    uploadedCoverFile = null;
+    document.getElementById('cover-file').value = '';
+    document.getElementById('uploaded-cover-info').style.display = 'none';
+    document.getElementById('cover-drop-area').style.borderColor = 'var(--accent)';
+    document.getElementById('cover-drop-area').style.background = 'rgba(245, 158, 11, 0.05)';
+}
+
+// ==================== [ 10. إضافة الكتب مع رفع الملفات ] ====================
 async function submitBookForm(event) {
     event.preventDefault();
     
@@ -1694,34 +2023,97 @@ async function submitBookForm(event) {
     const grade = document.getElementById('book-grade').value;
     const subject = document.getElementById('book-subject').value;
     const price = parseInt(document.getElementById('book-price').value) || 0;
-    const bookUrl = document.getElementById('book-url').value.trim();
-    const coverUrl = document.getElementById('book-cover').value.trim();
     const description = document.getElementById('book-description').value.trim();
+    const uploadMethod = document.getElementById('upload-method').value;
     
     if (!title || !author || !grade || !subject) {
         showError('الرجاء ملء جميع الحقول المطلوبة');
         return;
     }
     
+    // التحقق من طريقة الرفع
+    let bookUrl = null;
+    if (uploadMethod === 'link') {
+        bookUrl = document.getElementById('book-url').value.trim();
+        if (!bookUrl) {
+            showError('الرجاء إدخال رابط الكتاب');
+            return;
+        }
+    } else {
+        if (!uploadedBookFile) {
+            showError('الرجاء رفع ملف الكتاب');
+            return;
+        }
+    }
+    
     showLoading(me.role === 'admin' ? 'جاري إضافة الكتاب...' : 'جاري إرسال الكتاب للمراجعة...');
     
-    const bookData = {
-        title: title,
-        author: author,
-        grade: grade,
-        subject: subject,
-        price: price,
-        bookUrl: bookUrl || null,
-        coverUrl: coverUrl || null,
-        description: description || null,
-        uploadDate: Date.now(),
-        addedBy: me.uid,
-        addedByName: me.name,
-        status: me.role === 'admin' ? 'approved' : 'pending',
-        downloads: 0
-    };
-    
     try {
+        let uploadedFileUrl = null;
+        let uploadedCoverUrl = null;
+        
+        // رفع ملف الكتاب إذا تم اختيار الرفع
+        if (uploadMethod === 'upload' && uploadedBookFile) {
+            const fileRef = storage.ref(`books/${Date.now()}_${uploadedBookFile.name}`);
+            const uploadTask = fileRef.put(uploadedBookFile);
+            
+            await new Promise((resolve, reject) => {
+                uploadTask.on('state_changed',
+                    (snapshot) => {
+                        // يمكنك إضافة شريط تقدم هنا
+                        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                        console.log('Upload is ' + progress + '% done');
+                    },
+                    (error) => {
+                        reject(error);
+                    },
+                    async () => {
+                        uploadedFileUrl = await uploadTask.snapshot.ref.getDownloadURL();
+                        resolve();
+                    }
+                );
+            });
+        }
+        
+        // رفع صورة الغلاف إذا كانت موجودة
+        if (uploadedCoverFile) {
+            const coverRef = storage.ref(`covers/${Date.now()}_${uploadedCoverFile.name}`);
+            const uploadTask = coverRef.put(uploadedCoverFile);
+            
+            await new Promise((resolve, reject) => {
+                uploadTask.on('state_changed',
+                    (snapshot) => {
+                        // شريط تقدم
+                    },
+                    (error) => {
+                        reject(error);
+                    },
+                    async () => {
+                        uploadedCoverUrl = await uploadTask.snapshot.ref.getDownloadURL();
+                        resolve();
+                    }
+                );
+            });
+        }
+        
+        const bookData = {
+            title: title,
+            author: author,
+            grade: grade,
+            subject: subject,
+            price: price,
+            bookUrl: uploadMethod === 'link' ? bookUrl : uploadedFileUrl,
+            coverUrl: uploadedCoverUrl || null,
+            description: description || null,
+            uploadDate: Date.now(),
+            addedBy: me.uid,
+            addedByName: me.name,
+            status: me.role === 'admin' ? 'approved' : 'pending',
+            downloads: 0,
+            uploadMethod: uploadMethod,
+            fileName: uploadedBookFile ? uploadedBookFile.name : null
+        };
+        
         const bookRef = db.ref('books').push();
         await bookRef.set(bookData);
         
@@ -1791,7 +2183,7 @@ async function deleteBook(bookId, bookTitle) {
     }
 }
 
-// ==================== [ 9. نظام المساعد الذكي ] ====================
+// ==================== [ 11. نظام المساعد الذكي ] ====================
 function loadAIBooks() {
     const container = document.getElementById('ai-books-list');
     if (!container) return;
@@ -2094,7 +2486,232 @@ async function submitQuiz(quizId) {
     });
 }
 
-// ==================== [ 10. غرف البث المباشر ] ====================
+// ==================== [ 12. المساعد الصوتي ] ====================
+async function loadAudioBooks() {
+    const container = document.getElementById('audio-books');
+    if (!container) return;
+    
+    // جلب الكتب التي تحتوي على شرح صوتي
+    db.ref('books').orderByChild('hasAudio').equalTo(true).on('value', snap => {
+        const books = snap.val();
+        container.innerHTML = '';
+        
+        if (!books) {
+            container.innerHTML = `
+                <div style="text-align:center; padding:40px; color:var(--text-sec);">
+                    <i class="fas fa-volume-mute" style="font-size:48px; margin-bottom:15px; opacity:0.5;"></i>
+                    <p>لا توجد كتب مع شرح صوتي بعد</p>
+                    <button class="btn-main" onclick="nav('add_book')" style="margin-top:15px;">
+                        <i class="fas fa-plus"></i> أضف كتاباً مع شرح صوتي
+                    </button>
+                </div>`;
+            return;
+        }
+        
+        Object.entries(books).forEach(([bookId, book]) => {
+            container.innerHTML += `
+                <div class="book-card">
+                    <img src="${book.coverUrl || 'https://cdn-icons-png.flaticon.com/512/3523/3523063.png'}" 
+                         class="book-cover">
+                    <div style="flex:1;">
+                        <div style="font-weight:bold; font-size:16px;">${book.title}</div>
+                        <div style="font-size:12px; color:var(--text-sec);">
+                            <i class="fas fa-user"></i> ${book.author} • 
+                            <i class="fas fa-book-open"></i> ${book.subject}
+                        </div>
+                        <div style="font-size:11px; color:var(--text-sec); margin-top:5px;">
+                            <i class="fas fa-graduation-cap"></i> ${book.grade}
+                        </div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:5px;">
+                        <button class="btn-main" style="padding:8px 12px; font-size:12px; background:var(--accent); color:black;" 
+                                onclick="playBookAudio('${bookId}', '${book.title.replace(/'/g, "\\'")}')">
+                            <i class="fas fa-play"></i> استمع
+                        </button>
+                    </div>
+                </div>`;
+        });
+    });
+}
+
+async function generateVoice() {
+    const text = document.getElementById('tts-text').value.trim();
+    if (!text) {
+        showError('الرجاء إدخال نص لتحويله إلى صوت');
+        return;
+    }
+    
+    if (text.length > 1000) {
+        showError('النص طويل جداً. الحد الأقصى 1000 حرف');
+        return;
+    }
+    
+    showLoading('جاري توليد الصوت...');
+    
+    try {
+        // في بيئة إنتاجية، يمكنك استخدام خدمة TTS مثل:
+        // - Google Text-to-Speech
+        // - Microsoft Azure TTS
+        // - IBM Watson Text to Speech
+        
+        // هنا نستخدم حل بديل باستخدام Web Speech API
+        if ('speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            
+            // إعدادات الصوت العربي
+            utterance.lang = 'ar-SA';
+            utterance.rate = 0.9;
+            utterance.pitch = 1;
+            
+            // البحث عن صوت عربي
+            const voices = speechSynthesis.getVoices();
+            const arabicVoice = voices.find(voice => voice.lang.includes('ar'));
+            if (arabicVoice) {
+                utterance.voice = arabicVoice;
+            }
+            
+            // حفظ الصوت الحالي
+            currentVoice = utterance;
+            
+            // عرض عناصر التحكم
+            document.getElementById('voice-output').style.display = 'block';
+            
+            // إعداد مستمع الأحداث
+            utterance.onstart = () => {
+                hideLoading();
+                showSuccess('جاري تشغيل الصوت...');
+            };
+            
+            utterance.onend = () => {
+                document.getElementById('current-time').textContent = '0:00';
+                document.getElementById('voice-progress').style.width = '0%';
+            };
+            
+            // تشغيل الصوت
+            speechSynthesis.speak(utterance);
+            
+        } else {
+            hideLoading();
+            showError('متصفحك لا يدعم ميزة تحويل النص إلى كلام');
+        }
+        
+    } catch (error) {
+        hideLoading();
+        showError('حدث خطأ أثناء توليد الصوت: ' + error.message);
+    }
+}
+
+function playVoice() {
+    if (currentVoice && speechSynthesis) {
+        speechSynthesis.speak(currentVoice);
+    }
+}
+
+function pauseVoice() {
+    if (speechSynthesis) {
+        speechSynthesis.pause();
+    }
+}
+
+function stopVoice() {
+    if (speechSynthesis) {
+        speechSynthesis.cancel();
+    }
+}
+
+function seekVoice(event) {
+    // هذه الدالة تحتاج لتطبيق أكثر تعقيداً مع ملفات صوتية حقيقية
+    // مع Web Speech API، لا يمكن التحكم في الوقت الحالي
+    showError('هذه الميزة غير متاحة حالياً مع Web Speech API');
+}
+
+function downloadVoice() {
+    showError('تحميل الصوت يتطلب خدمة TTS خارجية مثل Google أو Microsoft');
+    // في التطبيق الفعلي، يمكنك:
+    // 1. إرسال النص إلى خدمة TTS
+    // 2. استقبال ملف صوتي
+    // 3. تنزيله
+}
+
+async function explainBookWithAI(bookId, bookTitle) {
+    showLoading('جاري تحضير شرح صوتي للكتاب...');
+    
+    try {
+        const bookSnap = await db.ref(`books/${bookId}`).once('value');
+        const book = bookSnap.val();
+        
+        if (!book) {
+            hideLoading();
+            showError('الكتاب غير موجود');
+            return;
+        }
+        
+        // إنشاء شرح مختصر للكتاب
+        const explanation = `
+            كتاب ${book.title}
+            للمؤلف ${book.author}
+            من منهج ${book.grade}
+            في مادة ${book.subject}
+            
+            ${book.description || 'كتاب تعليمي مفيد يساعد الطلاب على فهم المادة بشكل أفضل.'}
+            
+            يحتوي الكتاب على دروس متنوعة وأمثلة عملية.
+            ينصح به لجميع طلاب ${book.grade}.
+        `;
+        
+        // استخدام Web Speech API للشرح
+        if ('speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(explanation);
+            utterance.lang = 'ar-SA';
+            utterance.rate = 0.9;
+            
+            const voices = speechSynthesis.getVoices();
+            const arabicVoice = voices.find(voice => voice.lang.includes('ar'));
+            if (arabicVoice) {
+                utterance.voice = arabicVoice;
+            }
+            
+            // حفظ الصوت الحالي
+            currentVoice = utterance;
+            
+            hideLoading();
+            
+            Swal.fire({
+                title: `شرح كتاب ${bookTitle}`,
+                html: `
+                    <div style="text-align:right; margin-bottom:20px;">
+                        <p style="color:var(--text-sec);">${explanation}</p>
+                    </div>
+                    <div style="display:flex; gap:10px; justify-content:center;">
+                        <button onclick="playVoice()" style="background:var(--accent); color:black; border:none; padding:10px 20px; border-radius:10px; cursor:pointer;">
+                            <i class="fas fa-play"></i> تشغيل
+                        </button>
+                        <button onclick="stopVoice()" style="background:var(--red); color:white; border:none; padding:10px 20px; border-radius:10px; cursor:pointer;">
+                            <i class="fas fa-stop"></i> إيقاف
+                        </button>
+                    </div>
+                `,
+                showConfirmButton: false,
+                showCloseButton: true,
+                background: '#1e293b',
+                color: '#fff'
+            });
+            
+            // تشغيل الصوت تلقائياً
+            speechSynthesis.speak(utterance);
+            
+        } else {
+            hideLoading();
+            showError('متصفحك لا يدعم ميزة تحويل النص إلى كلام');
+        }
+        
+    } catch (error) {
+        hideLoading();
+        showError('حدث خطأ أثناء إنشاء الشرح الصوتي: ' + error.message);
+    }
+}
+
+// ==================== [ 13. غرف البث المباشر ] ====================
 async function loadLiveRooms() {
     const container = document.getElementById('live-rooms');
     if (!container) return;
@@ -2433,7 +3050,7 @@ async function payForLiveRoom(roomId, price) {
     }
 }
 
-// ==================== [ 11. المكتبة العامة ] ====================
+// ==================== [ 14. المكتبة العامة ] ====================
 function showPublicLibrary() {
     document.getElementById('public-library-modal').classList.remove('hidden');
     loadPublicLibrary();
@@ -2623,7 +3240,7 @@ async function deletePublicBook(bookId, bookTitle) {
     }
 }
 
-// ==================== [ 12. نظام الدفع والاشتراكات ] ====================
+// ==================== [ 15. نظام الدفع والاشتراكات ] ====================
 async function buySubscription(plan, price) {
     if (me.uid === 'guest') {
         showError('يجب تسجيل الدخول للاشتراك');
@@ -2766,7 +3383,7 @@ async function sendPaymentNotification() {
     }
 }
 
-// ==================== [ 13. دوال مساعدة إضافية ] ====================
+// ==================== [ 16. دوال مساعدة إضافية ] ====================
 async function updateTeacherAccount() {
     const { value: account } = await Swal.fire({
         title: 'تحديث رقم الحساب',
@@ -2960,7 +3577,7 @@ const debounceFilter = debounce(function(query) {
     debounceSearch(query);
 }, 300);
 
-// ==================== [ 14. التهيئة النهائية ] ====================
+// ==================== [ 17. التهيئة النهائية ] ====================
 // مراقب حالة المصادقة
 firebase.auth().onAuthStateChanged(function(user) {
     const preloader = document.getElementById('main-preloader');
@@ -2987,6 +3604,11 @@ document.addEventListener('DOMContentLoaded', function() {
             authScreen.classList.remove('hidden');
         }
     }, 1000);
+    
+    // تهيئة Web Speech API
+    if ('speechSynthesis' in window) {
+        speechSynthesis.getVoices(); // تحميل الأصوات
+    }
 });
 
 // جعل الدوال متاحة عالمياً
@@ -3014,6 +3636,20 @@ window.filterBooks = filterBooks;
 window.loadBooksByGrade = loadBooksByGrade;
 window.deleteBook = deleteBook;
 window.submitBookForm = submitBookForm;
+window.toggleUploadMethod = toggleUploadMethod;
+window.handleFileUpload = handleFileUpload;
+window.handleCoverUpload = handleCoverUpload;
+window.removeUploadedFile = removeUploadedFile;
+window.removeUploadedCover = removeUploadedCover;
+window.explainBookWithAI = explainBookWithAI;
+window.generateVoice = generateVoice;
+window.playVoice = playVoice;
+window.pauseVoice = pauseVoice;
+window.stopVoice = stopVoice;
+window.downloadVoice = downloadVoice;
+window.seekVoice = seekVoice;
+
+// دوال تحميل الكتاب
 window.downloadBook = async function(bookId, price, bookUrl) {
     if (!bookUrl) {
         showError('رابط الكتاب غير متوفر');
@@ -3078,12 +3714,9 @@ window.downloadBook = async function(bookId, price, bookUrl) {
     showSuccess('جاري فتح الكتاب...');
 };
 
-// ==================== [ 15. دوال الإدمن ] ====================
-async function manageBooks() {
-    nav('library');
-}
-
-async function manageUsers() {
+// دوال الإدمن
+window.manageBooks = function() { nav('library'); };
+window.manageUsers = async function() {
     showLoading('جاري تحميل قائمة المستخدمين...');
     
     try {
@@ -3149,9 +3782,9 @@ async function manageUsers() {
         hideLoading();
         showError('حدث خطأ: ' + error.message);
     }
-}
+};
 
-async function editUserBalance(userId, userName, currentBalance) {
+window.editUserBalance = async function(userId, userName, currentBalance) {
     const { value: newBalance } = await Swal.fire({
         title: `تعديل رصيد ${userName}`,
         input: 'number',
@@ -3181,9 +3814,9 @@ async function editUserBalance(userId, userName, currentBalance) {
         hideLoading();
         showError('حدث خطأ: ' + error.message);
     }
-}
+};
 
-async function managePayments() {
+window.managePayments = async function() {
     showLoading('جاري تحميل المدفوعات المعلقة...');
     
     try {
@@ -3286,9 +3919,9 @@ async function managePayments() {
         hideLoading();
         showError('حدث خطأ: ' + error.message);
     }
-}
+};
 
-async function confirmDeposit(notifId, userId, userName, amount) {
+window.confirmDeposit = async function(notifId, userId, userName, amount) {
     const confirm = await Swal.fire({
         title: 'تأكيد الإيداع',
         html: `تأكيد إيداع <strong>${amount} SDM</strong> للمستخدم <strong>${userName}</strong>؟`,
@@ -3337,9 +3970,9 @@ async function confirmDeposit(notifId, userId, userName, amount) {
         hideLoading();
         showError('حدث خطأ: ' + error.message);
     }
-}
+};
 
-async function confirmRoomPayment(notifId, paymentId, userId, amount) {
+window.confirmRoomPayment = async function(notifId, paymentId, userId, amount) {
     const confirm = await Swal.fire({
         title: 'تأكيد دفع غرفة البث',
         html: `تأكيد دفع <strong>${amount} SDM</strong> للانضمام لغرفة البث؟`,
@@ -3381,9 +4014,9 @@ async function confirmRoomPayment(notifId, paymentId, userId, amount) {
         hideLoading();
         showError('حدث خطأ: ' + error.message);
     }
-}
+};
 
-async function approveBook(bookId, notifId) {
+window.approveBook = async function(bookId, notifId) {
     const confirm = await Swal.fire({
         title: 'موافقة على الكتاب',
         html: 'هل تريد الموافقة على نشر هذا الكتاب؟',
@@ -3418,9 +4051,9 @@ async function approveBook(bookId, notifId) {
         hideLoading();
         showError('حدث خطأ: ' + error.message);
     }
-}
+};
 
-async function rejectPayment(notifId) {
+window.rejectPayment = async function(notifId) {
     const { value: reason } = await Swal.fire({
         title: 'سبب الرفض',
         input: 'text',
@@ -3459,9 +4092,9 @@ async function rejectPayment(notifId) {
         hideLoading();
         showError('حدث خطأ: ' + error.message);
     }
-}
+};
 
-async function rejectBook(bookId, notifId) {
+window.rejectBook = async function(bookId, notifId) {
     const { value: reason } = await Swal.fire({
         title: 'سبب رفض الكتاب',
         input: 'text',
@@ -3503,9 +4136,9 @@ async function rejectBook(bookId, notifId) {
         hideLoading();
         showError('حدث خطأ: ' + error.message);
     }
-}
+};
 
-async function markAsRead(notifId) {
+window.markAsRead = async function(notifId) {
     await db.ref(`notifications/${notifId}`).update({
         read: true,
         markedAsRead: true,
@@ -3513,9 +4146,9 @@ async function markAsRead(notifId) {
     });
     
     showSuccess('تم تجاهل الإشعار');
-}
+};
 
-async function manageSubscriptions() {
+window.manageSubscriptions = async function() {
     showLoading('جاري تحميل بيانات الاشتراكات...');
     
     try {
@@ -3570,16 +4203,17 @@ async function manageSubscriptions() {
                         </td>
                         <td style="padding:10px; text-align:center; font-size:12px; color:var(--text-sec);">
                             ${formatDate(sub.startDate)}
-                        </td>
-                        <td style="padding:10px; text-align:center; font-size:12px; color:var(--text-sec);">
-                            ${formatDate(sub.expiryDate)}
-                        </td>
-                        <td style="padding:10px; text-align:center;">
-                            <span style="background:${isActive ? 'var(--green)' : 'var(--red)'}; color:white; padding:3px 8px; border-radius:5px; font-size:11px;">
-                                ${isActive ? 'نشط' : 'منتهي'}
-                            </span>
-                        </td>
-                    </tr>`;
+                        </div>
+                    </td>
+                    <td style="padding:10px; text-align:center; font-size:12px; color:var(--text-sec);">
+                        ${formatDate(sub.expiryDate)}
+                    </td>
+                    <td style="padding:10px; text-align:center;">
+                        <span style="background:${isActive ? 'var(--green)' : 'var(--red)'}; color:white; padding:3px 8px; border-radius:5px; font-size:11px;">
+                            ${isActive ? 'نشط' : 'منتهي'}
+                        </span>
+                    </td>
+                </tr>`;
             });
         }
         
@@ -3601,9 +4235,9 @@ async function manageSubscriptions() {
         hideLoading();
         showError('حدث خطأ: ' + error.message);
     }
-}
+};
 
-async function manageLiveRoom(roomId) {
+window.manageLiveRoom = async function(roomId) {
     const roomSnap = await db.ref(`live_rooms/${roomId}`).once('value');
     const room = roomSnap.val();
     
@@ -3652,7 +4286,7 @@ async function manageLiveRoom(roomId) {
             await deleteLiveRoom(roomId);
         }
     }
-}
+};
 
 async function editLiveRoom(roomId, room) {
     const { value: formValues } = await Swal.fire({
@@ -3760,20 +4394,6 @@ async function deleteLiveRoom(roomId) {
         showError('حدث خطأ: ' + error.message);
     }
 }
-
-// جعل دوال الإدمن متاحة
-window.manageBooks = manageBooks;
-window.manageUsers = manageUsers;
-window.managePayments = managePayments;
-window.manageSubscriptions = manageSubscriptions;
-window.manageLiveRoom = manageLiveRoom;
-window.confirmDeposit = confirmDeposit;
-window.confirmRoomPayment = confirmRoomPayment;
-window.approveBook = approveBook;
-window.rejectPayment = rejectPayment;
-window.rejectBook = rejectBook;
-window.markAsRead = markAsRead;
-window.editUserBalance = editUserBalance;
 </script>
 </body>
 </html>
