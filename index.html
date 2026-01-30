@@ -17,7 +17,6 @@
     <!-- UI Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src='https://meet.jit.si/external_api.js'></script>
     <style>
         /* ========== الأنماط الأساسية ========== */
         :root {
@@ -411,32 +410,7 @@
         .tab-btn.active { color: var(--neon-blue); }
         .tab-btn.active i { transform: translateY(-5px); text-shadow: 0 0 10px var(--neon-blue); }
 
-        /* ========== شاشات خاصة ========== */
-        .live-room {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 20px;
-            border-radius: 20px;
-            margin: 15px;
-            color: white;
-        }
-        
-        .payment-method {
-            background: var(--bg-card);
-            border-radius: 15px;
-            padding: 15px;
-            margin: 10px 0;
-            border: 2px solid var(--green);
-        }
-        
-        .admin-panel {
-            background: rgba(239, 68, 68, 0.1);
-            border: 2px solid var(--red);
-            border-radius: 15px;
-            padding: 20px;
-            margin: 15px;
-        }
-
-        /* ========== البث المباشر ========== */
+        /* ========== البث المباشر - تصميم مبسط ========== */
         .video-container {
             width: 100%;
             max-width: 800px;
@@ -852,7 +826,7 @@
     </div>
 </div>
 
-<!-- شاشة غرفة البث المباشر -->
+<!-- شاشة غرفة البث المباشر الجديدة (WebRTC) -->
 <div id="live-room-screen" class="hidden">
     <div style="padding:20px;">
         <div style="display:flex; align-items:center; gap:15px; margin-bottom:25px;">
@@ -906,8 +880,7 @@ const firebaseConfig = {
     projectId: "sudan-market-6b122",
     storageBucket: "sudan-market-6b122.firebasestorage.app",
     messagingSenderId: "66729481566",
-    appId: "1:66729481566:web:93393f28dc22d32cceebcf",
-    measurementId: "G-XXXXXXXXXX"
+    appId: "1:66729481566:web:93393f28dc22d32cceebcf"
 };
 
 // تهيئة Firebase
@@ -925,112 +898,77 @@ const ADMIN_BANK_ACCOUNT = "4426148";
 const WEEKLY_SUBSCRIPTION_PRICE = 7000;
 const FREE_TRIAL_DAYS = 1;
 
-let me = null;
-let hStack = ['home'];
-let isGuest = false;
-let currentBookId = null;
-let selectedChapter = '';
-let currentQuiz = null;
-let currentLiveRoom = null;
-let currentVoice = null;
-
-// ==================== [ 3. متغيرات البث المباشر ] ====================
-let webrtc = null;
-let currentRoomId = null;
+let currentUserData = null;
+let navigationHistory = ['home'];
+let currentLiveRoomId = null;
 let localStream = null;
-let isVideoEnabled = true;
-let isAudioEnabled = true;
+let peerConnection = null;
 
-// ==================== [ 4. تهيئة التطبيق ] ====================
+// ==================== [ 3. تهيئة التطبيق ] ====================
 document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(() => {
-        initializeApp();
-    }, 1000);
-});
-
-function initializeApp() {
-    auth.onAuthStateChanged((user) => {
+    console.log("بدء تهيئة التطبيق...");
+    
+    auth.onAuthStateChanged(async (user) => {
         document.getElementById('main-preloader').classList.add('hidden');
         
         if (user) {
-            console.log('المستخدم مسجل دخول:', user.uid);
-            loadUserData(user.uid);
+            console.log("المستخدم مسجل دخول:", user.uid);
+            await loadUserData(user.uid);
         } else {
-            console.log('لا يوجد مستخدم مسجل');
+            console.log("لا يوجد مستخدم مسجل دخول");
             showLoginScreen();
         }
     });
-}
+});
 
-function showLoginScreen() {
-    document.getElementById('login-screen').classList.remove('hidden');
-    document.getElementById('register-screen').classList.add('hidden');
-    document.getElementById('student-form').classList.add('hidden');
-    document.getElementById('teacher-form').classList.add('hidden');
-    document.getElementById('app-screen').classList.add('hidden');
-    document.getElementById('main-preloader').classList.add('hidden');
-    document.getElementById('live-room-screen').classList.add('hidden');
-}
-
-// ==================== [ 5. دوال تسجيل الدخول والتسجيل ] ====================
+// ==================== [ 4. دوال تسجيل الدخول والتسجيل ] ====================
 async function loginUser() {
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value.trim();
     
     if (!email || !password) {
-        showError('الرجاء إدخال البريد الإلكتروني وكلمة المرور');
+        showAlert('خطأ', 'الرجاء إدخال البريد الإلكتروني وكلمة المرور', 'error');
         return;
     }
     
     try {
         showLoading('جاري تسجيل الدخول...');
         
-        const result = await auth.signInWithEmailAndPassword(email, password);
-        const user = result.user;
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        const user = userCredential.user;
         
         if (!user.emailVerified) {
-            await auth.signOut();
-            
             hideLoading();
-            
-            await Swal.fire({
-                title: 'البريد الإلكتروني غير مؤكد!',
-                html: `يرجى تأكيد بريدك الإلكتروني أولاً<br>
-                       <strong>${email}</strong><br><br>
-                       هل تريد إعادة إرسال رسالة التأكيد؟`,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonText: 'نعم، أعد الإرسال',
-                cancelButtonText: 'إلغاء',
-                background: '#1e293b',
-                color: '#fff'
-            }).then(async (result) => {
-                if (result.isConfirmed) {
-                    await user.sendEmailVerification();
-                    showSuccess('تم إعادة إرسال رابط التأكيد إلى بريدك');
-                }
-            });
-            
+            showAlert('تحقق من البريد', 
+                'يرجى تأكيد بريدك الإلكتروني أولاً. تم إرسال رابط التأكيد إلى بريدك.',
+                'warning'
+            );
             return;
         }
         
         hideLoading();
-        showSuccess('تم تسجيل الدخول بنجاح');
+        showAlert('نجاح', 'تم تسجيل الدخول بنجاح', 'success');
         
-        loadUserData(user.uid);
+        // إخفاء شاشة الدخول مباشرة
+        document.getElementById('login-screen').classList.add('hidden');
+        
+        // تحميل بيانات المستخدم
+        await loadUserData(user.uid);
         
     } catch (error) {
         hideLoading();
+        console.error("خطأ في تسجيل الدخول:", error);
         
-        if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-            showError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+        let errorMessage = 'حدث خطأ أثناء تسجيل الدخول';
+        if (error.code === 'auth/user-not-found') {
+            errorMessage = 'المستخدم غير موجود';
+        } else if (error.code === 'auth/wrong-password') {
+            errorMessage = 'كلمة المرور غير صحيحة';
         } else if (error.code === 'auth/invalid-email') {
-            showError('البريد الإلكتروني غير صالح');
-        } else if (error.code === 'auth/user-disabled') {
-            showError('تم تعطيل هذا الحساب');
-        } else {
-            showError('حدث خطأ أثناء تسجيل الدخول: ' + error.message);
+            errorMessage = 'البريد الإلكتروني غير صالح';
         }
+        
+        showAlert('خطأ', errorMessage, 'error');
     }
 }
 
@@ -1042,7 +980,7 @@ async function registerStudent() {
     const grade = document.getElementById('student-grade').value;
     
     if (!name || !email || !password || !age || !grade) {
-        showError('الرجاء ملء جميع الحقول المطلوبة');
+        showAlert('خطأ', 'الرجاء ملء جميع الحقول المطلوبة', 'error');
         return;
     }
     
@@ -1052,15 +990,15 @@ async function registerStudent() {
     });
     
     if (favoriteSubjects.length === 0) {
-        showError('الرجاء اختيار مادة واحدة على الأقل');
+        showAlert('خطأ', 'الرجاء اختيار مادة واحدة على الأقل', 'error');
         return;
     }
     
     try {
         showLoading('جاري إنشاء حساب الطالب...');
         
-        const result = await auth.createUserWithEmailAndPassword(email, password);
-        const user = result.user;
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const user = userCredential.user;
         
         await user.sendEmailVerification();
         
@@ -1096,41 +1034,27 @@ async function registerStudent() {
         
         hideLoading();
         
-        await Swal.fire({
-            title: 'يرجى تأكيد بريدك الإلكتروني!',
-            html: `تم إرسال رسالة تأكيد إلى: <strong>${email}</strong><br><br>
-                   <strong>خطوات التنشيط:</strong><br>
-                   1. افحص بريدك الإلكتروني<br>
-                   2. افتح الرسالة من Google<br>
-                   3. انقر على رابط التأكيد<br>
-                   4. عد للتطبيق وسجل الدخول`,
-            icon: 'info',
-            confirmButtonText: 'حسناً',
-            showCancelButton: true,
-            cancelButtonText: 'إعادة الإرسال',
-            background: '#1e293b',
-            color: '#fff'
-        }).then(async (result) => {
-            if (result.dismiss === Swal.DismissReason.cancel) {
-                await user.sendEmailVerification();
-                showSuccess('تم إعادة إرسال رابط التأكيد إلى بريدك');
-            }
-            
-            await auth.signOut();
-            showLoginScreen();
-        });
+        showAlert('نجاح', 
+            'تم إنشاء الحساب بنجاح! تم إرسال رسالة التحقق إلى بريدك الإلكتروني. يرجى التحقق من بريدك ثم تسجيل الدخول.',
+            'success'
+        );
+        
+        backToLogin();
         
     } catch (error) {
         hideLoading();
+        console.error("خطأ في التسجيل:", error);
+        
+        let errorMessage = 'حدث خطأ أثناء التسجيل';
         if (error.code === 'auth/email-already-in-use') {
-            showError('هذا البريد الإلكتروني مستخدم بالفعل');
+            errorMessage = 'هذا البريد الإلكتروني مستخدم بالفعل';
         } else if (error.code === 'auth/weak-password') {
-            showError('كلمة المرور ضعيفة، يجب أن تكون 6 أحرف على الأقل');
+            errorMessage = 'كلمة المرور ضعيفة، يجب أن تكون 6 أحرف على الأقل';
         } else if (error.code === 'auth/invalid-email') {
-            showError('البريد الإلكتروني غير صالح');
-        } else {
-            showError('حدث خطأ أثناء التسجيل: ' + error.message);
+            errorMessage = 'البريد الإلكتروني غير صالح';
         }
+        
+        showAlert('خطأ', errorMessage, 'error');
     }
 }
 
@@ -1144,32 +1068,22 @@ async function registerTeacher() {
     const account = document.getElementById('teacher-account').value.trim();
     
     if (!name || !email || !password || !subject || !whatsapp || !idFile) {
-        showError('الرجاء ملء جميع الحقول المطلوبة');
+        showAlert('خطأ', 'الرجاء ملء جميع الحقول المطلوبة', 'error');
         return;
-    }
-    
-    const grades = [];
-    const gradeSelect = document.getElementById('teacher-grades');
-    for (let i = 0; i < gradeSelect.options.length; i++) {
-        if (gradeSelect.options[i].selected) {
-            grades.push(gradeSelect.options[i].value);
-        }
-    }
-    
-    if (grades.length === 0) {
-        grades.push('جميع الصفوف');
     }
     
     try {
         showLoading('جاري إرسال طلب التسجيل...');
         
-        const result = await auth.createUserWithEmailAndPassword(email, password);
-        const user = result.user;
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const user = userCredential.user;
         
         await user.sendEmailVerification();
         
-        // هنا نستخدم بوت لتخزين الصورة خارج Firebase
-        const idUrl = await uploadToBot(idFile, 'teacher_id');
+        // رفع صورة البطاقة إلى Firebase Storage
+        const storageRef = storage.ref('teacher_ids/' + user.uid + '_' + idFile.name);
+        await storageRef.put(idFile);
+        const idUrl = await storageRef.getDownloadURL();
         
         await db.ref('users/' + user.uid).set({
             name: name,
@@ -1177,10 +1091,9 @@ async function registerTeacher() {
             uid: user.uid,
             role: 'pending_teacher',
             subject: subject,
-            grades: grades,
             whatsapp: whatsapp,
             bankAccount: account || null,
-            idUrl: idUrl, // رابط من البوت
+            idUrl: idUrl,
             joinDate: Date.now(),
             status: 'pending_email_verification',
             adminStatus: 'pending',
@@ -1203,47 +1116,98 @@ async function registerTeacher() {
         
         hideLoading();
         
-        await Swal.fire({
-            title: 'يرجى تأكيد بريدك الإلكتروني!',
-            html: `تم إرسال رسالة تأكيد إلى: <strong>${email}</strong><br><br>
-                   <strong>خطوات التنشيط:</strong><br>
-                   1. افحص بريدك الإلكتروني<br>
-                   2. افتح الرسالة من Google<br>
-                   3. انقر على رابط التأكيد<br>
-                   4. عد للتطبيق وسجل الدخول<br><br>
-                   <small>بعد التأكيد، سيتم مراجعة طلبك من الإدمن خلال 24 ساعة</small>`,
-            icon: 'info',
-            confirmButtonText: 'حسناً',
-            showCancelButton: true,
-            cancelButtonText: 'إعادة الإرسال',
-            background: '#1e293b',
-            color: '#fff'
-        }).then(async (result) => {
-            if (result.dismiss === Swal.DismissReason.cancel) {
-                await user.sendEmailVerification();
-                showSuccess('تم إعادة إرسال رابط التأكيد إلى بريدك');
-            }
-            
-            await auth.signOut();
-            showLoginScreen();
-        });
+        showAlert('نجاح', 
+            'تم إرسال طلب التسجيل بنجاح! سيتم مراجعته من قبل الإدمن خلال 24 ساعة.',
+            'success'
+        );
+        
+        backToLogin();
         
     } catch (error) {
         hideLoading();
+        console.error("خطأ في تسجيل الأستاذ:", error);
+        
+        let errorMessage = 'حدث خطأ أثناء التسجيل';
         if (error.code === 'auth/email-already-in-use') {
-            showError('هذا البريد الإلكتروني مستخدم بالفعل');
+            errorMessage = 'هذا البريد الإلكتروني مستخدم بالفعل';
         } else if (error.code === 'auth/weak-password') {
-            showError('كلمة المرور ضعيفة، يجب أن تكون 6 أحرف على الأقل');
-        } else {
-            showError('حدث خطأ أثناء التسجيل: ' + error.message);
+            errorMessage = 'كلمة المرور ضعيفة، يجب أن تكون 6 أحرف على الأقل';
         }
+        
+        showAlert('خطأ', errorMessage, 'error');
     }
 }
 
-// ==================== [ 6. دوال البث المباشر ] ====================
+// ==================== [ 5. تحميل بيانات المستخدم (الإصلاح الرئيسي) ] ====================
+async function loadUserData(userId) {
+    console.log("جاري تحميل بيانات المستخدم:", userId);
+    
+    try {
+        showLoading('جاري تحميل بياناتك...');
+        
+        const snapshot = await db.ref('users/' + userId).once('value');
+        
+        if (!snapshot.exists()) {
+            hideLoading();
+            showAlert('خطأ', 'لا توجد بيانات لحسابك. يرجى التسجيل مرة أخرى.', 'error');
+            await auth.signOut();
+            showLoginScreen();
+            return;
+        }
+        
+        currentUserData = snapshot.val();
+        currentUserData.uid = userId;
+        
+        console.log("بيانات المستخدم محملة بنجاح:", currentUserData);
+        
+        // التحقق من حالة المستخدم
+        if (currentUserData.role === 'pending_teacher') {
+            hideLoading();
+            showAlert('قيد المراجعة', 'طلب تسجيلك كأستاذ قيد المراجعة من قبل الإدمن.', 'info');
+            await auth.signOut();
+            showLoginScreen();
+            return;
+        }
+        
+        if (currentUserData.role === 'rejected_teacher') {
+            hideLoading();
+            showAlert('تم الرفض', 'تم رفض طلب تسجيلك كأستاذ.', 'error');
+            await auth.signOut();
+            showLoginScreen();
+            return;
+        }
+        
+        // تحديث الواجهة
+        updateUI();
+        
+        // إخفاء شاشة التحميل وإظهار التطبيق الرئيسي
+        document.getElementById('main-preloader').classList.add('hidden');
+        document.getElementById('login-screen').classList.add('hidden');
+        document.getElementById('register-screen').classList.add('hidden');
+        document.getElementById('student-form').classList.add('hidden');
+        document.getElementById('teacher-form').classList.add('hidden');
+        document.getElementById('app-screen').classList.remove('hidden');
+        
+        // الانتقال للصفحة الرئيسية
+        nav('home');
+        
+        // تحديث حالة الاتصال
+        await db.ref('users/' + userId + '/online').set(true);
+        db.ref('users/' + userId + '/online').onDisconnect().set(false);
+        
+        hideLoading();
+        
+    } catch (error) {
+        hideLoading();
+        console.error("خطأ في تحميل بيانات المستخدم:", error);
+        showAlert('خطأ', 'حدث خطأ في تحميل بياناتك', 'error');
+    }
+}
+
+// ==================== [ 6. نظام البث المباشر الجديد (WebRTC) ] ====================
 function renderLiveRooms() {
     const area = document.getElementById('content-area');
-    const canCreateRooms = me.role === 'admin' || me.role === 'teacher';
+    const canCreateRooms = currentUserData.role === 'admin' || currentUserData.role === 'teacher';
     
     area.innerHTML = `
         <div style="padding:20px;">
@@ -1270,236 +1234,188 @@ function renderLiveRooms() {
 }
 
 async function createLiveRoom() {
-    if (me.role !== 'admin' && me.role !== 'teacher') {
-        showError('يجب أن تكون أستاذاً لإنشاء غرفة بث');
+    if (currentUserData.role !== 'admin' && currentUserData.role !== 'teacher') {
+        showAlert('خطأ', 'يجب أن تكون أستاذاً لإنشاء غرفة بث', 'error');
         return;
     }
     
-    const { value: formValues } = await Swal.fire({
+    const { value: title } = await Swal.fire({
         title: 'إنشاء غرفة بث جديدة',
-        html: `
-            <input id="live-title" class="swal2-input" placeholder="عنوان الدرس *" required>
-            <textarea id="live-description" class="swal2-input" placeholder="وصف الدرس" rows="3"></textarea>
-            <input id="live-price" class="swal2-input" placeholder="سعر الدخول (ج.س) - 0 للمجاني *" type="number" min="0" value="0" required>
-            <input id="live-duration" class="swal2-input" placeholder="المدة (دقيقة)" type="number" min="30" value="60">
-        `,
-        confirmButtonText: 'إنشاء الغرفة',
+        input: 'text',
+        inputLabel: 'عنوان الدرس',
+        inputPlaceholder: 'أدخل عنوان الدرس',
         showCancelButton: true,
+        confirmButtonText: 'إنشاء',
+        cancelButtonText: 'إلغاء',
         background: '#1e293b',
-        color: '#fff',
-        preConfirm: () => {
-            const title = document.getElementById('live-title').value;
-            const description = document.getElementById('live-description').value;
-            const price = parseInt(document.getElementById('live-price').value) || 0;
-            const duration = parseInt(document.getElementById('live-duration').value) || 60;
-            
-            if (!title) {
-                Swal.showValidationMessage('الرجاء إدخال عنوان الدرس');
-                return false;
-            }
-            
-            const startTime = Date.now();
-            const endTime = startTime + (duration * 60000);
-            
-            return {
-                title,
-                description,
-                price,
-                duration,
-                startTime,
-                endTime
-            };
-        }
+        color: '#fff'
     });
     
-    if (!formValues) return;
-    
-    showLoading('جاري إنشاء غرفة البث...');
+    if (!title) return;
     
     try {
+        showLoading('جاري إنشاء غرفة البث...');
+        
         const roomId = `room_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         await db.ref(`live_rooms/${roomId}`).set({
             id: roomId,
-            title: formValues.title,
-            description: formValues.description || null,
-            price: formValues.price,
-            teacherId: me.uid,
-            teacherName: me.name,
-            teacherAccount: me.bankAccount || null,
-            startTime: formValues.startTime,
-            endTime: formValues.endTime,
-            duration: formValues.duration,
-            status: 'active',
+            title: title,
+            teacherId: currentUserData.uid,
+            teacherName: currentUserData.name,
             createdAt: Date.now(),
+            status: 'active',
             participants: 0,
-            maxParticipants: 50,
-            subject: me.subject || null,
-            grade: me.grades ? me.grades[0] : null
+            maxParticipants: 20
         });
         
         hideLoading();
-        showSuccess('تم إنشاء غرفة البث بنجاح');
+        showAlert('نجاح', 'تم إنشاء غرفة البث بنجاح', 'success');
         
         // الانضمام مباشرة للغرفة
         joinLiveRoom(roomId, true);
         
     } catch (error) {
         hideLoading();
-        showError('حدث خطأ أثناء إنشاء الغرفة: ' + error.message);
+        console.error("خطأ في إنشاء الغرفة:", error);
+        showAlert('خطأ', 'حدث خطأ أثناء إنشاء الغرفة', 'error');
     }
 }
 
 async function joinLiveRoom(roomId, isHost = false) {
-    const roomSnap = await db.ref(`live_rooms/${roomId}`).once('value');
-    const room = roomSnap.val();
-    
-    if (!room) {
-        showError('غرفة البث غير موجودة');
-        return;
-    }
-    
-    const now = Date.now();
-    if (room.status !== 'active' || room.endTime <= now) {
-        showError('غرفة البث غير نشطة أو انتهت');
-        return;
-    }
-    
-    // التحقق من الدفع إذا لم يكن المضيف
-    if (!isHost && room.price > 0) {
-        const paymentSnap = await db.ref(`room_payments/${roomId}_${me.uid}`).once('value');
-        const hasPaid = paymentSnap.exists() && paymentSnap.val().confirmed === true;
+    try {
+        const snapshot = await db.ref(`live_rooms/${roomId}`).once('value');
+        const room = snapshot.val();
         
-        if (!hasPaid) {
-            if (me.balance < room.price) {
-                showError(`رصيدك غير كافي. تحتاج ${room.price} ج.س`);
-                nav('subscription');
-                return;
-            }
-            
-            const confirm = await Swal.fire({
-                title: 'تأكيد الدفع',
-                html: `سعر الدخول: <strong>${room.price} ج.س</strong><br>
-                       سيتم خصم المبلغ من رصيدك`,
-                icon: 'info',
-                showCancelButton: true,
-                confirmButtonText: 'تأكيد الدفع',
-                cancelButtonText: 'إلغاء',
-                background: '#1e293b',
-                color: '#fff'
-            });
-            
-            if (!confirm.isConfirmed) return;
-            
-            showLoading('جاري معالجة الدفع...');
-            
-            try {
-                const newBalance = me.balance - room.price;
-                await db.ref(`users/${me.uid}/balance`).set(newBalance);
-                me.balance = newBalance;
-                updateUI();
-                
-                const paymentId = `pay_${Date.now()}`;
-                await db.ref(`room_payments/${roomId}_${me.uid}`).set({
-                    paymentId: paymentId,
-                    roomId: roomId,
-                    roomTitle: room.title,
-                    userId: me.uid,
-                    userName: me.name,
-                    amount: room.price,
-                    timestamp: Date.now(),
-                    confirmed: true,
-                    status: 'completed'
-                });
-                
-                hideLoading();
-                
-            } catch (error) {
-                hideLoading();
-                showError('حدث خطأ أثناء الدفع: ' + error.message);
-                return;
-            }
+        if (!room || room.status !== 'active') {
+            showAlert('خطأ', 'غرفة البث غير موجودة أو غير نشطة', 'error');
+            return;
         }
+        
+        // إظهار شاشة البث المباشر
+        document.getElementById('app-screen').classList.add('hidden');
+        document.getElementById('live-room-screen').classList.remove('hidden');
+        
+        document.getElementById('live-room-title').textContent = room.title;
+        currentLiveRoomId = roomId;
+        
+        // تهيئة WebRTC
+        await initializeWebRTC(roomId, isHost);
+        
+        // تحديث عدد المشاركين
+        await db.ref(`live_rooms/${roomId}/participants`).transaction(current => (current || 0) + 1);
+        
+        // تحميل المشاركين
+        loadParticipants(roomId);
+        loadChatMessages(roomId);
+        
+    } catch (error) {
+        console.error("خطأ في الانضمام للغرفة:", error);
+        showAlert('خطأ', 'حدث خطأ أثناء الانضمام للغرفة', 'error');
     }
-    
-    // إظهار شاشة البث المباشر
-    document.getElementById('app-screen').classList.add('hidden');
-    document.getElementById('live-room-screen').classList.remove('hidden');
-    
-    document.getElementById('live-room-title').innerText = room.title;
-    currentRoomId = roomId;
-    
-    // تهيئة WebRTC
-    initializeWebRTC(roomId, isHost);
-    
-    // تسجيل الدخول للغرفة
-    await db.ref(`room_participants/${roomId}/${me.uid}`).set({
-        userName: me.name,
-        role: isHost ? 'host' : 'participant',
-        joinedAt: Date.now(),
-        online: true
-    });
-    
-    // زيادة عدد المشاركين
-    await db.ref(`live_rooms/${roomId}/participants`).transaction(current => (current || 0) + 1);
-    
-    // زيادة عداد جلسات البث المباشر للمستخدم
-    await db.ref(`users/${me.uid}/liveSessionsAttended`).transaction(current => (current || 0) + 1);
-    
-    // تحميل المشاركين
-    loadParticipants(roomId);
-    loadChatMessages(roomId);
 }
 
-function initializeWebRTC(roomId, isHost) {
-    webrtc = new SimpleWebRTC({
-        localVideoEl: 'localVideo',
-        remoteVideosEl: 'remoteVideo',
-        autoRequestMedia: true,
-        url: 'https://signal.simplewebrtc.com:443/',
-        nick: me.name,
-        debug: false
-    });
-    
-    webrtc.on('readyToCall', function () {
-        webrtc.joinRoom(roomId);
-    });
-    
-    webrtc.on('videoAdded', function (video, peer) {
-        console.log('تمت إضافة فيديو:', peer.nick);
-        updateParticipantsList();
-    });
-    
-    webrtc.on('videoRemoved', function (video, peer) {
-        console.log('تمت إزالة فيديو:', peer.nick);
-        updateParticipantsList();
-    });
-    
-    webrtc.on('connectionReady', function(sessionId) {
-        console.log('الاتصال جاهز:', sessionId);
-    });
-    
-    // طلب إذن الكاميرا والميكروفون
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        .then(stream => {
-            localStream = stream;
-            document.getElementById('localVideo').srcObject = stream;
-        })
-        .catch(error => {
-            console.error('خطأ في الوصول للكاميرا/ميكروفون:', error);
-            showError('يجب السماح بالوصول للكاميرا والميكروفون');
+async function initializeWebRTC(roomId, isHost) {
+    try {
+        // الحصول على إذن الكاميرا والميكروفون
+        localStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true
         });
+        
+        // عرض الفيديو المحلي
+        const localVideo = document.getElementById('localVideo');
+        localVideo.srcObject = localStream;
+        
+        // إنشاء اتصال WebRTC
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+        
+        peerConnection = new RTCPeerConnection(configuration);
+        
+        // إضافة الفيديو والصوت المحلي إلى الاتصال
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+        
+        // الاستماع لمرشحات ICE
+        peerConnection.onicecandidate = event => {
+            if (event.candidate) {
+                db.ref(`rooms/${roomId}/candidates/${currentUserData.uid}`).push(event.candidate.toJSON());
+            }
+        };
+        
+        // الاستماع للبث القادم من الطرف الآخر
+        peerConnection.ontrack = event => {
+            const remoteVideo = document.getElementById('remoteVideo');
+            if (remoteVideo.srcObject !== event.streams[0]) {
+                remoteVideo.srcObject = event.streams[0];
+            }
+        };
+        
+        // إذا كان مضيفاً، أنشئ عرضاً (offer)
+        if (isHost) {
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            
+            await db.ref(`rooms/${roomId}`).set({
+                offer: offer,
+                host: currentUserData.uid
+            });
+        }
+        
+        // الاستماع للتغييرات في قاعدة البيانات
+        setupDatabaseListeners(roomId);
+        
+    } catch (error) {
+        console.error("خطأ في تهيئة WebRTC:", error);
+        showAlert('خطأ', 'تعذر الوصول للكاميرا/ميكروفون. يرجى التحقق من الأذونات.', 'error');
+    }
+}
+
+function setupDatabaseListeners(roomId) {
+    // الاستماع للعرض (offer) إذا كان مشاركاً
+    db.ref(`rooms/${roomId}/offer`).on('value', async snapshot => {
+        if (!snapshot.exists() || peerConnection.currentRemoteDescription) return;
+        
+        const offer = snapshot.val();
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        
+        await db.ref(`rooms/${roomId}/answer`).set(answer);
+    });
+    
+    // الاستماع للرد (answer) إذا كان مضيفاً
+    db.ref(`rooms/${roomId}/answer`).on('value', async snapshot => {
+        if (!snapshot.exists() || peerConnection.currentRemoteDescription) return;
+        
+        const answer = snapshot.val();
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+    });
+    
+    // الاستماع لمرشحات ICE
+    db.ref(`rooms/${roomId}/candidates`).on('child_added', async snapshot => {
+        const candidateData = snapshot.val();
+        const candidate = new RTCIceCandidate(candidateData);
+        await peerConnection.addIceCandidate(candidate);
+    });
 }
 
 function toggleVideo() {
     if (localStream) {
         const videoTrack = localStream.getVideoTracks()[0];
         if (videoTrack) {
-            isVideoEnabled = !isVideoEnabled;
-            videoTrack.enabled = isVideoEnabled;
+            const isEnabled = !videoTrack.enabled;
+            videoTrack.enabled = isEnabled;
             document.getElementById('toggleVideoBtn').innerHTML = 
-                isVideoEnabled ? '<i class="fas fa-video-slash"></i> إيقاف الفيديو' : 
-                                '<i class="fas fa-video"></i> تشغيل الفيديو';
+                isEnabled ? '<i class="fas fa-video-slash"></i> إيقاف الفيديو' : 
+                            '<i class="fas fa-video"></i> تشغيل الفيديو';
         }
     }
 }
@@ -1508,49 +1424,464 @@ function toggleAudio() {
     if (localStream) {
         const audioTrack = localStream.getAudioTracks()[0];
         if (audioTrack) {
-            isAudioEnabled = !isAudioEnabled;
-            audioTrack.enabled = isAudioEnabled;
+            const isEnabled = !audioTrack.enabled;
+            audioTrack.enabled = isEnabled;
             document.getElementById('toggleAudioBtn').innerHTML = 
-                isAudioEnabled ? '<i class="fas fa-microphone-slash"></i> إيقاف الصوت' : 
-                                '<i class="fas fa-microphone"></i> تشغيل الصوت';
+                isEnabled ? '<i class="fas fa-microphone-slash"></i> إيقاف الصوت' : 
+                            '<i class="fas fa-microphone"></i> تشغيل الصوت';
         }
     }
 }
 
 async function leaveLiveRoom() {
-    if (webrtc) {
-        webrtc.leaveRoom();
-        webrtc = null;
+    // إغلاق اتصال WebRTC
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
     }
     
+    // إيقاف الفيديو المحلي
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
     }
     
-    if (currentRoomId) {
-        // تحديث حالة المشارك
-        await db.ref(`room_participants/${currentRoomId}/${me.uid}`).update({
-            online: false,
-            leftAt: Date.now()
-        });
-        
-        // تقليل عدد المشاركين
-        await db.ref(`live_rooms/${currentRoomId}/participants`).transaction(current => {
+    // تحديث عدد المشاركين
+    if (currentLiveRoomId) {
+        await db.ref(`live_rooms/${currentLiveRoomId}/participants`).transaction(current => {
             return current > 0 ? current - 1 : 0;
         });
         
-        currentRoomId = null;
+        currentLiveRoomId = null;
     }
     
-    // العودة لقائمة الغرف
+    // العودة للقائمة
     document.getElementById('live-room-screen').classList.add('hidden');
     document.getElementById('app-screen').classList.remove('hidden');
     renderLiveRooms();
 }
 
+function loadParticipants(roomId) {
+    const container = document.getElementById('participants-container');
+    
+    db.ref(`room_participants/${roomId}`).on('value', snapshot => {
+        const participants = snapshot.val();
+        container.innerHTML = '';
+        
+        if (participants) {
+            Object.entries(participants).forEach(([userId, participant]) => {
+                container.innerHTML += `
+                    <div class="participant-item">
+                        <i class="fas fa-user-circle" style="color:var(--primary); font-size:20px;"></i>
+                        <span>${participant.userName}</span>
+                        ${userId === currentUserData.uid ? '<span style="color:var(--accent);">(أنت)</span>' : ''}
+                    </div>`;
+            });
+        }
+    });
+}
+
+function sendChatMessage() {
+    const input = document.getElementById('chat-input');
+    const message = input.value.trim();
+    
+    if (!message || !currentLiveRoomId) return;
+    
+    const chatRef = db.ref(`room_chat/${currentLiveRoomId}`).push();
+    chatRef.set({
+        userId: currentUserData.uid,
+        userName: currentUserData.name,
+        message: message,
+        timestamp: Date.now()
+    });
+    
+    input.value = '';
+    input.focus();
+}
+
+function loadChatMessages(roomId) {
+    const container = document.getElementById('chat-messages');
+    
+    db.ref(`room_chat/${roomId}`).limitToLast(20).on('value', snapshot => {
+        const messages = snapshot.val();
+        container.innerHTML = '';
+        
+        if (messages) {
+            Object.values(messages).forEach(msg => {
+                const time = new Date(msg.timestamp).toLocaleTimeString('ar-SA', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                const isMe = msg.userId === currentUserData.uid;
+                
+                container.innerHTML += `
+                    <div style="margin-bottom:10px; text-align:${isMe ? 'left' : 'right'};">
+                        <div style="font-size:10px; color:var(--text-sec);">
+                            ${msg.userName} • ${time}
+                        </div>
+                        <div style="background:${isMe ? 'var(--primary)' : 'var(--bg-card)'}; color:${isMe ? 'white' : 'var(--text-main)'}; padding:8px 12px; border-radius:10px; display:inline-block; max-width:80%;">
+                            ${msg.message}
+                        </div>
+                    </div>`;
+            });
+            
+            container.scrollTop = container.scrollHeight;
+        }
+    });
+}
+
+// ==================== [ 7. دوال مساعدة ] ====================
+function updateUI() {
+    if (currentUserData) {
+        document.getElementById('user-name').textContent = currentUserData.name;
+        document.getElementById('user-badge').onclick = () => nav('profile');
+    }
+}
+
+function nav(page) {
+    const area = document.getElementById('content-area');
+    const titles = {
+        'home': 'الرئيسية',
+        'grades': 'الفصول الدراسية',
+        'library': 'المكتبة الرقمية',
+        'ai_assistant': 'المساعد الذكي',
+        'live': 'غرف البث المباشر',
+        'profile': 'الملف الشخصي',
+        'admin': 'لوحة التحكم',
+        'subscription': 'الاشتراكات والدفع'
+    };
+    
+    document.getElementById('head-title').textContent = titles[page] || page;
+    
+    if (navigationHistory[navigationHistory.length - 1] !== page) {
+        navigationHistory.push(page);
+    }
+    
+    if (page === 'home') {
+        renderHome();
+    } else if (page === 'grades') {
+        renderGrades();
+    } else if (page === 'library') {
+        renderLibrary();
+    } else if (page === 'ai_assistant') {
+        renderAIAssistant();
+    } else if (page === 'live') {
+        renderLiveRooms();
+    } else if (page === 'profile') {
+        renderProfile();
+    }
+    
+    highlightTab(page);
+}
+
+function renderHome() {
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
+                <h2 style="margin-top:0;"><i class="fas fa-graduation-cap"></i> مرحباً ${currentUserData?.name || 'عزيزي الطالب'}</h2>
+                <p>منصة التعليم الذكي تساعدك على تحقيق أفضل النتائج</p>
+            </div>
+            
+            <div class="grid">
+                <div class="card" onclick="nav('grades')">
+                    <i class="fas fa-graduation-cap"></i>
+                    <h3>الفصول الدراسية</h3>
+                    <p>الدروس والمواد التعليمية</p>
+                </div>
+                
+                <div class="card" onclick="nav('library')">
+                    <i class="fas fa-book"></i>
+                    <h3>المكتبة</h3>
+                    <p>الكتب والمراجع</p>
+                </div>
+                
+                <div class="card" onclick="nav('ai_assistant')">
+                    <i class="fas fa-robot"></i>
+                    <h3>المساعد الذكي</h3>
+                    <p>أسئلة واختبارات</p>
+                </div>
+                
+                <div class="card" onclick="nav('live')">
+                    <i class="fas fa-video"></i>
+                    <h3>البث المباشر</h3>
+                    <p>دروس مباشرة</p>
+                </div>
+            </div>
+        </div>`;
+}
+
+function renderGrades() {
+    const area = document.getElementById('content-area');
+    const grade = currentUserData?.grade || 'الأول الابتدائي';
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <h2 style="color:var(--neon-blue); margin-top:0;"><i class="fas fa-graduation-cap"></i> الفصول الدراسية</h2>
+            <p style="color:var(--text-sec); margin-bottom:25px;">اختر المادة لعرض الدروس</p>
+            
+            <div class="grid">
+                <div class="card" onclick="showSubjectContent('الرياضيات')">
+                    <i class="fas fa-calculator"></i>
+                    <h3>الرياضيات</h3>
+                    <p>${grade}</p>
+                </div>
+                
+                <div class="card" onclick="showSubjectContent('العلوم')">
+                    <i class="fas fa-flask"></i>
+                    <h3>العلوم</h3>
+                    <p>${grade}</p>
+                </div>
+                
+                <div class="card" onclick="showSubjectContent('اللغة العربية')">
+                    <i class="fas fa-book-open"></i>
+                    <h3>اللغة العربية</h3>
+                    <p>${grade}</p>
+                </div>
+                
+                <div class="card" onclick="showSubjectContent('اللغة الإنجليزية')">
+                    <i class="fas fa-language"></i>
+                    <h3>الإنجليزية</h3>
+                    <p>${grade}</p>
+                </div>
+            </div>
+        </div>`;
+}
+
+function showSubjectContent(subject) {
+    const area = document.getElementById('content-area');
+    const grade = currentUserData?.grade || 'الأول الابتدائي';
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="display:flex; align-items:center; gap:15px; margin-bottom:25px;">
+                <button class="btn-secondary" onclick="nav('grades')" style="width:auto; padding:10px 15px;">
+                    <i class="fas fa-arrow-right"></i> رجوع
+                </button>
+                <h2 style="color:var(--neon-blue); margin:0;">${subject} - ${grade}</h2>
+            </div>
+            
+            <div style="background:var(--bg-card); border-radius:20px; padding:25px;">
+                <h3><i class="fas fa-book"></i> دروس ${subject}</h3>
+                <p style="color:var(--text-sec); margin-bottom:15px;">اختر الدرس لبدء التعلم</p>
+                
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <button class="btn-main" onclick="startLesson('${subject}', 'الدرس 1')">
+                        <i class="fas fa-play-circle"></i> الدرس الأول: مقدمة في ${subject}
+                    </button>
+                    <button class="btn-main" onclick="startLesson('${subject}', 'الدرس 2')">
+                        <i class="fas fa-play-circle"></i> الدرس الثاني: تمارين تطبيقية
+                    </button>
+                    <button class="btn-main" onclick="startLesson('${subject}', 'الدرس 3')">
+                        <i class="fas fa-play-circle"></i> الدرس الثالث: اختبار تقييمي
+                    </button>
+                </div>
+            </div>
+        </div>`;
+}
+
+function startLesson(subject, lesson) {
+    showAlert('بدء الدرس', `جاري تحميل ${lesson} في مادة ${subject}...`, 'info');
+}
+
+function renderLibrary() {
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <h2 style="color:var(--neon-blue); margin-top:0;"><i class="fas fa-book"></i> المكتبة الرقمية</h2>
+            <p style="color:var(--text-sec); margin-bottom:25px;">تصفح الكتب والمراجع التعليمية</p>
+            
+            <div class="grid">
+                <div class="card" onclick="openBook('رياضيات')">
+                    <i class="fas fa-calculator"></i>
+                    <h3>الرياضيات</h3>
+                    <p>${currentUserData?.grade || 'الصف الأول'}</p>
+                </div>
+                
+                <div class="card" onclick="openBook('علوم')">
+                    <i class="fas fa-flask"></i>
+                    <h3>العلوم</h3>
+                    <p>${currentUserData?.grade || 'الصف الأول'}</p>
+                </div>
+                
+                <div class="card" onclick="openBook('عربية')">
+                    <i class="fas fa-book-open"></i>
+                    <h3>اللغة العربية</h3>
+                    <p>${currentUserData?.grade || 'الصف الأول'}</p>
+                </div>
+                
+                <div class="card" onclick="openBook('إنجليزية')">
+                    <i class="fas fa-language"></i>
+                    <h3>الإنجليزية</h3>
+                    <p>${currentUserData?.grade || 'الصف الأول'}</p>
+                </div>
+            </div>
+        </div>`;
+}
+
+function openBook(book) {
+    showAlert('فتح الكتاب', `جاري تحميل كتاب ${book}...`, 'info');
+}
+
+function renderAIAssistant() {
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
+                <h2 style="margin-top:0;"><i class="fas fa-robot"></i> المساعد الذكي للتعلم</h2>
+                <p>اطرح أسئلة أو اختبر معلوماتك</p>
+            </div>
+            
+            <div style="background:var(--bg-card); border-radius:20px; padding:20px;">
+                <h3><i class="fas fa-question-circle"></i> اسأل المساعد الذكي</h3>
+                <textarea id="ai-question" placeholder="اكتب سؤالك هنا..." rows="3" style="margin:15px 0; width:100%;"></textarea>
+                <button class="btn-main" onclick="askAIQuestion()">
+                    <i class="fas fa-paper-plane"></i> إرسال السؤال
+                </button>
+            </div>
+        </div>`;
+}
+
+function askAIQuestion() {
+    const question = document.getElementById('ai-question').value.trim();
+    if (!question) {
+        showAlert('تنبيه', 'يرجى كتابة سؤال أولاً', 'warning');
+        return;
+    }
+    
+    showLoading('جاري معالجة سؤالك...');
+    
+    setTimeout(() => {
+        hideLoading();
+        showAlert('إجابة المساعد الذكي', 
+            `سؤالك: "${question}"\n\nالجواب: هذا سؤال ممتاز. بناءً على معرفتي، يمكنني مساعدتك في فهم هذا الموضوع بشكل أفضل.`,
+            'info'
+        );
+    }, 2000);
+}
+
+function renderProfile() {
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="text-align:center; margin-bottom:30px;">
+                <div style="width:100px; height:100px; border-radius:50%; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); display:flex; align-items:center; justify-content:center; margin:0 auto 15px;">
+                    <i class="fas fa-user" style="font-size:40px; color:white;"></i>
+                </div>
+                <h2 style="margin:0;">${currentUserData?.name || 'مستخدم'}</h2>
+                <p style="color:var(--text-sec); margin:5px 0;">${currentUserData?.email || ''}</p>
+                <span style="background:var(--primary); color:white; padding:3px 15px; border-radius:15px; font-size:12px;">
+                    ${currentUserData?.role === 'student' ? 'طالب' : currentUserData?.role || 'مستخدم'}
+                </span>
+            </div>
+            
+            <div style="background:var(--bg-card); border-radius:20px; padding:20px; margin-bottom:20px;">
+                <h3><i class="fas fa-info-circle"></i> معلوماتي</h3>
+                <div style="display:grid; gap:15px; margin-top:15px;">
+                    <div>
+                        <div style="color:var(--text-sec); font-size:14px;">الصف الدراسي</div>
+                        <div style="font-weight:bold;">${currentUserData?.grade || 'غير محدد'}</div>
+                    </div>
+                    <div>
+                        <div style="color:var(--text-sec); font-size:14px;">العمر</div>
+                        <div style="font-weight:bold;">${currentUserData?.age || 'غير محدد'} سنة</div>
+                    </div>
+                    <div>
+                        <div style="color:var(--text-sec); font-size:14px;">تاريخ التسجيل</div>
+                        <div style="font-weight:bold;">${currentUserData?.joinDate ? new Date(currentUserData.joinDate).toLocaleDateString('ar-SA') : 'غير محدد'}</div>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="btn-danger" onclick="doLogout()" style="width:100%;">
+                <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
+            </button>
+        </div>`;
+}
+
+async function doLogout() {
+    const confirm = await Swal.fire({
+        title: 'تأكيد تسجيل الخروج',
+        text: 'هل أنت متأكد من تسجيل الخروج؟',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، سجل خروج',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff'
+    });
+    
+    if (confirm.isConfirmed) {
+        showLoading('جاري تسجيل الخروج...');
+        
+        try {
+            await auth.signOut();
+            currentUserData = null;
+            navigationHistory = ['home'];
+            
+            hideLoading();
+            showLoginScreen();
+            
+        } catch (error) {
+            hideLoading();
+            showAlert('خطأ', 'حدث خطأ أثناء تسجيل الخروج', 'error');
+        }
+    }
+}
+
+function showLoginScreen() {
+    document.getElementById('main-preloader').classList.add('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('register-screen').classList.add('hidden');
+    document.getElementById('student-form').classList.add('hidden');
+    document.getElementById('teacher-form').classList.add('hidden');
+    document.getElementById('app-screen').classList.add('hidden');
+    document.getElementById('live-room-screen').classList.add('hidden');
+}
+
+function showRegisterOptions() {
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('register-screen').classList.remove('hidden');
+}
+
+function showStudentForm() {
+    document.getElementById('register-screen').classList.add('hidden');
+    document.getElementById('student-form').classList.remove('hidden');
+}
+
+function showTeacherForm() {
+    document.getElementById('register-screen').classList.add('hidden');
+    document.getElementById('teacher-form').classList.remove('hidden');
+}
+
+function backToLogin() {
+    document.getElementById('register-screen').classList.add('hidden');
+    document.getElementById('student-form').classList.add('hidden');
+    document.getElementById('teacher-form').classList.add('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
+}
+
+function backToRegister() {
+    document.getElementById('student-form').classList.add('hidden');
+    document.getElementById('teacher-form').classList.add('hidden');
+    document.getElementById('register-screen').classList.remove('hidden');
+}
+
+function handleBackButton() {
+    if (navigationHistory.length > 1) {
+        navigationHistory.pop();
+        const previousPage = navigationHistory[navigationHistory.length - 1];
+        nav(previousPage);
+    }
+}
+
 function backToLiveList() {
-    if (currentRoomId) {
+    if (currentLiveRoomId) {
         Swal.fire({
             title: 'هل تريد مغادرة الغرفة؟',
             text: 'سيتم إغلاق البث المباشر',
@@ -1572,334 +1903,16 @@ function backToLiveList() {
     }
 }
 
-function loadParticipants(roomId) {
-    const container = document.getElementById('participants-container');
-    
-    db.ref(`room_participants/${roomId}`).on('value', snap => {
-        const participants = snap.val();
-        container.innerHTML = '';
-        
-        if (participants) {
-            Object.entries(participants).forEach(([userId, participant]) => {
-                if (participant.online) {
-                    container.innerHTML += `
-                        <div class="participant-item">
-                            <i class="fas fa-user-circle" style="color:${participant.role === 'host' ? 'var(--accent)' : 'var(--primary)'}; font-size:20px;"></i>
-                            <span>${participant.userName}</span>
-                            ${participant.role === 'host' ? '<span style="background:var(--accent); color:black; padding:2px 8px; border-radius:10px; font-size:10px;">مضيف</span>' : ''}
-                        </div>`;
-                }
-            });
+function highlightTab(page) {
+    const tabs = document.querySelectorAll('.tab-btn');
+    tabs.forEach(tab => {
+        tab.classList.remove('active');
+        if (tab.onclick && tab.onclick.toString().includes(`'${page}'`)) {
+            tab.classList.add('active');
         }
     });
 }
 
-function updateParticipantsList() {
-    if (!webrtc || !currentRoomId) return;
-    
-    const peers = webrtc.getPeers();
-    const container = document.getElementById('participants-container');
-    
-    let html = `
-        <div class="participant-item">
-            <i class="fas fa-user-circle" style="color:var(--accent); font-size:20px;"></i>
-            <span>${me.name}</span>
-            <span style="background:var(--accent); color:black; padding:2px 8px; border-radius:10px; font-size:10px;">أنت</span>
-        </div>`;
-    
-    peers.forEach(peer => {
-        html += `
-            <div class="participant-item">
-                <i class="fas fa-user-circle" style="color:var(--primary); font-size:20px;"></i>
-                <span>${peer.nick || 'مشارك'}</span>
-            </div>`;
-    });
-    
-    container.innerHTML = html;
-}
-
-function sendChatMessage() {
-    const input = document.getElementById('chat-input');
-    const message = input.value.trim();
-    
-    if (!message || !currentRoomId) return;
-    
-    const chatRef = db.ref(`room_chat/${currentRoomId}`).push();
-    chatRef.set({
-        userId: me.uid,
-        userName: me.name,
-        message: message,
-        timestamp: Date.now(),
-        role: me.role
-    });
-    
-    input.value = '';
-    input.focus();
-}
-
-function loadChatMessages(roomId) {
-    const container = document.getElementById('chat-messages');
-    
-    db.ref(`room_chat/${roomId}`).limitToLast(50).on('value', snap => {
-        const messages = snap.val();
-        container.innerHTML = '';
-        
-        if (messages) {
-            Object.values(messages).forEach(msg => {
-                const time = formatDate(msg.timestamp);
-                const isMe = msg.userId === me.uid;
-                
-                container.innerHTML += `
-                    <div style="margin-bottom:10px; text-align:${isMe ? 'left' : 'right'};">
-                        <div style="font-size:10px; color:var(--text-sec);">
-                            ${msg.userName} • ${time}
-                        </div>
-                        <div style="background:${isMe ? 'var(--primary)' : 'var(--bg-card)'}; color:${isMe ? 'white' : 'var(--text-main)'}; padding:8px 12px; border-radius:10px; display:inline-block; max-width:80%;">
-                            ${msg.message}
-                        </div>
-                    </div>`;
-            });
-            
-            container.scrollTop = container.scrollHeight;
-        }
-    });
-}
-
-// ==================== [ 7. نظام تخزين الملفات عبر البوت ] ====================
-async function uploadToBot(file, type) {
-    return new Promise(async (resolve, reject) => {
-        try {
-            // محاكاة رفع الملف إلى بوت خارجي
-            // في الواقع هنا تحتاج لربط بوت حقيقي
-            
-            showLoading('جاري رفع الملف إلى خادم البوت...');
-            
-            // إنشاء رابط فريد للملف (في الإنتاج، استخدم بوت حقيقي)
-            const fakeUploadUrl = `https://your-bot-server.com/uploads/${Date.now()}_${file.name}`;
-            
-            // محاكاة التأخير
-            setTimeout(() => {
-                hideLoading();
-                resolve(fakeUploadUrl);
-            }, 1500);
-            
-        } catch (error) {
-            hideLoading();
-            reject(error);
-        }
-    });
-}
-
-async function addBook() {
-    const title = document.getElementById('book-title').value.trim();
-    const author = document.getElementById('book-author').value.trim();
-    const grade = document.getElementById('book-grade').value;
-    const subject = document.getElementById('book-subject').value;
-    const bookUrl = document.getElementById('book-url').value.trim();
-    const price = parseInt(document.getElementById('book-price').value) || 0;
-    const description = document.getElementById('book-description').value.trim();
-    
-    if (!title || !author || !grade || !subject || !bookUrl) {
-        showError('الرجاء ملء جميع الحقول المطلوبة');
-        return;
-    }
-    
-    try {
-        showLoading('جاري إضافة الكتاب...');
-        
-        const bookData = {
-            title: title,
-            author: author,
-            grade: grade,
-            subject: subject,
-            bookUrl: bookUrl, // رابط من البوت أو رابط خارجي
-            price: price,
-            description: description || null,
-            addedBy: me.uid,
-            addedByName: me.name,
-            addedDate: Date.now(),
-            downloads: 0,
-            status: me.role === 'admin' ? 'approved' : 'pending'
-        };
-        
-        const bookRef = db.ref('books').push();
-        await bookRef.set(bookData);
-        
-        if (me.role === 'teacher') {
-            await db.ref('admin_notifications').push({
-                type: 'book_pending',
-                userId: me.uid,
-                userName: me.name,
-                bookId: bookRef.key,
-                bookTitle: title,
-                timestamp: Date.now(),
-                status: 'pending'
-            });
-        }
-        
-        hideLoading();
-        
-        if (me.role === 'admin') {
-            showSuccess('تمت إضافة الكتاب بنجاح');
-            nav('library');
-        } else {
-            Swal.fire({
-                title: 'تم الإرسال!',
-                text: 'تم إرسال الكتاب للإدمن للمراجعة',
-                icon: 'success',
-                confirmButtonText: 'حسناً',
-                background: '#1e293b',
-                color: '#fff'
-            }).then(() => {
-                nav('library');
-            });
-        }
-        
-    } catch (error) {
-        hideLoading();
-        showError('حدث خطأ: ' + error.message);
-    }
-}
-
-// ==================== [ 8. بقية الدوال الأساسية ] ====================
-function loadUserData(uid) {
-    db.ref('users/' + uid).on('value', async (snap) => {
-        if (snap.exists()) {
-            me = snap.val();
-            me.uid = uid;
-            
-            const user = auth.currentUser;
-            
-            if (user) {
-                if (user.emailVerified && !me.emailVerified) {
-                    await db.ref('users/' + uid + '/emailVerified').set(true);
-                    
-                    if (me.status === 'pending_email_verification') {
-                        await db.ref('users/' + uid + '/status').set('active');
-                    }
-                    
-                    me.emailVerified = true;
-                }
-                
-                if (!user.emailVerified) {
-                    await Swal.fire({
-                        title: 'يرجى تأكيد بريدك الإلكتروني',
-                        html: `لم يتم تأكيد بريدك الإلكتروني بعد<br>
-                               <strong>${user.email}</strong><br><br>
-                               هل تريد إعادة إرسال رسالة التأكيد؟`,
-                        icon: 'warning',
-                        showCancelButton: true,
-                        confirmButtonText: 'نعم، أعد الإرسال',
-                        cancelButtonText: 'تسجيل خروج',
-                        background: '#1e293b',
-                        color: '#fff'
-                    }).then(async (result) => {
-                        if (result.isConfirmed) {
-                            await user.sendEmailVerification();
-                            showSuccess('تم إعادة إرسال رابط التأكيد');
-                        }
-                        auth.signOut();
-                    });
-                    return;
-                }
-            }
-            
-            if (me.role === 'pending_teacher') {
-                await checkTeacherStatus(uid);
-                return;
-            }
-            
-            if (me.role === 'rejected_teacher') {
-                Swal.fire({
-                    title: 'تم رفض طلبك',
-                    text: 'تم رفض طلب تسجيلك كأستاذ. يمكنك التسجيل كطالب بدلاً من ذلك.',
-                    icon: 'error',
-                    confirmButtonText: 'حسناً',
-                    background: '#1e293b',
-                    color: '#fff'
-                }).then(() => {
-                    auth.signOut();
-                });
-                return;
-            }
-            
-            updateUI();
-            
-            document.getElementById('main-preloader').classList.add('hidden');
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('register-screen').classList.add('hidden');
-            document.getElementById('student-form').classList.add('hidden');
-            document.getElementById('teacher-form').classList.add('hidden');
-            document.getElementById('live-room-screen').classList.add('hidden');
-            document.getElementById('app-screen').classList.remove('hidden');
-            
-            nav('home');
-            
-            db.ref('users/' + uid + '/online').set(true);
-            db.ref('users/' + uid + '/online').onDisconnect().set(false);
-        } else {
-            console.error('لا توجد بيانات للمستخدم:', uid);
-            Swal.fire({
-                title: 'خطأ في البيانات',
-                text: 'لا توجد بيانات لحسابك في النظام. يرجى التسجيل مرة أخرى.',
-                icon: 'error',
-                confirmButtonText: 'حسناً',
-                background: '#1e293b',
-                color: '#fff'
-            }).then(() => {
-                auth.signOut();
-            });
-        }
-    }, (error) => {
-        console.error('خطأ في قراءة البيانات:', error);
-        showLoginScreen();
-    });
-}
-
-function nav(view, extra) {
-    hStack.push(view);
-    const area = document.getElementById('content-area');
-    
-    const titles = {
-        'home': 'الرئيسية',
-        'grades': 'الفصول الدراسية',
-        'library': 'المكتبة الرقمية',
-        'ai_assistant': 'المساعد الذكي',
-        'live': 'غرف البث المباشر',
-        'profile': 'الملف الشخصي',
-        'admin': 'لوحة التحكم',
-        'add_book': 'إضافة كتاب جديد',
-        'book_detail': 'تفاصيل الكتاب',
-        'subscription': 'الاشتراكات والدفع'
-    };
-    document.getElementById('head-title').innerText = titles[view] || view;
-    
-    if (view === 'home') {
-        renderHome();
-    } else if (view === 'grades') {
-        renderGrades();
-    } else if (view === 'library') {
-        renderLibrary();
-    } else if (view === 'ai_assistant') {
-        renderAIAssistant();
-    } else if (view === 'live') {
-        renderLiveRooms();
-    } else if (view === 'profile') {
-        renderProfile();
-    } else if (view === 'admin') {
-        renderAdminPanel();
-    } else if (view === 'add_book') {
-        renderAddBook();
-    } else if (view === 'subscription') {
-        renderSubscription();
-    } else if (view === 'book_detail') {
-        if (extra) loadBookDetail(extra);
-    }
-    
-    highlightTab(document.querySelector(`[onclick*="${view}"]`));
-}
-
-// ==================== [ 9. دوال مساعدة ] ====================
 function showLoading(message = 'جاري المعالجة...') {
     Swal.fire({
         title: message,
@@ -1914,60 +1927,102 @@ function hideLoading() {
     Swal.close();
 }
 
-function showSuccess(message) {
+function showAlert(title, text, icon) {
     Swal.fire({
-        title: 'تم بنجاح!',
-        text: message,
-        icon: 'success',
+        title: title,
+        text: text,
+        icon: icon,
         confirmButtonText: 'حسناً',
         background: '#1e293b',
         color: '#fff'
     });
 }
 
-function showError(message) {
-    Swal.fire({
-        title: 'خطأ!',
-        text: message,
-        icon: 'error',
-        confirmButtonText: 'حسناً',
-        background: '#1e293b',
-        color: '#fff'
-    });
+// ==================== [ 8. تحميل الغرف الحية ] ====================
+async function loadLiveRooms() {
+    try {
+        const snapshot = await db.ref('live_rooms').orderByChild('status').equalTo('active').once('value');
+        const rooms = snapshot.val();
+        const container = document.getElementById('live-rooms');
+        
+        container.innerHTML = '';
+        
+        if (rooms) {
+            Object.values(rooms).forEach(room => {
+                const time = new Date(room.createdAt).toLocaleTimeString('ar-SA', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                container.innerHTML += `
+                    <div style="background:var(--bg-card); border-radius:15px; padding:15px; margin-bottom:15px; border:1px solid var(--border);">
+                        <h3 style="margin:0 0 10px 0;">${room.title}</h3>
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <span style="color:var(--text-sec); font-size:14px;">
+                                    <i class="fas fa-user"></i> ${room.teacherName}
+                                </span>
+                                <span style="color:var(--text-sec); font-size:14px; margin-right:15px;">
+                                    <i class="fas fa-users"></i> ${room.participants || 0}
+                                </span>
+                            </div>
+                            <button class="btn-main" onclick="joinLiveRoom('${room.id}')" style="width:auto; padding:8px 15px;">
+                                <i class="fas fa-video"></i> انضم
+                            </button>
+                        </div>
+                        <div style="color:var(--text-sec); font-size:12px; margin-top:10px;">
+                            <i class="fas fa-clock"></i> ${time}
+                        </div>
+                    </div>`;
+            });
+        } else {
+            container.innerHTML = `
+                <div style="text-align:center; padding:40px; color:var(--text-sec);">
+                    <i class="fas fa-video-slash" style="font-size:50px; margin-bottom:15px;"></i>
+                    <p>لا توجد غرف بث مباشر نشطة حالياً</p>
+                </div>`;
+        }
+        
+    } catch (error) {
+        console.error("خطأ في تحميل الغرف:", error);
+        document.getElementById('live-rooms').innerHTML = `
+            <div style="text-align:center; padding:40px; color:var(--red);">
+                <i class="fas fa-exclamation-circle" style="font-size:50px; margin-bottom:15px;"></i>
+                <p>حدث خطأ في تحميل الغرف</p>
+            </div>`;
+    }
 }
 
-function formatDate(timestamp) {
-    if (!timestamp) return 'غير محدد';
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now - date;
-    
-    if (diff < 60000) return 'الآن';
-    if (diff < 3600000) return `قبل ${Math.floor(diff / 60000)} دقيقة`;
-    if (diff < 86400000) return `قبل ${Math.floor(diff / 3600000)} ساعة`;
-    
-    return date.toLocaleDateString('ar-SA');
+function resendVerification() {
+    const user = auth.currentUser;
+    if (user) {
+        user.sendEmailVerification()
+            .then(() => {
+                showAlert('نجاح', 'تم إعادة إرسال رابط التأكيد إلى بريدك', 'success');
+            })
+            .catch(error => {
+                showAlert('خطأ', 'حدث خطأ في إعادة إرسال رابط التأكيد', 'error');
+            });
+    } else {
+        showAlert('تنبيه', 'يجب تسجيل الدخول أولاً', 'warning');
+    }
 }
 
-// ==================== [ 10. جعل الدوال متاحة عالمياً ] ====================
-window.nav = nav;
-window.showLoginScreen = showLoginScreen;
+// ==================== [ 9. جعل الدوال متاحة عالمياً ] ====================
+window.loginUser = loginUser;
+window.registerStudent = registerStudent;
+window.registerTeacher = registerTeacher;
 window.showRegisterOptions = showRegisterOptions;
 window.showStudentForm = showStudentForm;
 window.showTeacherForm = showTeacherForm;
 window.backToLogin = backToLogin;
 window.backToRegister = backToRegister;
-window.loginUser = loginUser;
-window.registerStudent = registerStudent;
-window.registerTeacher = registerTeacher;
+window.nav = nav;
 window.handleBackButton = handleBackButton;
-window.showGradeContent = showGradeContent;
 window.showSubjectContent = showSubjectContent;
-window.updateBankAccount = updateBankAccount;
-window.doLogout = doLogout;
-window.generateAIQuiz = generateAIQuiz;
-window.selectAIAnswer = selectAIAnswer;
-window.submitAIQuiz = submitAIQuiz;
+window.startLesson = startLesson;
+window.openBook = openBook;
+window.askAIQuestion = askAIQuestion;
 window.createLiveRoom = createLiveRoom;
 window.joinLiveRoom = joinLiveRoom;
 window.leaveLiveRoom = leaveLiveRoom;
@@ -1975,13 +2030,7 @@ window.toggleVideo = toggleVideo;
 window.toggleAudio = toggleAudio;
 window.backToLiveList = backToLiveList;
 window.sendChatMessage = sendChatMessage;
-window.showRoomPayment = showRoomPayment;
-window.subscribeWeekly = subscribeWeekly;
-window.subscribeMonthly = subscribeMonthly;
-window.subscribeYearly = subscribeYearly;
-window.sendPaymentNotification = sendPaymentNotification;
-window.addBook = addBook;
-window.downloadBook = downloadBook;
+window.doLogout = doLogout;
 window.resendVerification = resendVerification;
 </script>
 </body>
