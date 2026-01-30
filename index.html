@@ -845,28 +845,38 @@ let currentLiveRoom = null;
 let currentVoice = null;
 
 // ==================== [ 3. تهيئة التطبيق ] ====================
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(() => {
+        initializeApp();
+    }, 1000);
+});
+
 function initializeApp() {
-    // إخفاء شاشة التحميل أولاً
-    document.getElementById('main-preloader').classList.add('hidden');
-    
-    // التحقق من المستخدم الحالي
+    // التحقق من المستخدم الحالي أولاً
     auth.onAuthStateChanged((user) => {
+        // إخفاء شاشة التحميل بعد التحقق من الحالة
+        document.getElementById('main-preloader').classList.add('hidden');
+        
         if (user) {
             // المستخدم مسجل دخول
+            console.log('المستخدم مسجل دخول:', user.uid);
             loadUserData(user.uid);
         } else {
             // عرض شاشة تسجيل الدخول
+            console.log('لا يوجد مستخدم مسجل');
             showLoginScreen();
         }
     });
 }
 
 function showLoginScreen() {
+    // إخفاء كل الشاشات
     document.getElementById('login-screen').classList.remove('hidden');
     document.getElementById('register-screen').classList.add('hidden');
     document.getElementById('student-form').classList.add('hidden');
     document.getElementById('teacher-form').classList.add('hidden');
     document.getElementById('app-screen').classList.add('hidden');
+    document.getElementById('main-preloader').classList.add('hidden');
 }
 
 function backToLogin() {
@@ -943,6 +953,9 @@ async function loginUser() {
         
         hideLoading();
         showSuccess('تم تسجيل الدخول بنجاح');
+        
+        // تحميل بيانات المستخدم بعد تسجيل الدخول الناجح
+        loadUserData(user.uid);
         
     } catch (error) {
         hideLoading();
@@ -1337,7 +1350,24 @@ function loadUserData(uid) {
             // تحديث حالة الاتصال
             db.ref('users/' + uid + '/online').set(true);
             db.ref('users/' + uid + '/online').onDisconnect().set(false);
+        } else {
+            // إذا لم توجد بيانات المستخدم في قاعدة البيانات
+            console.error('لا توجد بيانات للمستخدم:', uid);
+            Swal.fire({
+                title: 'خطأ في البيانات',
+                text: 'لا توجد بيانات لحسابك في النظام. يرجى التسجيل مرة أخرى.',
+                icon: 'error',
+                confirmButtonText: 'حسناً',
+                background: '#1e293b',
+                color: '#fff'
+            }).then(() => {
+                auth.signOut();
+            });
         }
+    }, (error) => {
+        // معالجة أخطاء القراءة من قاعدة البيانات
+        console.error('خطأ في قراءة البيانات:', error);
+        showLoginScreen();
     });
 }
 
@@ -3544,14 +3574,7 @@ function showSystemStats() {
     showError('هذه الميزة قيد التطوير');
 }
 
-// ==================== [ 25. التهيئة النهائية ] ====================
-document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(() => {
-        initializeApp();
-    }, 1000);
-});
-
-// جعل الدوال متاحة عالمياً
+// ==================== [ 25. جعل الدوال متاحة عالمياً ] ====================
 window.nav = nav;
 window.showLoginScreen = showLoginScreen;
 window.showRegisterOptions = showRegisterOptions;
