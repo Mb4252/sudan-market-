@@ -862,6 +862,7 @@ function showLoginScreen() {
     document.getElementById('register-screen').classList.add('hidden');
     document.getElementById('student-form').classList.add('hidden');
     document.getElementById('teacher-form').classList.add('hidden');
+    document.getElementById('app-screen').classList.add('hidden');
 }
 
 function backToLogin() {
@@ -910,12 +911,9 @@ async function loginUser() {
         hideLoading();
         showSuccess('تم تسجيل الدخول بنجاح');
         
-        // سيتم تحميل بيانات المستخدم تلقائياً عبر onAuthStateChanged
-        
     } catch (error) {
         hideLoading();
         
-        // محاولة الدخول كضيف
         if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
             showError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
         } else {
@@ -988,8 +986,6 @@ async function registerStudent() {
         
         hideLoading();
         showSuccess('تم إنشاء حساب الطالب بنجاح');
-        
-        // سيتم تحميل بيانات المستخدم تلقائياً عبر onAuthStateChanged
         
     } catch (error) {
         hideLoading();
@@ -1388,50 +1384,666 @@ function renderHome() {
     loadRecentBooks();
 }
 
-// ==================== [ 11. دوال مساعدة ] ====================
-function debounce(func, wait = 300) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
+// ==================== [ 11. مكتبة الكتب ] ====================
+function renderLibrary() {
+    const area = document.getElementById('content-area');
+    const canAddBooks = me.role === 'admin' || me.role === 'teacher';
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2 style="color:var(--neon-blue);"><i class="fas fa-book"></i> المكتبة الرقمية</h2>
+                ${canAddBooks ? `
+                <button class="btn-main" onclick="nav('add_book')" style="width:auto; padding:10px 20px;">
+                    <i class="fas fa-plus"></i> إضافة كتاب
+                </button>
+                ` : ''}
+            </div>
+            
+            <div style="margin:20px 0;">
+                <input type="text" id="book-search" placeholder="ابحث عن كتاب، مؤلف، أو مادة..." 
+                       style="width:100%;" oninput="debounceSearch(this.value)">
+            </div>
+            
+            <div id="books-list" class="loading">
+                <div class="loading-spinner"></div>
+                <div>جاري تحميل المكتبة...</div>
+            </div>
+        </div>`;
+    
+    loadAllBooks();
 }
 
-function formatDate(timestamp) {
-    if (!timestamp) return 'غير محدد';
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now - date;
+function loadAllBooks() {
+    const container = document.getElementById('books-list');
+    if (!container) return;
     
-    if (diff < 60000) return 'الآن';
-    if (diff < 3600000) return `قبل ${Math.floor(diff / 60000)} دقيقة`;
-    if (diff < 86400000) return `قبل ${Math.floor(diff / 3600000)} ساعة`;
-    
-    return date.toLocaleDateString('ar-SA');
-}
-
-function showLoading(message = 'جاري المعالجة...') {
-    Swal.fire({
-        title: message,
-        allowOutsideClick: false,
-        didOpen: () => Swal.showLoading(),
-        background: '#1e293b',
-        color: '#fff'
+    db.ref('books').limitToLast(20).on('value', snap => {
+        const books = snap.val();
+        container.innerHTML = '';
+        
+        if (!books || Object.keys(books).length === 0) {
+            container.innerHTML = `
+                <div style="text-align:center; padding:40px; color:var(--text-sec);">
+                    <i class="fas fa-book" style="font-size:48px; margin-bottom:15px; opacity:0.5;"></i>
+                    <p>لا توجد كتب في المكتبة بعد</p>
+                    ${me.role === 'admin' ? `
+                    <button class="btn-main" onclick="nav('add_book')" style="margin-top:15px; width:auto;">
+                        <i class="fas fa-plus"></i> أضف أول كتاب
+                    </button>
+                    ` : ''}
+                </div>`;
+            return;
+        }
+        
+        let booksArray = Object.entries(books).map(([id, book]) => ({ id, ...book }));
+        booksArray.reverse(); // الأحدث أولاً
+        
+        booksArray.forEach(book => {
+            const isFree = !book.price || book.price === 0;
+            const priceText = isFree ? 'مجاني' : `${book.price} ج.س`;
+            const canDownload = isFree || me.balance >= book.price || 
+                              (me.freeTrial && me.freeUntil > Date.now());
+            
+            container.innerHTML += `
+                <div class="book-card">
+                    <div style="width:80px; height:100px; background:var(--accent); border-radius:10px; display:flex; align-items:center; justify-content:center;">
+                        <i class="fas fa-book-open" style="font-size:32px; color:white;"></i>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                            <div>
+                                <div style="font-weight:bold; font-size:16px; margin-bottom:5px;">${book.title}</div>
+                                <div style="font-size:12px; color:var(--text-sec); margin-bottom:5px;">
+                                    <i class="fas fa-user"></i> ${book.author}
+                                </div>
+                            </div>
+                            <span style="background:${isFree ? 'var(--green)' : 'var(--accent)'}; color:${isFree ? 'white' : 'black'}; padding:3px 8px; border-radius:5px; font-size:11px; font-weight:bold;">
+                                ${priceText}
+                            </span>
+                        </div>
+                        
+                        <div style="font-size:11px; color:var(--text-sec); margin-top:8px;">
+                            <span class="grade-badge">${book.grade}</span>
+                            <span style="background:rgba(59, 130, 246, 0.2); color:var(--primary); padding:3px 8px; border-radius:5px; margin-right:5px;">
+                                ${book.subject}
+                            </span>
+                        </div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        <button class="btn-main" style="padding:8px 12px; font-size:12px;" 
+                                onclick="nav('book_detail', '${book.id}')" ${!canDownload ? 'disabled style="opacity:0.5;"' : ''}>
+                            <i class="fas fa-eye"></i> ${canDownload ? 'عرض' : 'غير متاح'}
+                        </button>
+                    </div>
+                </div>`;
+        });
     });
 }
 
-function hideLoading() {
-    Swal.close();
+// ==================== [ 12. إضافة كتاب ] ====================
+function renderAddBook() {
+    if (me.role !== 'admin' && me.role !== 'teacher') {
+        nav('home');
+        return;
+    }
+    
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="display:flex; align-items:center; gap:15px; margin-bottom:30px;">
+                <button class="btn-secondary" onclick="nav('library')" style="width:auto; padding:10px 15px;">
+                    <i class="fas fa-arrow-right"></i> رجوع
+                </button>
+                <h2 style="color:var(--neon-blue); margin:0;">إضافة كتاب جديد</h2>
+            </div>
+            
+            <div style="background:var(--bg-card); padding:25px; border-radius:20px;">
+                <div style="margin-bottom:20px;">
+                    <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                        <i class="fas fa-heading"></i> عنوان الكتاب *
+                    </label>
+                    <input type="text" id="book-title" placeholder="أدخل عنوان الكتاب" required>
+                </div>
+                
+                <div style="margin-bottom:20px;">
+                    <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                        <i class="fas fa-user"></i> اسم المؤلف *
+                    </label>
+                    <input type="text" id="book-author" placeholder="اسم مؤلف الكتاب" required>
+                </div>
+                
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">
+                    <div>
+                        <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                            <i class="fas fa-graduation-cap"></i> الصف الدراسي *
+                        </label>
+                        <select id="book-grade" required>
+                            <option value="">اختر الصف</option>
+                            <option value="الأول الابتدائي">الصف الأول الابتدائي</option>
+                            <option value="الثاني الابتدائي">الصف الثاني الابتدائي</option>
+                            <option value="الثالث الابتدائي">الصف الثالث الابتدائي</option>
+                            <option value="الرابع الابتدائي">الصف الرابع الابتدائي</option>
+                            <option value="الخامس الابتدائي">الصف الخامس الابتدائي</option>
+                            <option value="السادس الابتدائي">الصف السادس الابتدائي</option>
+                            <option value="الأول المتوسط">الصف الأول المتوسط</option>
+                            <option value="الثاني المتوسط">الصف الثاني المتوسط</option>
+                            <option value="الثالث المتوسط">الصف الثالث المتوسط</option>
+                            <option value="الأول الثانوي">الصف الأول الثانوي</option>
+                            <option value="الثاني الثانوي">الصف الثاني الثانوي</option>
+                            <option value="الثالث الثانوي">الصف الثالث الثانوي</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                            <i class="fas fa-book-open"></i> المادة الدراسية *
+                        </label>
+                        <select id="book-subject" required>
+                            <option value="">اختر المادة</option>
+                            <option value="الرياضيات">الرياضيات</option>
+                            <option value="العلوم">العلوم</option>
+                            <option value="اللغة العربية">اللغة العربية</option>
+                            <option value="اللغة الإنجليزية">اللغة الإنجليزية</option>
+                            <option value="الاجتماعيات">الاجتماعيات</option>
+                            <option value="التربية الإسلامية">التربية الإسلامية</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div style="margin-bottom:20px;">
+                    <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                        <i class="fas fa-link"></i> رابط الكتاب (URL) *
+                    </label>
+                    <input type="url" id="book-url" placeholder="https://example.com/book.pdf" required>
+                    <small style="color:var(--text-sec);">رابط مباشر لتحميل الكتاب (PDF)</small>
+                </div>
+                
+                <div style="margin-bottom:20px;">
+                    <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                        <i class="fas fa-tag"></i> السعر (ج.س)
+                    </label>
+                    <input type="number" id="book-price" placeholder="0 للمجاني" min="0" value="0">
+                </div>
+                
+                <div style="margin-bottom:20px;">
+                    <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                        <i class="fas fa-align-left"></i> وصف الكتاب
+                    </label>
+                    <textarea id="book-description" placeholder="وصف مختصر للكتاب..." rows="3"></textarea>
+                </div>
+                
+                <button class="btn-main" onclick="addBook()">
+                    <i class="fas fa-check"></i> إضافة الكتاب
+                </button>
+            </div>
+        </div>`;
 }
 
-function showSuccess(message) {
+async function addBook() {
+    const title = document.getElementById('book-title').value.trim();
+    const author = document.getElementById('book-author').value.trim();
+    const grade = document.getElementById('book-grade').value;
+    const subject = document.getElementById('book-subject').value;
+    const bookUrl = document.getElementById('book-url').value.trim();
+    const price = parseInt(document.getElementById('book-price').value) || 0;
+    const description = document.getElementById('book-description').value.trim();
+    
+    if (!title || !author || !grade || !subject || !bookUrl) {
+        showError('الرجاء ملء جميع الحقول المطلوبة');
+        return;
+    }
+    
+    try {
+        showLoading('جاري إضافة الكتاب...');
+        
+        const bookData = {
+            title: title,
+            author: author,
+            grade: grade,
+            subject: subject,
+            bookUrl: bookUrl,
+            price: price,
+            description: description || null,
+            addedBy: me.uid,
+            addedByName: me.name,
+            addedDate: Date.now(),
+            downloads: 0,
+            status: me.role === 'admin' ? 'approved' : 'pending'
+        };
+        
+        const bookRef = db.ref('books').push();
+        await bookRef.set(bookData);
+        
+        // إذا كان الأستاذ، إرسال إشعار للإدمن
+        if (me.role === 'teacher') {
+            await db.ref('admin_notifications').push({
+                type: 'book_pending',
+                userId: me.uid,
+                userName: me.name,
+                bookId: bookRef.key,
+                bookTitle: title,
+                timestamp: Date.now(),
+                status: 'pending'
+            });
+        }
+        
+        hideLoading();
+        
+        if (me.role === 'admin') {
+            showSuccess('تمت إضافة الكتاب بنجاح');
+            nav('library');
+        } else {
+            Swal.fire({
+                title: 'تم الإرسال!',
+                text: 'تم إرسال الكتاب للإدمن للمراجعة',
+                icon: 'success',
+                confirmButtonText: 'حسناً',
+                background: '#1e293b',
+                color: '#fff'
+            }).then(() => {
+                nav('library');
+            });
+        }
+        
+    } catch (error) {
+        hideLoading();
+        showError('حدث خطأ: ' + error.message);
+    }
+}
+
+// ==================== [ 13. تفاصيل الكتاب ] ====================
+async function loadBookDetail(bookId) {
+    const bookSnap = await db.ref(`books/${bookId}`).once('value');
+    const book = bookSnap.val();
+    
+    if (!book) {
+        showError('الكتاب غير موجود');
+        nav('library');
+        return;
+    }
+    
+    const isFree = !book.price || book.price === 0;
+    const canDownload = isFree || me.balance >= book.price || 
+                       (me.freeTrial && me.freeUntil > Date.now());
+    
+    const area = document.getElementById('content-area');
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="display:flex; align-items:center; gap:15px; margin-bottom:25px;">
+                <button class="btn-secondary" onclick="nav('library')" style="width:auto; padding:10px 15px;">
+                    <i class="fas fa-arrow-right"></i> رجوع
+                </button>
+                <h2 style="color:var(--neon-blue); margin:0;">${book.title}</h2>
+            </div>
+            
+            <div style="background:var(--bg-card); border-radius:20px; padding:25px;">
+                <div style="margin-bottom:25px;">
+                    <h3 style="color:var(--accent); margin-top:0;"><i class="fas fa-info-circle"></i> معلومات الكتاب</h3>
+                    <div style="line-height:2.5;">
+                        <div style="display:flex;">
+                            <strong style="width:120px; color:var(--text-sec);">المؤلف:</strong>
+                            <span>${book.author}</span>
+                        </div>
+                        <div style="display:flex;">
+                            <strong style="width:120px; color:var(--text-sec);">الصف الدراسي:</strong>
+                            <span>${book.grade}</span>
+                        </div>
+                        <div style="display:flex;">
+                            <strong style="width:120px; color:var(--text-sec);">المادة الدراسية:</strong>
+                            <span>${book.subject}</span>
+                        </div>
+                        <div style="display:flex;">
+                            <strong style="width:120px; color:var(--text-sec);">السعر:</strong>
+                            <span style="color:${isFree ? 'var(--green)' : 'var(--accent)'}; font-weight:bold;">
+                                ${isFree ? 'مجاني' : book.price + ' ج.س'}
+                            </span>
+                        </div>
+                        <div style="display:flex;">
+                            <strong style="width:120px; color:var(--text-sec);">تاريخ الإضافة:</strong>
+                            <span>${formatDate(book.addedDate)}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                ${book.description ? `
+                <div style="margin-bottom:25px;">
+                    <h4 style="color:var(--text-sec);"><i class="fas fa-align-left"></i> وصف الكتاب</h4>
+                    <p style="color:var(--text-main); line-height:1.8;">
+                        ${book.description}
+                    </p>
+                </div>
+                ` : ''}
+                
+                <div style="display:flex; gap:10px; margin-top:30px;">
+                    <button class="btn-main" onclick="downloadBook('${bookId}', '${book.bookUrl}', ${book.price || 0})" 
+                            ${!canDownload ? 'disabled style="opacity:0.5;"' : ''}
+                            style="flex:1;">
+                        <i class="fas fa-download"></i> ${isFree ? 'تحميل مجاني' : `شراء و تحميل (${book.price} ج.س)`}
+                    </button>
+                    
+                    ${(me.role === 'admin') ? `
+                    <button class="btn-danger" onclick="deleteBook('${bookId}')" style="width:auto; padding:10px 20px;">
+                        <i class="fas fa-trash"></i> حذف
+                    </button>
+                    ` : ''}
+                </div>
+            </div>
+        </div>`;
+}
+
+async function downloadBook(bookId, bookUrl, price) {
+    if (!bookUrl) {
+        showError('رابط الكتاب غير متوفر');
+        return;
+    }
+    
+    const isFree = price === 0;
+    const canDownload = isFree || me.balance >= price || 
+                       (me.freeTrial && me.freeUntil > Date.now());
+    
+    if (!canDownload) {
+        showError('رصيدك غير كافي لشراء هذا الكتاب');
+        nav('subscription');
+        return;
+    }
+    
+    if (!isFree) {
+        // خصم السعر من رصيد الطالب
+        const confirm = await Swal.fire({
+            title: 'تأكيد الشراء',
+            html: `سعر الكتاب: <strong>${price} ج.س</strong><br>
+                   سيتم خصم المبلغ من رصيدك`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'شراء وتحميل',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        });
+        
+        if (!confirm.isConfirmed) return;
+        
+        showLoading('جاري معالجة الشراء...');
+        
+        try {
+            const newBalance = me.balance - price;
+            await db.ref(`users/${me.uid}/balance`).set(newBalance);
+            me.balance = newBalance;
+            updateUI();
+            
+            // تسجيل عملية الشراء
+            await db.ref(`purchases/${me.uid}/${Date.now()}`).set({
+                type: 'book',
+                bookId: bookId,
+                price: price,
+                timestamp: Date.now()
+            });
+            
+            // تحويل المبلغ للأستاذ إذا كان الكتاب مدفوعاً
+            if (price > 0) {
+                const bookSnap = await db.ref(`books/${bookId}/addedBy`).once('value');
+                const teacherId = bookSnap.val();
+                
+                if (teacherId && teacherId !== me.uid) {
+                    const teacherSnap = await db.ref(`users/${teacherId}`).once('value');
+                    const teacher = teacherSnap.val();
+                    
+                    if (teacher && teacher.role === 'teacher') {
+                        const teacherEarnings = (teacher.totalEarnings || 0) + price;
+                        await db.ref(`users/${teacherId}/totalEarnings`).set(teacherEarnings);
+                    }
+                }
+            }
+            
+            hideLoading();
+            
+        } catch (error) {
+            hideLoading();
+            showError('حدث خطأ أثناء الشراء: ' + error.message);
+            return;
+        }
+    }
+    
+    // زيادة عداد التنزيلات
+    await db.ref(`books/${bookId}/downloads`).transaction(current => (current || 0) + 1);
+    
+    // فتح الكتاب
+    window.open(bookUrl, '_blank');
+    
+    showSuccess('جاري تحميل الكتاب...');
+}
+
+// ==================== [ 14. المساعد الذكي ] ====================
+function renderAIAssistant() {
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
+                <h2 style="margin-top:0;"><i class="fas fa-robot"></i> المساعد الذكي</h2>
+                <p>أنشئ اختبارات ذكية من المنهج الدراسي</p>
+            </div>
+            
+            <div id="ai-interface">
+                <div style="background:var(--bg-card); padding:20px; border-radius:15px; margin:20px 0;">
+                    <h4><i class="fas fa-cogs" style="color:var(--accent);"></i> إعدادات الاختبار</h4>
+                    
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin:15px 0;">
+                        <div>
+                            <label style="display:block; margin-bottom:8px; color:var(--text-sec);">
+                                <i class="fas fa-book"></i> المادة:
+                            </label>
+                            <select id="ai-subject">
+                                ${(me.favoriteSubjects || ['الرياضيات', 'العلوم', 'اللغة العربية']).map(subject => 
+                                    `<option value="${subject}">${subject}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label style="display:block; margin-bottom:8px; color:var(--text-sec);">
+                                <i class="fas fa-layer-group"></i> الفصل:
+                            </label>
+                            <select id="ai-chapter">
+                                <option value="1">الفصل الأول</option>
+                                <option value="2">الفصل الثاني</option>
+                                <option value="3">الفصل الثالث</option>
+                                <option value="4">الفصل الرابع</option>
+                                <option value="all">جميع الفصول</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label style="display:block; margin-bottom:8px; color:var(--text-sec);">
+                                <i class="fas fa-question-circle"></i> عدد الأسئلة:
+                            </label>
+                            <select id="ai-question-count">
+                                <option value="5">5 أسئلة</option>
+                                <option value="10" selected>10 أسئلة</option>
+                                <option value="15">15 أسئلة</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <button class="btn-main" onclick="generateAIQuiz()" 
+                            style="background:linear-gradient(90deg, #8b5cf6, #7c3aed);">
+                        <i class="fas fa-magic"></i> إنشاء اختبار ذكي
+                    </button>
+                </div>
+            </div>
+            
+            <div id="quiz-results"></div>
+            
+            <div style="margin-top:30px; padding:20px; background:var(--bg-card); border-radius:15px;">
+                <h4><i class="fas fa-lightbulb" style="color:var(--accent);"></i> كيف يعمل المساعد الذكي؟</h4>
+                <ul style="color:var(--text-sec); padding-right:20px; line-height:1.8;">
+                    <li>ينشئ أسئلة تناسب مستواك الدراسي</li>
+                    <li>يغطي جميع أجزاء المنهج المحدد</li>
+                    <li>يقدم تقريراً مفصلاً عن أدائك</li>
+                    <li>يحفظ نتائجك لتتبع تقدمك</li>
+                </ul>
+            </div>
+        </div>`;
+}
+
+async function generateAIQuiz() {
+    const subject = document.getElementById('ai-subject').value;
+    const chapter = document.getElementById('ai-chapter').value;
+    const count = parseInt(document.getElementById('ai-question-count').value);
+    
+    // 🔧 التعديل: ضع رابط تطبيقك على Render هنا
+    const baseUrl = "https://YOUR-APP-NAME.onrender.com"; // استبدل YOUR-APP-NAME باسم تطبيقك
+    
+    showLoading('جاري الاتصال بالذكاء الاصطناعي وإنشاء أسئلة حقيقية...');
+    
+    try {
+        const response = await fetch(`${baseUrl}/api/generate-quiz`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ subject, chapter, count })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            currentQuiz = {
+                id: `quiz_${Date.now()}`,
+                subject: subject,
+                chapter: chapter,
+                questions: data.questions,
+                generatedAt: Date.now(),
+                userAnswers: {},
+                score: 0
+            };
+            hideLoading();
+            displayAIQuiz(currentQuiz.questions);
+        } else {
+            throw new Error('فشل في جلب الأسئلة من السيرفر');
+        }
+        
+    } catch (error) {
+        hideLoading();
+        showError('حدث خطأ في الاتصال: ' + error.message + '\nتأكد من اتصال الإنترنت.');
+    }
+}
+
+function displayAIQuiz(questions) {
+    let quizHtml = `
+        <div style="background:var(--bg-card); border-radius:20px; padding:25px; margin:20px 0; border:2px solid var(--purple);">
+            <h3 style="color:var(--purple); margin-top:0;">
+                <i class="fas fa-robot"></i> اختبار ذكي في ${currentQuiz.subject}
+            </h3>
+            <p style="color:var(--text-sec);">
+                الفصل: ${currentQuiz.chapter === 'all' ? 'جميع الفصول' : 'الفصل ' + currentQuiz.chapter} • 
+                ${questions.length} سؤال
+            </p>
+            
+            <div id="quiz-questions-container" style="margin:25px 0;">`;
+    
+    questions.forEach((q, index) => {
+        quizHtml += `
+            <div style="background:rgba(0,0,0,0.2); border-radius:15px; padding:20px; margin-bottom:15px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <h5 style="color:var(--text-main); margin:0;">
+                        <span style="background:var(--primary); color:white; padding:5px 10px; border-radius:5px; margin-left:10px;">${index + 1}</span>
+                        ${q.question}
+                    </h5>
+                    <span style="background:rgba(139, 92, 246, 0.3); color:var(--purple); padding:3px 8px; border-radius:5px; font-size:11px;">
+                        ${q.type}
+                    </span>
+                </div>
+                
+                ${q.options.map((option, optIndex) => `
+                    <div class="quiz-option" onclick="selectAIAnswer(${index}, ${optIndex})" 
+                         style="background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:8px; cursor:pointer; transition:0.3s;">
+                        <span style="margin-left:10px; font-weight:bold; color:var(--accent);">${String.fromCharCode(1632 + optIndex + 1)}.</span>
+                        ${option}
+                    </div>
+                `).join('')}
+            </div>`;
+    });
+    
+    quizHtml += `
+            </div>
+            
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button class="btn-main" onclick="submitAIQuiz()" style="background:var(--green);">
+                    <i class="fas fa-check-circle"></i> إنهاء الاختبار
+                </button>
+                <button class="btn-main" onclick="generateAIQuiz()" style="background:var(--purple);">
+                    <i class="fas fa-redo"></i> اختبار جديد
+                </button>
+            </div>
+        </div>`;
+    
+    document.getElementById('quiz-results').innerHTML = quizHtml;
+}
+
+function selectAIAnswer(questionIndex, optionIndex) {
+    const questionCard = document.querySelectorAll('#quiz-questions-container > div')[questionIndex];
+    const options = questionCard.querySelectorAll('.quiz-option');
+    
+    // إزالة التحديد السابق
+    options.forEach(opt => {
+        opt.style.background = 'rgba(255,255,255,0.05)';
+        opt.style.borderColor = 'var(--border)';
+    });
+    
+    // تحديد الخيار المختار
+    options[optionIndex].style.background = 'rgba(59, 130, 246, 0.2)';
+    options[optionIndex].style.borderColor = 'var(--primary)';
+    
+    // حفظ الإجابة
+    currentQuiz.userAnswers[questionIndex] = optionIndex;
+}
+
+async function submitAIQuiz() {
+    if (!currentQuiz || !currentQuiz.questions) return;
+    
+    // حساب النتيجة
+    let score = 0;
+    const totalQuestions = currentQuiz.questions.length;
+    
+    currentQuiz.questions.forEach((q, index) => {
+        if (currentQuiz.userAnswers[index] === q.correctAnswer) {
+            score++;
+        }
+    });
+    
+    const percentage = Math.round((score / totalQuestions) * 100);
+    
+    // حفظ النتيجة في قاعدة البيانات
+    await db.ref(`ai_quizzes/${me.uid}/${currentQuiz.id}`).update({
+        completed: true,
+        score: score,
+        totalQuestions: totalQuestions,
+        percentage: percentage,
+        submittedAt: Date.now()
+    });
+    
+    // زيادة عداد اختبارات المستخدم
+    await db.ref(`users/${me.uid}/aiQuizzesCount`).transaction(current => (current || 0) + 1);
+    
+    // عرض النتيجة
     Swal.fire({
-        title: 'تم بنجاح!',
-        text: message,
+        title: '🎉 نتيجة الاختبار',
+        html: `
+            <div style="text-align:center;">
+                <div style="font-size:60px; color:${percentage >= 70 ? 'var(--green)' : percentage >= 50 ? 'var(--accent)' : 'var(--red)'}; font-weight:bold; margin:20px 0;">
+                    ${percentage}%
+                </div>
+                <div style="font-size:24px; margin:10px 0;">
+                    ${score} من ${totalQuestions} إجابة صحيحة
+                </div>
+                <div style="font-size:16px; color:var(--text-sec); margin:15px 0;">
+                    ${percentage >= 70 ? 'ممتاز! 👏 إجاباتك دقيقة' : 
+                      percentage >= 50 ? 'جيد، يمكنك التحسن بالمزيد من الدراسة' : 
+                      'تحتاج للمزيد من المذاكرة، لا تيأس!'}
+                </div>
+            </div>
+        `,
         icon: 'success',
         confirmButtonText: 'حسناً',
         background: '#1e293b',
@@ -1439,18 +2051,580 @@ function showSuccess(message) {
     });
 }
 
-function showError(message) {
-    Swal.fire({
-        title: 'خطأ!',
-        text: message,
-        icon: 'error',
-        confirmButtonText: 'حسناً',
-        background: '#1e293b',
-        color: '#fff'
+// ==================== [ 15. غرف البث المباشر ] ====================
+function renderLiveRooms() {
+    const area = document.getElementById('content-area');
+    const canCreateRooms = me.role === 'admin' || me.role === 'teacher';
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
+                <h2 style="margin-top:0;"><i class="fas fa-video"></i> غرف البث المباشر</h2>
+                <p>انضم إلى دروس مباشرة مع أفضل الأساتذة</p>
+            </div>
+            
+            ${canCreateRooms ? `
+            <div style="margin-bottom:25px;">
+                <button class="btn-main" onclick="createLiveRoom()" style="background:var(--green);">
+                    <i class="fas fa-plus-circle"></i> إنشاء غرفة بث جديدة
+                </button>
+            </div>
+            ` : ''}
+            
+            <div id="live-rooms" class="loading">
+                <div class="loading-spinner"></div>
+                <div>جاري تحميل غرف البث...</div>
+            </div>
+        </div>`;
+    
+    loadLiveRooms();
+}
+
+function loadLiveRooms() {
+    const container = document.getElementById('live-rooms');
+    if (!container) return;
+    
+    db.ref('live_rooms').orderByChild('startTime').limitToLast(20).on('value', snap => {
+        const rooms = snap.val();
+        container.innerHTML = '';
+        
+        if (!rooms) {
+            container.innerHTML = `
+                <div style="text-align:center; padding:40px; color:var(--text-sec);">
+                    <i class="fas fa-video-slash" style="font-size:48px; margin-bottom:15px; opacity:0.5;"></i>
+                    <p>لا توجد غرف بث مباشر حالياً</p>
+                    ${(me.role === 'admin' || me.role === 'teacher') ? `
+                    <button class="btn-main" onclick="createLiveRoom()" style="margin-top:15px;">
+                        <i class="fas fa-plus"></i> إنشاء أول غرفة بث
+                    </button>
+                    ` : ''}
+                </div>`;
+            return;
+        }
+        
+        const now = Date.now();
+        Object.entries(rooms).reverse().forEach(([roomId, room]) => {
+            const isActive = room.status === 'active' && room.endTime > now;
+            const isUpcoming = room.status === 'scheduled' && room.startTime > now;
+            const isEnded = room.status === 'ended' || room.endTime <= now;
+            
+            let statusBadge = '';
+            if (isActive) {
+                statusBadge = '<span style="background:var(--green); color:white; padding:3px 10px; border-radius:15px; font-size:11px;">🔴 مباشر الآن</span>';
+            } else if (isUpcoming) {
+                statusBadge = '<span style="background:var(--accent); color:black; padding:3px 10px; border-radius:15px; font-size:11px;">⏰ قريباً</span>';
+            } else {
+                statusBadge = '<span style="background:var(--text-sec); color:white; padding:3px 10px; border-radius:15px; font-size:11px;">انتهى</span>';
+            }
+            
+            const canJoin = (isActive || isUpcoming) && 
+                           (room.price === 0 || me.balance >= room.price || 
+                            (me.freeTrial && me.freeUntil > Date.now()));
+            
+            container.innerHTML += `
+                <div class="live-room" style="background: ${isActive ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' : 
+                                                    isUpcoming ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 
+                                                    'linear-gradient(135deg, #64748b 0%, #475569 100%)'};">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                        <div>
+                            <h3 style="margin-top:0; margin-bottom:10px;">${room.title}</h3>
+                            <p style="opacity:0.9; margin-bottom:10px;">${room.description || 'لا يوجد وصف'}</p>
+                            
+                            <div style="display:flex; gap:15px; font-size:12px; margin-bottom:10px;">
+                                <div>
+                                    <i class="fas fa-chalkboard-teacher"></i> ${room.teacherName}
+                                </div>
+                                <div>
+                                    <i class="fas fa-book"></i> ${room.subject || 'عام'}
+                                </div>
+                                <div>
+                                    <i class="fas fa-graduation-cap"></i> ${room.grade || 'جميع الصفوف'}
+                                </div>
+                            </div>
+                        </div>
+                        ${statusBadge}
+                    </div>
+                    
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px;">
+                        <div style="font-size:12px;">
+                            <i class="fas fa-clock"></i> 
+                            ${isActive ? 'ينتهي ' : isUpcoming ? 'يبدأ ' : 'انتهى '}
+                            ${formatDate(isActive ? room.endTime : room.startTime)}
+                        </div>
+                        
+                        <div>
+                            ${!isEnded ? `
+                            <button class="btn-main" onclick="${canJoin ? `joinLiveRoom('${roomId}', ${room.price})` : 'showRoomPayment(' + room.price + ')'}" 
+                                    style="width:auto; padding:10px 20px; background:white; color:${room.price > 0 ? 'black' : '#ef4444'};">
+                                <i class="fas fa-play"></i> ${room.price > 0 ? `${room.price} ج.س` : 'انضم مجاناً'}
+                            </button>
+                            ` : ''}
+                            
+                            ${(me.role === 'admin' || me.uid === room.teacherId) ? `
+                            <button class="btn-secondary" onclick="manageLiveRoom('${roomId}')" style="width:auto; padding:10px 15px; margin-right:10px;">
+                                <i class="fas fa-cog"></i> إدارة
+                            </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>`;
+        });
     });
 }
 
-// ==================== [ 12. الملف الشخصي ] ====================
+async function createLiveRoom() {
+    if (me.role !== 'admin' && me.role !== 'teacher') {
+        showError('يجب أن تكون أستاذاً لإنشاء غرفة بث');
+        return;
+    }
+    
+    const { value: formValues } = await Swal.fire({
+        title: 'إنشاء غرفة بث جديدة',
+        html: `
+            <input id="live-title" class="swal2-input" placeholder="عنوان الدرس *" required>
+            <textarea id="live-description" class="swal2-input" placeholder="وصف الدرس" rows="3"></textarea>
+            <input id="live-price" class="swal2-input" placeholder="سعر الدخول (ج.س) - 0 للمجاني *" type="number" min="0" value="0" required>
+            <input id="live-link" class="swal2-input" placeholder="رابط البث (Youtube, Zoom, etc.) *" required>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <input id="live-start" class="swal2-input" placeholder="وقت البدء" type="datetime-local">
+                <input id="live-duration" class="swal2-input" placeholder="المدة (دقيقة)" type="number" min="30" value="60">
+            </div>
+        `,
+        confirmButtonText: 'إنشاء الغرفة',
+        showCancelButton: true,
+        background: '#1e293b',
+        color: '#fff',
+        preConfirm: () => {
+            const title = document.getElementById('live-title').value;
+            const description = document.getElementById('live-description').value;
+            const price = parseInt(document.getElementById('live-price').value) || 0;
+            const link = document.getElementById('live-link').value;
+            const startTime = document.getElementById('live-start').value;
+            const duration = parseInt(document.getElementById('live-duration').value) || 60;
+            
+            if (!title || !link) {
+                Swal.showValidationMessage('الرجاء ملء الحقول المطلوبة');
+                return false;
+            }
+            
+            const startTimestamp = startTime ? new Date(startTime).getTime() : Date.now() + 600000; // 10 دقائق من الآن
+            const endTime = startTimestamp + (duration * 60000);
+            
+            return {
+                title,
+                description,
+                price,
+                link,
+                startTime: startTimestamp,
+                endTime,
+                duration
+            };
+        }
+    });
+    
+    if (!formValues) return;
+    
+    showLoading('جاري إنشاء غرفة البث...');
+    
+    try {
+        const roomId = `room_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        await db.ref(`live_rooms/${roomId}`).set({
+            id: roomId,
+            title: formValues.title,
+            description: formValues.description || null,
+            price: formValues.price,
+            link: formValues.link,
+            teacherId: me.uid,
+            teacherName: me.name,
+            teacherAccount: me.bankAccount || null,
+            startTime: formValues.startTime,
+            endTime: formValues.endTime,
+            duration: formValues.duration,
+            status: formValues.startTime > Date.now() ? 'scheduled' : 'active',
+            createdAt: Date.now(),
+            participants: 0,
+            maxParticipants: 100,
+            subject: me.subject || null,
+            grade: me.grades ? me.grades[0] : null
+        });
+        
+        hideLoading();
+        showSuccess('تم إنشاء غرفة البث بنجاح');
+        
+    } catch (error) {
+        hideLoading();
+        showError('حدث خطأ أثناء إنشاء الغرفة: ' + error.message);
+    }
+}
+
+async function joinLiveRoom(roomId, price) {
+    const roomSnap = await db.ref(`live_rooms/${roomId}`).once('value');
+    const room = roomSnap.val();
+    
+    if (!room) {
+        showError('غرفة البث غير موجودة');
+        return;
+    }
+    
+    const now = Date.now();
+    if (room.status !== 'active' && room.startTime > now) {
+        showError('غرفة البث لم تبدأ بعد');
+        return;
+    }
+    
+    if (room.endTime <= now) {
+        showError('غرفة البث انتهت');
+        return;
+    }
+    
+    if (price > 0) {
+        // التحقق من الدفع
+        const paymentSnap = await db.ref(`room_payments/${roomId}_${me.uid}`).once('value');
+        const hasPaid = paymentSnap.exists() && paymentSnap.val().confirmed === true;
+        
+        if (!hasPaid) {
+            const confirm = await Swal.fire({
+                title: 'دفع مطلوب',
+                html: `سعر الدخول: <strong>${price} ج.س</strong><br>
+                       يجب الدفع للانضمام لهذه الغرفة`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'دفع الآن',
+                cancelButtonText: 'إلغاء',
+                background: '#1e293b',
+                color: '#fff'
+            });
+            
+            if (confirm.isConfirmed) {
+                await payForLiveRoom(roomId, price, room);
+            }
+            return;
+        }
+    }
+    
+    // فتح رابط البث
+    window.open(room.link, '_blank');
+    
+    // زيادة عدد المشاركين
+    await db.ref(`live_rooms/${roomId}/participants`).transaction(current => (current || 0) + 1);
+    
+    // تسجيل دخول الطالب
+    await db.ref(`room_participants/${roomId}/${me.uid}`).set({
+        userName: me.name,
+        joinedAt: Date.now()
+    });
+    
+    // زيادة عداد جلسات البث المباشر للمستخدم
+    await db.ref(`users/${me.uid}/liveSessionsAttended`).transaction(current => (current || 0) + 1);
+    
+    showSuccess('تم الانضمام إلى غرفة البث بنجاح');
+}
+
+async function payForLiveRoom(roomId, price, room) {
+    if (me.balance < price) {
+        showError(`رصيدك غير كافي. تحتاج ${price} ج.س`);
+        nav('subscription');
+        return;
+    }
+    
+    const confirm = await Swal.fire({
+        title: 'تأكيد الدفع',
+        html: `سعر الدخول: <strong>${price} ج.س</strong><br>
+               سيتم خصم المبلغ من رصيدك`,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'تأكيد الدفع',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff'
+    });
+    
+    if (!confirm.isConfirmed) return;
+    
+    showLoading('جاري معالجة الدفع...');
+    
+    try {
+        // خصم المبلغ من الطالب
+        const newBalance = me.balance - price;
+        await db.ref(`users/${me.uid}/balance`).set(newBalance);
+        me.balance = newBalance;
+        updateUI();
+        
+        // تسجيل الدفع (بانتظار تأكيد الأستاذ)
+        const paymentId = `pay_${Date.now()}`;
+        await db.ref(`room_payments/${roomId}_${me.uid}`).set({
+            paymentId: paymentId,
+            roomId: roomId,
+            roomTitle: room.title,
+            userId: me.uid,
+            userName: me.name,
+            amount: price,
+            timestamp: Date.now(),
+            confirmed: false, // يحتاج تأكيد الأستاذ
+            status: 'pending'
+        });
+        
+        // إرسال إشعار للأستاذ
+        await db.ref(`notifications/${room.teacherId}/${paymentId}`).set({
+            type: 'room_payment',
+            paymentId: paymentId,
+            roomId: roomId,
+            roomTitle: room.title,
+            studentId: me.uid,
+            studentName: me.name,
+            amount: price,
+            timestamp: Date.now(),
+            read: false,
+            actionRequired: true
+        });
+        
+        hideLoading();
+        
+        Swal.fire({
+            title: 'تم الدفع!',
+            html: `تم خصم ${price} ج.س من رصيدك<br>
+                   <strong>بانتظار تأكيد الأستاذ للدخول</strong><br>
+                   <small>سيتم إشعارك عند التأكيد</small>`,
+            icon: 'success',
+            confirmButtonText: 'حسناً',
+            background: '#1e293b',
+            color: '#fff'
+        });
+        
+    } catch (error) {
+        hideLoading();
+        showError('حدث خطأ أثناء الدفع: ' + error.message);
+    }
+}
+
+function showRoomPayment(price) {
+    Swal.fire({
+        title: 'دفع مطلوب',
+        html: `سعر الدخول: <strong>${price} ج.س</strong><br>
+               يجب شحن رصيدك أولاً للانضمام`,
+        icon: 'warning',
+        confirmButtonText: 'شحن الرصيد',
+        background: '#1e293b',
+        color: '#fff'
+    }).then(() => {
+        nav('subscription');
+    });
+}
+
+// ==================== [ 16. الاشتراكات ] ====================
+function renderSubscription() {
+    const area = document.getElementById('content-area');
+    const isFreeTrial = me.freeTrial && me.freeUntil > Date.now();
+    const hoursLeft = isFreeTrial ? Math.ceil((me.freeUntil - Date.now()) / (1000 * 60 * 60)) : 0;
+    
+    area.innerHTML = `
+        <div style="padding:20px; text-align:center;">
+            <h2 style="color:var(--accent);"><i class="fas fa-crown"></i> خطط الاشتراك</h2>
+            <p style="color:var(--text-sec); margin-bottom:30px;">اختر الخطة المناسبة لاحتياجاتك التعليمية</p>
+            
+            ${isFreeTrial ? `
+            <div style="background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding:20px; border-radius:15px; color:white; margin-bottom:25px;">
+                <h3 style="margin-top:0;"><i class="fas fa-gift"></i> التجربة المجانية نشطة</h3>
+                <p>متبقي ${hoursLeft} ساعة من التجربة المجانية</p>
+            </div>
+            ` : ''}
+            
+            <div class="grid">
+                <div class="card" style="border:2px solid var(--accent); transform: scale(1.05);">
+                    <div style="position:absolute; top:10px; left:10px; background:var(--accent); color:black; padding:3px 8px; border-radius:5px; font-size:10px; font-weight:bold;">
+                        الأكثر طلباً
+                    </div>
+                    <h3>الأسبوعي</h3>
+                    <div style="font-size:42px; font-weight:bold; color:var(--accent);">7,000 ج.س</div>
+                    <p style="font-size:12px; color:var(--text-sec);">7 أيام كاملة</p>
+                    <ul style="text-align:right; padding-right:15px; color:var(--text-sec); font-size:12px; line-height:1.8;">
+                        <li>جميع الكتب الدراسية</li>
+                        <li>اختبارات ذكية غير محدودة</li>
+                        <li>الدخول لجميع البثوث المباشرة</li>
+                        <li>تحميل الكتب المدفوعة</li>
+                        <li>دعم فني متخصص</li>
+                    </ul>
+                    <button class="btn-main" onclick="subscribeWeekly()" 
+                            style="background:var(--accent); color:black;">
+                        اشترك الآن
+                    </button>
+                </div>
+                
+                <div class="card" style="border:2px solid var(--purple);">
+                    <h3>الشهري</h3>
+                    <div style="font-size:32px; font-weight:bold; color:var(--purple);">25,000 ج.س</div>
+                    <p style="font-size:12px; color:var(--text-sec);">30 يوماً (وفر 3,000 ج.س)</p>
+                    <ul style="text-align:right; padding-right:15px; color:var(--text-sec); font-size:12px; line-height:1.8;">
+                        <li>كل مميزات الأسبوعي</li>
+                        <li>خصم 20% على الكتب المدفوعة</li>
+                        <li>أولوية في غرف البث المباشر</li>
+                        <li>تقارير أداء أسبوعية</li>
+                    </ul>
+                    <button class="btn-main" onclick="subscribeMonthly()" 
+                            style="background:var(--purple);">
+                        اشترك الآن
+                    </button>
+                </div>
+                
+                <div class="card" style="border:2px solid var(--green);">
+                    <h3>السنوي</h3>
+                    <div style="font-size:32px; font-weight:bold; color:var(--green);">240,000 ج.س</div>
+                    <p style="font-size:12px; color:var(--text-sec);">365 يوماً (وفر 60,000 ج.س)</p>
+                    <ul style="text-align:right; padding-right:15px; color:var(--text-sec); font-size:12px; line-height:1.8;">
+                        <li>كل مميزات الشهري</li>
+                        <li>خصم 30% على الكتب المدفوعة</li>
+                        <li>حساب أستاذ مجاني (إذا مؤهل)</li>
+                        <li>دعم فني على مدار الساعة</li>
+                    </ul>
+                    <button class="btn-main" onclick="subscribeYearly()" 
+                            style="background:var(--green);">
+                        اشترك الآن
+                    </button>
+                </div>
+            </div>
+            
+            <div style="margin-top:40px; text-align:right; padding:20px; background:var(--bg-card); border-radius:15px;">
+                <h4 style="color:var(--neon-blue);"><i class="fas fa-university"></i> طريقة الدفع:</h4>
+                <div class="payment-method">
+                    <div style="padding:15px; background:rgba(0,0,0,0.3); border-radius:10px; margin:10px 0;">
+                        <p style="color:var(--accent); font-weight:bold; font-size:20px;">بنك الخرطوم</p>
+                        <p style="color:var(--neon-blue); font-size:24px; font-weight:bold; margin:10px 0;">${ADMIN_BANK_ACCOUNT}</p>
+                        <p style="color:var(--text-sec); font-size:14px;">رقم حساب الإدمن - ${ADMIN_EMAIL}</p>
+                    </div>
+                    
+                    <p style="margin-top:20px;"><strong>خطوات الدفع:</strong></p>
+                    <ol style="color:var(--text-sec); padding-right:20px; line-height:2;">
+                        <li>قم بالتحويل إلى الحساب أعلاه</li>
+                        <li>احفظ صورة التحويل أو الرقم المرجعي</li>
+                        <li>أرسل إشعاراً للإدمن مع صورة التحويل</li>
+                        <li>انتظر تأكيد الإدمن (خلال 24 ساعة)</li>
+                        <li>سيتم تفعيل اشتراكك تلقائياً</li>
+                    </ol>
+                </div>
+                
+                <button class="btn-main" onclick="sendPaymentNotification()" style="margin-top:20px;">
+                    <i class="fas fa-paper-plane"></i> إرسال إشعار دفع للإدمن
+                </button>
+            </div>
+        </div>`;
+}
+
+async function subscribeWeekly() {
+    await processSubscription('weekly', 7000, 7);
+}
+
+async function subscribeMonthly() {
+    await processSubscription('monthly', 25000, 30);
+}
+
+async function subscribeYearly() {
+    await processSubscription('yearly', 240000, 365);
+}
+
+async function processSubscription(plan, price, days) {
+    const planNames = {
+        'weekly': 'الأسبوعي',
+        'monthly': 'الشهري', 
+        'yearly': 'السنوي'
+    };
+    
+    const confirm = await Swal.fire({
+        title: 'تأكيد الاشتراك',
+        html: `الخطة: <strong>${planNames[plan]}</strong><br>
+               السعر: <strong>${price.toLocaleString()} ج.س</strong><br>
+               المدة: <strong>${days} يوم</strong>`,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'تأكيد ومتابعة الدفع',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff'
+    });
+    
+    if (!confirm.isConfirmed) return;
+    
+    // هنا سيتم توجيه المستخدم لإرسال إشعار الدفع للإدمن
+    sendPaymentNotification(plan, price);
+}
+
+async function sendPaymentNotification(plan, price) {
+    const { value: receipt } = await Swal.fire({
+        title: 'إرسال إشعار دفع',
+        input: 'text',
+        inputLabel: 'رقم التحويل البنكي أو المرجعي *',
+        inputPlaceholder: 'أدخل رقم التحويل',
+        showCancelButton: true,
+        confirmButtonText: 'إرسال الإشعار',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff',
+        inputValidator: (value) => {
+            if (!value) {
+                return 'الرجاء إدخال رقم التحويل';
+            }
+        }
+    });
+    
+    if (!receipt) return;
+    
+    const { value: amount } = await Swal.fire({
+        title: 'المبلغ المدفوع',
+        input: 'number',
+        inputLabel: 'المبلغ الذي قمت بتحويله *',
+        inputPlaceholder: 'أدخل المبلغ',
+        showCancelButton: true,
+        confirmButtonText: 'تأكيد',
+        cancelButtonText: 'رجوع',
+        background: '#1e293b',
+        color: '#fff',
+        inputValidator: (value) => {
+            if (!value || value <= 0) {
+                return 'الرجاء إدخال مبلغ صحيح';
+            }
+        }
+    });
+    
+    if (!amount) return;
+    
+    showLoading('جاري إرسال الإشعار...');
+    
+    try {
+        const notificationId = `sub_${Date.now()}`;
+        
+        await db.ref('admin_notifications').push({
+            type: 'subscription_payment',
+            userId: me.uid,
+            userName: me.name,
+            plan: plan,
+            amount: parseInt(amount),
+            expectedAmount: price,
+            receipt: receipt,
+            timestamp: Date.now(),
+            status: 'pending',
+            actionRequired: true
+        });
+        
+        hideLoading();
+        
+        Swal.fire({
+            title: 'تم إرسال الإشعار!',
+            html: `تم إرسال إشعار الدفع للإدمن<br>
+                   <strong>المبلغ: ${parseInt(amount).toLocaleString()} ج.س</strong><br>
+                   <small>سيتم تفعيل اشتراكك بعد تأكيد الإدمن</small>`,
+            icon: 'success',
+            confirmButtonText: 'حسناً',
+            background: '#1e293b',
+            color: '#fff'
+        });
+        
+    } catch (error) {
+        hideLoading();
+        showError('حدث خطأ أثناء إرسال الإشعار: ' + error.message);
+    }
+}
+
+// ==================== [ 17. الملف الشخصي ] ====================
 function renderProfile() {
     if (!me) return;
     
@@ -1601,7 +2775,67 @@ function doLogout() {
     });
 }
 
-// ==================== [ 13. الفصول الدراسية ] ====================
+// ==================== [ 18. لوحة التحكم ] ====================
+function renderAdminPanel() {
+    if (me.role !== 'admin') {
+        nav('home');
+        return;
+    }
+    
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div class="admin-panel">
+                <h2 style="color:var(--red);"><i class="fas fa-crown"></i> لوحة تحكم الإدمن</h2>
+                <p style="color:var(--text-sec);">مرحبا ${me.name}</p>
+            </div>
+            
+            <div style="margin:25px 0;">
+                <h3><i class="fas fa-tasks" style="color:var(--accent);"></i> الإجراءات السريعة</h3>
+                <div class="grid">
+                    <div class="card" onclick="managePendingBooks()">
+                        <i class="fas fa-book" style="color:var(--primary)"></i>
+                        <b>الكتب المنتظرة</b>
+                        <p style="font-size:12px; color:var(--text-sec)">مراجعة كتب الأساتذة</p>
+                    </div>
+                    
+                    <div class="card" onclick="managePendingTeachers()">
+                        <i class="fas fa-users" style="color:var(--green)"></i>
+                        <b>الأساتذة المنتظرين</b>
+                        <p style="font-size:12px; color:var(--text-sec)">طلبات تسجيل الأساتذة</p>
+                    </div>
+                    
+                    <div class="card" onclick="managePendingPayments()">
+                        <i class="fas fa-money-bill-wave" style="color:var(--accent)"></i>
+                        <b>المدفوعات المعلقة</b>
+                        <p style="font-size:12px; color:var(--text-sec)">اشتراكات وغرف بث</p>
+                    </div>
+                    
+                    <div class="card" onclick="showSystemStats()">
+                        <i class="fas fa-chart-bar" style="color:var(--purple)"></i>
+                        <b>إحصائيات النظام</b>
+                        <p style="font-size:12px; color:var(--text-sec)">مستخدمين، كتب، أرباح</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background:var(--bg-card); padding:20px; border-radius:15px; margin:25px 0;">
+                <h4><i class="fas fa-university" style="color:var(--accent);"></i> حساب الإدمن</h4>
+                <div style="padding:15px; background:rgba(0,0,0,0.3); border-radius:10px; margin-top:10px;">
+                    <p><strong>بنك الخرطوم:</strong></p>
+                    <p style="color:var(--neon-blue); font-size:24px; font-weight:bold; text-align:center; margin:10px 0;">
+                        ${ADMIN_BANK_ACCOUNT}
+                    </p>
+                    <p style="color:var(--text-sec); font-size:12px; text-align:center;">
+                        ${ADMIN_EMAIL}
+                    </p>
+                </div>
+            </div>
+        </div>`;
+}
+
+// ==================== [ 19. الفصول الدراسية ] ====================
 function renderGrades() {
     const area = document.getElementById('content-area');
     area.innerHTML = `
@@ -1918,7 +3152,7 @@ function startQuiz(subject, grade, type) {
     showError('هذه الميزة قيد التطوير');
 }
 
-// ==================== [ 14. تحميل الكتب الحديثة ] ====================
+// ==================== [ 20. تحميل الكتب الحديثة ] ====================
 function loadRecentBooks() {
     const container = document.getElementById('recent-books');
     if (!container) return;
@@ -1959,7 +3193,7 @@ function loadRecentBooks() {
     });
 }
 
-// ==================== [ 15. البحث ] ====================
+// ==================== [ 21. البحث ] ====================
 const debounceSearch = debounce(function(query) {
     const container = document.getElementById('books-list');
     if (!container) return;
@@ -2013,11 +3247,121 @@ const debounceSearch = debounce(function(query) {
 const debounceFilter = debounce(function(query) {
     debounceSearch(query);
 }, 300);
-// ==================== [ دوال المكتبة والمساعد والبث المفقودة ] ====================
 
-// 1. دالة عرض المكتبة
+// ==================== [ 22. دوال مساعدة ] ====================
+function debounce(func, wait = 300) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
 
-// ==================== [ 16. التهيئة النهائية ] ====================
+function formatDate(timestamp) {
+    if (!timestamp) return 'غير محدد';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now - date;
+    
+    if (diff < 60000) return 'الآن';
+    if (diff < 3600000) return `قبل ${Math.floor(diff / 60000)} دقيقة`;
+    if (diff < 86400000) return `قبل ${Math.floor(diff / 3600000)} ساعة`;
+    
+    return date.toLocaleDateString('ar-SA');
+}
+
+function showLoading(message = 'جاري المعالجة...') {
+    Swal.fire({
+        title: message,
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading(),
+        background: '#1e293b',
+        color: '#fff'
+    });
+}
+
+function hideLoading() {
+    Swal.close();
+}
+
+function showSuccess(message) {
+    Swal.fire({
+        title: 'تم بنجاح!',
+        text: message,
+        icon: 'success',
+        confirmButtonText: 'حسناً',
+        background: '#1e293b',
+        color: '#fff'
+    });
+}
+
+function showError(message) {
+    Swal.fire({
+        title: 'خطأ!',
+        text: message,
+        icon: 'error',
+        confirmButtonText: 'حسناً',
+        background: '#1e293b',
+        color: '#fff'
+    });
+}
+
+// ==================== [ 23. دوال إضافية مساعدة ] ====================
+function deleteBook(bookId) {
+    Swal.fire({
+        title: 'هل أنت متأكد؟',
+        text: 'سيتم حذف الكتاب نهائياً',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، احذف',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            showLoading('جاري حذف الكتاب...');
+            try {
+                await db.ref(`books/${bookId}`).remove();
+                hideLoading();
+                showSuccess('تم حذف الكتاب بنجاح');
+                nav('library');
+            } catch (error) {
+                hideLoading();
+                showError('حدث خطأ أثناء الحذف: ' + error.message);
+            }
+        }
+    });
+}
+
+function showTeacherStats() {
+    showError('هذه الميزة قيد التطوير');
+}
+
+function manageLiveRoom(roomId) {
+    showError('هذه الميزة قيد التطوير');
+}
+
+function managePendingBooks() {
+    showError('هذه الميزة قيد التطوير');
+}
+
+function managePendingTeachers() {
+    showError('هذه الميزة قيد التطوير');
+}
+
+function managePendingPayments() {
+    showError('هذه الميزة قيد التطوير');
+}
+
+function showSystemStats() {
+    showError('هذه الميزة قيد التطوير');
+}
+
+// ==================== [ 24. التهيئة النهائية ] ====================
 document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => {
         initializeApp();
@@ -2025,256 +3369,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // جعل الدوال متاحة عالمياً
-
-    // ==================== [ دوال المكتبة والمساعد والبث المفقودة ] ====================
-
-// 1. دالة عرض المكتبة
-function renderLibrary() {
-    const area = document.getElementById('content-area');
-    area.innerHTML = `
-        <div style="padding:20px;">
-            <div style="display:flex; align-items:center; gap:15px; margin-bottom:25px;">
-                <button class="btn-secondary" onclick="nav('home')" style="width:auto; padding:10px 15px;">
-                    <i class="fas fa-arrow-right"></i> رجوع
-                </button>
-                <h2 style="color:var(--neon-blue); margin:0;">المكتبة الرقمية</h2>
-            </div>
-            
-            ${me.role === 'admin' || me.role === 'teacher' ? `
-            <button class="btn-main" onclick="nav('add_book')" style="margin-bottom:20px;">
-                <i class="fas fa-plus"></i> إضافة كتاب جديد
-            </button>
-            ` : ''}
-
-            <div id="all-books-list" class="loading">
-                <div class="loading-spinner"></div>
-                <div>جاري تحميل الكتب...</div>
-            </div>
-        </div>`;
-    
-    // تحميل الكتب من Firebase
-    const container = document.getElementById('all-books-list');
-    db.ref('books').once('value', snap => {
-        const books = snap.val();
-        container.innerHTML = '';
-        if (!books) {
-            container.innerHTML = '<p style="text-align:center; color:var(--text-sec)">لا توجد كتب مضافة حالياً</p>';
-            return;
-        }
-        Object.entries(books).reverse().forEach(([bookId, book]) => {
-            const isFree = !book.price || book.price === 0;
-            container.innerHTML += `
-                <div class="book-card">
-                    <div style="width:80px; height:100px; background:var(--accent); border-radius:10px; display:flex; align-items:center; justify-content:center;">
-                        <i class="fas fa-book-open" style="font-size:32px; color:white;"></i>
-                    </div>
-                    <div style="flex:1;">
-                        <div style="font-weight:bold; font-size:16px; margin-bottom:5px;">${book.title}</div>
-                        <div style="font-size:12px; color:var(--text-sec); margin-bottom:5px;">
-                            <i class="fas fa-user"></i> ${book.author}
-                        </div>
-                        <div style="font-size:11px; color:var(--text-sec);">
-                            <span class="grade-badge">${book.grade}</span>
-                            <span style="background:${isFree ? 'var(--green)' : 'var(--accent)'}; color:${isFree ? 'white' : 'black'}; padding:2px 8px; border-radius:5px; margin-right:5px;">
-                                ${isFree ? 'مجاني' : book.price + ' ج.س'}
-                            </span>
-                        </div>
-                    </div>
-                    <button class="btn-main" style="padding:8px 12px; font-size:12px;" onclick="nav('book_detail', '${bookId}')">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                </div>`;
-        });
-    });
-}
-
-// 2. دالة عرض المساعد الذكي
-function renderAIAssistant() {
-    const area = document.getElementById('content-area');
-    area.innerHTML = `
-        <div style="padding:20px;">
-            <div style="background:linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); padding:25px; border-radius:20px; text-align:center; margin-bottom:20px;">
-                <i class="fas fa-robot" style="font-size:50px; color:white; margin-bottom:15px;"></i>
-                <h2 style="color:white; margin:0;">المساعد الذكي</h2>
-                <p style="color:rgba(255,255,255,0.8);">يمكنني إنشاء اختبارات وتلخيص الدروس لك</p>
-            </div>
-            
-            <div style="background:var(--bg-card); padding:20px; border-radius:15px; border:1px solid var(--border);">
-                <h3 style="color:var(--neon-blue);">إنشاء اختبار جديد</h3>
-                
-                <label style="color:var(--text-sec);">المادة:</label>
-                <select id="ai-subject">
-                    <option value="الرياضيات">الرياضيات</option>
-                    <option value="العلوم">العلوم</option>
-                    <option value="اللغة العربية">اللغة العربية</option>
-                    <option value="التاريخ">التاريخ</option>
-                </select>
-                
-                <label style="color:var(--text-sec);">موضوع الدرس:</label>
-                <input type="text" id="ai-topic" placeholder="مثال: الكسور، المجموعة الشمسية...">
-                
-                <button class="btn-main" onclick="generateQuizAI()">
-                    <i class="fas fa-magic"></i> توليد الاختبار
-                </button>
-            </div>
-        </div>`;
-}
-
-// دالة وهمية لتوليد الاختبار (لربطها بالسيرفر لاحقاً)
-async function generateQuizAI() {
-    const topic = document.getElementById('ai-topic').value;
-    if(!topic) return showError('اكتب موضوع الدرس');
-    
-    showLoading('جاري التحدث مع الذكاء الاصطناعي...');
-    
-    // هنا يتم الاتصال بـ server.js الخاص بك
-    try {
-        const response = await fetch('/api/generate-quiz', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                subject: document.getElementById('ai-subject').value,
-                chapter: topic,
-                count: 5
-            })
-        });
-        const data = await response.json();
-        hideLoading();
-        
-        if(data.success) {
-            showSuccess('تم توليد الأسئلة بنجاح! (سيتم العرض قريباً)');
-            console.log(data.questions);
-        } else {
-            showError('فشل التوليد');
-        }
-    } catch (e) {
-        hideLoading();
-        showError('خطأ في الاتصال بالسيرفر: تأكد من تشغيل server.js');
-    }
-}
-
-// 3. دالة عرض البث المباشر
-function renderLiveRooms() {
-    const area = document.getElementById('content-area');
-    area.innerHTML = `
-        <div style="padding:20px;">
-            <h2 style="color:var(--red); text-align:center;"><i class="fas fa-broadcast-tower"></i> البث المباشر</h2>
-            
-            ${me.role === 'teacher' ? `
-            <button class="btn-main" onclick="createLiveRoom()" style="background:var(--red); margin-bottom:20px;">
-                <i class="fas fa-video"></i> بدء بث جديد
-            </button>
-            ` : ''}
-            
-            <div id="live-list">
-                <p style="text-align:center; color:var(--text-sec); margin-top:50px;">
-                    لا يوجد بث مباشر نشط حالياً
-                </p>
-            </div>
-        </div>`;
-}
-
-// 4. دالة عرض تفاصيل الكتاب (مهمة جداً لكي لا يتوقف التطبيق عند فتح كتاب)
-function loadBookDetail(bookId) {
-    const area = document.getElementById('content-area');
-    showLoading();
-    
-    db.ref('books/' + bookId).once('value', snap => {
-        hideLoading();
-        const book = snap.val();
-        if(!book) return showError('الكتاب غير موجود');
-        
-        area.innerHTML = `
-        <div style="padding:20px;">
-            <button class="btn-secondary" onclick="handleBackButton()" style="width:auto; margin-bottom:15px;">
-                <i class="fas fa-arrow-right"></i> رجوع
-            </button>
-            
-            <div style="text-align:center; margin-bottom:20px;">
-                <div style="width:120px; height:160px; background:var(--accent); border-radius:15px; margin:0 auto 15px; display:flex; align-items:center; justify-content:center;">
-                    <i class="fas fa-book-open" style="font-size:50px; color:white;"></i>
-                </div>
-                <h2>${book.title}</h2>
-                <p style="color:var(--text-sec);">${book.author}</p>
-                <div class="grade-badge" style="display:inline-block;">${book.grade}</div>
-            </div>
-            
-            <div style="background:var(--bg-card); padding:20px; border-radius:15px;">
-                <p>${book.description || 'لا يوجد وصف للكتاب'}</p>
-                
-                <a href="${book.url}" target="_blank" class="btn-main" style="text-decoration:none; text-align:center; display:block;">
-                    <i class="fas fa-download"></i> تحميل الكتاب
-                </a>
-            </div>
-        </div>`;
-    });
-}
-
-// 5. دالة الاشتراكات
-function renderSubscription() {
-    const area = document.getElementById('content-area');
-    area.innerHTML = `
-        <div style="padding:20px; text-align:center;">
-            <i class="fas fa-crown" style="font-size:60px; color:var(--accent); margin-bottom:20px;"></i>
-            <h2>الاشتراك المميز</h2>
-            <p style="color:var(--text-sec);">احصل على وصول كامل لجميع الكتب والميزات</p>
-            
-            <div class="card" style="border:2px solid var(--accent); transform:none;">
-                <h3>الباقة الشهرية</h3>
-                <h1 style="color:var(--primary);">7,000 ج.س</h1>
-                <button class="btn-main">اشترك الآن</button>
-            </div>
-        </div>`;
-}
-
-// 6. دالة إضافة كتاب (للأدمن والمدرسين)
-function renderAddBook() {
-    const area = document.getElementById('content-area');
-    area.innerHTML = `
-        <div style="padding:20px;">
-            <h2>إضافة كتاب جديد</h2>
-            <input type="text" id="new-book-title" placeholder="عنوان الكتاب">
-            <input type="text" id="new-book-author" placeholder="اسم المؤلف">
-            <select id="new-book-grade">
-                <option value="الأول الثانوي">الأول الثانوي</option>
-                <option value="الثاني الثانوي">الثاني الثانوي</option>
-                <option value="الثالث الثانوي">الثالث الثانوي</option>
-            </select>
-            <input type="text" id="new-book-url" placeholder="رابط الكتاب (PDF)">
-            <button class="btn-main" onclick="saveNewBook()">حفظ الكتاب</button>
-        </div>`;
-}
-
-// دالة حفظ الكتاب
-function saveNewBook() {
-    const title = document.getElementById('new-book-title').value;
-    const author = document.getElementById('new-book-author').value;
-    const grade = document.getElementById('new-book-grade').value;
-    const url = document.getElementById('new-book-url').value;
-
-    if(!title || !url) return showError('العنوان والرابط مطلوبان');
-
-    const newBookRef = db.ref('books').push();
-    newBookRef.set({
-        title: title,
-        author: author,
-        grade: grade,
-        url: url,
-        subject: 'عام',
-        price: 0,
-        addedDate: firebase.database.ServerValue.TIMESTAMP
-    }).then(() => {
-        showSuccess('تمت إضافة الكتاب');
-        nav('library');
-    });
-}
-
-// 7. دالة لوحة التحكم (للأدمن)
-function renderAdminPanel() {
-     const area = document.getElementById('content-area');
-     area.innerHTML = `<div style="padding:20px;"><h2>لوحة التحكم</h2><p>خاصة بالمشرفين فقط</p></div>`;
-}
-    window.nav = nav;
+window.nav = nav;
 window.showLoginScreen = showLoginScreen;
 window.showRegisterOptions = showRegisterOptions;
 window.showStudentForm = showStudentForm;
@@ -2289,6 +3384,18 @@ window.showGradeContent = showGradeContent;
 window.showSubjectContent = showSubjectContent;
 window.updateBankAccount = updateBankAccount;
 window.doLogout = doLogout;
+window.generateAIQuiz = generateAIQuiz;
+window.selectAIAnswer = selectAIAnswer;
+window.submitAIQuiz = submitAIQuiz;
+window.createLiveRoom = createLiveRoom;
+window.joinLiveRoom = joinLiveRoom;
+window.showRoomPayment = showRoomPayment;
+window.subscribeWeekly = subscribeWeekly;
+window.subscribeMonthly = subscribeMonthly;
+window.subscribeYearly = subscribeYearly;
+window.sendPaymentNotification = sendPaymentNotification;
+window.addBook = addBook;
+window.downloadBook = downloadBook;
 </script>
 </body>
 </html>
