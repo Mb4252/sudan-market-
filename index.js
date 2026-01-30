@@ -616,9 +616,9 @@ app.get('/', (req, res) => {
     });
 });
 
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
     console.log(`🤖 بوت التخزين الذكي يعمل على المنفذ ${port}`);
     console.log(`📁 مساحة التخزين: ${path.resolve(STORAGE_BASE)}`);
-    console.log(`🔗 مثال رفع ملف: POST http://localhost:${port}/api/upload`);
+    console.log(`🔗 مثال رفع ملف: ${process.env.BOT_URL || 'http://localhost:' + port}/api/upload`);
     console.log('⚡ الملفات في الذاكرة، الروابط فقط في Firebase!');
 });
