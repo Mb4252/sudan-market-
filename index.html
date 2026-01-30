@@ -1717,15 +1717,19 @@ function renderAIAssistant() {
 }
 // استبدل الدالة القديمة بهذه الدالة الجديدة داخل ملف HTML
 async function generateAIQuiz() {
+    // 1. جلب البيانات من الواجهة
     const subject = document.getElementById('ai-subject').value;
     const chapter = document.getElementById('ai-chapter').value;
     const count = parseInt(document.getElementById('ai-question-count').value);
     
+    // 2. الرابط الخاص بك (تمت إضافته)
+    const baseUrl = "https://sdm-security-bot.onrender.com";
+
     showLoading('جاري الاتصال بالذكاء الاصطناعي وإنشاء أسئلة حقيقية...');
     
     try {
-        // الاتصال بالسيرفر الخلفي (server.js)
-        const response = await fetch('/api/generate-quiz', {
+        // 3. الاتصال بالسيرفر
+        const response = await fetch(`${baseUrl}/api/generate-quiz`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subject, chapter, count })
@@ -1734,7 +1738,7 @@ async function generateAIQuiz() {
         const data = await response.json();
         
         if (data.success) {
-            // تم جلب الأسئلة الحقيقية من GPT
+            // 4. نجاح: تخزين وعرض الأسئلة
             currentQuiz = {
                 id: `quiz_${Date.now()}`,
                 subject: subject,
@@ -1747,15 +1751,15 @@ async function generateAIQuiz() {
             hideLoading();
             displayAIQuiz(currentQuiz.questions);
         } else {
-            throw new Error('فشل في جلب الأسئلة');
+            throw new Error('فشل في جلب الأسئلة من السيرفر');
         }
         
     } catch (error) {
         hideLoading();
-        showError('حدث خطأ: ' + error.message);
+        // عرض رسالة خطأ واضحة
+        showError('حدث خطأ في الاتصال: ' + error.message + '\nتأكد من اتصال الإنترنت.');
     }
 }
-
 
 function displayAIQuiz(questions) {
     let quizHtml = `
