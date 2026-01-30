@@ -2013,7 +2013,254 @@ const debounceSearch = debounce(function(query) {
 const debounceFilter = debounce(function(query) {
     debounceSearch(query);
 }, 300);
+// ==================== [ دوال المكتبة والمساعد والبث المفقودة ] ====================
 
+// 1. دالة عرض المكتبة
+function renderLibrary() {
+    const area = document.getElementById('content-area');
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="display:flex; align-items:center; gap:15px; margin-bottom:25px;">
+                <button class="btn-secondary" onclick="nav('home')" style="width:auto; padding:10px 15px;">
+                    <i class="fas fa-arrow-right"></i> رجوع
+                </button>
+                <h2 style="color:var(--neon-blue); margin:0;">المكتبة الرقمية</h2>
+            </div>
+            
+            ${me.role === 'admin' || me.role === 'teacher' ? `
+            <button class="btn-main" onclick="nav('add_book')" style="margin-bottom:20px;">
+                <i class="fas fa-plus"></i> إضافة كتاب جديد
+            </button>
+            ` : ''}
+
+            <div id="all-books-list" class="loading">
+                <div class="loading-spinner"></div>
+                <div>جاري تحميل الكتب...</div>
+            </div>
+        </div>`;
+    
+    // تحميل الكتب من Firebase
+    const container = document.getElementById('all-books-list');
+    db.ref('books').once('value', snap => {
+        const books = snap.val();
+        container.innerHTML = '';
+        if (!books) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-sec)">لا توجد كتب مضافة حالياً</p>';
+            return;
+        }
+        Object.entries(books).reverse().forEach(([bookId, book]) => {
+            const isFree = !book.price || book.price === 0;
+            container.innerHTML += `
+                <div class="book-card">
+                    <div style="width:80px; height:100px; background:var(--accent); border-radius:10px; display:flex; align-items:center; justify-content:center;">
+                        <i class="fas fa-book-open" style="font-size:32px; color:white;"></i>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-weight:bold; font-size:16px; margin-bottom:5px;">${book.title}</div>
+                        <div style="font-size:12px; color:var(--text-sec); margin-bottom:5px;">
+                            <i class="fas fa-user"></i> ${book.author}
+                        </div>
+                        <div style="font-size:11px; color:var(--text-sec);">
+                            <span class="grade-badge">${book.grade}</span>
+                            <span style="background:${isFree ? 'var(--green)' : 'var(--accent)'}; color:${isFree ? 'white' : 'black'}; padding:2px 8px; border-radius:5px; margin-right:5px;">
+                                ${isFree ? 'مجاني' : book.price + ' ج.س'}
+                            </span>
+                        </div>
+                    </div>
+                    <button class="btn-main" style="padding:8px 12px; font-size:12px;" onclick="nav('book_detail', '${bookId}')">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>`;
+        });
+    });
+}
+
+// 2. دالة عرض المساعد الذكي
+function renderAIAssistant() {
+    const area = document.getElementById('content-area');
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background:linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); padding:25px; border-radius:20px; text-align:center; margin-bottom:20px;">
+                <i class="fas fa-robot" style="font-size:50px; color:white; margin-bottom:15px;"></i>
+                <h2 style="color:white; margin:0;">المساعد الذكي</h2>
+                <p style="color:rgba(255,255,255,0.8);">يمكنني إنشاء اختبارات وتلخيص الدروس لك</p>
+            </div>
+            
+            <div style="background:var(--bg-card); padding:20px; border-radius:15px; border:1px solid var(--border);">
+                <h3 style="color:var(--neon-blue);">إنشاء اختبار جديد</h3>
+                
+                <label style="color:var(--text-sec);">المادة:</label>
+                <select id="ai-subject">
+                    <option value="الرياضيات">الرياضيات</option>
+                    <option value="العلوم">العلوم</option>
+                    <option value="اللغة العربية">اللغة العربية</option>
+                    <option value="التاريخ">التاريخ</option>
+                </select>
+                
+                <label style="color:var(--text-sec);">موضوع الدرس:</label>
+                <input type="text" id="ai-topic" placeholder="مثال: الكسور، المجموعة الشمسية...">
+                
+                <button class="btn-main" onclick="generateQuizAI()">
+                    <i class="fas fa-magic"></i> توليد الاختبار
+                </button>
+            </div>
+        </div>`;
+}
+
+// دالة وهمية لتوليد الاختبار (لربطها بالسيرفر لاحقاً)
+async function generateQuizAI() {
+    const topic = document.getElementById('ai-topic').value;
+    if(!topic) return showError('اكتب موضوع الدرس');
+    
+    showLoading('جاري التحدث مع الذكاء الاصطناعي...');
+    
+    // هنا يتم الاتصال بـ server.js الخاص بك
+    try {
+        const response = await fetch('/api/generate-quiz', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                subject: document.getElementById('ai-subject').value,
+                chapter: topic,
+                count: 5
+            })
+        });
+        const data = await response.json();
+        hideLoading();
+        
+        if(data.success) {
+            showSuccess('تم توليد الأسئلة بنجاح! (سيتم العرض قريباً)');
+            console.log(data.questions);
+        } else {
+            showError('فشل التوليد');
+        }
+    } catch (e) {
+        hideLoading();
+        showError('خطأ في الاتصال بالسيرفر: تأكد من تشغيل server.js');
+    }
+}
+
+// 3. دالة عرض البث المباشر
+function renderLiveRooms() {
+    const area = document.getElementById('content-area');
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <h2 style="color:var(--red); text-align:center;"><i class="fas fa-broadcast-tower"></i> البث المباشر</h2>
+            
+            ${me.role === 'teacher' ? `
+            <button class="btn-main" onclick="createLiveRoom()" style="background:var(--red); margin-bottom:20px;">
+                <i class="fas fa-video"></i> بدء بث جديد
+            </button>
+            ` : ''}
+            
+            <div id="live-list">
+                <p style="text-align:center; color:var(--text-sec); margin-top:50px;">
+                    لا يوجد بث مباشر نشط حالياً
+                </p>
+            </div>
+        </div>`;
+}
+
+// 4. دالة عرض تفاصيل الكتاب (مهمة جداً لكي لا يتوقف التطبيق عند فتح كتاب)
+function loadBookDetail(bookId) {
+    const area = document.getElementById('content-area');
+    showLoading();
+    
+    db.ref('books/' + bookId).once('value', snap => {
+        hideLoading();
+        const book = snap.val();
+        if(!book) return showError('الكتاب غير موجود');
+        
+        area.innerHTML = `
+        <div style="padding:20px;">
+            <button class="btn-secondary" onclick="handleBackButton()" style="width:auto; margin-bottom:15px;">
+                <i class="fas fa-arrow-right"></i> رجوع
+            </button>
+            
+            <div style="text-align:center; margin-bottom:20px;">
+                <div style="width:120px; height:160px; background:var(--accent); border-radius:15px; margin:0 auto 15px; display:flex; align-items:center; justify-content:center;">
+                    <i class="fas fa-book-open" style="font-size:50px; color:white;"></i>
+                </div>
+                <h2>${book.title}</h2>
+                <p style="color:var(--text-sec);">${book.author}</p>
+                <div class="grade-badge" style="display:inline-block;">${book.grade}</div>
+            </div>
+            
+            <div style="background:var(--bg-card); padding:20px; border-radius:15px;">
+                <p>${book.description || 'لا يوجد وصف للكتاب'}</p>
+                
+                <a href="${book.url}" target="_blank" class="btn-main" style="text-decoration:none; text-align:center; display:block;">
+                    <i class="fas fa-download"></i> تحميل الكتاب
+                </a>
+            </div>
+        </div>`;
+    });
+}
+
+// 5. دالة الاشتراكات
+function renderSubscription() {
+    const area = document.getElementById('content-area');
+    area.innerHTML = `
+        <div style="padding:20px; text-align:center;">
+            <i class="fas fa-crown" style="font-size:60px; color:var(--accent); margin-bottom:20px;"></i>
+            <h2>الاشتراك المميز</h2>
+            <p style="color:var(--text-sec);">احصل على وصول كامل لجميع الكتب والميزات</p>
+            
+            <div class="card" style="border:2px solid var(--accent); transform:none;">
+                <h3>الباقة الشهرية</h3>
+                <h1 style="color:var(--primary);">7,000 ج.س</h1>
+                <button class="btn-main">اشترك الآن</button>
+            </div>
+        </div>`;
+}
+
+// 6. دالة إضافة كتاب (للأدمن والمدرسين)
+function renderAddBook() {
+    const area = document.getElementById('content-area');
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <h2>إضافة كتاب جديد</h2>
+            <input type="text" id="new-book-title" placeholder="عنوان الكتاب">
+            <input type="text" id="new-book-author" placeholder="اسم المؤلف">
+            <select id="new-book-grade">
+                <option value="الأول الثانوي">الأول الثانوي</option>
+                <option value="الثاني الثانوي">الثاني الثانوي</option>
+                <option value="الثالث الثانوي">الثالث الثانوي</option>
+            </select>
+            <input type="text" id="new-book-url" placeholder="رابط الكتاب (PDF)">
+            <button class="btn-main" onclick="saveNewBook()">حفظ الكتاب</button>
+        </div>`;
+}
+
+// دالة حفظ الكتاب
+function saveNewBook() {
+    const title = document.getElementById('new-book-title').value;
+    const author = document.getElementById('new-book-author').value;
+    const grade = document.getElementById('new-book-grade').value;
+    const url = document.getElementById('new-book-url').value;
+
+    if(!title || !url) return showError('العنوان والرابط مطلوبان');
+
+    const newBookRef = db.ref('books').push();
+    newBookRef.set({
+        title: title,
+        author: author,
+        grade: grade,
+        url: url,
+        subject: 'عام',
+        price: 0,
+        addedDate: firebase.database.ServerValue.TIMESTAMP
+    }).then(() => {
+        showSuccess('تمت إضافة الكتاب');
+        nav('library');
+    });
+}
+
+// 7. دالة لوحة التحكم (للأدمن)
+function renderAdminPanel() {
+     const area = document.getElementById('content-area');
+     area.innerHTML = `<div style="padding:20px;"><h2>لوحة التحكم</h2><p>خاصة بالمشرفين فقط</p></div>`;
+}
 // ==================== [ 16. التهيئة النهائية ] ====================
 document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => {
