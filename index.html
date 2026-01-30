@@ -505,6 +505,10 @@
                 <i class="fas fa-sign-in-alt"></i> تسجيل الدخول
             </button>
             
+            <button class="btn-secondary" onclick="resendVerification()" style="margin-top: 10px;">
+                <i class="fas fa-redo"></i> إعادة إرسال رسالة التأكيد
+            </button>
+            
             <p class="login-footer">
                 ليس لديك حساب؟ 
                 <a onclick="showRegisterOptions()">سجل الآن</a>
@@ -907,6 +911,35 @@ async function loginUser() {
         showLoading('جاري تسجيل الدخول...');
         
         const result = await auth.signInWithEmailAndPassword(email, password);
+        const user = result.user;
+        
+        // التحقق من تأكيد البريد الإلكتروني
+        if (!user.emailVerified) {
+            // تسجيل الخروج لأن البريد غير مؤكد
+            await auth.signOut();
+            
+            hideLoading();
+            
+            await Swal.fire({
+                title: 'البريد الإلكتروني غير مؤكد!',
+                html: `يرجى تأكيد بريدك الإلكتروني أولاً<br>
+                       <strong>${email}</strong><br><br>
+                       هل تريد إعادة إرسال رسالة التأكيد؟`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'نعم، أعد الإرسال',
+                cancelButtonText: 'إلغاء',
+                background: '#1e293b',
+                color: '#fff'
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    await user.sendEmailVerification();
+                    showSuccess('تم إعادة إرسال رابط التأكيد إلى بريدك');
+                }
+            });
+            
+            return;
+        }
         
         hideLoading();
         showSuccess('تم تسجيل الدخول بنجاح');
@@ -916,13 +949,72 @@ async function loginUser() {
         
         if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
             showError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+        } else if (error.code === 'auth/invalid-email') {
+            showError('البريد الإلكتروني غير صالح');
+        } else if (error.code === 'auth/user-disabled') {
+            showError('تم تعطيل هذا الحساب');
         } else {
             showError('حدث خطأ أثناء تسجيل الدخول: ' + error.message);
         }
     }
 }
 
-// ==================== [ 5. تسجيل الطالب ] ====================
+// ==================== [ 5. إعادة إرسال رسالة التأكيد ] ====================
+async function resendVerification() {
+    const email = document.getElementById('login-email').value.trim();
+    
+    if (!email) {
+        showError('الرجاء إدخال بريدك الإلكتروني');
+        return;
+    }
+    
+    try {
+        showLoading('جاري إعادة إرسال رسالة التأكيد...');
+        
+        // محاولة تسجيل الدخول للحصول على المستخدم
+        const password = document.getElementById('login-password').value.trim();
+        
+        if (!password) {
+            // إذا لم يكن هناك كلمة مرور، عرض رسالة توجيهية
+            hideLoading();
+            Swal.fire({
+                title: 'معلومات مطلوبة',
+                text: 'أدخل كلمة المرور لإعادة إرسال رسالة التأكيد',
+                icon: 'info',
+                confirmButtonText: 'حسناً',
+                background: '#1e293b',
+                color: '#fff'
+            });
+            return;
+        }
+        
+        const result = await auth.signInWithEmailAndPassword(email, password);
+        const user = result.user;
+        
+        if (!user.emailVerified) {
+            await user.sendEmailVerification();
+            await auth.signOut(); // تسجيل الخروج بعد الإرسال
+            
+            hideLoading();
+            showSuccess('تم إعادة إرسال رابط التأكيد إلى بريدك الإلكتروني');
+        } else {
+            await auth.signOut();
+            hideLoading();
+            showSuccess('بريدك الإلكتروني مؤكد بالفعل، يمكنك تسجيل الدخول');
+        }
+        
+    } catch (error) {
+        hideLoading();
+        
+        if (error.code === 'auth/user-not-found') {
+            showError('لم يتم العثور على حساب بهذا البريد');
+        } else {
+            showError('حدث خطأ: ' + error.message);
+        }
+    }
+}
+
+// ==================== [ 6. تسجيل الطالب ] ====================
 async function registerStudent() {
     const name = document.getElementById('student-name').value.trim();
     const email = document.getElementById('student-email').value.trim();
@@ -949,14 +1041,17 @@ async function registerStudent() {
     try {
         showLoading('جاري إنشاء حساب الطالب...');
         
-        // إنشاء حساب في Firebase Auth
+        // إنشاء حساب في Firebase Auth مع إرسال رسالة التأكيد
         const result = await auth.createUserWithEmailAndPassword(email, password);
         const user = result.user;
+        
+        // إرسال رسالة تأكيد البريد الإلكتروني
+        await user.sendEmailVerification();
         
         // حساب تاريخ انتهاء التجربة المجانية
         const freeUntil = Date.now() + (FREE_TRIAL_DAYS * 24 * 60 * 60 * 1000);
         
-        // حفظ بيانات الطالب
+        // حفظ بيانات الطالب مع وضع الحساب غير مفعل
         await db.ref('users/' + user.uid).set({
             name: name,
             email: email,
@@ -973,7 +1068,9 @@ async function registerStudent() {
             totalSpent: 0,
             aiQuizzesCount: 0,
             booksDownloaded: 0,
-            liveSessionsAttended: 0
+            liveSessionsAttended: 0,
+            emailVerified: false, // إضافة حقل للتأكيد
+            status: 'pending_email_verification' // حالة انتظار التأكيد
         });
         
         // تسجيل اليوم المجاني
@@ -981,11 +1078,37 @@ async function registerStudent() {
             userId: user.uid,
             startDate: Date.now(),
             endDate: freeUntil,
-            used: true
+            used: false // غير مستخدم حتى يتم تأكيد البريد
         });
         
         hideLoading();
-        showSuccess('تم إنشاء حساب الطالب بنجاح');
+        
+        // عرض رسالة توجيهية للتأكيد
+        await Swal.fire({
+            title: 'يرجى تأكيد بريدك الإلكتروني!',
+            html: `تم إرسال رسالة تأكيد إلى: <strong>${email}</strong><br><br>
+                   <strong>خطوات التنشيط:</strong><br>
+                   1. افحص بريدك الإلكتروني<br>
+                   2. افتح الرسالة من Google<br>
+                   3. انقر على رابط التأكيد<br>
+                   4. عد للتطبيق وسجل الدخول`,
+            icon: 'info',
+            confirmButtonText: 'حسناً',
+            showCancelButton: true,
+            cancelButtonText: 'إعادة الإرسال',
+            background: '#1e293b',
+            color: '#fff'
+        }).then(async (result) => {
+            if (result.dismiss === Swal.DismissReason.cancel) {
+                // إعادة إرسال رسالة التأكيد
+                await user.sendEmailVerification();
+                showSuccess('تم إعادة إرسال رابط التأكيد إلى بريدك');
+            }
+            
+            // تسجيل الخروج حتى يتم تأكيد البريد
+            await auth.signOut();
+            showLoginScreen();
+        });
         
     } catch (error) {
         hideLoading();
@@ -993,13 +1116,15 @@ async function registerStudent() {
             showError('هذا البريد الإلكتروني مستخدم بالفعل');
         } else if (error.code === 'auth/weak-password') {
             showError('كلمة المرور ضعيفة، يجب أن تكون 6 أحرف على الأقل');
+        } else if (error.code === 'auth/invalid-email') {
+            showError('البريد الإلكتروني غير صالح');
         } else {
             showError('حدث خطأ أثناء التسجيل: ' + error.message);
         }
     }
 }
 
-// ==================== [ 6. تسجيل الأستاذ ] ====================
+// ==================== [ 7. تسجيل الأستاذ ] ====================
 async function registerTeacher() {
     const name = document.getElementById('teacher-name').value.trim();
     const email = document.getElementById('teacher-email').value.trim();
@@ -1030,9 +1155,12 @@ async function registerTeacher() {
     try {
         showLoading('جاري إرسال طلب التسجيل...');
         
-        // إنشاء حساب في Firebase Auth
+        // إنشاء حساب في Firebase Auth مع إرسال رسالة التأكيد
         const result = await auth.createUserWithEmailAndPassword(email, password);
         const user = result.user;
+        
+        // إرسال رسالة تأكيد البريد الإلكتروني
+        await user.sendEmailVerification();
         
         // رفع صورة البطاقة
         const fileRef = storage.ref(`teacher_ids/${user.uid}_${Date.now()}_${idFile.name}`);
@@ -1051,7 +1179,7 @@ async function registerTeacher() {
         
         const idUrl = await uploadTask.snapshot.ref.getDownloadURL();
         
-        // حفظ بيانات الأستاذ (في انتظار المراجعة)
+        // حفظ بيانات الأستاذ (في انتظار المراجعة والتأكيد)
         await db.ref('users/' + user.uid).set({
             name: name,
             email: email,
@@ -1063,12 +1191,14 @@ async function registerTeacher() {
             bankAccount: account || null,
             idUrl: idUrl,
             joinDate: Date.now(),
-            status: 'pending', // بانتظار مراجعة الإدمن
+            status: 'pending_email_verification', // أولاً انتظار تأكيد البريد
+            adminStatus: 'pending', // ثم مراجعة الإدمن
             balance: 0,
-            totalEarnings: 0
+            totalEarnings: 0,
+            emailVerified: false
         });
         
-        // إرسال إشعار للإدمن
+        // إرسال إشعار للإدمن (بعد تأكيد البريد)
         await db.ref('admin_notifications').push({
             type: 'teacher_registration',
             userId: user.uid,
@@ -1078,23 +1208,37 @@ async function registerTeacher() {
             whatsapp: whatsapp,
             idUrl: idUrl,
             timestamp: Date.now(),
-            status: 'pending'
+            status: 'pending_verification'
         });
         
         hideLoading();
         
-        Swal.fire({
-            title: 'تم الإرسال!',
-            html: `تم إرسال طلب التسجيل بنجاح<br>
-                   <strong>سيتم مراجعة طلبك من قبل الإدمن خلال 24 ساعة</strong><br>
-                   <small>سيتم إشعارك عند الموافقة أو الرفض</small>`,
-            icon: 'success',
+        // عرض رسالة توجيهية للتأكيد
+        await Swal.fire({
+            title: 'يرجى تأكيد بريدك الإلكتروني!',
+            html: `تم إرسال رسالة تأكيد إلى: <strong>${email}</strong><br><br>
+                   <strong>خطوات التنشيط:</strong><br>
+                   1. افحص بريدك الإلكتروني<br>
+                   2. افتح الرسالة من Google<br>
+                   3. انقر على رابط التأكيد<br>
+                   4. عد للتطبيق وسجل الدخول<br><br>
+                   <small>بعد التأكيد، سيتم مراجعة طلبك من الإدمن خلال 24 ساعة</small>`,
+            icon: 'info',
             confirmButtonText: 'حسناً',
+            showCancelButton: true,
+            cancelButtonText: 'إعادة الإرسال',
             background: '#1e293b',
             color: '#fff'
-        }).then(() => {
-            // إعادة تسجيل الدخول بالحساب
-            auth.signInWithEmailAndPassword(email, password);
+        }).then(async (result) => {
+            if (result.dismiss === Swal.DismissReason.cancel) {
+                // إعادة إرسال رسالة التأكيد
+                await user.sendEmailVerification();
+                showSuccess('تم إعادة إرسال رابط التأكيد إلى بريدك');
+            }
+            
+            // تسجيل الخروج حتى يتم تأكيد البريد
+            await auth.signOut();
+            showLoginScreen();
         });
         
     } catch (error) {
@@ -1109,12 +1253,51 @@ async function registerTeacher() {
     }
 }
 
-// ==================== [ 7. تحميل بيانات المستخدم ] ====================
+// ==================== [ 8. تحميل بيانات المستخدم ] ====================
 function loadUserData(uid) {
     db.ref('users/' + uid).on('value', async (snap) => {
         if (snap.exists()) {
             me = snap.val();
             me.uid = uid;
+            
+            // الحصول على معلومات المصادقة للتأكد من البريد المؤكد
+            const user = auth.currentUser;
+            
+            if (user) {
+                // تحديث حالة البريد في قاعدة البيانات
+                if (user.emailVerified && !me.emailVerified) {
+                    await db.ref('users/' + uid + '/emailVerified').set(true);
+                    
+                    if (me.status === 'pending_email_verification') {
+                        await db.ref('users/' + uid + '/status').set('active');
+                    }
+                    
+                    me.emailVerified = true;
+                }
+                
+                // إذا كان البريد غير مؤكد، إجبار المستخدم على التأكيد
+                if (!user.emailVerified) {
+                    await Swal.fire({
+                        title: 'يرجى تأكيد بريدك الإلكتروني',
+                        html: `لم يتم تأكيد بريدك الإلكتروني بعد<br>
+                               <strong>${user.email}</strong><br><br>
+                               هل تريد إعادة إرسال رسالة التأكيد؟`,
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'نعم، أعد الإرسال',
+                        cancelButtonText: 'تسجيل خروج',
+                        background: '#1e293b',
+                        color: '#fff'
+                    }).then(async (result) => {
+                        if (result.isConfirmed) {
+                            await user.sendEmailVerification();
+                            showSuccess('تم إعادة إرسال رابط التأكيد');
+                        }
+                        auth.signOut();
+                    });
+                    return;
+                }
+            }
             
             // التحقق من حالة الأستاذ
             if (me.role === 'pending_teacher') {
@@ -1200,7 +1383,7 @@ function showTeacherWaitingScreen() {
     });
 }
 
-// ==================== [ 8. تحديث واجهة المستخدم ] ====================
+// ==================== [ 9. تحديث واجهة المستخدم ] ====================
 function updateUI() {
     if (!me) return;
     
@@ -1218,7 +1401,7 @@ function updateUI() {
     }
 }
 
-// ==================== [ 9. نظام التنقل ] ====================
+// ==================== [ 10. نظام التنقل ] ====================
 function nav(view, extra) {
     hStack.push(view);
     const area = document.getElementById('content-area');
@@ -1292,7 +1475,7 @@ function handleBackButton() {
     }
 }
 
-// ==================== [ 10. الصفحة الرئيسية ] ====================
+// ==================== [ 11. الصفحة الرئيسية ] ====================
 function renderHome() {
     if (!me) return;
     
@@ -1384,7 +1567,7 @@ function renderHome() {
     loadRecentBooks();
 }
 
-// ==================== [ 11. مكتبة الكتب ] ====================
+// ==================== [ 12. مكتبة الكتب ] ====================
 function renderLibrary() {
     const area = document.getElementById('content-area');
     const canAddBooks = me.role === 'admin' || me.role === 'teacher';
@@ -1481,7 +1664,7 @@ function loadAllBooks() {
     });
 }
 
-// ==================== [ 12. إضافة كتاب ] ====================
+// ==================== [ 13. إضافة كتاب ] ====================
 function renderAddBook() {
     if (me.role !== 'admin' && me.role !== 'teacher') {
         nav('home');
@@ -1653,7 +1836,7 @@ async function addBook() {
     }
 }
 
-// ==================== [ 13. تفاصيل الكتاب ] ====================
+// ==================== [ 14. تفاصيل الكتاب ] ====================
 async function loadBookDetail(bookId) {
     const bookSnap = await db.ref(`books/${bookId}`).once('value');
     const book = bookSnap.val();
@@ -1815,7 +1998,7 @@ async function downloadBook(bookId, bookUrl, price) {
     showSuccess('جاري تحميل الكتاب...');
 }
 
-// ==================== [ 14. المساعد الذكي ] ====================
+// ==================== [ 15. المساعد الذكي ] ====================
 function renderAIAssistant() {
     const area = document.getElementById('content-area');
     
@@ -2051,7 +2234,7 @@ async function submitAIQuiz() {
     });
 }
 
-// ==================== [ 15. غرف البث المباشر ] ====================
+// ==================== [ 16. غرف البث المباشر ] ====================
 function renderLiveRooms() {
     const area = document.getElementById('content-area');
     const canCreateRooms = me.role === 'admin' || me.role === 'teacher';
@@ -2412,7 +2595,7 @@ function showRoomPayment(price) {
     });
 }
 
-// ==================== [ 16. الاشتراكات ] ====================
+// ==================== [ 17. الاشتراكات ] ====================
 function renderSubscription() {
     const area = document.getElementById('content-area');
     const isFreeTrial = me.freeTrial && me.freeUntil > Date.now();
@@ -2624,7 +2807,7 @@ async function sendPaymentNotification(plan, price) {
     }
 }
 
-// ==================== [ 17. الملف الشخصي ] ====================
+// ==================== [ 18. الملف الشخصي ] ====================
 function renderProfile() {
     if (!me) return;
     
@@ -2775,7 +2958,7 @@ function doLogout() {
     });
 }
 
-// ==================== [ 18. لوحة التحكم ] ====================
+// ==================== [ 19. لوحة التحكم ] ====================
 function renderAdminPanel() {
     if (me.role !== 'admin') {
         nav('home');
@@ -2835,7 +3018,7 @@ function renderAdminPanel() {
         </div>`;
 }
 
-// ==================== [ 19. الفصول الدراسية ] ====================
+// ==================== [ 20. الفصول الدراسية ] ====================
 function renderGrades() {
     const area = document.getElementById('content-area');
     area.innerHTML = `
@@ -3152,7 +3335,7 @@ function startQuiz(subject, grade, type) {
     showError('هذه الميزة قيد التطوير');
 }
 
-// ==================== [ 20. تحميل الكتب الحديثة ] ====================
+// ==================== [ 21. تحميل الكتب الحديثة ] ====================
 function loadRecentBooks() {
     const container = document.getElementById('recent-books');
     if (!container) return;
@@ -3193,7 +3376,7 @@ function loadRecentBooks() {
     });
 }
 
-// ==================== [ 21. البحث ] ====================
+// ==================== [ 22. البحث ] ====================
 const debounceSearch = debounce(function(query) {
     const container = document.getElementById('books-list');
     if (!container) return;
@@ -3248,7 +3431,7 @@ const debounceFilter = debounce(function(query) {
     debounceSearch(query);
 }, 300);
 
-// ==================== [ 22. دوال مساعدة ] ====================
+// ==================== [ 23. دوال مساعدة ] ====================
 function debounce(func, wait = 300) {
     let timeout;
     return function executedFunction(...args) {
@@ -3310,7 +3493,7 @@ function showError(message) {
     });
 }
 
-// ==================== [ 23. دوال إضافية مساعدة ] ====================
+// ==================== [ 24. دوال إضافية مساعدة ] ====================
 function deleteBook(bookId) {
     Swal.fire({
         title: 'هل أنت متأكد؟',
@@ -3361,7 +3544,7 @@ function showSystemStats() {
     showError('هذه الميزة قيد التطوير');
 }
 
-// ==================== [ 24. التهيئة النهائية ] ====================
+// ==================== [ 25. التهيئة النهائية ] ====================
 document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => {
         initializeApp();
@@ -3396,6 +3579,7 @@ window.subscribeYearly = subscribeYearly;
 window.sendPaymentNotification = sendPaymentNotification;
 window.addBook = addBook;
 window.downloadBook = downloadBook;
+window.resendVerification = resendVerification;
 </script>
 </body>
 </html>
