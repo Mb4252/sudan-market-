@@ -12,6 +12,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
     
     <!-- UI Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -434,63 +435,6 @@
             padding: 20px;
             margin: 15px;
         }
-        
-        /* ========== جديد: واجهة رفع الملفات ========== */
-        .upload-area {
-            border: 2px dashed var(--border);
-            border-radius: 15px;
-            padding: 30px;
-            text-align: center;
-            margin: 20px 0;
-            cursor: pointer;
-            transition: 0.3s;
-        }
-        
-        .upload-area:hover {
-            border-color: var(--accent);
-            background: rgba(245, 158, 11, 0.05);
-        }
-        
-        .upload-area.dragover {
-            border-color: var(--neon-blue);
-            background: rgba(0, 243, 255, 0.1);
-        }
-        
-        .upload-progress {
-            background: var(--bg-card);
-            border-radius: 10px;
-            padding: 15px;
-            margin: 15px 0;
-            display: none;
-        }
-        
-        .progress-bar {
-            width: 100%;
-            height: 10px;
-            background: rgba(0,0,0,0.3);
-            border-radius: 5px;
-            overflow: hidden;
-            margin: 10px 0;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--primary), var(--accent));
-            width: 0%;
-            transition: width 0.3s;
-        }
-        
-        .bot-status {
-            background: rgba(59, 130, 246, 0.1);
-            border: 1px solid var(--primary);
-            border-radius: 10px;
-            padding: 10px 15px;
-            font-size: 12px;
-            margin: 10px 0;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
 
         /* ========== التحميل ========== */
         .loading { 
@@ -554,11 +498,15 @@
         <p class="login-subtitle">أهلاً بك في المنصة التعليمية المتكاملة</p>
         
         <div class="login-form">
-            <input type="text" id="login-email" class="login-input" placeholder="البريد الإلكتروني">
+            <input type="text" id="login-email" class="login-input" placeholder="البريد الإلكتروني أو اسم المستخدم">
             <input type="password" id="login-password" class="login-input" placeholder="كلمة المرور">
             
             <button class="login-btn" onclick="loginUser()">
                 <i class="fas fa-sign-in-alt"></i> تسجيل الدخول
+            </button>
+            
+            <button class="btn-secondary" onclick="resendVerification()" style="margin-top: 10px;">
+                <i class="fas fa-redo"></i> إعادة إرسال رسالة التأكيد
             </button>
             
             <p class="login-footer">
@@ -791,6 +739,14 @@
             
             <div style="margin-bottom:20px;">
                 <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                    <i class="fas fa-id-card"></i> صورة البطاقة الشخصية أو الرخصة *
+                </label>
+                <input type="file" id="teacher-id" accept="image/*" required>
+                <small style="color:var(--text-sec);">للمراجعة من قبل الإدمن</small>
+            </div>
+            
+            <div style="margin-bottom:20px;">
+                <label style="display:block; margin-bottom:8px; color:var(--accent);">
                     <i class="fas fa-bank"></i> رقم حسابك البنكي
                 </label>
                 <input type="text" id="teacher-account" placeholder="لتحويل المدفوعات (اختياري)">
@@ -820,6 +776,7 @@
             <div id="user-badge" style="background:rgba(255,255,255,0.1); padding:5px 12px; border-radius:15px; display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="nav('profile')">
                 <i class="fas fa-user" style="color:var(--accent); font-size:14px;"></i>
                 <span id="user-name" style="font-size:14px; font-weight:bold;"></span>
+                <span id="u-stars" style="font-size:14px; font-weight:bold; margin-right:5px;">0.0</span>
             </div>
         </div>
         <div class="search-container" id="main-search">
@@ -835,17 +792,17 @@
         <div class="tab-btn active" onclick="nav('home'); highlightTab(this)">
             <i class="fas fa-home"></i>الرئيسية
         </div>
+        <div class="tab-btn" onclick="nav('grades'); highlightTab(this)">
+            <i class="fas fa-graduation-cap"></i>الفصول
+        </div>
         <div class="tab-btn" onclick="nav('library'); highlightTab(this)">
             <i class="fas fa-book"></i>المكتبة
         </div>
         <div class="tab-btn" onclick="nav('ai_assistant'); highlightTab(this)">
-            <i class="fas fa-robot"></i>المساعد
-        </div>
-        <div class="tab-btn" onclick="nav('bot_uploads'); highlightTab(this)">
-            <i class="fas fa-upload"></i>الرفع
+            <i class="fas fa-robot"></i>المساعد الذكي
         </div>
         <div class="tab-btn" onclick="nav('live'); highlightTab(this)">
-            <i class="fas fa-video"></i>البث
+            <i class="fas fa-video"></i>البث المباشر
         </div>
     </div>
 </div>
@@ -870,69 +827,622 @@ if (!firebase.apps.length) {
 
 const auth = firebase.auth();
 const db = firebase.database();
+const storage = firebase.storage();
 
-// ==================== [ 2. إعدادات البوت (السيرفر الوسيط) ] ====================
-const BOT_SERVER_URL = window.location.origin.includes('localhost') 
-    ? 'http://localhost:3000' 
-    : 'https://YOUR-BOT-SERVER.onrender.com'; // استبدل برابط بوتك
-
-console.log('🤖 رابط البوت:', BOT_SERVER_URL);
-
-// ==================== [ 3. المتغيرات العامة ] ====================
+// ==================== [ 2. المتغيرات العامة ] ====================
 const ADMIN_EMAIL = "mb425262@gmail.com";
 const ADMIN_BANK_ACCOUNT = "4426148";
+const WEEKLY_SUBSCRIPTION_PRICE = 7000; // 7000 جنيه
 const FREE_TRIAL_DAYS = 1;
 
 let me = null;
 let hStack = ['home'];
-let currentUploads = [];
-let botStats = null;
+let isGuest = false;
+let currentBookId = null;
+let selectedChapter = '';
+let currentQuiz = null;
+let currentLiveRoom = null;
+let currentVoice = null;
 
-// ==================== [ 4. تهيئة التطبيق ] ====================
+// ==================== [ 3. تهيئة التطبيق ] ====================
 function initializeApp() {
+    // إخفاء شاشة التحميل أولاً
     document.getElementById('main-preloader').classList.add('hidden');
     
+    // التحقق من المستخدم الحالي
     auth.onAuthStateChanged((user) => {
         if (user) {
+            // المستخدم مسجل دخول
             loadUserData(user.uid);
         } else {
+            // عرض شاشة تسجيل الدخول
             showLoginScreen();
         }
     });
 }
 
-// ==================== [ 5. نظام التنقل ] ====================
+function showLoginScreen() {
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('register-screen').classList.add('hidden');
+    document.getElementById('student-form').classList.add('hidden');
+    document.getElementById('teacher-form').classList.add('hidden');
+    document.getElementById('app-screen').classList.add('hidden');
+}
+
+function backToLogin() {
+    document.getElementById('register-screen').classList.add('hidden');
+    document.getElementById('student-form').classList.add('hidden');
+    document.getElementById('teacher-form').classList.add('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
+}
+
+function showRegisterOptions() {
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('register-screen').classList.remove('hidden');
+}
+
+function backToRegister() {
+    document.getElementById('student-form').classList.add('hidden');
+    document.getElementById('teacher-form').classList.add('hidden');
+    document.getElementById('register-screen').classList.remove('hidden');
+}
+
+function showStudentForm() {
+    document.getElementById('register-screen').classList.add('hidden');
+    document.getElementById('student-form').classList.remove('hidden');
+}
+
+function showTeacherForm() {
+    document.getElementById('register-screen').classList.add('hidden');
+    document.getElementById('teacher-form').classList.remove('hidden');
+}
+
+// ==================== [ 4. تسجيل الدخول ] ====================
+async function loginUser() {
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value.trim();
+    
+    if (!email || !password) {
+        showError('الرجاء إدخال البريد الإلكتروني وكلمة المرور');
+        return;
+    }
+    
+    try {
+        showLoading('جاري تسجيل الدخول...');
+        
+        const result = await auth.signInWithEmailAndPassword(email, password);
+        const user = result.user;
+        
+        // التحقق من تأكيد البريد الإلكتروني
+        if (!user.emailVerified) {
+            // تسجيل الخروج لأن البريد غير مؤكد
+            await auth.signOut();
+            
+            hideLoading();
+            
+            await Swal.fire({
+                title: 'البريد الإلكتروني غير مؤكد!',
+                html: `يرجى تأكيد بريدك الإلكتروني أولاً<br>
+                       <strong>${email}</strong><br><br>
+                       هل تريد إعادة إرسال رسالة التأكيد؟`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'نعم، أعد الإرسال',
+                cancelButtonText: 'إلغاء',
+                background: '#1e293b',
+                color: '#fff'
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    await user.sendEmailVerification();
+                    showSuccess('تم إعادة إرسال رابط التأكيد إلى بريدك');
+                }
+            });
+            
+            return;
+        }
+        
+        hideLoading();
+        showSuccess('تم تسجيل الدخول بنجاح');
+        
+    } catch (error) {
+        hideLoading();
+        
+        if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+            showError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+        } else if (error.code === 'auth/invalid-email') {
+            showError('البريد الإلكتروني غير صالح');
+        } else if (error.code === 'auth/user-disabled') {
+            showError('تم تعطيل هذا الحساب');
+        } else {
+            showError('حدث خطأ أثناء تسجيل الدخول: ' + error.message);
+        }
+    }
+}
+
+// ==================== [ 5. إعادة إرسال رسالة التأكيد ] ====================
+async function resendVerification() {
+    const email = document.getElementById('login-email').value.trim();
+    
+    if (!email) {
+        showError('الرجاء إدخال بريدك الإلكتروني');
+        return;
+    }
+    
+    try {
+        showLoading('جاري إعادة إرسال رسالة التأكيد...');
+        
+        // محاولة تسجيل الدخول للحصول على المستخدم
+        const password = document.getElementById('login-password').value.trim();
+        
+        if (!password) {
+            // إذا لم يكن هناك كلمة مرور، عرض رسالة توجيهية
+            hideLoading();
+            Swal.fire({
+                title: 'معلومات مطلوبة',
+                text: 'أدخل كلمة المرور لإعادة إرسال رسالة التأكيد',
+                icon: 'info',
+                confirmButtonText: 'حسناً',
+                background: '#1e293b',
+                color: '#fff'
+            });
+            return;
+        }
+        
+        const result = await auth.signInWithEmailAndPassword(email, password);
+        const user = result.user;
+        
+        if (!user.emailVerified) {
+            await user.sendEmailVerification();
+            await auth.signOut(); // تسجيل الخروج بعد الإرسال
+            
+            hideLoading();
+            showSuccess('تم إعادة إرسال رابط التأكيد إلى بريدك الإلكتروني');
+        } else {
+            await auth.signOut();
+            hideLoading();
+            showSuccess('بريدك الإلكتروني مؤكد بالفعل، يمكنك تسجيل الدخول');
+        }
+        
+    } catch (error) {
+        hideLoading();
+        
+        if (error.code === 'auth/user-not-found') {
+            showError('لم يتم العثور على حساب بهذا البريد');
+        } else {
+            showError('حدث خطأ: ' + error.message);
+        }
+    }
+}
+
+// ==================== [ 6. تسجيل الطالب ] ====================
+async function registerStudent() {
+    const name = document.getElementById('student-name').value.trim();
+    const email = document.getElementById('student-email').value.trim();
+    const password = document.getElementById('student-password').value.trim();
+    const age = document.getElementById('student-age').value;
+    const grade = document.getElementById('student-grade').value;
+    
+    if (!name || !email || !password || !age || !grade) {
+        showError('الرجاء ملء جميع الحقول المطلوبة');
+        return;
+    }
+    
+    // جمع المواد المفضلة
+    const favoriteSubjects = [];
+    document.querySelectorAll('.subject-checkbox:checked').forEach(cb => {
+        favoriteSubjects.push(cb.value);
+    });
+    
+    if (favoriteSubjects.length === 0) {
+        showError('الرجاء اختيار مادة واحدة على الأقل');
+        return;
+    }
+    
+    try {
+        showLoading('جاري إنشاء حساب الطالب...');
+        
+        // إنشاء حساب في Firebase Auth مع إرسال رسالة التأكيد
+        const result = await auth.createUserWithEmailAndPassword(email, password);
+        const user = result.user;
+        
+        // إرسال رسالة تأكيد البريد الإلكتروني
+        await user.sendEmailVerification();
+        
+        // حساب تاريخ انتهاء التجربة المجانية
+        const freeUntil = Date.now() + (FREE_TRIAL_DAYS * 24 * 60 * 60 * 1000);
+        
+        // حفظ بيانات الطالب مع وضع الحساب غير مفعل
+        await db.ref('users/' + user.uid).set({
+            name: name,
+            email: email,
+            uid: user.uid,
+            age: age,
+            grade: grade,
+            role: 'student',
+            favoriteSubjects: favoriteSubjects,
+            joinDate: Date.now(),
+            freeTrial: true,
+            freeUntil: freeUntil,
+            balance: 0,
+            subscription: null,
+            totalSpent: 0,
+            aiQuizzesCount: 0,
+            booksDownloaded: 0,
+            liveSessionsAttended: 0,
+            emailVerified: false, // إضافة حقل للتأكيد
+            status: 'pending_email_verification' // حالة انتظار التأكيد
+        });
+        
+        // تسجيل اليوم المجاني
+        await db.ref('free_trials/' + user.uid).set({
+            userId: user.uid,
+            startDate: Date.now(),
+            endDate: freeUntil,
+            used: false // غير مستخدم حتى يتم تأكيد البريد
+        });
+        
+        hideLoading();
+        
+        // عرض رسالة توجيهية للتأكيد
+        await Swal.fire({
+            title: 'يرجى تأكيد بريدك الإلكتروني!',
+            html: `تم إرسال رسالة تأكيد إلى: <strong>${email}</strong><br><br>
+                   <strong>خطوات التنشيط:</strong><br>
+                   1. افحص بريدك الإلكتروني<br>
+                   2. افتح الرسالة من Google<br>
+                   3. انقر على رابط التأكيد<br>
+                   4. عد للتطبيق وسجل الدخول`,
+            icon: 'info',
+            confirmButtonText: 'حسناً',
+            showCancelButton: true,
+            cancelButtonText: 'إعادة الإرسال',
+            background: '#1e293b',
+            color: '#fff'
+        }).then(async (result) => {
+            if (result.dismiss === Swal.DismissReason.cancel) {
+                // إعادة إرسال رسالة التأكيد
+                await user.sendEmailVerification();
+                showSuccess('تم إعادة إرسال رابط التأكيد إلى بريدك');
+            }
+            
+            // تسجيل الخروج حتى يتم تأكيد البريد
+            await auth.signOut();
+            showLoginScreen();
+        });
+        
+    } catch (error) {
+        hideLoading();
+        if (error.code === 'auth/email-already-in-use') {
+            showError('هذا البريد الإلكتروني مستخدم بالفعل');
+        } else if (error.code === 'auth/weak-password') {
+            showError('كلمة المرور ضعيفة، يجب أن تكون 6 أحرف على الأقل');
+        } else if (error.code === 'auth/invalid-email') {
+            showError('البريد الإلكتروني غير صالح');
+        } else {
+            showError('حدث خطأ أثناء التسجيل: ' + error.message);
+        }
+    }
+}
+
+// ==================== [ 7. تسجيل الأستاذ ] ====================
+async function registerTeacher() {
+    const name = document.getElementById('teacher-name').value.trim();
+    const email = document.getElementById('teacher-email').value.trim();
+    const password = document.getElementById('teacher-password').value.trim();
+    const subject = document.getElementById('teacher-subject').value;
+    const whatsapp = document.getElementById('teacher-whatsapp').value.trim();
+    const idFile = document.getElementById('teacher-id').files[0];
+    const account = document.getElementById('teacher-account').value.trim();
+    
+    if (!name || !email || !password || !subject || !whatsapp || !idFile) {
+        showError('الرجاء ملء جميع الحقول المطلوبة');
+        return;
+    }
+    
+    // جمع الصفوف المختارة
+    const grades = [];
+    const gradeSelect = document.getElementById('teacher-grades');
+    for (let i = 0; i < gradeSelect.options.length; i++) {
+        if (gradeSelect.options[i].selected) {
+            grades.push(gradeSelect.options[i].value);
+        }
+    }
+    
+    if (grades.length === 0) {
+        grades.push('جميع الصفوف');
+    }
+    
+    try {
+        showLoading('جاري إرسال طلب التسجيل...');
+        
+        // إنشاء حساب في Firebase Auth مع إرسال رسالة التأكيد
+        const result = await auth.createUserWithEmailAndPassword(email, password);
+        const user = result.user;
+        
+        // إرسال رسالة تأكيد البريد الإلكتروني
+        await user.sendEmailVerification();
+        
+        // رفع صورة البطاقة
+        const fileRef = storage.ref(`teacher_ids/${user.uid}_${Date.now()}_${idFile.name}`);
+        const uploadTask = fileRef.put(idFile);
+        
+        await new Promise((resolve, reject) => {
+            uploadTask.on('state_changed',
+                null,
+                (error) => reject(error),
+                async () => {
+                    const idUrl = await uploadTask.snapshot.ref.getDownloadURL();
+                    resolve(idUrl);
+                }
+            );
+        });
+        
+        const idUrl = await uploadTask.snapshot.ref.getDownloadURL();
+        
+        // حفظ بيانات الأستاذ (في انتظار المراجعة والتأكيد)
+        await db.ref('users/' + user.uid).set({
+            name: name,
+            email: email,
+            uid: user.uid,
+            role: 'pending_teacher',
+            subject: subject,
+            grades: grades,
+            whatsapp: whatsapp,
+            bankAccount: account || null,
+            idUrl: idUrl,
+            joinDate: Date.now(),
+            status: 'pending_email_verification', // أولاً انتظار تأكيد البريد
+            adminStatus: 'pending', // ثم مراجعة الإدمن
+            balance: 0,
+            totalEarnings: 0,
+            emailVerified: false
+        });
+        
+        // إرسال إشعار للإدمن (بعد تأكيد البريد)
+        await db.ref('admin_notifications').push({
+            type: 'teacher_registration',
+            userId: user.uid,
+            userName: name,
+            email: email,
+            subject: subject,
+            whatsapp: whatsapp,
+            idUrl: idUrl,
+            timestamp: Date.now(),
+            status: 'pending_verification'
+        });
+        
+        hideLoading();
+        
+        // عرض رسالة توجيهية للتأكيد
+        await Swal.fire({
+            title: 'يرجى تأكيد بريدك الإلكتروني!',
+            html: `تم إرسال رسالة تأكيد إلى: <strong>${email}</strong><br><br>
+                   <strong>خطوات التنشيط:</strong><br>
+                   1. افحص بريدك الإلكتروني<br>
+                   2. افتح الرسالة من Google<br>
+                   3. انقر على رابط التأكيد<br>
+                   4. عد للتطبيق وسجل الدخول<br><br>
+                   <small>بعد التأكيد، سيتم مراجعة طلبك من الإدمن خلال 24 ساعة</small>`,
+            icon: 'info',
+            confirmButtonText: 'حسناً',
+            showCancelButton: true,
+            cancelButtonText: 'إعادة الإرسال',
+            background: '#1e293b',
+            color: '#fff'
+        }).then(async (result) => {
+            if (result.dismiss === Swal.DismissReason.cancel) {
+                // إعادة إرسال رسالة التأكيد
+                await user.sendEmailVerification();
+                showSuccess('تم إعادة إرسال رابط التأكيد إلى بريدك');
+            }
+            
+            // تسجيل الخروج حتى يتم تأكيد البريد
+            await auth.signOut();
+            showLoginScreen();
+        });
+        
+    } catch (error) {
+        hideLoading();
+        if (error.code === 'auth/email-already-in-use') {
+            showError('هذا البريد الإلكتروني مستخدم بالفعل');
+        } else if (error.code === 'auth/weak-password') {
+            showError('كلمة المرور ضعيفة، يجب أن تكون 6 أحرف على الأقل');
+        } else {
+            showError('حدث خطأ أثناء التسجيل: ' + error.message);
+        }
+    }
+}
+
+// ==================== [ 8. تحميل بيانات المستخدم ] ====================
+function loadUserData(uid) {
+    db.ref('users/' + uid).on('value', async (snap) => {
+        if (snap.exists()) {
+            me = snap.val();
+            me.uid = uid;
+            
+            // الحصول على معلومات المصادقة للتأكد من البريد المؤكد
+            const user = auth.currentUser;
+            
+            if (user) {
+                // تحديث حالة البريد في قاعدة البيانات
+                if (user.emailVerified && !me.emailVerified) {
+                    await db.ref('users/' + uid + '/emailVerified').set(true);
+                    
+                    if (me.status === 'pending_email_verification') {
+                        await db.ref('users/' + uid + '/status').set('active');
+                    }
+                    
+                    me.emailVerified = true;
+                }
+                
+                // إذا كان البريد غير مؤكد، إجبار المستخدم على التأكيد
+                if (!user.emailVerified) {
+                    await Swal.fire({
+                        title: 'يرجى تأكيد بريدك الإلكتروني',
+                        html: `لم يتم تأكيد بريدك الإلكتروني بعد<br>
+                               <strong>${user.email}</strong><br><br>
+                               هل تريد إعادة إرسال رسالة التأكيد؟`,
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'نعم، أعد الإرسال',
+                        cancelButtonText: 'تسجيل خروج',
+                        background: '#1e293b',
+                        color: '#fff'
+                    }).then(async (result) => {
+                        if (result.isConfirmed) {
+                            await user.sendEmailVerification();
+                            showSuccess('تم إعادة إرسال رابط التأكيد');
+                        }
+                        auth.signOut();
+                    });
+                    return;
+                }
+            }
+            
+            // التحقق من حالة الأستاذ
+            if (me.role === 'pending_teacher') {
+                await checkTeacherStatus(uid);
+                return;
+            }
+            
+            // إذا كان الأستاذ مرفوض
+            if (me.role === 'rejected_teacher') {
+                Swal.fire({
+                    title: 'تم رفض طلبك',
+                    text: 'تم رفض طلب تسجيلك كأستاذ. يمكنك التسجيل كطالب بدلاً من ذلك.',
+                    icon: 'error',
+                    confirmButtonText: 'حسناً',
+                    background: '#1e293b',
+                    color: '#fff'
+                }).then(() => {
+                    auth.signOut();
+                });
+                return;
+            }
+            
+            // تحديث واجهة المستخدم
+            updateUI();
+            
+            // إظهار التطبيق الرئيسي
+            document.getElementById('main-preloader').classList.add('hidden');
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('register-screen').classList.add('hidden');
+            document.getElementById('student-form').classList.add('hidden');
+            document.getElementById('teacher-form').classList.add('hidden');
+            document.getElementById('app-screen').classList.remove('hidden');
+            
+            // تحميل الصفحة الرئيسية
+            nav('home');
+            
+            // تحديث حالة الاتصال
+            db.ref('users/' + uid + '/online').set(true);
+            db.ref('users/' + uid + '/online').onDisconnect().set(false);
+        }
+    });
+}
+
+async function checkTeacherStatus(uid) {
+    const statusSnap = await db.ref('users/' + uid + '/status').once('value');
+    const status = statusSnap.val();
+    
+    if (status === 'approved') {
+        // تمت الموافقة
+        me.role = 'teacher';
+        loadUserData(uid); // إعادة تحميل البيانات
+    } else if (status === 'rejected') {
+        // تم الرفض
+        me.role = 'rejected_teacher';
+        loadUserData(uid); // إعادة تحميل البيانات
+    } else {
+        // لا يزال في انتظار المراجعة
+        showTeacherWaitingScreen();
+    }
+}
+
+function showTeacherWaitingScreen() {
+    document.getElementById('main-preloader').classList.add('hidden');
+    
+    Swal.fire({
+        title: 'جاري مراجعة طلبك',
+        html: `طلب تسجيلك كأستاذ قيد المراجعة حالياً<br>
+               <strong>سيتم إشعارك فور الانتهاء من المراجعة</strong><br>
+               <small>قد تستغرق العملية حتى 24 ساعة</small>`,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'انتظار',
+        cancelButtonText: 'تسجيل خروج',
+        background: '#1e293b',
+        color: '#fff'
+    }).then((result) => {
+        if (result.dismiss === Swal.DismissReason.cancel) {
+            auth.signOut();
+        } else {
+            // التحقق من الحالة كل 30 ثانية
+            setTimeout(() => checkTeacherStatus(me.uid), 30000);
+        }
+    });
+}
+
+// ==================== [ 9. تحديث واجهة المستخدم ] ====================
+function updateUI() {
+    if (!me) return;
+    
+    // تحديث اسم المستخدم
+    document.getElementById('user-name').innerText = me.name || 'مستخدم';
+    
+    // تحديث رصيد المستخدم
+    const balanceText = me.balance ? me.balance.toFixed(1) + ' ج.س' : 'مجاني';
+    document.getElementById('u-stars').innerText = balanceText;
+    
+    // تحديث بادج الزائر إذا كان مجاني
+    if (me.freeTrial && me.freeUntil > Date.now()) {
+        const hoursLeft = Math.ceil((me.freeUntil - Date.now()) / (1000 * 60 * 60));
+        document.getElementById('u-stars').innerText = `تجربة ${hoursLeft}س`;
+    }
+}
+
+// ==================== [ 10. نظام التنقل ] ====================
 function nav(view, extra) {
     hStack.push(view);
     const area = document.getElementById('content-area');
     
+    // تحديث العنوان
     const titles = {
         'home': 'الرئيسية',
+        'grades': 'الفصول الدراسية',
         'library': 'المكتبة الرقمية',
         'ai_assistant': 'المساعد الذكي',
-        'bot_uploads': 'رفع الملفات للبوت',
-        'live': 'البث المباشر',
+        'live': 'غرف البث المباشر',
         'profile': 'الملف الشخصي',
         'admin': 'لوحة التحكم',
-        'upload_image': 'رفع صورة',
-        'upload_book': 'رفع كتاب',
-        'create_stream': 'إنشاء بث',
-        'bot_stats': 'إحصائيات البوت'
+        'add_book': 'إضافة كتاب جديد',
+        'book_detail': 'تفاصيل الكتاب',
+        'subscription': 'الاشتراكات والدفع'
     };
-    
     document.getElementById('head-title').innerText = titles[view] || view;
     
-    if (view === 'home') renderHome();
-    else if (view === 'library') renderLibrary();
-    else if (view === 'ai_assistant') renderAIAssistant();
-    else if (view === 'bot_uploads') renderBotUploads();
-    else if (view === 'live') renderLiveStreams();
-    else if (view === 'profile') renderProfile();
-    else if (view === 'admin') renderAdminPanel();
-    else if (view === 'upload_image') renderUploadImage();
-    else if (view === 'upload_book') renderUploadBook();
-    else if (view === 'create_stream') renderCreateStream();
-    else if (view === 'bot_stats') renderBotStats();
+    // عرض المحتوى المناسب
+    if (view === 'home') {
+        renderHome();
+    } else if (view === 'grades') {
+        renderGrades();
+    } else if (view === 'library') {
+        renderLibrary();
+    } else if (view === 'ai_assistant') {
+        renderAIAssistant();
+    } else if (view === 'live') {
+        renderLiveRooms();
+    } else if (view === 'profile') {
+        renderProfile();
+    } else if (view === 'admin') {
+        renderAdminPanel();
+    } else if (view === 'add_book') {
+        renderAddBook();
+    } else if (view === 'subscription') {
+        renderSubscription();
+    } else if (view === 'book_detail') {
+        if (extra) loadBookDetail(extra);
+    }
     
     highlightTab(document.querySelector(`[onclick*="${view}"]`));
 }
@@ -942,60 +1452,111 @@ function highlightTab(el) {
     if (el) el.classList.add('active');
 }
 
-// ==================== [ 6. الصفحة الرئيسية ] ====================
+function handleBackButton() {
+    if (hStack.length > 1) {
+        hStack.pop();
+        const prevView = hStack[hStack.length - 1];
+        nav(prevView);
+    } else {
+        Swal.fire({
+            title: 'تسجيل خروج',
+            text: 'هل تريد تسجيل الخروج؟',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، خروج',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        }).then(result => {
+            if (result.isConfirmed) {
+                auth.signOut();
+            }
+        });
+    }
+}
+
+// ==================== [ 11. الصفحة الرئيسية ] ====================
 function renderHome() {
+    if (!me) return;
+    
     const area = document.getElementById('content-area');
+    const isFreeTrial = me.freeTrial && me.freeUntil > Date.now();
+    const hoursLeft = isFreeTrial ? Math.ceil((me.freeUntil - Date.now()) / (1000 * 60 * 60)) : 0;
+    
     area.innerHTML = `
         <div style="padding:20px;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
-                <h2 style="margin-top:0;">مرحباً ${me?.name || 'مستخدم'} 👋</h2>
-                <p>${me?.role === 'teacher' ? 'أهلاً بك أستاذ ' + me.subject : 'استمر في رحلة التعلم مع المساعد الذكي'}</p>
+                <h2 style="margin-top:0;">مرحباً ${me.name} 👋</h2>
+                <p>${me.role === 'teacher' ? 'أهلاً بك أستاذ ' + me.subject : 'استمر في رحلة التعلم مع المساعد الذكي'}</p>
+                ${isFreeTrial ? `
+                    <div style="background:rgba(255,255,255,0.2); padding:10px; border-radius:10px; margin-top:10px;">
+                        <small>الوقت المتبقي من اليوم المجاني: ${hoursLeft} ساعة</small>
+                    </div>
+                ` : ''}
             </div>
             
             <div class="grid">
+                <div class="card" onclick="nav('grades')">
+                    <div class="card-badge">📚</div>
+                    <i class="fas fa-graduation-cap" style="color:#3b82f6"></i>
+                    <b>الفصول الدراسية</b>
+                    <p style="font-size:12px; color:var(--text-sec)">${me.grade || 'جميع الصفوف'}</p>
+                </div>
+                
                 <div class="card" onclick="nav('library')">
+                    <div class="card-badge">📖</div>
                     <i class="fas fa-book" style="color:#f59e0b"></i>
                     <b>المكتبة الرقمية</b>
                     <p style="font-size:12px; color:var(--text-sec)">جميع الكتب الدراسية</p>
                 </div>
                 
                 <div class="card" onclick="nav('ai_assistant')">
+                    <div class="card-badge">🤖</div>
                     <i class="fas fa-robot" style="color:#8b5cf6"></i>
                     <b>المساعد الذكي</b>
                     <p style="font-size:12px; color:var(--text-sec)">إنشاء اختبارات ذكية</p>
                 </div>
                 
-                <div class="card" onclick="nav('bot_uploads')">
-                    <i class="fas fa-upload" style="color:#10b981"></i>
-                    <b>رفع للبوت</b>
-                    <p style="font-size:12px; color:var(--text-sec)">رفع صور وكتب للبوت</p>
-                </div>
-                
                 <div class="card" onclick="nav('live')">
+                    <div class="card-badge">📹</div>
                     <i class="fas fa-video" style="color:#ef4444"></i>
                     <b>البث المباشر</b>
                     <p style="font-size:12px; color:var(--text-sec)">دروس مباشرة مع الأساتذة</p>
                 </div>
                 
-                ${me?.role === 'admin' ? `
+                ${me.role === 'admin' ? `
                 <div class="card" onclick="nav('admin')" style="border:2px solid var(--red);">
+                    <div class="card-badge" style="background:var(--red);">⚙️</div>
                     <i class="fas fa-cogs" style="color:var(--red)"></i>
                     <b>لوحة التحكم</b>
                     <p style="font-size:12px; color:var(--text-sec)">إدارة النظام</p>
                 </div>
                 ` : ''}
                 
-                ${me?.role === 'teacher' ? `
-                <div class="card" onclick="nav('create_stream')">
-                    <i class="fas fa-broadcast-tower" style="color:var(--neon-blue)"></i>
-                    <b>إنشاء بث</b>
-                    <p style="font-size:12px; color:var(--text-sec)">ابدأ بثاً مباشراً</p>
+                <div class="card" onclick="nav('subscription')">
+                    <div class="card-badge" style="background:var(--green);">💳</div>
+                    <i class="fas fa-crown" style="color:var(--green)"></i>
+                    <b>الاشتراكات</b>
+                    <p style="font-size:12px; color:var(--text-sec)">اشترك الآن</p>
                 </div>
-                ` : ''}
             </div>
             
+            ${me.role === 'teacher' ? `
+            <div style="margin-top:30px; padding:20px; background:rgba(139, 92, 246, 0.1); border-radius:15px; border:2px solid var(--purple);">
+                <h3 style="color:var(--purple);"><i class="fas fa-chalkboard-teacher"></i> لوحة الأستاذ</h3>
+                <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-top:15px;">
+                    <button class="btn-main" onclick="createLiveRoom()" style="background:var(--purple);">
+                        <i class="fas fa-plus-circle"></i> إنشاء غرفة بث
+                    </button>
+                    <button class="btn-secondary" onclick="showTeacherStats()">
+                        <i class="fas fa-chart-line"></i> الإحصائيات
+                    </button>
+                </div>
+            </div>
+            ` : ''}
+            
             <div style="margin-top:30px;">
-                <h3><i class="fas fa-fire" style="color:var(--accent);"></i> أحدث الكتب</h3>
+                <h3><i class="fas fa-fire" style="color:var(--accent);"></i> أحدث الكتب المضافة</h3>
                 <div id="recent-books" class="loading">
                     <div class="loading-spinner"></div>
                     <div>جاري تحميل الكتب...</div>
@@ -1006,696 +1567,2019 @@ function renderHome() {
     loadRecentBooks();
 }
 
-// ==================== [ 7. واجهة رفع الملفات للبوت ] ====================
-function renderBotUploads() {
+// ==================== [ 12. مكتبة الكتب ] ====================
+function renderLibrary() {
     const area = document.getElementById('content-area');
+    const canAddBooks = me.role === 'admin' || me.role === 'teacher';
+    
     area.innerHTML = `
         <div style="padding:20px;">
-            <div style="display:flex; align-items:center; gap:15px; margin-bottom:30px;">
-                <button class="btn-secondary" onclick="nav('home')" style="width:auto; padding:10px 15px;">
-                    <i class="fas fa-arrow-right"></i> رجوع
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2 style="color:var(--neon-blue);"><i class="fas fa-book"></i> المكتبة الرقمية</h2>
+                ${canAddBooks ? `
+                <button class="btn-main" onclick="nav('add_book')" style="width:auto; padding:10px 20px;">
+                    <i class="fas fa-plus"></i> إضافة كتاب
                 </button>
-                <h2 style="color:var(--neon-blue); margin:0;">رفع الملفات للبوت</h2>
-            </div>
-            
-            <div class="bot-status">
-                <i class="fas fa-server"></i>
-                <span>حالة البوت: <span id="bot-status-text">جاري التحقق...</span></span>
-            </div>
-            
-            <div class="grid">
-                <div class="card" onclick="nav('upload_image')">
-                    <i class="fas fa-image" style="color:#f59e0b"></i>
-                    <b>رفع صورة</b>
-                    <p style="font-size:12px; color:var(--text-sec)">تخزين في ذاكرة البوت</p>
-                </div>
-                
-                <div class="card" onclick="nav('upload_book')">
-                    <i class="fas fa-file-pdf" style="color:#ef4444"></i>
-                    <b>رفع كتاب</b>
-                    <p style="font-size:12px; color:var(--text-sec)">PDF للبوت (تخزين يومين)</p>
-                </div>
-                
-                ${me?.role === 'teacher' || me?.role === 'admin' ? `
-                <div class="card" onclick="nav('create_stream')">
-                    <i class="fas fa-video" style="color:#3b82f6"></i>
-                    <b>إنشاء بث</b>
-                    <p style="font-size:12px; color:var(--text-sec)">بث مباشر عبر البوت</p>
-                </div>
                 ` : ''}
-                
-                <div class="card" onclick="nav('bot_stats')">
-                    <i class="fas fa-chart-bar" style="color:#10b981"></i>
-                    <b>إحصائيات البوت</b>
-                    <p style="font-size:12px; color:var(--text-sec)">معلومات التخزين</p>
-                </div>
             </div>
             
-            <div style="margin-top:30px; background:var(--bg-card); padding:20px; border-radius:15px;">
-                <h4><i class="fas fa-info-circle" style="color:var(--accent);"></i> كيف يعمل البوت؟</h4>
-                <ul style="color:var(--text-sec); padding-right:20px; line-height:1.8;">
-                    <li>📁 <strong>يرفع الملفات للبوت</strong> (يخزنها في ذاكرة السيرفر)</li>
-                    <li>🔗 <strong>يرسل الروابط فقط</strong> لـ Firebase (يوفر 95% من التخزين)</li>
-                    <li>🗑️ <strong>يمسح الملفات تلقائياً</strong> بعد يومين</li>
-                    <li>⚡ <strong>أسرع تحميل</strong> (الملفات من ذاكرة البوت مباشرة)</li>
-                </ul>
+            <div style="margin:20px 0;">
+                <input type="text" id="book-search" placeholder="ابحث عن كتاب، مؤلف، أو مادة..." 
+                       style="width:100%;" oninput="debounceSearch(this.value)">
+            </div>
+            
+            <div id="books-list" class="loading">
+                <div class="loading-spinner"></div>
+                <div>جاري تحميل المكتبة...</div>
             </div>
         </div>`;
     
-    // فحص حالة البوت
-    checkBotStatus();
+    loadAllBooks();
 }
 
-// ==================== [ 8. رفع صورة للبوت ] ====================
-function renderUploadImage() {
-    const area = document.getElementById('content-area');
-    area.innerHTML = `
-        <div style="padding:20px;">
-            <div style="display:flex; align-items:center; gap:15px; margin-bottom:30px;">
-                <button class="btn-secondary" onclick="nav('bot_uploads')" style="width:auto; padding:10px 15px;">
-                    <i class="fas fa-arrow-right"></i> رجوع
-                </button>
-                <h2 style="color:var(--neon-blue); margin:0;">رفع صورة للبوت</h2>
-            </div>
-            
-            <div style="background:var(--bg-card); padding:25px; border-radius:20px;">
-                <div class="upload-area" id="image-drop-area" onclick="document.getElementById('image-input').click()">
-                    <i class="fas fa-cloud-upload-alt" style="font-size:48px; color:var(--accent); margin-bottom:15px;"></i>
-                    <h4 style="margin:0 0 10px 0;">انقر أو اسحب الصورة هنا</h4>
-                    <p style="color:var(--text-sec); margin:0;">الصور المسموحة: JPG, PNG, GIF (حتى 10MB)</p>
-                </div>
-                
-                <input type="file" id="image-input" accept="image/*" style="display:none;" onchange="handleImageUpload(this.files[0])">
-                
-                <div style="margin-top:20px;">
-                    <label style="display:block; margin-bottom:8px; color:var(--accent);">
-                        <i class="fas fa-tag"></i> تصنيف الصورة
-                    </label>
-                    <select id="image-category">
-                        <option value="profile">صورة شخصية</option>
-                        <option value="lesson">صورة درس</option>
-                        <option value="book">غلاف كتاب</option>
-                        <option value="other">أخرى</option>
-                    </select>
-                </div>
-                
-                <div style="margin-top:20px;">
-                    <label style="display:block; margin-bottom:8px; color:var(--accent);">
-                        <i class="fas fa-align-left"></i> وصف الصورة (اختياري)
-                    </label>
-                    <textarea id="image-description" placeholder="وصف مختصر للصورة..." rows="2"></textarea>
-                </div>
-                
-                <div class="upload-progress" id="image-progress">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                        <span id="image-filename"></span>
-                        <span id="image-percent">0%</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="image-progress-bar"></div>
-                    </div>
-                    <p id="image-status" style="font-size:12px; color:var(--text-sec); margin-top:5px;">جاهز للرفع...</p>
-                </div>
-                
-                <button class="btn-main" onclick="uploadImageToBot()" id="upload-image-btn" style="margin-top:20px;">
-                    <i class="fas fa-upload"></i> رفع الصورة للبوت
-                </button>
-                
-                <div style="margin-top:20px; padding:15px; background:rgba(245, 158, 11, 0.1); border-radius:10px;">
-                    <p style="color:var(--accent); font-size:14px; margin:0;">
-                        <i class="fas fa-info-circle"></i> سيتم تخزين الصورة في ذاكرة البوت لمدة يومين فقط
-                    </p>
-                </div>
-            </div>
-        </div>`;
+function loadAllBooks() {
+    const container = document.getElementById('books-list');
+    if (!container) return;
     
-    setupDragAndDrop('image-drop-area', 'image-input', handleImageUpload);
-}
-
-let currentImageFile = null;
-function handleImageUpload(file) {
-    if (!file || !file.type.startsWith('image/')) {
-        showError('الرجاء اختيار ملف صورة صالح');
-        return;
-    }
-    
-    if (file.size > 10 * 1024 * 1024) {
-        showError('حجم الصورة كبير جداً (الحد الأقصى 10MB)');
-        return;
-    }
-    
-    currentImageFile = file;
-    
-    document.getElementById('image-filename').textContent = file.name;
-    document.getElementById('image-progress').style.display = 'block';
-    document.getElementById('upload-image-btn').disabled = false;
-    
-    // عرض معاينة
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const dropArea = document.getElementById('image-drop-area');
-        dropArea.innerHTML = `
-            <img src="${e.target.result}" style="max-width:200px; max-height:150px; border-radius:10px; margin-bottom:10px;">
-            <p style="color:var(--text-sec);">${file.name}</p>
-        `;
-    };
-    reader.readAsDataURL(file);
-}
-
-async function uploadImageToBot() {
-    if (!currentImageFile) {
-        showError('الرجاء اختيار صورة أولاً');
-        return;
-    }
-    
-    if (!me || !me.uid) {
-        showError('يجب تسجيل الدخول أولاً');
-        return;
-    }
-    
-    const category = document.getElementById('image-category').value;
-    const description = document.getElementById('image-description').value;
-    
-    const formData = new FormData();
-    formData.append('image', currentImageFile);
-    formData.append('userId', me.uid);
-    formData.append('category', category);
-    if (description) formData.append('description', description);
-    
-    try {
-        document.getElementById('upload-image-btn').disabled = true;
-        document.getElementById('upload-image-btn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الرفع...';
+    db.ref('books').limitToLast(20).on('value', snap => {
+        const books = snap.val();
+        container.innerHTML = '';
         
-        const response = await fetch(`${BOT_SERVER_URL}/api/upload-image`, {
-            method: 'POST',
-            body: formData
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            showSuccess(`تم رفع الصورة للبوت بنجاح!`);
-            console.log('صورة البوت:', data);
-            
-            // إعادة تعيين النموذج
-            currentImageFile = null;
-            setTimeout(() => nav('bot_uploads'), 2000);
-        } else {
-            showError(data.error || 'فشل رفع الصورة');
+        if (!books || Object.keys(books).length === 0) {
+            container.innerHTML = `
+                <div style="text-align:center; padding:40px; color:var(--text-sec);">
+                    <i class="fas fa-book" style="font-size:48px; margin-bottom:15px; opacity:0.5;"></i>
+                    <p>لا توجد كتب في المكتبة بعد</p>
+                    ${me.role === 'admin' ? `
+                    <button class="btn-main" onclick="nav('add_book')" style="margin-top:15px; width:auto;">
+                        <i class="fas fa-plus"></i> أضف أول كتاب
+                    </button>
+                    ` : ''}
+                </div>`;
+            return;
         }
         
-    } catch (error) {
-        console.error('خطأ في رفع الصورة:', error);
-        showError('فشل الاتصال بالبوت');
-    } finally {
-        document.getElementById('upload-image-btn').disabled = false;
-        document.getElementById('upload-image-btn').innerHTML = '<i class="fas fa-upload"></i> رفع الصورة للبوت';
-    }
+        let booksArray = Object.entries(books).map(([id, book]) => ({ id, ...book }));
+        booksArray.reverse(); // الأحدث أولاً
+        
+        booksArray.forEach(book => {
+            const isFree = !book.price || book.price === 0;
+            const priceText = isFree ? 'مجاني' : `${book.price} ج.س`;
+            const canDownload = isFree || me.balance >= book.price || 
+                              (me.freeTrial && me.freeUntil > Date.now());
+            
+            container.innerHTML += `
+                <div class="book-card">
+                    <div style="width:80px; height:100px; background:var(--accent); border-radius:10px; display:flex; align-items:center; justify-content:center;">
+                        <i class="fas fa-book-open" style="font-size:32px; color:white;"></i>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                            <div>
+                                <div style="font-weight:bold; font-size:16px; margin-bottom:5px;">${book.title}</div>
+                                <div style="font-size:12px; color:var(--text-sec); margin-bottom:5px;">
+                                    <i class="fas fa-user"></i> ${book.author}
+                                </div>
+                            </div>
+                            <span style="background:${isFree ? 'var(--green)' : 'var(--accent)'}; color:${isFree ? 'white' : 'black'}; padding:3px 8px; border-radius:5px; font-size:11px; font-weight:bold;">
+                                ${priceText}
+                            </span>
+                        </div>
+                        
+                        <div style="font-size:11px; color:var(--text-sec); margin-top:8px;">
+                            <span class="grade-badge">${book.grade}</span>
+                            <span style="background:rgba(59, 130, 246, 0.2); color:var(--primary); padding:3px 8px; border-radius:5px; margin-right:5px;">
+                                ${book.subject}
+                            </span>
+                        </div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        <button class="btn-main" style="padding:8px 12px; font-size:12px;" 
+                                onclick="nav('book_detail', '${book.id}')" ${!canDownload ? 'disabled style="opacity:0.5;"' : ''}>
+                            <i class="fas fa-eye"></i> ${canDownload ? 'عرض' : 'غير متاح'}
+                        </button>
+                    </div>
+                </div>`;
+        });
+    });
 }
 
-// ==================== [ 9. رفع كتاب للبوت ] ====================
-function renderUploadBook() {
+// ==================== [ 13. إضافة كتاب ] ====================
+function renderAddBook() {
+    if (me.role !== 'admin' && me.role !== 'teacher') {
+        nav('home');
+        return;
+    }
+    
     const area = document.getElementById('content-area');
+    
     area.innerHTML = `
         <div style="padding:20px;">
             <div style="display:flex; align-items:center; gap:15px; margin-bottom:30px;">
-                <button class="btn-secondary" onclick="nav('bot_uploads')" style="width:auto; padding:10px 15px;">
+                <button class="btn-secondary" onclick="nav('library')" style="width:auto; padding:10px 15px;">
                     <i class="fas fa-arrow-right"></i> رجوع
                 </button>
-                <h2 style="color:var(--neon-blue); margin:0;">رفع كتاب للبوت</h2>
+                <h2 style="color:var(--neon-blue); margin:0;">إضافة كتاب جديد</h2>
             </div>
             
             <div style="background:var(--bg-card); padding:25px; border-radius:20px;">
-                <div class="upload-area" id="book-drop-area" onclick="document.getElementById('book-input').click()">
-                    <i class="fas fa-file-pdf" style="font-size:48px; color:var(--accent); margin-bottom:15px;"></i>
-                    <h4 style="margin:0 0 10px 0;">انقر أو اسحب الكتاب هنا</h4>
-                    <p style="color:var(--text-sec); margin:0;">الكتب المسموحة: PDF فقط (حتى 50MB)</p>
-                </div>
-                
-                <input type="file" id="book-input" accept=".pdf" style="display:none;" onchange="handleBookUpload(this.files[0])">
-                
-                <div style="margin-top:20px;">
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px;">
-                        <div>
-                            <label style="display:block; margin-bottom:8px; color:var(--accent);">
-                                <i class="fas fa-heading"></i> عنوان الكتاب *
-                            </label>
-                            <input type="text" id="book-title" placeholder="عنوان الكتاب" required>
-                        </div>
-                        
-                        <div>
-                            <label style="display:block; margin-bottom:8px; color:var(--accent);">
-                                <i class="fas fa-user"></i> المؤلف *
-                            </label>
-                            <input type="text" id="book-author" placeholder="اسم المؤلف" required>
-                        </div>
-                    </div>
-                </div>
-                
-                <div style="margin-top:20px;">
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px;">
-                        <div>
-                            <label style="display:block; margin-bottom:8px; color:var(--accent);">
-                                <i class="fas fa-graduation-cap"></i> الصف الدراسي
-                            </label>
-                            <select id="book-grade">
-                                <option value="">اختر الصف</option>
-                                <option value="الأول الابتدائي">الصف الأول الابتدائي</option>
-                                <option value="الثاني الابتدائي">الصف الثاني الابتدائي</option>
-                                <option value="الثالث الابتدائي">الصف الثالث الابتدائي</option>
-                                <option value="الرابع الابتدائي">الصف الرابع الابتدائي</option>
-                                <option value="الخامس الابتدائي">الصف الخامس الابتدائي</option>
-                                <option value="السادس الابتدائي">الصف السادس الابتدائي</option>
-                                <option value="الأول المتوسط">الصف الأول المتوسط</option>
-                                <option value="الثاني المتوسط">الصف الثاني المتوسط</option>
-                                <option value="الثالث المتوسط">الصف الثالث المتوسط</option>
-                                <option value="الأول الثانوي">الصف الأول الثانوي</option>
-                                <option value="الثاني الثانوي">الصف الثاني الثانوي</option>
-                                <option value="الثالث الثانوي">الصف الثالث الثانوي</option>
-                            </select>
-                        </div>
-                        
-                        <div>
-                            <label style="display:block; margin-bottom:8px; color:var(--accent);">
-                                <i class="fas fa-book-open"></i> المادة الدراسية
-                            </label>
-                            <select id="book-subject">
-                                <option value="">اختر المادة</option>
-                                <option value="الرياضيات">الرياضيات</option>
-                                <option value="العلوم">العلوم</option>
-                                <option value="اللغة العربية">اللغة العربية</option>
-                                <option value="اللغة الإنجليزية">اللغة الإنجليزية</option>
-                                <option value="الاجتماعيات">الاجتماعيات</option>
-                                <option value="التربية الإسلامية">التربية الإسلامية</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-                
-                <div style="margin-top:20px;">
+                <div style="margin-bottom:20px;">
                     <label style="display:block; margin-bottom:8px; color:var(--accent);">
-                        <i class="fas fa-align-left"></i> وصف الكتاب (اختياري)
+                        <i class="fas fa-heading"></i> عنوان الكتاب *
+                    </label>
+                    <input type="text" id="book-title" placeholder="أدخل عنوان الكتاب" required>
+                </div>
+                
+                <div style="margin-bottom:20px;">
+                    <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                        <i class="fas fa-user"></i> اسم المؤلف *
+                    </label>
+                    <input type="text" id="book-author" placeholder="اسم مؤلف الكتاب" required>
+                </div>
+                
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">
+                    <div>
+                        <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                            <i class="fas fa-graduation-cap"></i> الصف الدراسي *
+                        </label>
+                        <select id="book-grade" required>
+                            <option value="">اختر الصف</option>
+                            <option value="الأول الابتدائي">الصف الأول الابتدائي</option>
+                            <option value="الثاني الابتدائي">الصف الثاني الابتدائي</option>
+                            <option value="الثالث الابتدائي">الصف الثالث الابتدائي</option>
+                            <option value="الرابع الابتدائي">الصف الرابع الابتدائي</option>
+                            <option value="الخامس الابتدائي">الصف الخامس الابتدائي</option>
+                            <option value="السادس الابتدائي">الصف السادس الابتدائي</option>
+                            <option value="الأول المتوسط">الصف الأول المتوسط</option>
+                            <option value="الثاني المتوسط">الصف الثاني المتوسط</option>
+                            <option value="الثالث المتوسط">الصف الثالث المتوسط</option>
+                            <option value="الأول الثانوي">الصف الأول الثانوي</option>
+                            <option value="الثاني الثانوي">الصف الثاني الثانوي</option>
+                            <option value="الثالث الثانوي">الصف الثالث الثانوي</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                            <i class="fas fa-book-open"></i> المادة الدراسية *
+                        </label>
+                        <select id="book-subject" required>
+                            <option value="">اختر المادة</option>
+                            <option value="الرياضيات">الرياضيات</option>
+                            <option value="العلوم">العلوم</option>
+                            <option value="اللغة العربية">اللغة العربية</option>
+                            <option value="اللغة الإنجليزية">اللغة الإنجليزية</option>
+                            <option value="الاجتماعيات">الاجتماعيات</option>
+                            <option value="التربية الإسلامية">التربية الإسلامية</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div style="margin-bottom:20px;">
+                    <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                        <i class="fas fa-link"></i> رابط الكتاب (URL) *
+                    </label>
+                    <input type="url" id="book-url" placeholder="https://example.com/book.pdf" required>
+                    <small style="color:var(--text-sec);">رابط مباشر لتحميل الكتاب (PDF)</small>
+                </div>
+                
+                <div style="margin-bottom:20px;">
+                    <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                        <i class="fas fa-tag"></i> السعر (ج.س)
+                    </label>
+                    <input type="number" id="book-price" placeholder="0 للمجاني" min="0" value="0">
+                </div>
+                
+                <div style="margin-bottom:20px;">
+                    <label style="display:block; margin-bottom:8px; color:var(--accent);">
+                        <i class="fas fa-align-left"></i> وصف الكتاب
                     </label>
                     <textarea id="book-description" placeholder="وصف مختصر للكتاب..." rows="3"></textarea>
                 </div>
                 
-                <div class="upload-progress" id="book-progress">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                        <span id="book-filename"></span>
-                        <span id="book-percent">0%</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="book-progress-bar"></div>
-                    </div>
-                    <p id="book-status" style="font-size:12px; color:var(--text-sec); margin-top:5px;">جاهز للرفع...</p>
-                </div>
-                
-                <button class="btn-main" onclick="uploadBookToBot()" id="upload-book-btn" style="margin-top:20px;">
-                    <i class="fas fa-upload"></i> رفع الكتاب للبوت
+                <button class="btn-main" onclick="addBook()">
+                    <i class="fas fa-check"></i> إضافة الكتاب
                 </button>
-                
-                <div style="margin-top:20px; padding:15px; background:rgba(245, 158, 11, 0.1); border-radius:10px;">
-                    <p style="color:var(--accent); font-size:14px; margin:0;">
-                        <i class="fas fa-info-circle"></i> سيتم تخزين الكتاب في ذاكرة البوت لمدة يومين فقط
-                    </p>
-                </div>
             </div>
         </div>`;
-    
-    setupDragAndDrop('book-drop-area', 'book-input', handleBookUpload);
 }
 
-let currentBookFile = null;
-function handleBookUpload(file) {
-    if (!file || file.type !== 'application/pdf') {
-        showError('الرجاء اختيار ملف PDF فقط');
-        return;
-    }
-    
-    if (file.size > 50 * 1024 * 1024) {
-        showError('حجم الكتاب كبير جداً (الحد الأقصى 50MB)');
-        return;
-    }
-    
-    currentBookFile = file;
-    
-    document.getElementById('book-filename').textContent = file.name;
-    document.getElementById('book-progress').style.display = 'block';
-    document.getElementById('upload-book-btn').disabled = false;
-    
-    // عرض اسم الملف
-    const dropArea = document.getElementById('book-drop-area');
-    dropArea.innerHTML = `
-        <i class="fas fa-file-pdf" style="font-size:48px; color:var(--accent); margin-bottom:15px;"></i>
-        <p style="color:var(--text-main); font-weight:bold;">${file.name}</p>
-        <p style="color:var(--text-sec); font-size:12px;">${(file.size / (1024*1024)).toFixed(2)} MB</p>
-    `;
-}
-
-async function uploadBookToBot() {
-    if (!currentBookFile) {
-        showError('الرجاء اختيار كتاب أولاً');
-        return;
-    }
-    
+async function addBook() {
     const title = document.getElementById('book-title').value.trim();
     const author = document.getElementById('book-author').value.trim();
-    
-    if (!title || !author) {
-        showError('الرجاء إدخال عنوان الكتاب والمؤلف');
-        return;
-    }
-    
     const grade = document.getElementById('book-grade').value;
     const subject = document.getElementById('book-subject').value;
-    const description = document.getElementById('book-description').value;
+    const bookUrl = document.getElementById('book-url').value.trim();
+    const price = parseInt(document.getElementById('book-price').value) || 0;
+    const description = document.getElementById('book-description').value.trim();
     
-    const formData = new FormData();
-    formData.append('book', currentBookFile);
-    formData.append('title', title);
-    formData.append('author', author);
-    if (grade) formData.append('grade', grade);
-    if (subject) formData.append('subject', subject);
-    if (description) formData.append('description', description);
-    
-    try {
-        document.getElementById('upload-book-btn').disabled = true;
-        document.getElementById('upload-book-btn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الرفع...';
-        
-        const response = await fetch(`${BOT_SERVER_URL}/api/upload-book`, {
-            method: 'POST',
-            body: formData
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            showSuccess(`تم رفع الكتاب للبوت بنجاح!`);
-            console.log('كتاب البوت:', data);
-            
-            // إعادة تعيين النموذج
-            currentBookFile = null;
-            setTimeout(() => nav('bot_uploads'), 2000);
-        } else {
-            showError(data.error || 'فشل رفع الكتاب');
-        }
-        
-    } catch (error) {
-        console.error('خطأ في رفع الكتاب:', error);
-        showError('فشل الاتصال بالبوت');
-    } finally {
-        document.getElementById('upload-book-btn').disabled = false;
-        document.getElementById('upload-book-btn').innerHTML = '<i class="fas fa-upload"></i> رفع الكتاب للبوت';
-    }
-}
-
-// ==================== [ 10. إنشاء بث مباشر عبر البوت ] ====================
-function renderCreateStream() {
-    const area = document.getElementById('content-area');
-    area.innerHTML = `
-        <div style="padding:20px;">
-            <div style="display:flex; align-items:center; gap:15px; margin-bottom:30px;">
-                <button class="btn-secondary" onclick="nav('bot_uploads')" style="width:auto; padding:10px 15px;">
-                    <i class="fas fa-arrow-right"></i> رجوع
-                </button>
-                <h2 style="color:var(--neon-blue); margin:0;">إنشاء بث مباشر عبر البوت</h2>
-            </div>
-            
-            <div style="background:var(--bg-card); padding:25px; border-radius:20px;">
-                <div style="margin-bottom:20px;">
-                    <label style="display:block; margin-bottom:8px; color:var(--accent);">
-                        <i class="fas fa-heading"></i> عنوان البث *
-                    </label>
-                    <input type="text" id="stream-title" placeholder="مثال: درس الرياضيات - الجبر" required>
-                </div>
-                
-                <div style="margin-bottom:20px;">
-                    <label style="display:block; margin-bottom:8px; color:var(--accent);">
-                        <i class="fas fa-align-left"></i> وصف البث
-                    </label>
-                    <textarea id="stream-description" placeholder="وصف مختصر للبث..." rows="3"></textarea>
-                </div>
-                
-                <div style="margin-bottom:20px;">
-                    <label style="display:block; margin-bottom:8px; color:var(--accent);">
-                        <i class="fas fa-clock"></i> وقت البث (اختياري)
-                    </label>
-                    <input type="datetime-local" id="stream-time">
-                </div>
-                
-                <div class="upload-progress" id="stream-progress" style="display:none;">
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="stream-progress-bar"></div>
-                    </div>
-                    <p id="stream-status" style="font-size:12px; color:var(--text-sec); margin-top:5px;">جاري إنشاء البث...</p>
-                </div>
-                
-                <button class="btn-main" onclick="createBotStream()" id="create-stream-btn" style="background:linear-gradient(90deg, #ef4444, #dc2626);">
-                    <i class="fas fa-broadcast-tower"></i> إنشاء بث مباشر عبر البوت
-                </button>
-                
-                <div style="margin-top:20px; padding:15px; background:rgba(239, 68, 68, 0.1); border-radius:10px;">
-                    <p style="color:var(--accent); font-size:14px; margin:0;">
-                        <i class="fas fa-info-circle"></i> البوت سينشئ بثاً على YouTube ويخزن التفاصيل في ذاكرته
-                    </p>
-                </div>
-            </div>
-        </div>`;
-}
-
-async function createBotStream() {
-    const title = document.getElementById('stream-title').value.trim();
-    if (!title) {
-        showError('الرجاء إدخال عنوان البث');
+    if (!title || !author || !grade || !subject || !bookUrl) {
+        showError('الرجاء ملء جميع الحقول المطلوبة');
         return;
     }
     
-    const description = document.getElementById('stream-description').value;
-    const scheduledTime = document.getElementById('stream-time').value;
-    
     try {
-        document.getElementById('create-stream-btn').disabled = true;
-        document.getElementById('create-stream-btn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإنشاء...';
-        document.getElementById('stream-progress').style.display = 'block';
+        showLoading('جاري إضافة الكتاب...');
         
-        const response = await fetch(`${BOT_SERVER_URL}/api/create-live-stream`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                teacherId: me.uid,
-                title: title,
-                description: description,
-                scheduledTime: scheduledTime || null
-            })
-        });
+        const bookData = {
+            title: title,
+            author: author,
+            grade: grade,
+            subject: subject,
+            bookUrl: bookUrl,
+            price: price,
+            description: description || null,
+            addedBy: me.uid,
+            addedByName: me.name,
+            addedDate: Date.now(),
+            downloads: 0,
+            status: me.role === 'admin' ? 'approved' : 'pending'
+        };
         
-        const data = await response.json();
+        const bookRef = db.ref('books').push();
+        await bookRef.set(bookData);
         
-        if (data.success) {
-            showSuccess(`تم إنشاء البث بنجاح!`);
-            console.log('بث البوت:', data);
-            
-            // عرض رابط البث
+        // إذا كان الأستاذ، إرسال إشعار للإدمن
+        if (me.role === 'teacher') {
+            await db.ref('admin_notifications').push({
+                type: 'book_pending',
+                userId: me.uid,
+                userName: me.name,
+                bookId: bookRef.key,
+                bookTitle: title,
+                timestamp: Date.now(),
+                status: 'pending'
+            });
+        }
+        
+        hideLoading();
+        
+        if (me.role === 'admin') {
+            showSuccess('تمت إضافة الكتاب بنجاح');
+            nav('library');
+        } else {
             Swal.fire({
-                title: '🎉 تم إنشاء البث!',
-                html: `
-                    <p>تم تخزين البث في ذاكرة البوت</p>
-                    <p><strong>رابط البث:</strong><br>
-                    <a href="${data.streamUrl}" target="_blank">${data.streamUrl}</a></p>
-                    <p style="font-size:12px; color:var(--text-sec);">سيتم حذف البث تلقائياً بعد يومين</p>
-                `,
+                title: 'تم الإرسال!',
+                text: 'تم إرسال الكتاب للإدمن للمراجعة',
                 icon: 'success',
                 confirmButtonText: 'حسناً',
                 background: '#1e293b',
                 color: '#fff'
+            }).then(() => {
+                nav('library');
             });
-            
-            setTimeout(() => nav('live'), 2000);
-        } else {
-            showError(data.error || 'فشل إنشاء البث');
         }
         
     } catch (error) {
-        console.error('خطأ في إنشاء البث:', error);
-        showError('فشل الاتصال بالبوت');
-    } finally {
-        document.getElementById('create-stream-btn').disabled = false;
-        document.getElementById('create-stream-btn').innerHTML = '<i class="fas fa-broadcast-tower"></i> إنشاء بث مباشر عبر البوت';
+        hideLoading();
+        showError('حدث خطأ: ' + error.message);
     }
 }
 
-// ==================== [ 11. إحصائيات البوت ] ====================
-function renderBotStats() {
+// ==================== [ 14. تفاصيل الكتاب ] ====================
+async function loadBookDetail(bookId) {
+    const bookSnap = await db.ref(`books/${bookId}`).once('value');
+    const book = bookSnap.val();
+    
+    if (!book) {
+        showError('الكتاب غير موجود');
+        nav('library');
+        return;
+    }
+    
+    const isFree = !book.price || book.price === 0;
+    const canDownload = isFree || me.balance >= book.price || 
+                       (me.freeTrial && me.freeUntil > Date.now());
+    
     const area = document.getElementById('content-area');
     area.innerHTML = `
         <div style="padding:20px;">
-            <div style="display:flex; align-items:center; gap:15px; margin-bottom:30px;">
-                <button class="btn-secondary" onclick="nav('bot_uploads')" style="width:auto; padding:10px 15px;">
+            <div style="display:flex; align-items:center; gap:15px; margin-bottom:25px;">
+                <button class="btn-secondary" onclick="nav('library')" style="width:auto; padding:10px 15px;">
                     <i class="fas fa-arrow-right"></i> رجوع
                 </button>
-                <h2 style="color:var(--neon-blue); margin:0;">إحصائيات البوت</h2>
+                <h2 style="color:var(--neon-blue); margin:0;">${book.title}</h2>
             </div>
             
-            <div id="bot-stats-container" class="loading">
-                <div class="loading-spinner"></div>
-                <div>جاري تحميل إحصائيات البوت...</div>
+            <div style="background:var(--bg-card); border-radius:20px; padding:25px;">
+                <div style="margin-bottom:25px;">
+                    <h3 style="color:var(--accent); margin-top:0;"><i class="fas fa-info-circle"></i> معلومات الكتاب</h3>
+                    <div style="line-height:2.5;">
+                        <div style="display:flex;">
+                            <strong style="width:120px; color:var(--text-sec);">المؤلف:</strong>
+                            <span>${book.author}</span>
+                        </div>
+                        <div style="display:flex;">
+                            <strong style="width:120px; color:var(--text-sec);">الصف الدراسي:</strong>
+                            <span>${book.grade}</span>
+                        </div>
+                        <div style="display:flex;">
+                            <strong style="width:120px; color:var(--text-sec);">المادة الدراسية:</strong>
+                            <span>${book.subject}</span>
+                        </div>
+                        <div style="display:flex;">
+                            <strong style="width:120px; color:var(--text-sec);">السعر:</strong>
+                            <span style="color:${isFree ? 'var(--green)' : 'var(--accent)'}; font-weight:bold;">
+                                ${isFree ? 'مجاني' : book.price + ' ج.س'}
+                            </span>
+                        </div>
+                        <div style="display:flex;">
+                            <strong style="width:120px; color:var(--text-sec);">تاريخ الإضافة:</strong>
+                            <span>${formatDate(book.addedDate)}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                ${book.description ? `
+                <div style="margin-bottom:25px;">
+                    <h4 style="color:var(--text-sec);"><i class="fas fa-align-left"></i> وصف الكتاب</h4>
+                    <p style="color:var(--text-main); line-height:1.8;">
+                        ${book.description}
+                    </p>
+                </div>
+                ` : ''}
+                
+                <div style="display:flex; gap:10px; margin-top:30px;">
+                    <button class="btn-main" onclick="downloadBook('${bookId}', '${book.bookUrl}', ${book.price || 0})" 
+                            ${!canDownload ? 'disabled style="opacity:0.5;"' : ''}
+                            style="flex:1;">
+                        <i class="fas fa-download"></i> ${isFree ? 'تحميل مجاني' : `شراء و تحميل (${book.price} ج.س)`}
+                    </button>
+                    
+                    ${(me.role === 'admin') ? `
+                    <button class="btn-danger" onclick="deleteBook('${bookId}')" style="width:auto; padding:10px 20px;">
+                        <i class="fas fa-trash"></i> حذف
+                    </button>
+                    ` : ''}
+                </div>
             </div>
         </div>`;
-    
-    loadBotStats();
 }
 
-async function loadBotStats() {
+async function downloadBook(bookId, bookUrl, price) {
+    if (!bookUrl) {
+        showError('رابط الكتاب غير متوفر');
+        return;
+    }
+    
+    const isFree = price === 0;
+    const canDownload = isFree || me.balance >= price || 
+                       (me.freeTrial && me.freeUntil > Date.now());
+    
+    if (!canDownload) {
+        showError('رصيدك غير كافي لشراء هذا الكتاب');
+        nav('subscription');
+        return;
+    }
+    
+    if (!isFree) {
+        // خصم السعر من رصيد الطالب
+        const confirm = await Swal.fire({
+            title: 'تأكيد الشراء',
+            html: `سعر الكتاب: <strong>${price} ج.س</strong><br>
+                   سيتم خصم المبلغ من رصيدك`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'شراء وتحميل',
+            cancelButtonText: 'إلغاء',
+            background: '#1e293b',
+            color: '#fff'
+        });
+        
+        if (!confirm.isConfirmed) return;
+        
+        showLoading('جاري معالجة الشراء...');
+        
+        try {
+            const newBalance = me.balance - price;
+            await db.ref(`users/${me.uid}/balance`).set(newBalance);
+            me.balance = newBalance;
+            updateUI();
+            
+            // تسجيل عملية الشراء
+            await db.ref(`purchases/${me.uid}/${Date.now()}`).set({
+                type: 'book',
+                bookId: bookId,
+                price: price,
+                timestamp: Date.now()
+            });
+            
+            // تحويل المبلغ للأستاذ إذا كان الكتاب مدفوعاً
+            if (price > 0) {
+                const bookSnap = await db.ref(`books/${bookId}/addedBy`).once('value');
+                const teacherId = bookSnap.val();
+                
+                if (teacherId && teacherId !== me.uid) {
+                    const teacherSnap = await db.ref(`users/${teacherId}`).once('value');
+                    const teacher = teacherSnap.val();
+                    
+                    if (teacher && teacher.role === 'teacher') {
+                        const teacherEarnings = (teacher.totalEarnings || 0) + price;
+                        await db.ref(`users/${teacherId}/totalEarnings`).set(teacherEarnings);
+                    }
+                }
+            }
+            
+            hideLoading();
+            
+        } catch (error) {
+            hideLoading();
+            showError('حدث خطأ أثناء الشراء: ' + error.message);
+            return;
+        }
+    }
+    
+    // زيادة عداد التنزيلات
+    await db.ref(`books/${bookId}/downloads`).transaction(current => (current || 0) + 1);
+    
+    // فتح الكتاب
+    window.open(bookUrl, '_blank');
+    
+    showSuccess('جاري تحميل الكتاب...');
+}
+
+// ==================== [ 15. المساعد الذكي ] ====================
+function renderAIAssistant() {
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
+                <h2 style="margin-top:0;"><i class="fas fa-robot"></i> المساعد الذكي</h2>
+                <p>أنشئ اختبارات ذكية من المنهج الدراسي</p>
+            </div>
+            
+            <div id="ai-interface">
+                <div style="background:var(--bg-card); padding:20px; border-radius:15px; margin:20px 0;">
+                    <h4><i class="fas fa-cogs" style="color:var(--accent);"></i> إعدادات الاختبار</h4>
+                    
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin:15px 0;">
+                        <div>
+                            <label style="display:block; margin-bottom:8px; color:var(--text-sec);">
+                                <i class="fas fa-book"></i> المادة:
+                            </label>
+                            <select id="ai-subject">
+                                ${(me.favoriteSubjects || ['الرياضيات', 'العلوم', 'اللغة العربية']).map(subject => 
+                                    `<option value="${subject}">${subject}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label style="display:block; margin-bottom:8px; color:var(--text-sec);">
+                                <i class="fas fa-layer-group"></i> الفصل:
+                            </label>
+                            <select id="ai-chapter">
+                                <option value="1">الفصل الأول</option>
+                                <option value="2">الفصل الثاني</option>
+                                <option value="3">الفصل الثالث</option>
+                                <option value="4">الفصل الرابع</option>
+                                <option value="all">جميع الفصول</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label style="display:block; margin-bottom:8px; color:var(--text-sec);">
+                                <i class="fas fa-question-circle"></i> عدد الأسئلة:
+                            </label>
+                            <select id="ai-question-count">
+                                <option value="5">5 أسئلة</option>
+                                <option value="10" selected>10 أسئلة</option>
+                                <option value="15">15 أسئلة</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <button class="btn-main" onclick="generateAIQuiz()" 
+                            style="background:linear-gradient(90deg, #8b5cf6, #7c3aed);">
+                        <i class="fas fa-magic"></i> إنشاء اختبار ذكي
+                    </button>
+                </div>
+            </div>
+            
+            <div id="quiz-results"></div>
+            
+            <div style="margin-top:30px; padding:20px; background:var(--bg-card); border-radius:15px;">
+                <h4><i class="fas fa-lightbulb" style="color:var(--accent);"></i> كيف يعمل المساعد الذكي؟</h4>
+                <ul style="color:var(--text-sec); padding-right:20px; line-height:1.8;">
+                    <li>ينشئ أسئلة تناسب مستواك الدراسي</li>
+                    <li>يغطي جميع أجزاء المنهج المحدد</li>
+                    <li>يقدم تقريراً مفصلاً عن أدائك</li>
+                    <li>يحفظ نتائجك لتتبع تقدمك</li>
+                </ul>
+            </div>
+        </div>`;
+}
+
+async function generateAIQuiz() {
+    const subject = document.getElementById('ai-subject').value;
+    const chapter = document.getElementById('ai-chapter').value;
+    const count = parseInt(document.getElementById('ai-question-count').value);
+    
+    // 🔧 التعديل: ضع رابط تطبيقك على Render هنا
+    const baseUrl = "https://YOUR-APP-NAME.onrender.com"; // استبدل YOUR-APP-NAME باسم تطبيقك
+    
+    showLoading('جاري الاتصال بالذكاء الاصطناعي وإنشاء أسئلة حقيقية...');
+    
     try {
-        const response = await fetch(`${BOT_SERVER_URL}/api/bot-stats`);
+        const response = await fetch(`${baseUrl}/api/generate-quiz`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ subject, chapter, count })
+        });
+        
         const data = await response.json();
         
         if (data.success) {
-            botStats = data;
-            displayBotStats(data);
+            currentQuiz = {
+                id: `quiz_${Date.now()}`,
+                subject: subject,
+                chapter: chapter,
+                questions: data.questions,
+                generatedAt: Date.now(),
+                userAnswers: {},
+                score: 0
+            };
+            hideLoading();
+            displayAIQuiz(currentQuiz.questions);
         } else {
-            showError('فشل تحميل إحصائيات البوت');
+            throw new Error('فشل في جلب الأسئلة من السيرفر');
         }
+        
     } catch (error) {
-        console.error('خطأ في تحميل إحصائيات البوت:', error);
-        showError('فشل الاتصال بالبوت');
+        hideLoading();
+        showError('حدث خطأ في الاتصال: ' + error.message + '\nتأكد من اتصال الإنترنت.');
     }
 }
 
-function displayBotStats(stats) {
-    const container = document.getElementById('bot-stats-container');
-    
-    container.innerHTML = `
-        <div class="grid">
-            <div class="card">
-                <i class="fas fa-video" style="color:#ef4444"></i>
-                <b>${stats.stats.streams || 0}</b>
-                <p style="font-size:12px; color:var(--text-sec)">بث مباشر</p>
-            </div>
-            
-            <div class="card">
-                <i class="fas fa-image" style="color:#f59e0b"></i>
-                <b>${stats.stats.images || 0}</b>
-                <p style="font-size:12px; color:var(--text-sec)">صورة</p>
-            </div>
-            
-            <div class="card">
-                <i class="fas fa-book" style="color:#3b82f6"></i>
-                <b>${stats.stats.books || 0}</b>
-                <p style="font-size:12px; color:var(--text-sec)">كتاب</p>
-            </div>
-            
-            <div class="card">
-                <i class="fas fa-database" style="color:#10b981"></i>
-                <b>${stats.stats.total || 0}</b>
-                <p style="font-size:12px; color:var(--text-sec)">إجمالي الملفات</p>
-            </div>
-        </div>
-        
-        <div style="margin-top:30px; background:var(--bg-card); padding:20px; border-radius:15px;">
-            <h4><i class="fas fa-chart-line" style="color:var(--accent);"></i> تفاصيل النظام</h4>
-            <div style="line-height:2.5; margin-top:15px;">
-                <div style="display:flex; justify-content:space-between;">
-                    <span style="color:var(--text-sec);">وقت التشغيل:</span>
-                    <span>${Math.floor(stats.uptime / 3600)} ساعة</span>
-                </div>
-                <div style="display:flex; justify-content:space-between;">
-                    <span style="color:var(--text-sec);">ذاكرة البوت:</span>
-                    <span>${(stats.memory.rss / 1024 / 1024).toFixed(1)} MB</span>
-                </div>
-                <div style="display:flex; justify-content:space-between;">
-                    <span style="color:var(--text-sec);">آخر تحديث:</span>
-                    <span>${new Date(stats.serverTime).toLocaleString('ar-SA')}</span>
-                </div>
-            </div>
-        </div>
-        
-        <div style="margin-top:20px; padding:15px; background:rgba(59, 130, 246, 0.1); border-radius:10px;">
-            <p style="color:var(--accent); font-size:14px; margin:0;">
-                <i class="fas fa-info-circle"></i> البوت يحتفظ بالملفات في ذاكرته لمدة يومين فقط، ثم يحذفها تلقائياً
+function displayAIQuiz(questions) {
+    let quizHtml = `
+        <div style="background:var(--bg-card); border-radius:20px; padding:25px; margin:20px 0; border:2px solid var(--purple);">
+            <h3 style="color:var(--purple); margin-top:0;">
+                <i class="fas fa-robot"></i> اختبار ذكي في ${currentQuiz.subject}
+            </h3>
+            <p style="color:var(--text-sec);">
+                الفصل: ${currentQuiz.chapter === 'all' ? 'جميع الفصول' : 'الفصل ' + currentQuiz.chapter} • 
+                ${questions.length} سؤال
             </p>
-        </div>
-        
-        <button class="btn-secondary" onclick="loadBotStats()" style="margin-top:20px;">
-            <i class="fas fa-redo"></i> تحديث الإحصائيات
-        </button>`;
+            
+            <div id="quiz-questions-container" style="margin:25px 0;">`;
+    
+    questions.forEach((q, index) => {
+        quizHtml += `
+            <div style="background:rgba(0,0,0,0.2); border-radius:15px; padding:20px; margin-bottom:15px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <h5 style="color:var(--text-main); margin:0;">
+                        <span style="background:var(--primary); color:white; padding:5px 10px; border-radius:5px; margin-left:10px;">${index + 1}</span>
+                        ${q.question}
+                    </h5>
+                    <span style="background:rgba(139, 92, 246, 0.3); color:var(--purple); padding:3px 8px; border-radius:5px; font-size:11px;">
+                        ${q.type}
+                    </span>
+                </div>
+                
+                ${q.options.map((option, optIndex) => `
+                    <div class="quiz-option" onclick="selectAIAnswer(${index}, ${optIndex})" 
+                         style="background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:8px; cursor:pointer; transition:0.3s;">
+                        <span style="margin-left:10px; font-weight:bold; color:var(--accent);">${String.fromCharCode(1632 + optIndex + 1)}.</span>
+                        ${option}
+                    </div>
+                `).join('')}
+            </div>`;
+    });
+    
+    quizHtml += `
+            </div>
+            
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button class="btn-main" onclick="submitAIQuiz()" style="background:var(--green);">
+                    <i class="fas fa-check-circle"></i> إنهاء الاختبار
+                </button>
+                <button class="btn-main" onclick="generateAIQuiz()" style="background:var(--purple);">
+                    <i class="fas fa-redo"></i> اختبار جديد
+                </button>
+            </div>
+        </div>`;
+    
+    document.getElementById('quiz-results').innerHTML = quizHtml;
 }
 
-// ==================== [ 12. دوال مساعدة ] ====================
-function setupDragAndDrop(dropAreaId, inputId, onFileSelect) {
-    const dropArea = document.getElementById(dropAreaId);
-    const fileInput = document.getElementById(inputId);
+function selectAIAnswer(questionIndex, optionIndex) {
+    const questionCard = document.querySelectorAll('#quiz-questions-container > div')[questionIndex];
+    const options = questionCard.querySelectorAll('.quiz-option');
     
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        dropArea.addEventListener(eventName, preventDefaults, false);
+    // إزالة التحديد السابق
+    options.forEach(opt => {
+        opt.style.background = 'rgba(255,255,255,0.05)';
+        opt.style.borderColor = 'var(--border)';
     });
     
-    function preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
+    // تحديد الخيار المختار
+    options[optionIndex].style.background = 'rgba(59, 130, 246, 0.2)';
+    options[optionIndex].style.borderColor = 'var(--primary)';
     
-    ['dragenter', 'dragover'].forEach(eventName => {
-        dropArea.addEventListener(eventName, highlight, false);
+    // حفظ الإجابة
+    currentQuiz.userAnswers[questionIndex] = optionIndex;
+}
+
+async function submitAIQuiz() {
+    if (!currentQuiz || !currentQuiz.questions) return;
+    
+    // حساب النتيجة
+    let score = 0;
+    const totalQuestions = currentQuiz.questions.length;
+    
+    currentQuiz.questions.forEach((q, index) => {
+        if (currentQuiz.userAnswers[index] === q.correctAnswer) {
+            score++;
+        }
     });
     
-    ['dragleave', 'drop'].forEach(eventName => {
-        dropArea.addEventListener(eventName, unhighlight, false);
+    const percentage = Math.round((score / totalQuestions) * 100);
+    
+    // حفظ النتيجة في قاعدة البيانات
+    await db.ref(`ai_quizzes/${me.uid}/${currentQuiz.id}`).update({
+        completed: true,
+        score: score,
+        totalQuestions: totalQuestions,
+        percentage: percentage,
+        submittedAt: Date.now()
     });
     
-    function highlight() {
-        dropArea.classList.add('dragover');
-    }
+    // زيادة عداد اختبارات المستخدم
+    await db.ref(`users/${me.uid}/aiQuizzesCount`).transaction(current => (current || 0) + 1);
     
-    function unhighlight() {
-        dropArea.classList.remove('dragover');
-    }
+    // عرض النتيجة
+    Swal.fire({
+        title: '🎉 نتيجة الاختبار',
+        html: `
+            <div style="text-align:center;">
+                <div style="font-size:60px; color:${percentage >= 70 ? 'var(--green)' : percentage >= 50 ? 'var(--accent)' : 'var(--red)'}; font-weight:bold; margin:20px 0;">
+                    ${percentage}%
+                </div>
+                <div style="font-size:24px; margin:10px 0;">
+                    ${score} من ${totalQuestions} إجابة صحيحة
+                </div>
+                <div style="font-size:16px; color:var(--text-sec); margin:15px 0;">
+                    ${percentage >= 70 ? 'ممتاز! 👏 إجاباتك دقيقة' : 
+                      percentage >= 50 ? 'جيد، يمكنك التحسن بالمزيد من الدراسة' : 
+                      'تحتاج للمزيد من المذاكرة، لا تيأس!'}
+                </div>
+            </div>
+        `,
+        icon: 'success',
+        confirmButtonText: 'حسناً',
+        background: '#1e293b',
+        color: '#fff'
+    });
+}
+
+// ==================== [ 16. غرف البث المباشر ] ====================
+function renderLiveRooms() {
+    const area = document.getElementById('content-area');
+    const canCreateRooms = me.role === 'admin' || me.role === 'teacher';
     
-    dropArea.addEventListener('drop', handleDrop, false);
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
+                <h2 style="margin-top:0;"><i class="fas fa-video"></i> غرف البث المباشر</h2>
+                <p>انضم إلى دروس مباشرة مع أفضل الأساتذة</p>
+            </div>
+            
+            ${canCreateRooms ? `
+            <div style="margin-bottom:25px;">
+                <button class="btn-main" onclick="createLiveRoom()" style="background:var(--green);">
+                    <i class="fas fa-plus-circle"></i> إنشاء غرفة بث جديدة
+                </button>
+            </div>
+            ` : ''}
+            
+            <div id="live-rooms" class="loading">
+                <div class="loading-spinner"></div>
+                <div>جاري تحميل غرف البث...</div>
+            </div>
+        </div>`;
     
-    function handleDrop(e) {
-        const dt = e.dataTransfer;
-        const files = dt.files;
+    loadLiveRooms();
+}
+
+function loadLiveRooms() {
+    const container = document.getElementById('live-rooms');
+    if (!container) return;
+    
+    db.ref('live_rooms').orderByChild('startTime').limitToLast(20).on('value', snap => {
+        const rooms = snap.val();
+        container.innerHTML = '';
         
-        if (files.length > 0) {
-            onFileSelect(files[0]);
+        if (!rooms) {
+            container.innerHTML = `
+                <div style="text-align:center; padding:40px; color:var(--text-sec);">
+                    <i class="fas fa-video-slash" style="font-size:48px; margin-bottom:15px; opacity:0.5;"></i>
+                    <p>لا توجد غرف بث مباشر حالياً</p>
+                    ${(me.role === 'admin' || me.role === 'teacher') ? `
+                    <button class="btn-main" onclick="createLiveRoom()" style="margin-top:15px;">
+                        <i class="fas fa-plus"></i> إنشاء أول غرفة بث
+                    </button>
+                    ` : ''}
+                </div>`;
+            return;
+        }
+        
+        const now = Date.now();
+        Object.entries(rooms).reverse().forEach(([roomId, room]) => {
+            const isActive = room.status === 'active' && room.endTime > now;
+            const isUpcoming = room.status === 'scheduled' && room.startTime > now;
+            const isEnded = room.status === 'ended' || room.endTime <= now;
+            
+            let statusBadge = '';
+            if (isActive) {
+                statusBadge = '<span style="background:var(--green); color:white; padding:3px 10px; border-radius:15px; font-size:11px;">🔴 مباشر الآن</span>';
+            } else if (isUpcoming) {
+                statusBadge = '<span style="background:var(--accent); color:black; padding:3px 10px; border-radius:15px; font-size:11px;">⏰ قريباً</span>';
+            } else {
+                statusBadge = '<span style="background:var(--text-sec); color:white; padding:3px 10px; border-radius:15px; font-size:11px;">انتهى</span>';
+            }
+            
+            const canJoin = (isActive || isUpcoming) && 
+                           (room.price === 0 || me.balance >= room.price || 
+                            (me.freeTrial && me.freeUntil > Date.now()));
+            
+            container.innerHTML += `
+                <div class="live-room" style="background: ${isActive ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' : 
+                                                    isUpcoming ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 
+                                                    'linear-gradient(135deg, #64748b 0%, #475569 100%)'};">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                        <div>
+                            <h3 style="margin-top:0; margin-bottom:10px;">${room.title}</h3>
+                            <p style="opacity:0.9; margin-bottom:10px;">${room.description || 'لا يوجد وصف'}</p>
+                            
+                            <div style="display:flex; gap:15px; font-size:12px; margin-bottom:10px;">
+                                <div>
+                                    <i class="fas fa-chalkboard-teacher"></i> ${room.teacherName}
+                                </div>
+                                <div>
+                                    <i class="fas fa-book"></i> ${room.subject || 'عام'}
+                                </div>
+                                <div>
+                                    <i class="fas fa-graduation-cap"></i> ${room.grade || 'جميع الصفوف'}
+                                </div>
+                            </div>
+                        </div>
+                        ${statusBadge}
+                    </div>
+                    
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px;">
+                        <div style="font-size:12px;">
+                            <i class="fas fa-clock"></i> 
+                            ${isActive ? 'ينتهي ' : isUpcoming ? 'يبدأ ' : 'انتهى '}
+                            ${formatDate(isActive ? room.endTime : room.startTime)}
+                        </div>
+                        
+                        <div>
+                            ${!isEnded ? `
+                            <button class="btn-main" onclick="${canJoin ? `joinLiveRoom('${roomId}', ${room.price})` : 'showRoomPayment(' + room.price + ')'}" 
+                                    style="width:auto; padding:10px 20px; background:white; color:${room.price > 0 ? 'black' : '#ef4444'};">
+                                <i class="fas fa-play"></i> ${room.price > 0 ? `${room.price} ج.س` : 'انضم مجاناً'}
+                            </button>
+                            ` : ''}
+                            
+                            ${(me.role === 'admin' || me.uid === room.teacherId) ? `
+                            <button class="btn-secondary" onclick="manageLiveRoom('${roomId}')" style="width:auto; padding:10px 15px; margin-right:10px;">
+                                <i class="fas fa-cog"></i> إدارة
+                            </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>`;
+        });
+    });
+}
+
+async function createLiveRoom() {
+    if (me.role !== 'admin' && me.role !== 'teacher') {
+        showError('يجب أن تكون أستاذاً لإنشاء غرفة بث');
+        return;
+    }
+    
+    const { value: formValues } = await Swal.fire({
+        title: 'إنشاء غرفة بث جديدة',
+        html: `
+            <input id="live-title" class="swal2-input" placeholder="عنوان الدرس *" required>
+            <textarea id="live-description" class="swal2-input" placeholder="وصف الدرس" rows="3"></textarea>
+            <input id="live-price" class="swal2-input" placeholder="سعر الدخول (ج.س) - 0 للمجاني *" type="number" min="0" value="0" required>
+            <input id="live-link" class="swal2-input" placeholder="رابط البث (Youtube, Zoom, etc.) *" required>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <input id="live-start" class="swal2-input" placeholder="وقت البدء" type="datetime-local">
+                <input id="live-duration" class="swal2-input" placeholder="المدة (دقيقة)" type="number" min="30" value="60">
+            </div>
+        `,
+        confirmButtonText: 'إنشاء الغرفة',
+        showCancelButton: true,
+        background: '#1e293b',
+        color: '#fff',
+        preConfirm: () => {
+            const title = document.getElementById('live-title').value;
+            const description = document.getElementById('live-description').value;
+            const price = parseInt(document.getElementById('live-price').value) || 0;
+            const link = document.getElementById('live-link').value;
+            const startTime = document.getElementById('live-start').value;
+            const duration = parseInt(document.getElementById('live-duration').value) || 60;
+            
+            if (!title || !link) {
+                Swal.showValidationMessage('الرجاء ملء الحقول المطلوبة');
+                return false;
+            }
+            
+            const startTimestamp = startTime ? new Date(startTime).getTime() : Date.now() + 600000; // 10 دقائق من الآن
+            const endTime = startTimestamp + (duration * 60000);
+            
+            return {
+                title,
+                description,
+                price,
+                link,
+                startTime: startTimestamp,
+                endTime,
+                duration
+            };
+        }
+    });
+    
+    if (!formValues) return;
+    
+    showLoading('جاري إنشاء غرفة البث...');
+    
+    try {
+        const roomId = `room_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        await db.ref(`live_rooms/${roomId}`).set({
+            id: roomId,
+            title: formValues.title,
+            description: formValues.description || null,
+            price: formValues.price,
+            link: formValues.link,
+            teacherId: me.uid,
+            teacherName: me.name,
+            teacherAccount: me.bankAccount || null,
+            startTime: formValues.startTime,
+            endTime: formValues.endTime,
+            duration: formValues.duration,
+            status: formValues.startTime > Date.now() ? 'scheduled' : 'active',
+            createdAt: Date.now(),
+            participants: 0,
+            maxParticipants: 100,
+            subject: me.subject || null,
+            grade: me.grades ? me.grades[0] : null
+        });
+        
+        hideLoading();
+        showSuccess('تم إنشاء غرفة البث بنجاح');
+        
+    } catch (error) {
+        hideLoading();
+        showError('حدث خطأ أثناء إنشاء الغرفة: ' + error.message);
+    }
+}
+
+async function joinLiveRoom(roomId, price) {
+    const roomSnap = await db.ref(`live_rooms/${roomId}`).once('value');
+    const room = roomSnap.val();
+    
+    if (!room) {
+        showError('غرفة البث غير موجودة');
+        return;
+    }
+    
+    const now = Date.now();
+    if (room.status !== 'active' && room.startTime > now) {
+        showError('غرفة البث لم تبدأ بعد');
+        return;
+    }
+    
+    if (room.endTime <= now) {
+        showError('غرفة البث انتهت');
+        return;
+    }
+    
+    if (price > 0) {
+        // التحقق من الدفع
+        const paymentSnap = await db.ref(`room_payments/${roomId}_${me.uid}`).once('value');
+        const hasPaid = paymentSnap.exists() && paymentSnap.val().confirmed === true;
+        
+        if (!hasPaid) {
+            const confirm = await Swal.fire({
+                title: 'دفع مطلوب',
+                html: `سعر الدخول: <strong>${price} ج.س</strong><br>
+                       يجب الدفع للانضمام لهذه الغرفة`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'دفع الآن',
+                cancelButtonText: 'إلغاء',
+                background: '#1e293b',
+                color: '#fff'
+            });
+            
+            if (confirm.isConfirmed) {
+                await payForLiveRoom(roomId, price, room);
+            }
+            return;
         }
     }
+    
+    // فتح رابط البث
+    window.open(room.link, '_blank');
+    
+    // زيادة عدد المشاركين
+    await db.ref(`live_rooms/${roomId}/participants`).transaction(current => (current || 0) + 1);
+    
+    // تسجيل دخول الطالب
+    await db.ref(`room_participants/${roomId}/${me.uid}`).set({
+        userName: me.name,
+        joinedAt: Date.now()
+    });
+    
+    // زيادة عداد جلسات البث المباشر للمستخدم
+    await db.ref(`users/${me.uid}/liveSessionsAttended`).transaction(current => (current || 0) + 1);
+    
+    showSuccess('تم الانضمام إلى غرفة البث بنجاح');
 }
 
-async function checkBotStatus() {
-    try {
-        const response = await fetch(`${BOT_SERVER_URL}/api/bot-stats`);
-        if (response.ok) {
-            document.getElementById('bot-status-text').textContent = '🟢 متصل';
-            document.getElementById('bot-status-text').style.color = '#10b981';
-            return true;
-        } else {
-            document.getElementById('bot-status-text').textContent = '🔴 غير متصل';
-            document.getElementById('bot-status-text').style.color = '#ef4444';
-            return false;
-        }
-    } catch (error) {
-        document.getElementById('bot-status-text').textContent = '🔴 غير متصل';
-        document.getElementById('bot-status-text').style.color = '#ef4444';
-        return false;
+async function payForLiveRoom(roomId, price, room) {
+    if (me.balance < price) {
+        showError(`رصيدك غير كافي. تحتاج ${price} ج.س`);
+        nav('subscription');
+        return;
     }
-}
-
-// ==================== [ 13. دوال النظام الأساسي ] ====================
-async function loginUser() {
-    const email = document.getElementById('login-email').value;
-    const password = document.getElementById('login-password').value;
+    
+    const confirm = await Swal.fire({
+        title: 'تأكيد الدفع',
+        html: `سعر الدخول: <strong>${price} ج.س</strong><br>
+               سيتم خصم المبلغ من رصيدك`,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'تأكيد الدفع',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff'
+    });
+    
+    if (!confirm.isConfirmed) return;
+    
+    showLoading('جاري معالجة الدفع...');
     
     try {
-        await auth.signInWithEmailAndPassword(email, password);
-        showSuccess('تم تسجيل الدخول بنجاح');
+        // خصم المبلغ من الطالب
+        const newBalance = me.balance - price;
+        await db.ref(`users/${me.uid}/balance`).set(newBalance);
+        me.balance = newBalance;
+        updateUI();
+        
+        // تسجيل الدفع (بانتظار تأكيد الأستاذ)
+        const paymentId = `pay_${Date.now()}`;
+        await db.ref(`room_payments/${roomId}_${me.uid}`).set({
+            paymentId: paymentId,
+            roomId: roomId,
+            roomTitle: room.title,
+            userId: me.uid,
+            userName: me.name,
+            amount: price,
+            timestamp: Date.now(),
+            confirmed: false, // يحتاج تأكيد الأستاذ
+            status: 'pending'
+        });
+        
+        // إرسال إشعار للأستاذ
+        await db.ref(`notifications/${room.teacherId}/${paymentId}`).set({
+            type: 'room_payment',
+            paymentId: paymentId,
+            roomId: roomId,
+            roomTitle: room.title,
+            studentId: me.uid,
+            studentName: me.name,
+            amount: price,
+            timestamp: Date.now(),
+            read: false,
+            actionRequired: true
+        });
+        
+        hideLoading();
+        
+        Swal.fire({
+            title: 'تم الدفع!',
+            html: `تم خصم ${price} ج.س من رصيدك<br>
+                   <strong>بانتظار تأكيد الأستاذ للدخول</strong><br>
+                   <small>سيتم إشعارك عند التأكيد</small>`,
+            icon: 'success',
+            confirmButtonText: 'حسناً',
+            background: '#1e293b',
+            color: '#fff'
+        });
+        
     } catch (error) {
-        showError('خطأ في تسجيل الدخول: ' + error.message);
+        hideLoading();
+        showError('حدث خطأ أثناء الدفع: ' + error.message);
     }
 }
 
-async function registerStudent() {
-    // ... (ابقى الكود كما هو)
+function showRoomPayment(price) {
+    Swal.fire({
+        title: 'دفع مطلوب',
+        html: `سعر الدخول: <strong>${price} ج.س</strong><br>
+               يجب شحن رصيدك أولاً للانضمام`,
+        icon: 'warning',
+        confirmButtonText: 'شحن الرصيد',
+        background: '#1e293b',
+        color: '#fff'
+    }).then(() => {
+        nav('subscription');
+    });
 }
 
+// ==================== [ 17. الاشتراكات ] ====================
+function renderSubscription() {
+    const area = document.getElementById('content-area');
+    const isFreeTrial = me.freeTrial && me.freeUntil > Date.now();
+    const hoursLeft = isFreeTrial ? Math.ceil((me.freeUntil - Date.now()) / (1000 * 60 * 60)) : 0;
+    
+    area.innerHTML = `
+        <div style="padding:20px; text-align:center;">
+            <h2 style="color:var(--accent);"><i class="fas fa-crown"></i> خطط الاشتراك</h2>
+            <p style="color:var(--text-sec); margin-bottom:30px;">اختر الخطة المناسبة لاحتياجاتك التعليمية</p>
+            
+            ${isFreeTrial ? `
+            <div style="background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding:20px; border-radius:15px; color:white; margin-bottom:25px;">
+                <h3 style="margin-top:0;"><i class="fas fa-gift"></i> التجربة المجانية نشطة</h3>
+                <p>متبقي ${hoursLeft} ساعة من التجربة المجانية</p>
+            </div>
+            ` : ''}
+            
+            <div class="grid">
+                <div class="card" style="border:2px solid var(--accent); transform: scale(1.05);">
+                    <div style="position:absolute; top:10px; left:10px; background:var(--accent); color:black; padding:3px 8px; border-radius:5px; font-size:10px; font-weight:bold;">
+                        الأكثر طلباً
+                    </div>
+                    <h3>الأسبوعي</h3>
+                    <div style="font-size:42px; font-weight:bold; color:var(--accent);">7,000 ج.س</div>
+                    <p style="font-size:12px; color:var(--text-sec);">7 أيام كاملة</p>
+                    <ul style="text-align:right; padding-right:15px; color:var(--text-sec); font-size:12px; line-height:1.8;">
+                        <li>جميع الكتب الدراسية</li>
+                        <li>اختبارات ذكية غير محدودة</li>
+                        <li>الدخول لجميع البثوث المباشرة</li>
+                        <li>تحميل الكتب المدفوعة</li>
+                        <li>دعم فني متخصص</li>
+                    </ul>
+                    <button class="btn-main" onclick="subscribeWeekly()" 
+                            style="background:var(--accent); color:black;">
+                        اشترك الآن
+                    </button>
+                </div>
+                
+                <div class="card" style="border:2px solid var(--purple);">
+                    <h3>الشهري</h3>
+                    <div style="font-size:32px; font-weight:bold; color:var(--purple);">25,000 ج.س</div>
+                    <p style="font-size:12px; color:var(--text-sec);">30 يوماً (وفر 3,000 ج.س)</p>
+                    <ul style="text-align:right; padding-right:15px; color:var(--text-sec); font-size:12px; line-height:1.8;">
+                        <li>كل مميزات الأسبوعي</li>
+                        <li>خصم 20% على الكتب المدفوعة</li>
+                        <li>أولوية في غرف البث المباشر</li>
+                        <li>تقارير أداء أسبوعية</li>
+                    </ul>
+                    <button class="btn-main" onclick="subscribeMonthly()" 
+                            style="background:var(--purple);">
+                        اشترك الآن
+                    </button>
+                </div>
+                
+                <div class="card" style="border:2px solid var(--green);">
+                    <h3>السنوي</h3>
+                    <div style="font-size:32px; font-weight:bold; color:var(--green);">240,000 ج.س</div>
+                    <p style="font-size:12px; color:var(--text-sec);">365 يوماً (وفر 60,000 ج.س)</p>
+                    <ul style="text-align:right; padding-right:15px; color:var(--text-sec); font-size:12px; line-height:1.8;">
+                        <li>كل مميزات الشهري</li>
+                        <li>خصم 30% على الكتب المدفوعة</li>
+                        <li>حساب أستاذ مجاني (إذا مؤهل)</li>
+                        <li>دعم فني على مدار الساعة</li>
+                    </ul>
+                    <button class="btn-main" onclick="subscribeYearly()" 
+                            style="background:var(--green);">
+                        اشترك الآن
+                    </button>
+                </div>
+            </div>
+            
+            <div style="margin-top:40px; text-align:right; padding:20px; background:var(--bg-card); border-radius:15px;">
+                <h4 style="color:var(--neon-blue);"><i class="fas fa-university"></i> طريقة الدفع:</h4>
+                <div class="payment-method">
+                    <div style="padding:15px; background:rgba(0,0,0,0.3); border-radius:10px; margin:10px 0;">
+                        <p style="color:var(--accent); font-weight:bold; font-size:20px;">بنك الخرطوم</p>
+                        <p style="color:var(--neon-blue); font-size:24px; font-weight:bold; margin:10px 0;">${ADMIN_BANK_ACCOUNT}</p>
+                        <p style="color:var(--text-sec); font-size:14px;">رقم حساب الإدمن - ${ADMIN_EMAIL}</p>
+                    </div>
+                    
+                    <p style="margin-top:20px;"><strong>خطوات الدفع:</strong></p>
+                    <ol style="color:var(--text-sec); padding-right:20px; line-height:2;">
+                        <li>قم بالتحويل إلى الحساب أعلاه</li>
+                        <li>احفظ صورة التحويل أو الرقم المرجعي</li>
+                        <li>أرسل إشعاراً للإدمن مع صورة التحويل</li>
+                        <li>انتظر تأكيد الإدمن (خلال 24 ساعة)</li>
+                        <li>سيتم تفعيل اشتراكك تلقائياً</li>
+                    </ol>
+                </div>
+                
+                <button class="btn-main" onclick="sendPaymentNotification()" style="margin-top:20px;">
+                    <i class="fas fa-paper-plane"></i> إرسال إشعار دفع للإدمن
+                </button>
+            </div>
+        </div>`;
+}
+
+async function subscribeWeekly() {
+    await processSubscription('weekly', 7000, 7);
+}
+
+async function subscribeMonthly() {
+    await processSubscription('monthly', 25000, 30);
+}
+
+async function subscribeYearly() {
+    await processSubscription('yearly', 240000, 365);
+}
+
+async function processSubscription(plan, price, days) {
+    const planNames = {
+        'weekly': 'الأسبوعي',
+        'monthly': 'الشهري', 
+        'yearly': 'السنوي'
+    };
+    
+    const confirm = await Swal.fire({
+        title: 'تأكيد الاشتراك',
+        html: `الخطة: <strong>${planNames[plan]}</strong><br>
+               السعر: <strong>${price.toLocaleString()} ج.س</strong><br>
+               المدة: <strong>${days} يوم</strong>`,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'تأكيد ومتابعة الدفع',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff'
+    });
+    
+    if (!confirm.isConfirmed) return;
+    
+    // هنا سيتم توجيه المستخدم لإرسال إشعار الدفع للإدمن
+    sendPaymentNotification(plan, price);
+}
+
+async function sendPaymentNotification(plan, price) {
+    const { value: receipt } = await Swal.fire({
+        title: 'إرسال إشعار دفع',
+        input: 'text',
+        inputLabel: 'رقم التحويل البنكي أو المرجعي *',
+        inputPlaceholder: 'أدخل رقم التحويل',
+        showCancelButton: true,
+        confirmButtonText: 'إرسال الإشعار',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff',
+        inputValidator: (value) => {
+            if (!value) {
+                return 'الرجاء إدخال رقم التحويل';
+            }
+        }
+    });
+    
+    if (!receipt) return;
+    
+    const { value: amount } = await Swal.fire({
+        title: 'المبلغ المدفوع',
+        input: 'number',
+        inputLabel: 'المبلغ الذي قمت بتحويله *',
+        inputPlaceholder: 'أدخل المبلغ',
+        showCancelButton: true,
+        confirmButtonText: 'تأكيد',
+        cancelButtonText: 'رجوع',
+        background: '#1e293b',
+        color: '#fff',
+        inputValidator: (value) => {
+            if (!value || value <= 0) {
+                return 'الرجاء إدخال مبلغ صحيح';
+            }
+        }
+    });
+    
+    if (!amount) return;
+    
+    showLoading('جاري إرسال الإشعار...');
+    
+    try {
+        const notificationId = `sub_${Date.now()}`;
+        
+        await db.ref('admin_notifications').push({
+            type: 'subscription_payment',
+            userId: me.uid,
+            userName: me.name,
+            plan: plan,
+            amount: parseInt(amount),
+            expectedAmount: price,
+            receipt: receipt,
+            timestamp: Date.now(),
+            status: 'pending',
+            actionRequired: true
+        });
+        
+        hideLoading();
+        
+        Swal.fire({
+            title: 'تم إرسال الإشعار!',
+            html: `تم إرسال إشعار الدفع للإدمن<br>
+                   <strong>المبلغ: ${parseInt(amount).toLocaleString()} ج.س</strong><br>
+                   <small>سيتم تفعيل اشتراكك بعد تأكيد الإدمن</small>`,
+            icon: 'success',
+            confirmButtonText: 'حسناً',
+            background: '#1e293b',
+            color: '#fff'
+        });
+        
+    } catch (error) {
+        hideLoading();
+        showError('حدث خطأ أثناء إرسال الإشعار: ' + error.message);
+    }
+}
+
+// ==================== [ 18. الملف الشخصي ] ====================
+function renderProfile() {
+    if (!me) return;
+    
+    const area = document.getElementById('content-area');
+    const isFreeTrial = me.freeTrial && me.freeUntil > Date.now();
+    
+    area.innerHTML = `
+        <div style="padding:20px; text-align:center;">
+            <div style="position:relative; display:inline-block;">
+                <div style="width:120px; height:120px; border-radius:50%; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); display:flex; align-items:center; justify-content:center; border:4px solid var(--neon-blue);">
+                    <i class="fas fa-user" style="font-size:50px; color:white;"></i>
+                </div>
+                ${me.role === 'teacher' ? `
+                <div style="position:absolute; bottom:10px; right:-10px; background:var(--purple); color:white; padding:5px 10px; border-radius:15px; font-size:12px; font-weight:bold;">
+                    <i class="fas fa-chalkboard-teacher"></i> أستاذ
+                </div>
+                ` : ''}
+            </div>
+            
+            <h2 style="margin-top:15px;">${me.name}</h2>
+            <p style="color:var(--text-sec);">
+                ${me.role === 'teacher' ? `أستاذ ${me.subject}` : `طالب ${me.grade || ''}`}
+            </p>
+            
+            <div style="display:flex; justify-content:center; gap:10px; margin:20px 0; flex-wrap:wrap;">
+                <div style="background:rgba(59, 130, 246, 0.1); padding:15px; border-radius:15px; min-width:100px;">
+                    <div style="font-size:14px; color:var(--text-sec);">الرصيد</div>
+                    <div style="font-size:20px; font-weight:bold; color:var(--primary);">
+                        ${me.balance ? me.balance.toLocaleString() : '0'} ج.س
+                    </div>
+                </div>
+                
+                <div style="background:rgba(245, 158, 11, 0.1); padding:15px; border-radius:15px; min-width:100px;">
+                    <div style="font-size:14px; color:var(--text-sec);">الاشتراك</div>
+                    <div style="font-size:20px; font-weight:bold; color:${me.subscription ? 'var(--green)' : 'var(--accent)'}">
+                        ${me.subscription ? 'مفعل' : isFreeTrial ? 'تجربة' : 'غير مفعل'}
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background:var(--bg-card); padding:20px; border-radius:15px; margin:20px 0; text-align:right;">
+                <h4 style="color:var(--neon-blue); margin-top:0;"><i class="fas fa-chart-line"></i> إحصائياتك</h4>
+                
+                <div style="margin:15px 0;">
+                    <div style="display:flex; justify-content:space-between; margin:10px 0;">
+                        <span style="color:var(--text-sec);">الاختبارات الذكية:</span>
+                        <span style="font-weight:bold; color:var(--accent);">${me.aiQuizzesCount || 0}</span>
+                    </div>
+                    
+                    <div style="display:flex; justify-content:space-between; margin:10px 0;">
+                        <span style="color:var(--text-sec);">الكتب المحملة:</span>
+                        <span style="font-weight:bold; color:var(--green);">${me.booksDownloaded || 0}</span>
+                    </div>
+                    
+                    <div style="display:flex; justify-content:space-between; margin:10px 0;">
+                        <span style="color:var(--text-sec);">جلسات البث المباشر:</span>
+                        <span style="font-weight:bold; color:var(--purple);">${me.liveSessionsAttended || 0}</span>
+                    </div>
+                    
+                    ${isFreeTrial ? `
+                    <div style="display:flex; justify-content:space-between; margin:10px 0;">
+                        <span style="color:var(--text-sec);">التجربة تنتهي بعد:</span>
+                        <span style="font-weight:bold; color:var(--accent);">
+                            ${Math.ceil((me.freeUntil - Date.now()) / (1000 * 60 * 60))} ساعة
+                        </span>
+                    </div>
+                    ` : ''}
+                    
+                    <div style="display:flex; justify-content:space-between; margin:10px 0;">
+                        <span style="color:var(--text-sec);">تاريخ الانضمام:</span>
+                        <span style="font-weight:bold;">${formatDate(me.joinDate)}</span>
+                    </div>
+                </div>
+            </div>
+            
+            ${me.role === 'teacher' ? `
+            <div style="background:rgba(139, 92, 246, 0.1); padding:20px; border-radius:15px; margin:20px 0; text-align:right; border:2px solid var(--purple);">
+                <h4 style="color:var(--purple); margin-top:0;"><i class="fas fa-money-bill-wave"></i> أرباحك</h4>
+                <div style="font-size:32px; font-weight:bold; color:var(--purple); text-align:center; margin:15px 0;">
+                    ${(me.totalEarnings || 0).toLocaleString()} ج.س
+                </div>
+                ${me.bankAccount ? `
+                <p style="color:var(--text-sec);">رقم حسابك: <strong>${me.bankAccount}</strong></p>
+                ` : `
+                <button class="btn-secondary" onclick="updateBankAccount()" style="margin-top:10px;">
+                    <i class="fas fa-edit"></i> إضافة رقم حساب
+                </button>
+                `}
+            </div>
+            ` : ''}
+            
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button class="btn-main" onclick="nav('subscription')" style="background:var(--green); flex:1;">
+                    <i class="fas fa-crown"></i> تجديد الاشتراك
+                </button>
+                
+                <button class="btn-main" onclick="doLogout()" style="background:var(--red); flex:1;">
+                    <i class="fas fa-sign-out-alt"></i> تسجيل خروج
+                </button>
+            </div>
+        </div>`;
+}
+
+async function updateBankAccount() {
+    const { value: account } = await Swal.fire({
+        title: 'تحديث رقم الحساب',
+        input: 'text',
+        inputLabel: 'رقم حسابك البنكي لتحويل الأرباح',
+        inputPlaceholder: 'أدخل رقم حسابك',
+        showCancelButton: true,
+        confirmButtonText: 'حفظ',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff'
+    });
+    
+    if (!account) return;
+    
+    showLoading('جاري تحديث الحساب...');
+    
+    try {
+        await db.ref(`users/${me.uid}/bankAccount`).set(account);
+        me.bankAccount = account;
+        
+        hideLoading();
+        showSuccess('تم تحديث رقم حسابك بنجاح');
+        
+    } catch (error) {
+        hideLoading();
+        showError('حدث خطأ أثناء التحديث: ' + error.message);
+    }
+}
+
+function doLogout() {
+    Swal.fire({
+        title: 'تسجيل خروج',
+        text: 'هل أنت متأكد من تسجيل الخروج؟',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، خروج',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff'
+    }).then(result => {
+        if (result.isConfirmed) {
+            auth.signOut();
+        }
+    });
+}
+
+// ==================== [ 19. لوحة التحكم ] ====================
+function renderAdminPanel() {
+    if (me.role !== 'admin') {
+        nav('home');
+        return;
+    }
+    
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div class="admin-panel">
+                <h2 style="color:var(--red);"><i class="fas fa-crown"></i> لوحة تحكم الإدمن</h2>
+                <p style="color:var(--text-sec);">مرحبا ${me.name}</p>
+            </div>
+            
+            <div style="margin:25px 0;">
+                <h3><i class="fas fa-tasks" style="color:var(--accent);"></i> الإجراءات السريعة</h3>
+                <div class="grid">
+                    <div class="card" onclick="managePendingBooks()">
+                        <i class="fas fa-book" style="color:var(--primary)"></i>
+                        <b>الكتب المنتظرة</b>
+                        <p style="font-size:12px; color:var(--text-sec)">مراجعة كتب الأساتذة</p>
+                    </div>
+                    
+                    <div class="card" onclick="managePendingTeachers()">
+                        <i class="fas fa-users" style="color:var(--green)"></i>
+                        <b>الأساتذة المنتظرين</b>
+                        <p style="font-size:12px; color:var(--text-sec)">طلبات تسجيل الأساتذة</p>
+                    </div>
+                    
+                    <div class="card" onclick="managePendingPayments()">
+                        <i class="fas fa-money-bill-wave" style="color:var(--accent)"></i>
+                        <b>المدفوعات المعلقة</b>
+                        <p style="font-size:12px; color:var(--text-sec)">اشتراكات وغرف بث</p>
+                    </div>
+                    
+                    <div class="card" onclick="showSystemStats()">
+                        <i class="fas fa-chart-bar" style="color:var(--purple)"></i>
+                        <b>إحصائيات النظام</b>
+                        <p style="font-size:12px; color:var(--text-sec)">مستخدمين، كتب، أرباح</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background:var(--bg-card); padding:20px; border-radius:15px; margin:25px 0;">
+                <h4><i class="fas fa-university" style="color:var(--accent);"></i> حساب الإدمن</h4>
+                <div style="padding:15px; background:rgba(0,0,0,0.3); border-radius:10px; margin-top:10px;">
+                    <p><strong>بنك الخرطوم:</strong></p>
+                    <p style="color:var(--neon-blue); font-size:24px; font-weight:bold; text-align:center; margin:10px 0;">
+                        ${ADMIN_BANK_ACCOUNT}
+                    </p>
+                    <p style="color:var(--text-sec); font-size:12px; text-align:center;">
+                        ${ADMIN_EMAIL}
+                    </p>
+                </div>
+            </div>
+        </div>`;
+}
+
+// ==================== [ 20. الفصول الدراسية ] ====================
+function renderGrades() {
+    const area = document.getElementById('content-area');
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="display:flex; align-items:center; gap:15px; margin-bottom:25px;">
+                <button class="btn-secondary" onclick="nav('home')" style="width:auto; padding:10px 15px;">
+                    <i class="fas fa-arrow-right"></i> رجوع
+                </button>
+                <h2 style="color:var(--neon-blue); margin:0;">الفصول الدراسية</h2>
+            </div>
+            
+            <div class="grid">
+                <div class="card" onclick="showGradeContent('الأول الابتدائي')">
+                    <i class="fas fa-school" style="color:var(--primary)"></i>
+                    <b>الصف الأول الابتدائي</b>
+                    <p style="font-size:12px; color:var(--text-sec)">المرحلة التأسيسية</p>
+                </div>
+                
+                <div class="card" onclick="showGradeContent('الثاني الابتدائي')">
+                    <i class="fas fa-school" style="color:var(--accent)"></i>
+                    <b>الصف الثاني الابتدائي</b>
+                    <p style="font-size:12px; color:var(--text-sec)">المرحلة التأسيسية</p>
+                </div>
+                
+                <div class="card" onclick="showGradeContent('الثالث الابتدائي')">
+                    <i class="fas fa-school" style="color:var(--green)"></i>
+                    <b>الصف الثالث الابتدائي</b>
+                    <p style="font-size:12px; color:var(--text-sec)">المرحلة التأسيسية</p>
+                </div>
+                
+                <div class="card" onclick="showGradeContent('الرابع الابتدائي')">
+                    <i class="fas fa-school" style="color:var(--purple)"></i>
+                    <b>الصف الرابع الابتدائي</b>
+                    <p style="font-size:12px; color:var(--text-sec)">المرحلة المتوسطة</p>
+                </div>
+                
+                <div class="card" onclick="showGradeContent('الخامس الابتدائي')">
+                    <i class="fas fa-school" style="color:var(--red)"></i>
+                    <b>الصف الخامس الابتدائي</b>
+                    <p style="font-size:12px; color:var(--text-sec)">المرحلة المتوسطة</p>
+                </div>
+                
+                <div class="card" onclick="showGradeContent('السادس الابتدائي')">
+                    <i class="fas fa-school" style="color:var(--neon-blue)"></i>
+                    <b>الصف السادس الابتدائي</b>
+                    <p style="font-size:12px; color:var(--text-sec)">نهاية المرحلة الابتدائية</p>
+                </div>
+                
+                <div class="card" onclick="showGradeContent('الأول المتوسط')">
+                    <i class="fas fa-university" style="color:var(--primary)"></i>
+                    <b>الصف الأول المتوسط</b>
+                    <p style="font-size:12px; color:var(--text-sec)">بداية المرحلة المتوسطة</p>
+                </div>
+                
+                <div class="card" onclick="showGradeContent('الثاني المتوسط')">
+                    <i class="fas fa-university" style="color:var(--accent)"></i>
+                    <b>الصف الثاني المتوسط</b>
+                    <p style="font-size:12px; color:var(--text-sec)">المرحلة المتوسطة</p>
+                </div>
+                
+                <div class="card" onclick="showGradeContent('الثالث المتوسط')">
+                    <i class="fas fa-university" style="color:var(--green)"></i>
+                    <b>الصف الثالث المتوسط</b>
+                    <p style="font-size:12px; color:var(--text-sec)">نهاية المرحلة المتوسطة</p>
+                </div>
+                
+                <div class="card" onclick="showGradeContent('الأول الثانوي')">
+                    <i class="fas fa-graduation-cap" style="color:var(--purple)"></i>
+                    <b>الصف الأول الثانوي</b>
+                    <p style="font-size:12px; color:var(--text-sec)">بداية المرحلة الثانوية</p>
+                </div>
+                
+                <div class="card" onclick="showGradeContent('الثاني الثانوي')">
+                    <i class="fas fa-graduation-cap" style="color:var(--red)"></i>
+                    <b>الصف الثاني الثانوي</b>
+                    <p style="font-size:12px; color:var(--text-sec)">المرحلة الثانوية</p>
+                </div>
+                
+                <div class="card" onclick="showGradeContent('الثالث الثانوي')">
+                    <i class="fas fa-graduation-cap" style="color:var(--neon-blue)"></i>
+                    <b>الصف الثالث الثانوي</b>
+                    <p style="font-size:12px; color:var(--text-sec)">نهاية المرحلة الثانوية</p>
+                </div>
+            </div>
+        </div>`;
+}
+
+function showGradeContent(grade) {
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="display:flex; align-items:center; gap:15px; margin-bottom:25px;">
+                <button class="btn-secondary" onclick="nav('grades')" style="width:auto; padding:10px 15px;">
+                    <i class="fas fa-arrow-right"></i> رجوع
+                </button>
+                <h2 style="color:var(--neon-blue); margin:0;">${grade}</h2>
+            </div>
+            
+            <div style="background:var(--bg-card); border-radius:20px; padding:25px; margin-bottom:25px;">
+                <h3 style="color:var(--accent); margin-top:0;"><i class="fas fa-book"></i> المواد الدراسية</h3>
+                <div class="grid">
+                    <div class="card" onclick="showSubjectContent('الرياضيات', '${grade}')">
+                        <i class="fas fa-calculator" style="color:var(--primary)"></i>
+                        <b>الرياضيات</b>
+                    </div>
+                    
+                    <div class="card" onclick="showSubjectContent('العلوم', '${grade}')">
+                        <i class="fas fa-flask" style="color:var(--green)"></i>
+                        <b>العلوم</b>
+                    </div>
+                    
+                    <div class="card" onclick="showSubjectContent('اللغة العربية', '${grade}')">
+                        <i class="fas fa-language" style="color:var(--accent)"></i>
+                        <b>اللغة العربية</b>
+                    </div>
+                    
+                    <div class="card" onclick="showSubjectContent('اللغة الإنجليزية', '${grade}')">
+                        <i class="fas fa-language" style="color:var(--red)"></i>
+                        <b>اللغة الإنجليزية</b>
+                    </div>
+                    
+                    <div class="card" onclick="showSubjectContent('الاجتماعيات', '${grade}')">
+                        <i class="fas fa-globe-africa" style="color:var(--purple)"></i>
+                        <b>الاجتماعيات</b>
+                    </div>
+                    
+                    <div class="card" onclick="showSubjectContent('التربية الإسلامية', '${grade}')">
+                        <i class="fas fa-mosque" style="color:var(--neon-blue)"></i>
+                        <b>التربية الإسلامية</b>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="grade-books">
+                <h3><i class="fas fa-book-open" style="color:var(--accent);"></i> كتب ${grade}</h3>
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div>جاري تحميل الكتب...</div>
+                </div>
+            </div>
+        </div>`;
+    
+    loadGradeBooks(grade);
+}
+
+function showSubjectContent(subject, grade) {
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="display:flex; align-items:center; gap:15px; margin-bottom:25px;">
+                <button class="btn-secondary" onclick="showGradeContent('${grade}')" style="width:auto; padding:10px 15px;">
+                    <i class="fas fa-arrow-right"></i> رجوع
+                </button>
+                <h2 style="color:var(--neon-blue); margin:0;">${subject} - ${grade}</h2>
+            </div>
+            
+            <div style="background:var(--bg-card); border-radius:20px; padding:25px; margin-bottom:25px;">
+                <h3 style="color:var(--accent); margin-top:0;"><i class="fas fa-play-circle"></i> دروس الفيديو</h3>
+                <div class="grid">
+                    <div class="card" onclick="playVideo('${subject}', '${grade}', 1)">
+                        <i class="fas fa-video" style="color:var(--primary)"></i>
+                        <b>الدرس الأول</b>
+                        <p style="font-size:12px; color:var(--text-sec)">المقدمة والأساسيات</p>
+                    </div>
+                    
+                    <div class="card" onclick="playVideo('${subject}', '${grade}', 2)">
+                        <i class="fas fa-video" style="color:var(--accent)"></i>
+                        <b>الدرس الثاني</b>
+                        <p style="font-size:12px; color:var(--text-sec)">التطبيقات العملية</p>
+                    </div>
+                    
+                    <div class="card" onclick="playVideo('${subject}', '${grade}', 3)">
+                        <i class="fas fa-video" style="color:var(--green)"></i>
+                        <b>الدرس الثالث</b>
+                        <p style="font-size:12px; color:var(--text-sec)">تمارين وتطبيقات</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background:var(--bg-card); border-radius:20px; padding:25px; margin-bottom:25px;">
+                <h3 style="color:var(--accent); margin-top:0;"><i class="fas fa-file-alt"></i> الاختبارات</h3>
+                <div class="grid">
+                    <div class="card" onclick="startQuiz('${subject}', '${grade}', 'اختبار قصير')">
+                        <i class="fas fa-question-circle" style="color:var(--primary)"></i>
+                        <b>اختبار قصير</b>
+                        <p style="font-size:12px; color:var(--text-sec)">10 أسئلة - 15 دقيقة</p>
+                    </div>
+                    
+                    <div class="card" onclick="startQuiz('${subject}', '${grade}', 'اختبار منتصف الفصل')">
+                        <i class="fas fa-question-circle" style="color:var(--accent)"></i>
+                        <b>اختبار منتصف الفصل</b>
+                        <p style="font-size:12px; color:var(--text-sec)">20 سؤال - 30 دقيقة</p>
+                    </div>
+                    
+                    <div class="card" onclick="startQuiz('${subject}', '${grade}', 'اختبار نهائي')">
+                        <i class="fas fa-question-circle" style="color:var(--green)"></i>
+                        <b>اختبار نهائي</b>
+                        <p style="font-size:12px; color:var(--text-sec)">30 سؤال - 45 دقيقة</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="subject-books">
+                <h3><i class="fas fa-book" style="color:var(--accent);"></i> كتب ${subject} للصف ${grade}</h3>
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div>جاري تحميل الكتب...</div>
+                </div>
+            </div>
+        </div>`;
+    
+    loadSubjectBooks(subject, grade);
+}
+
+function loadGradeBooks(grade) {
+    const container = document.getElementById('grade-books');
+    if (!container) return;
+    
+    db.ref('books').orderByChild('grade').equalTo(grade).limitToLast(5).on('value', snap => {
+        const books = snap.val();
+        container.innerHTML = '<h3><i class="fas fa-book-open" style="color:var(--accent);"></i> كتب ' + grade + '</h3>';
+        
+        if (!books || Object.keys(books).length === 0) {
+            container.innerHTML += `
+                <div style="text-align:center; padding:20px; color:var(--text-sec);">
+                    <i class="fas fa-book" style="font-size:48px; margin-bottom:15px; opacity:0.5;"></i>
+                    <p>لا توجد كتب لهذا الصف بعد</p>
+                </div>`;
+            return;
+        }
+        
+        Object.entries(books).reverse().forEach(([bookId, book]) => {
+            const isFree = !book.price || book.price === 0;
+            
+            container.innerHTML += `
+                <div class="book-card">
+                    <div style="width:80px; height:100px; background:var(--accent); border-radius:10px; display:flex; align-items:center; justify-content:center;">
+                        <i class="fas fa-book-open" style="font-size:32px; color:white;"></i>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-weight:bold; font-size:16px; margin-bottom:5px;">${book.title}</div>
+                        <div style="font-size:12px; color:var(--text-sec); margin-bottom:5px;">
+                            <i class="fas fa-user"></i> ${book.author}
+                        </div>
+                        <div style="font-size:11px; color:var(--text-sec); margin-top:8px;">
+                            <span style="background:rgba(59, 130, 246, 0.2); color:var(--primary); padding:3px 8px; border-radius:5px; margin-right:5px;">
+                                ${book.subject}
+                            </span>
+                        </div>
+                    </div>
+                    <button class="btn-main" style="padding:8px 12px; font-size:12px;" 
+                            onclick="nav('book_detail', '${bookId}')">
+                        <i class="fas fa-eye"></i> عرض
+                    </button>
+                </div>`;
+        });
+    });
+}
+
+function loadSubjectBooks(subject, grade) {
+    const container = document.getElementById('subject-books');
+    if (!container) return;
+    
+    db.ref('books').orderByChild('subject').equalTo(subject).on('value', snap => {
+        const books = snap.val();
+        container.innerHTML = '<h3><i class="fas fa-book" style="color:var(--accent);"></i> كتب ' + subject + ' للصف ' + grade + '</h3>';
+        
+        if (!books || Object.keys(books).length === 0) {
+            container.innerHTML += `
+                <div style="text-align:center; padding:20px; color:var(--text-sec);">
+                    <i class="fas fa-book" style="font-size:48px; margin-bottom:15px; opacity:0.5;"></i>
+                    <p>لا توجد كتب لهذه المادة بعد</p>
+                </div>`;
+            return;
+        }
+        
+        Object.entries(books).forEach(([bookId, book]) => {
+            if (book.grade === grade) {
+                const isFree = !book.price || book.price === 0;
+                
+                container.innerHTML += `
+                    <div class="book-card">
+                        <div style="width:80px; height:100px; background:var(--accent); border-radius:10px; display:flex; align-items:center; justify-content:center;">
+                            <i class="fas fa-book-open" style="font-size:32px; color:white;"></i>
+                        </div>
+                        <div style="flex:1;">
+                            <div style="font-weight:bold; font-size:16px; margin-bottom:5px;">${book.title}</div>
+                            <div style="font-size:12px; color:var(--text-sec); margin-bottom:5px;">
+                                <i class="fas fa-user"></i> ${book.author}
+                            </div>
+                            <div style="font-size:11px; color:var(--text-sec); margin-top:8px;">
+                                <span style="background:${isFree ? 'var(--green)' : 'var(--accent)'}; color:${isFree ? 'white' : 'black'}; padding:3px 8px; border-radius:5px; font-size:11px; font-weight:bold;">
+                                    ${isFree ? 'مجاني' : book.price + ' ج.س'}
+                                </span>
+                            </div>
+                        </div>
+                        <button class="btn-main" style="padding:8px 12px; font-size:12px;" 
+                                onclick="nav('book_detail', '${bookId}')">
+                            <i class="fas fa-eye"></i> عرض
+                        </button>
+                    </div>`;
+            }
+        });
+    });
+}
+
+function playVideo(subject, grade, lesson) {
+    showError('هذه الميزة قيد التطوير');
+}
+
+function startQuiz(subject, grade, type) {
+    showError('هذه الميزة قيد التطوير');
+}
+
+// ==================== [ 21. تحميل الكتب الحديثة ] ====================
+function loadRecentBooks() {
+    const container = document.getElementById('recent-books');
+    if (!container) return;
+    
+    db.ref('books').orderByChild('addedDate').limitToLast(3).on('value', snap => {
+        const books = snap.val();
+        container.innerHTML = '';
+        
+        if (!books) {
+            container.innerHTML = '<p style="text-align:center; padding:20px; color:var(--text-sec);">لا توجد كتب حديثة</p>';
+            return;
+        }
+        
+        Object.entries(books).reverse().forEach(([bookId, book]) => {
+            const isFree = !book.price || book.price === 0;
+            
+            container.innerHTML += `
+                <div class="post" style="margin-bottom:10px;">
+                    <div style="display:flex; align-items:center; padding:15px;">
+                        <div style="width:50px; height:70px; background:var(--accent); border-radius:8px; display:flex; align-items:center; justify-content:center;">
+                            <i class="fas fa-book-open" style="font-size:24px; color:white;"></i>
+                        </div>
+                        <div style="flex:1; margin-right:15px;">
+                            <div style="font-weight:bold; font-size:14px;">${book.title}</div>
+                            <div style="font-size:11px; color:var(--text-sec);">
+                                <i class="fas fa-user"></i> ${book.author}
+                            </div>
+                            <div style="font-size:10px; color:var(--accent); margin-top:3px;">
+                                <i class="fas fa-graduation-cap"></i> ${book.grade} • ${book.subject}
+                            </div>
+                        </div>
+                        <span style="background:${isFree ? 'var(--green)' : 'var(--accent)'}; color:${isFree ? 'white' : 'black'}; padding:3px 8px; border-radius:5px; font-size:11px;">
+                            ${isFree ? 'مجاني' : book.price + ' ج.س'}
+                        </span>
+                    </div>
+                </div>`;
+        });
+    });
+}
+
+// ==================== [ 22. البحث ] ====================
+const debounceSearch = debounce(function(query) {
+    const container = document.getElementById('books-list');
+    if (!container) return;
+    
+    db.ref('books').once('value').then(snap => {
+        const books = snap.val();
+        container.innerHTML = '';
+        
+        if (!books) return;
+        
+        const searchTerm = query.toLowerCase();
+        Object.keys(books).forEach(bookId => {
+            const book = books[bookId];
+            const title = book.title.toLowerCase();
+            const author = book.author.toLowerCase();
+            const subject = book.subject.toLowerCase();
+            const grade = book.grade.toLowerCase();
+            
+            if (title.includes(searchTerm) || author.includes(searchTerm) || 
+                subject.includes(searchTerm) || grade.includes(searchTerm)) {
+                
+                const isFree = !book.price || book.price === 0;
+                
+                container.innerHTML += `
+                    <div class="book-card">
+                        <div style="width:80px; height:100px; background:var(--accent); border-radius:10px; display:flex; align-items:center; justify-content:center;">
+                            <i class="fas fa-book-open" style="font-size:32px; color:white;"></i>
+                        </div>
+                        <div style="flex:1;">
+                            <div style="font-weight:bold; font-size:16px; margin-bottom:5px;">${book.title}</div>
+                            <div style="font-size:12px; color:var(--text-sec); margin-bottom:5px;">
+                                <i class="fas fa-user"></i> ${book.author}
+                            </div>
+                            <div style="font-size:11px; color:var(--text-sec); margin-top:8px;">
+                                <span class="grade-badge">${book.grade}</span>
+                                <span style="background:rgba(59, 130, 246, 0.2); color:var(--primary); padding:3px 8px; border-radius:5px; margin-right:5px;">
+                                    ${book.subject}
+                                </span>
+                            </div>
+                        </div>
+                        <button class="btn-main" style="padding:8px 12px; font-size:12px;" 
+                                onclick="nav('book_detail', '${bookId}')">
+                            <i class="fas fa-eye"></i> عرض
+                        </button>
+                    </div>`;
+            }
+        });
+    });
+}, 500);
+
+const debounceFilter = debounce(function(query) {
+    debounceSearch(query);
+}, 300);
+
+// ==================== [ 23. دوال مساعدة ] ====================
+function debounce(func, wait = 300) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+function formatDate(timestamp) {
+    if (!timestamp) return 'غير محدد';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now - date;
+    
+    if (diff < 60000) return 'الآن';
+    if (diff < 3600000) return `قبل ${Math.floor(diff / 60000)} دقيقة`;
+    if (diff < 86400000) return `قبل ${Math.floor(diff / 3600000)} ساعة`;
+    
+    return date.toLocaleDateString('ar-SA');
+}
+
+function showLoading(message = 'جاري المعالجة...') {
+    Swal.fire({
+        title: message,
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading(),
+        background: '#1e293b',
+        color: '#fff'
+    });
+}
+
+function hideLoading() {
+    Swal.close();
+}
+
+function showSuccess(message) {
+    Swal.fire({
+        title: 'تم بنجاح!',
+        text: message,
+        icon: 'success',
+        confirmButtonText: 'حسناً',
+        background: '#1e293b',
+        color: '#fff'
+    });
+}
+
+function showError(message) {
+    Swal.fire({
+        title: 'خطأ!',
+        text: message,
+        icon: 'error',
+        confirmButtonText: 'حسناً',
+        background: '#1e293b',
+        color: '#fff'
+    });
+}
+
+// ==================== [ 24. دوال إضافية مساعدة ] ====================
+function deleteBook(bookId) {
+    Swal.fire({
+        title: 'هل أنت متأكد؟',
+        text: 'سيتم حذف الكتاب نهائياً',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، احذف',
+        cancelButtonText: 'إلغاء',
+        background: '#1e293b',
+        color: '#fff'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            showLoading('جاري حذف الكتاب...');
+            try {
+                await db.ref(`books/${bookId}`).remove();
+                hideLoading();
+                showSuccess('تم حذف الكتاب بنجاح');
+                nav('library');
+            } catch (error) {
+                hideLoading();
+                showError('حدث خطأ أثناء الحذف: ' + error.message);
+            }
+        }
+    });
+}
+
+function showTeacherStats() {
+    showError('هذه الميزة قيد التطوير');
+}
+
+function manageLiveRoom(roomId) {
+    showError('هذه الميزة قيد التطوير');
+}
+
+function managePendingBooks() {
+    showError('هذه الميزة قيد التطوير');
+}
+
+function managePendingTeachers() {
+    showError('هذه الميزة قيد التطوير');
+}
+
+function managePendingPayments() {
+    showError('هذه الميزة قيد التطوير');
+}
+
+function showSystemStats() {
+    showError('هذه الميزة قيد التطوير');
+}
+
+// ==================== [ 25. التهيئة النهائية ] ====================
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(() => {
+        initializeApp();
+    }, 1000);
+});
+
+// جعل الدوال متاحة عالمياً
+window.nav = nav;
+window.showLoginScreen = showLoginScreen;
+window.showRegisterOptions = showRegisterOptions;
+window.showStudentForm = showStudentForm;
+window.showTeacherForm = showTeacherForm;
+window.backToLogin = backToLogin;
+window.backToRegister = backToRegister;
+window.loginUser = loginUser;
+window.registerStudent = registerStudent;
+window.registerTeacher = registerTeacher;
+window.handleBackButton = handleBackButton;
+window.showGradeContent = showGradeContent;
+window.showSubjectContent = showSubjectContent;
+window.updateBankAccount = updateBankAccount;
+window.doLogout = doLogout;
+window.generateAIQuiz = generateAIQuiz;
+window.selectAIAnswer = selectAIAnswer;
+window.submitAIQuiz = submitAIQuiz;
+window.createLiveRoom = createLiveRoom;
+window.joinLiveRoom = joinLiveRoom;
+window.showRoomPayment = showRoomPayment;
+window.subscribeWeekly = subscribeWeekly;
+window.subscribeMonthly = subscribeMonthly;
+window.subscribeYearly = subscribeYearly;
+window.sendPaymentNotification = sendPaymentNotification;
+window.addBook = addBook;
+window.downloadBook = downloadBook;
+window.resendVerification = resendVerification;
+</script>
+</body>
+</html>
