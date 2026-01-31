@@ -12,6 +12,8 @@ const http = require('http');
 const moment = require('moment');
 const { OpenAI } = require('openai');
 const socketIO = require('socket.io');
+const { Telegraf } = require('telegraf');
+const FormData = require('form-data');
 
 const app = express();
 const server = http.createServer(app);
@@ -24,14 +26,139 @@ const io = socketIO(server, {
 
 const port = process.env.PORT || 3001;
 
+// ==================== [ 0. تهيئة المفاتيح من Hugging Face ] ====================
+let CONFIG = {
+    TELEGRAM_BOT_TOKEN: '',
+    TELEGRAM_CHAT_ID: '',
+    TELEGRAM_ADMIN_CHAT_ID: '',
+    TELEGRAM_NOTIFICATIONS_CHAT_ID: '',
+    FIREBASE_JSON: {},
+    OPENAI_API_KEY: '',
+    ADMIN_ID: '',
+    ADMIN_BANK_ACCOUNT: "4426148",
+    ADMIN_NAME: "محمد عبدالمعطي علي",
+    WEEKLY_SUBSCRIPTION: 7000,
+    TEACHER_MONTHLY_FEE: 30000,
+    FREE_TRIAL_DAYS: 1,
+    FREE_TEACHER_MONTHS: 1,
+    MAX_DAILY_QUESTIONS: 100
+};
+
+// عنوان Hugging Face حيث تم تخزين المفاتيح
+const HUGGINGFACE_CONFIG_URL = process.env.HUGGINGFACE_CONFIG_URL || 'https://huggingface.co/datasets/your-username/your-repo/raw/main/config.json';
+
+async function loadConfigFromHuggingFace() {
+    try {
+        console.log('🔄 جاري تحميل الإعدادات من Hugging Face...');
+        const response = await axios.get(HUGGINGFACE_CONFIG_URL, {
+            headers: {
+                'Accept': 'application/json',
+                'User-Agent': 'Telegram-File-Bot/1.0'
+            },
+            timeout: 10000
+        });
+        
+        if (response.data) {
+            CONFIG = { ...CONFIG, ...response.data };
+            
+            // التحقق من المفاتيح الأساسية
+            const requiredKeys = ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'FIREBASE_JSON'];
+            const missingKeys = requiredKeys.filter(key => !CONFIG[key] || (typeof CONFIG[key] === 'object' && Object.keys(CONFIG[key]).length === 0));
+            
+            if (missingKeys.length > 0) {
+                console.warn(`⚠️ مفاتيح مفقودة في الإعدادات: ${missingKeys.join(', ')}`);
+            } else {
+                console.log('✅ تم تحميل الإعدادات بنجاح من Hugging Face');
+            }
+            
+            return true;
+        }
+        
+        throw new Error('لا توجد بيانات في الرد');
+    } catch (error) {
+        console.error('❌ فشل في تحميل الإعدادات من Hugging Face:', error.message);
+        
+        // محاولة استخدام متغيرات البيئة كبديل
+        console.log('🔄 استخدام متغيرات البيئة كبديل...');
+        CONFIG = {
+            ...CONFIG,
+            TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
+            TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',
+            TELEGRAM_ADMIN_CHAT_ID: process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '',
+            TELEGRAM_NOTIFICATIONS_CHAT_ID: process.env.TELEGRAM_NOTIFICATIONS_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '',
+            FIREBASE_JSON: process.env.FIREBASE_ADMIN_JSON ? JSON.parse(process.env.FIREBASE_ADMIN_JSON) : {},
+            OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
+            ADMIN_ID: process.env.ADMIN_ID || ''
+        };
+        
+        return false;
+    }
+}
+
 // ==================== [ 1. إعدادات أساسية ] ====================
-const ADMIN_BANK_ACCOUNT = "4426148";
-const ADMIN_NAME = "محمد عبدالمعطي علي";
-const WEEKLY_SUBSCRIPTION = 7000;
-const TEACHER_MONTHLY_FEE = 30000;
-const FREE_TRIAL_DAYS = 1;
-const FREE_TEACHER_MONTHS = 1;
-const MAX_DAILY_QUESTIONS = 100;
+let telegramBot = null;
+let telegramInitialized = false;
+
+async function initializeTelegramBot() {
+    try {
+        if (!CONFIG.TELEGRAM_BOT_TOKEN) {
+            throw new Error('توكن البوت غير متوفر');
+        }
+        
+        telegramBot = new Telegraf(CONFIG.TELEGRAM_BOT_TOKEN);
+        telegramInitialized = true;
+        
+        // أمر البدء
+        telegramBot.start((ctx) => {
+            ctx.reply('🎉 مرحباً! أنا بوت منصة التعليم الذكي.\n\n' +
+                     'يمكنني:\n' +
+                     '🎥 البث المباشر الجماعي\n' +
+                     '📚 رفع الكتب والمواد التعليمية\n' +
+                     '🤖 توليد اختبارات ذكية\n' +
+                     '💳 نظام الاشتراكات والدفع\n\n' +
+                     '📱 للإدارة: استخدم الواجهة البرمجية API');
+        });
+        
+        // أمر المساعدة
+        telegramBot.help((ctx) => {
+            ctx.reply('📋 نظام التعليم الذكي:\n\n' +
+                     '🎥 /live - معلومات البث المباشر\n' +
+                     '📚 /books - المكتبة التعليمية\n' +
+                     '🤖 /quiz - الاختبارات الذكية\n' +
+                     '💳 /subscribe - نظام الاشتراكات\n' +
+                     '👨‍🏫 /teacher - قسم المعلمين\n\n' +
+                     '📞 للإدارة: استخدم الواجهة البرمجية');
+        });
+        
+        // أمر البث المباشر
+        telegramBot.command('live', (ctx) => {
+            ctx.reply('🎥 نظام البث المباشر:\n\n' +
+                     '• إنشاء غرف بث للمعلمين\n' +
+                     '• دخول الطلاب للبث\n' +
+                     '• تسجيل البث وتخزينه\n' +
+                     '• نظام دفع للطلاب\n\n' +
+                     '🔗 رابط النظام: ' + (process.env.BOT_URL || `http://localhost:${port}`));
+        });
+        
+        // أمر الكتب
+        telegramBot.command('books', (ctx) => {
+            ctx.reply('📚 المكتبة التعليمية:\n\n' +
+                     '• آلاف الكتب والمراجع\n' +
+                     '• جميع المراحل الدراسية\n' +
+                     '• مواد متنوعة\n' +
+                     '• تحميل مجاني للمشتركين\n\n' +
+                     '🔗 رابط المكتبة: ' + (process.env.BOT_URL || `http://localhost:${port}`) + '/api/books');
+        });
+        
+        // بدء البوت
+        await telegramBot.launch();
+        console.log('🤖 Telegram Bot مهيء وجاهز');
+        
+    } catch (error) {
+        console.error('❌ خطأ في تهيئة Telegram Bot:', error.message);
+        telegramInitialized = false;
+    }
+}
 
 // ==================== [ 2. إعدادات تخزين الملفات ] ====================
 const STORAGE_BASE = './smart_storage';
@@ -41,7 +168,8 @@ const FOLDERS = {
     VIDEOS: 'videos',
     AVATARS: 'avatars',
     TEACHER_IDS: 'teacher_ids',
-    LIVE_RECORDINGS: 'live_recordings'
+    LIVE_RECORDINGS: 'live_recordings',
+    TELEGRAM_UPLOADS: 'telegram_uploads'
 };
 
 // إنشاء المجلدات
@@ -94,10 +222,10 @@ const upload = multer({
 // ==================== [ 3. إعداد Firebase ] ====================
 let firebaseInitialized = false;
 
-const initializeFirebase = () => {
+const initializeFirebase = async () => {
     try {
         if (admin.apps.length === 0) {
-            const serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_JSON || '{}');
+            const serviceAccount = CONFIG.FIREBASE_JSON || JSON.parse(process.env.FIREBASE_ADMIN_JSON || '{}');
             admin.initializeApp({
                 credential: admin.credential.cert(serviceAccount),
                 databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
@@ -110,12 +238,11 @@ const initializeFirebase = () => {
     }
 };
 
-initializeFirebase();
 const db = firebaseInitialized ? admin.database() : null;
 
 // ==================== [ 4. إعداد OpenAI ] ====================
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY || 'your-openai-api-key',
+    apiKey: CONFIG.OPENAI_API_KEY || process.env.OPENAI_API_KEY || 'your-openai-api-key',
 });
 
 // ==================== [ 5. نظام البث المباشر الجماعي (WebSocket) ] ====================
@@ -172,6 +299,9 @@ io.on('connection', (socket) => {
         });
 
         console.log(`🎥 ${userName} انضم للغرفة ${roomId}`);
+        
+        // إرسال إشعار إلى Telegram
+        await sendTelegramNotification(`🎥 انضمام جديد للبث المباشر\n👤 المستخدم: ${userName}\n🎫 الرول: ${userRole}\n📊 عدد المشاركين: ${room.participants.size}\n🆔 الغرفة: ${roomId}`);
     });
 
     // إشارات WebRTC
@@ -219,6 +349,9 @@ io.on('connection', (socket) => {
                         timestamp: Date.now()
                     });
                 }
+                
+                // إرسال إشعار إلى Telegram
+                await sendTelegramNotification(`🚫 تم إزالة طالب من البث\n👤 الطالب: ${participant.name}\n🎫 الغرفة: ${roomId}\n📝 السبب: ${reason || 'غير محدد'}`);
             }
         }
     });
@@ -251,6 +384,9 @@ io.on('connection', (socket) => {
             action: action,
             timestamp: Date.now()
         });
+        
+        // إرسال إشعار إلى Telegram
+        sendTelegramNotification(`🎥 حالة تسجيل البث\n🆔 الغرفة: ${roomId}\n📼 الإجراء: ${action === 'start' ? 'بدء التسجيل' : 'إيقاف التسجيل'}`);
     });
 
     socket.on('disconnect', () => {
@@ -308,14 +444,160 @@ async function checkPaymentStatus(userId, roomId) {
     }
 }
 
-// ==================== [ 7. المسارات الرئيسية ] ====================
+// ==================== [ 7. دوال Telegram ] ====================
+async function sendFileToTelegram(filePath, originalName, mimeType, caption = '') {
+    try {
+        if (!telegramInitialized || !telegramBot) {
+            throw new Error('Telegram Bot غير مهيء');
+        }
+        
+        const fileStream = await fs.readFile(filePath);
+        const stats = await fs.stat(filePath);
+        const fileSize = stats.size;
+        
+        let message = null;
+        const chatId = CONFIG.TELEGRAM_CHAT_ID;
+        
+        // إرسال حسب نوع الملف
+        if (mimeType.startsWith('image/')) {
+            message = await telegramBot.telegram.sendPhoto(
+                chatId,
+                { source: fileStream },
+                { caption: caption || `📸 ${originalName}\nالحجم: ${formatFileSize(fileSize)}` }
+            );
+        } 
+        else if (mimeType.startsWith('video/')) {
+            message = await telegramBot.telegram.sendVideo(
+                chatId,
+                { source: fileStream },
+                { caption: caption || `🎥 ${originalName}\nالحجم: ${formatFileSize(fileSize)}` }
+            );
+        }
+        else if (mimeType === 'application/pdf') {
+            message = await telegramBot.telegram.sendDocument(
+                chatId,
+                { source: fileStream, filename: originalName },
+                { caption: caption || `📚 ${originalName}\nالحجم: ${formatFileSize(fileSize)}` }
+            );
+        }
+        else {
+            message = await telegramBot.telegram.sendDocument(
+                chatId,
+                { source: fileStream, filename: originalName },
+                { caption: caption || `📄 ${originalName}\nالحجم: ${formatFileSize(fileSize)}\nالنوع: ${mimeType}` }
+            );
+        }
+        
+        console.log(`✅ تم إرسال الملف إلى Telegram: ${originalName}`);
+        return message;
+        
+    } catch (error) {
+        console.error('❌ خطأ في إرسال الملف إلى Telegram:', error.message);
+        
+        // محاولة طريقة بديلة باستخدام axios
+        try {
+            console.log('🔄 جرب طريقة إرسال بديلة...');
+            return await sendFileViaTelegramAPI(filePath, originalName, caption);
+        } catch (altError) {
+            console.error('❌ فشل الطريقة البديلة:', altError.message);
+            throw error;
+        }
+    }
+}
 
-// 7.1 رفع كتاب (للإدمن فقط)
+async function sendFileViaTelegramAPI(filePath, originalName, caption = '') {
+    const formData = new FormData();
+    formData.append('chat_id', CONFIG.TELEGRAM_CHAT_ID);
+    formData.append('document', await fs.readFile(filePath), originalName);
+    formData.append('caption', caption || `📄 ${originalName}`);
+    
+    const response = await axios.post(
+        `https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendDocument`,
+        formData,
+        {
+            headers: formData.getHeaders()
+        }
+    );
+    
+    if (response.data.ok) {
+        return response.data.result;
+    } else {
+        throw new Error(response.data.description || 'فشل في إرسال الملف');
+    }
+}
+
+async function sendTelegramNotification(message) {
+    try {
+        if (!telegramInitialized || !telegramBot) return;
+        
+        await telegramBot.telegram.sendMessage(
+            CONFIG.TELEGRAM_NOTIFICATIONS_CHAT_ID || CONFIG.TELEGRAM_CHAT_ID,
+            message
+        );
+    } catch (error) {
+        console.error('❌ خطأ في إرسال إشعار Telegram:', error.message);
+    }
+}
+
+async function saveTelegramFileInfo(fileInfo, telegramMessage) {
+    try {
+        if (!firebaseInitialized || !db) return null;
+        
+        const fileId = `telegram_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        const chatId = telegramMessage.chat.id;
+        const messageId = telegramMessage.message_id;
+        
+        const telegramData = {
+            id: fileId,
+            originalName: fileInfo.originalName,
+            fileName: fileInfo.fileName,
+            mimeType: fileInfo.mimeType,
+            size: fileInfo.size,
+            telegramInfo: {
+                messageId: messageId,
+                chatId: chatId,
+                date: telegramMessage.date,
+                fileId: telegramMessage.document?.file_id || 
+                        telegramMessage.photo?.[0]?.file_id || 
+                        telegramMessage.video?.file_id || 
+                        telegramMessage.audio?.file_id,
+                type: telegramMessage.document ? 'document' : 
+                      telegramMessage.photo ? 'photo' : 
+                      telegramMessage.video ? 'video' : 
+                      telegramMessage.audio ? 'audio' : 'unknown'
+            },
+            telegramLink: `https://t.me/c/${String(chatId).slice(4)}/${messageId}`,
+            directLink: `${process.env.BOT_URL || 'http://localhost:' + port}/api/file/${fileInfo.folder}/${fileInfo.fileName}`,
+            uploadedAt: Date.now(),
+            uploadedBy: fileInfo.uploadedBy || 'system'
+        };
+        
+        await db.ref(`telegram_files/${fileId}`).set(telegramData);
+        console.log(`💾 تم حفظ معلومات Telegram للملف: ${fileId}`);
+        
+        return telegramData;
+    } catch (error) {
+        console.error('❌ خطأ في حفظ معلومات Telegram:', error.message);
+        return null;
+    }
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 ب';
+    const k = 1024;
+    const sizes = ['ب', 'ك.ب', 'م.ب', 'ج.ب'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// ==================== [ 8. المسارات الرئيسية ] ====================
+
+// 8.1 رفع كتاب (للإدمن فقط) + إرسال إلى Telegram
 app.post('/api/admin/upload-book', upload.single('book'), async (req, res) => {
     try {
         const { adminId } = req.body;
         
-        if (!adminId || adminId !== process.env.ADMIN_ID) {
+        if (!adminId || adminId !== CONFIG.ADMIN_ID) {
             return res.status(403).json({ success: false, error: 'غير مصرح' });
         }
 
@@ -348,15 +630,68 @@ app.post('/api/admin/upload-book', upload.single('book'), async (req, res) => {
             downloads: 0
         };
         
+        // إرسال الكتاب إلى Telegram
+        let telegramMessage = null;
+        let telegramData = null;
+        try {
+            console.log(`📤 جاري إرسال الكتاب إلى Telegram: ${req.file.originalname}`);
+            telegramMessage = await sendFileToTelegram(
+                req.file.path,
+                req.file.originalname,
+                req.file.mimetype,
+                `📚 ${bookInfo.title}\n👨‍🏫 المؤلف: ${bookInfo.author}\n📖 الصف: ${bookInfo.grade}\n📚 المادة: ${bookInfo.subject}`
+            );
+            
+            // حفظ معلومات Telegram
+            telegramData = await saveTelegramFileInfo(
+                {
+                    originalName: req.file.originalname,
+                    fileName: req.file.filename,
+                    mimeType: req.file.mimetype,
+                    size: req.file.size,
+                    folder: 'books',
+                    uploadedBy: 'admin'
+                },
+                telegramMessage
+            );
+            
+            // إضافة رابط Telegram إلى بيانات الكتاب
+            if (telegramData) {
+                bookMetadata.telegramLink = telegramData.telegramLink;
+                bookMetadata.telegramMessageId = telegramMessage.message_id;
+            }
+        } catch (telegramError) {
+            console.error('⚠️ فشل إرسال الكتاب إلى Telegram:', telegramError.message);
+        }
+        
         if (db) {
             await db.ref(`books/${bookId}`).set(bookMetadata);
         }
+        
+        // إرسال إشعار إلى Telegram عن كتاب جديد
+        await sendTelegramNotification(
+            `📚 كتاب جديد تم رفعه\n` +
+            `📖 العنوان: ${bookInfo.title}\n` +
+            `👨‍🏫 المؤلف: ${bookInfo.author}\n` +
+            `📊 الصف: ${bookInfo.grade}\n` +
+            `📚 المادة: ${bookInfo.subject}\n` +
+            `📄 الصفحات: ${bookInfo.pages}\n` +
+            `🔗 رابط التحميل: ${bookMetadata.downloadUrl}`
+        );
         
         res.json({
             success: true,
             message: 'تم رفع الكتاب بنجاح',
             bookId: bookId,
-            metadata: bookMetadata
+            metadata: bookMetadata,
+            telegram: telegramData ? {
+                sent: true,
+                messageId: telegramMessage.message_id,
+                link: telegramData.telegramLink
+            } : {
+                sent: false,
+                error: 'فشل إرسال إلى Telegram'
+            }
         });
         
     } catch (error) {
@@ -365,7 +700,7 @@ app.post('/api/admin/upload-book', upload.single('book'), async (req, res) => {
     }
 });
 
-// 7.2 الحصول على قائمة الكتب
+// 8.2 الحصول على قائمة الكتب
 app.get('/api/books', async (req, res) => {
     try {
         const { grade, subject, page = 1, limit = 20 } = req.query;
@@ -417,7 +752,7 @@ app.get('/api/books', async (req, res) => {
     }
 });
 
-// 7.3 نظام الدفع والاشتراكات
+// 8.3 نظام الدفع والاشتراكات
 app.post('/api/payment/subscribe', async (req, res) => {
     try {
         const { userId, userName, userEmail, type, bankReceipt, teacherId } = req.body;
@@ -433,8 +768,8 @@ app.post('/api/payment/subscribe', async (req, res) => {
         }
         
         const paymentId = `pay_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-        const amount = type === 'weekly' ? WEEKLY_SUBSCRIPTION : 
-                      type === 'teacher_monthly' ? TEACHER_MONTHLY_FEE : 0;
+        const amount = type === 'weekly' ? CONFIG.WEEKLY_SUBSCRIPTION : 
+                      type === 'teacher_monthly' ? CONFIG.TEACHER_MONTHLY_FEE : 0;
         
         const paymentData = {
             id: paymentId,
@@ -446,8 +781,8 @@ app.post('/api/payment/subscribe', async (req, res) => {
             bankReceipt: bankReceipt,
             teacherId: teacherId || null,
             status: 'pending_verification',
-            adminAccount: ADMIN_BANK_ACCOUNT,
-            adminName: ADMIN_NAME,
+            adminAccount: CONFIG.ADMIN_BANK_ACCOUNT,
+            adminName: CONFIG.ADMIN_NAME,
             timestamp: Date.now(),
             verified: false,
             verifiedBy: null,
@@ -470,12 +805,22 @@ app.post('/api/payment/subscribe', async (req, res) => {
             });
         }
         
+        // إرسال إشعار إلى Telegram
+        await sendTelegramNotification(
+            `💳 طلب اشتراك جديد\n` +
+            `👤 المستخدم: ${userName}\n` +
+            `📧 البريد: ${userEmail || 'غير محدد'}\n` +
+            `💰 النوع: ${type === 'weekly' ? 'أسبوعي' : type === 'monthly' ? 'شهري' : 'معلم شهري'}\n` +
+            `💵 المبلغ: ${amount}\n` +
+            `🆔 رقم الطلب: ${paymentId}`
+        );
+        
         res.json({
             success: true,
             message: 'تم إرسال طلب الاشتراك. سيتم المراجعة من قبل الإدمن.',
             paymentId: paymentId,
-            adminAccount: ADMIN_BANK_ACCOUNT,
-            adminName: ADMIN_NAME,
+            adminAccount: CONFIG.ADMIN_BANK_ACCOUNT,
+            adminName: CONFIG.ADMIN_NAME,
             amount: amount
         });
         
@@ -485,12 +830,12 @@ app.post('/api/payment/subscribe', async (req, res) => {
     }
 });
 
-// 7.4 تأكيد الدفع (للإدمن فقط)
+// 8.4 تأكيد الدفع (للإدمن فقط)
 app.post('/api/admin/verify-payment', async (req, res) => {
     try {
         const { adminId, paymentId, userId, action } = req.body;
         
-        if (!adminId || adminId !== process.env.ADMIN_ID) {
+        if (!adminId || adminId !== CONFIG.ADMIN_ID) {
             return res.status(403).json({ success: false, error: 'غير مصرح' });
         }
         
@@ -539,15 +884,27 @@ app.post('/api/admin/verify-payment', async (req, res) => {
         }
         
         // إرسال إشعار للمستخدم
-        await db.ref(`user_notifications/${userId}`).push({
-            type: 'payment_verification',
-            paymentId: paymentId,
-            status: action === 'approve' ? 'approved' : 'rejected',
-            message: action === 'approve' ? 
-                'تم تأكيد دفعتك بنجاح. يمكنك الآن استخدام الخدمات.' :
-                'تم رفض دفعتك. يرجى التحقق من إيصال التحويل.',
-            timestamp: Date.now()
-        });
+        if (db) {
+            await db.ref(`user_notifications/${userId}`).push({
+                type: 'payment_verification',
+                paymentId: paymentId,
+                status: action === 'approve' ? 'approved' : 'rejected',
+                message: action === 'approve' ? 
+                    'تم تأكيد دفعتك بنجاح. يمكنك الآن استخدام الخدمات.' :
+                    'تم رفض دفعتك. يرجى التحقق من إيصال التحويل.',
+                timestamp: Date.now()
+            });
+        }
+        
+        // إرسال إشعار إلى Telegram
+        await sendTelegramNotification(
+            `✅ ${action === 'approve' ? 'تم تأكيد دفعة' : 'تم رفض دفعة'}\n` +
+            `👤 المستخدم: ${payment.userName}\n` +
+            `💰 المبلغ: ${payment.amount}\n` +
+            `📋 النوع: ${payment.type}\n` +
+            `🆔 رقم الدفعة: ${paymentId}\n` +
+            `👨‍💼 تمت العملية بواسطة: ${adminId}`
+        );
         
         res.json({
             success: true,
@@ -560,7 +917,7 @@ app.post('/api/admin/verify-payment', async (req, res) => {
     }
 });
 
-// 7.5 المساعد الذكي - إنشاء اختبار
+// 8.5 المساعد الذكي - إنشاء اختبار
 app.post('/api/ai/generate-quiz', async (req, res) => {
     try {
         const { userId, bookId, questionCount = 5, questionTypes = ['mcq', 'true_false', 'essay'] } = req.body;
@@ -577,10 +934,10 @@ app.post('/api/ai/generate-quiz', async (req, res) => {
             const snapshot = await db.ref(`ai_usage/${dailyKey}`).once('value');
             const todayUsage = snapshot.val() || { count: 0 };
             
-            if (todayUsage.count >= MAX_DAILY_QUESTIONS) {
+            if (todayUsage.count >= CONFIG.MAX_DAILY_QUESTIONS) {
                 return res.status(429).json({
                     success: false,
-                    error: `لقد استخدمت الحد اليومي (${MAX_DAILY_QUESTIONS} سؤال). يرجى المحاولة غداً.`
+                    error: `لقد استخدمت الحد اليومي (${CONFIG.MAX_DAILY_QUESTIONS} سؤال). يرجى المحاولة غداً.`
                 });
             }
             
@@ -689,13 +1046,22 @@ app.post('/api/ai/generate-quiz', async (req, res) => {
             });
         }
         
+        // إرسال إشعار إلى Telegram
+        await sendTelegramNotification(
+            `🤖 اختبار جديد تم إنشاؤه\n` +
+            `📝 العنوان: ${quizData.quizTitle}\n` +
+            `👤 المستخدم: ${userId}\n` +
+            `❓ عدد الأسئلة: ${questionCount}\n` +
+            `🆔 معرف الاختبار: ${quizId}`
+        );
+        
         res.json({
             success: true,
             quizId: quizId,
             quiz: quizData,
             dailyUsage: {
                 used: (todayUsage.count || 0) + questionCount,
-                remaining: MAX_DAILY_QUESTIONS - ((todayUsage.count || 0) + questionCount)
+                remaining: CONFIG.MAX_DAILY_QUESTIONS - ((todayUsage.count || 0) + questionCount)
             }
         });
         
@@ -705,7 +1071,7 @@ app.post('/api/ai/generate-quiz', async (req, res) => {
     }
 });
 
-// 7.6 تصحيح الاختبار
+// 8.6 تصحيح الاختبار
 app.post('/api/ai/grade-quiz', async (req, res) => {
     try {
         const { userId, quizId, answers } = req.body;
@@ -811,6 +1177,16 @@ app.post('/api/ai/grade-quiz', async (req, res) => {
             });
         }
         
+        // إرسال إشعار إلى Telegram
+        await sendTelegramNotification(
+            `📊 نتيجة اختبار\n` +
+            `👤 المستخدم: ${userId}\n` +
+            `📝 الاختبار: ${quiz.title}\n` +
+            `🏆 النتيجة: ${score}/${totalQuestions}\n` +
+            `📈 النسبة: ${percentage}%\n` +
+            `🆔 معرف النتيجة: ${resultId}`
+        );
+        
         res.json({
             success: true,
             resultId: resultId,
@@ -829,7 +1205,7 @@ app.post('/api/ai/grade-quiz', async (req, res) => {
     }
 });
 
-// 7.7 الحصول على إحصائيات المستخدم
+// 8.7 الحصول على إحصائيات المستخدم
 app.get('/api/user/stats/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
@@ -897,14 +1273,14 @@ app.get('/api/user/stats/:userId', async (req, res) => {
             },
             aiUsage: {
                 dailyUsed: dailyUsage.count || 0,
-                dailyRemaining: MAX_DAILY_QUESTIONS - (dailyUsage.count || 0),
-                limit: MAX_DAILY_QUESTIONS
+                dailyRemaining: CONFIG.MAX_DAILY_QUESTIONS - (dailyUsage.count || 0),
+                limit: CONFIG.MAX_DAILY_QUESTIONS
             },
             subscription: activeSubscription,
             nextPaymentDue: nextPaymentDue,
             adminBank: {
-                account: ADMIN_BANK_ACCOUNT,
-                name: ADMIN_NAME
+                account: CONFIG.ADMIN_BANK_ACCOUNT,
+                name: CONFIG.ADMIN_NAME
             }
         });
         
@@ -914,7 +1290,7 @@ app.get('/api/user/stats/:userId', async (req, res) => {
     }
 });
 
-// 7.8 إدارة الغرف الحية (للأستاذ)
+// 8.8 إدارة الغرف الحية (للأستاذ)
 app.post('/api/live/create-room', async (req, res) => {
     try {
         const { teacherId, teacherName, title, description, maxParticipants = 20 } = req.body;
@@ -958,10 +1334,10 @@ app.post('/api/live/create-room', async (req, res) => {
                     success: false,
                     error: 'يجب أن يكون لديك اشتراك شهري نشط لإنشاء غرف بث',
                     requiredPayment: {
-                        amount: TEACHER_MONTHLY_FEE,
+                        amount: CONFIG.TEACHER_MONTHLY_FEE,
                         type: 'teacher_monthly',
-                        adminAccount: ADMIN_BANK_ACCOUNT,
-                        adminName: ADMIN_NAME
+                        adminAccount: CONFIG.ADMIN_BANK_ACCOUNT,
+                        adminName: CONFIG.ADMIN_NAME
                     }
                 });
             }
@@ -986,6 +1362,17 @@ app.post('/api/live/create-room', async (req, res) => {
             await db.ref(`live_rooms/${roomId}`).set(roomData);
         }
         
+        // إرسال إشعار إلى Telegram
+        await sendTelegramNotification(
+            `🎥 غرفة بث مباشر جديدة\n` +
+            `👨‍🏫 المعلم: ${teacherName}\n` +
+            `📝 العنوان: ${title}\n` +
+            `📋 الوصف: ${description || 'بدون وصف'}\n` +
+            `👥 الحد الأقصى: ${maxParticipants}\n` +
+            `🆔 معرف الغرفة: ${roomId}\n` +
+            `🔗 رابط الانضمام: ${process.env.BOT_URL || `http://localhost:${port}`}/live/${roomId}`
+        );
+        
         res.json({
             success: true,
             message: 'تم إنشاء غرفة البث بنجاح',
@@ -1000,7 +1387,7 @@ app.post('/api/live/create-room', async (req, res) => {
     }
 });
 
-// 7.9 إلغاء طالب من البث
+// 8.9 إلغاء طالب من البث
 app.post('/api/live/remove-student', async (req, res) => {
     try {
         const { teacherId, roomId, studentId, reason } = req.body;
@@ -1043,6 +1430,15 @@ app.post('/api/live/remove-student', async (req, res) => {
             });
         }
         
+        // إرسال إشعار إلى Telegram
+        await sendTelegramNotification(
+            `🚫 طالب مطرود من البث\n` +
+            `🎥 الغرفة: ${roomId}\n` +
+            `👨‍🏫 المعلم: ${teacherId}\n` +
+            `👤 الطالب: ${studentId}\n` +
+            `📝 السبب: ${reason || 'غير محدد'}`
+        );
+        
         res.json({
             success: true,
             message: 'تم إزالة الطالب من الغرفة'
@@ -1054,12 +1450,12 @@ app.post('/api/live/remove-student', async (req, res) => {
     }
 });
 
-// 7.10 الحصول على إحصائيات الإدمن
+// 8.10 الحصول على إحصائيات الإدمن
 app.get('/api/admin/stats', async (req, res) => {
     try {
         const { adminId } = req.query;
         
-        if (!adminId || adminId !== process.env.ADMIN_ID) {
+        if (!adminId || adminId !== CONFIG.ADMIN_ID) {
             return res.status(403).json({ success: false, error: 'غير مصرح' });
         }
         
@@ -1104,8 +1500,8 @@ app.get('/api/admin/stats', async (req, res) => {
             },
             revenue: {
                 total: totalRevenue,
-                weekly: WEEKLY_SUBSCRIPTION,
-                monthly: TEACHER_MONTHLY_FEE,
+                weekly: CONFIG.WEEKLY_SUBSCRIPTION,
+                monthly: CONFIG.TEACHER_MONTHLY_FEE,
                 verifiedPayments: verifiedPayments,
                 pendingPayments: pendingPayments
             },
@@ -1119,8 +1515,8 @@ app.get('/api/admin/stats', async (req, res) => {
                 activeRooms: Object.values(rooms).filter(r => r.status === 'active').length
             },
             bankInfo: {
-                account: ADMIN_BANK_ACCOUNT,
-                name: ADMIN_NAME,
+                account: CONFIG.ADMIN_BANK_ACCOUNT,
+                name: CONFIG.ADMIN_NAME,
                 totalCollected: totalRevenue
             }
         };
@@ -1143,9 +1539,9 @@ app.get('/api/admin/stats', async (req, res) => {
     }
 });
 
-// ==================== [ 8. المسارات الحالية من الكود الأصلي ] ====================
+// ==================== [ 9. المسارات الحالية من الكود الأصلي ] ====================
 
-// 8.1 رفع ملف
+// 9.1 رفع ملف + إرسال إلى Telegram
 app.post('/api/upload/:folder?', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
@@ -1181,11 +1577,47 @@ app.post('/api/upload/:folder?', upload.single('file'), async (req, res) => {
         
         const storedMetadata = await storeFileMetadata(fileMetadata);
         
+        // إرسال الملف إلى Telegram
+        let telegramMessage = null;
+        let telegramData = null;
+        try {
+            telegramMessage = await sendFileToTelegram(
+                filePath,
+                req.file.originalname,
+                req.file.mimetype,
+                req.body.caption || `📄 ${req.file.originalname}\n📁 ${folder}\n👤 ${uploadedBy}`
+            );
+            
+            // حفظ معلومات Telegram في قاعدة البيانات
+            telegramData = await saveTelegramFileInfo(fileMetadata, telegramMessage);
+        } catch (telegramError) {
+            console.error('⚠️ فشل إرسال الملف إلى Telegram:', telegramError.message);
+        }
+        
+        // إرسال إشعار إلى Telegram عن ملف جديد
+        await sendTelegramNotification(
+            `📤 ملف جديد تم رفعه\n` +
+            `📄 الاسم: ${req.file.originalname}\n` +
+            `📁 المجلد: ${folder}\n` +
+            `📊 الحجم: ${formatFileSize(req.file.size)}\n` +
+            `👤 رفع بواسطة: ${uploadedBy}\n` +
+            `🔗 رابط التحميل: ${storedMetadata.url}`
+        );
+        
         res.json({
             success: true,
             message: 'تم رفع الملف بنجاح',
             fileId: storedMetadata.id,
             metadata: storedMetadata,
+            telegram: telegramData ? {
+                sent: true,
+                messageId: telegramMessage.message_id,
+                link: telegramData.telegramLink,
+                data: telegramData
+            } : {
+                sent: false,
+                error: 'فشل إرسال إلى Telegram'
+            },
             storageNote: '📦 الملف مخزن في ذاكرة البوت، فقط الرابط مخزن في Firebase'
         });
         
@@ -1195,7 +1627,7 @@ app.post('/api/upload/:folder?', upload.single('file'), async (req, res) => {
     }
 });
 
-// 8.2 الحصول على ملف
+// 9.2 الحصول على ملف
 app.get('/api/file/:folder/:filename', async (req, res) => {
     try {
         const filePath = path.join(STORAGE_BASE, req.params.folder, req.params.filename);
@@ -1220,7 +1652,7 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
     }
 });
 
-// 8.3 تحميل ملف
+// 9.3 تحميل ملف
 app.get('/api/download/:folder/:filename', async (req, res) => {
     try {
         const filePath = path.join(STORAGE_BASE, req.params.folder, req.params.filename);
@@ -1245,7 +1677,7 @@ app.get('/api/download/:folder/:filename', async (req, res) => {
     }
 });
 
-// ==================== [ 9. دوال مساعدة ] ====================
+// ==================== [ 10. دوال مساعدة ] ====================
 
 async function createThumbnail(filePath, folder, fileName) {
     try {
@@ -1303,25 +1735,318 @@ async function storeFileMetadata(fileInfo) {
     return metadata;
 }
 
-// ==================== [ 10. الصفحة الرئيسية ] ====================
+// ==================== [ 11. المسارات الجديدة للملفات والبحث ] ====================
+
+// 11.1 البحث في الملفات
+app.get('/api/files/search', async (req, res) => {
+    try {
+        if (!firebaseInitialized || !db) {
+            return res.status(500).json({ success: false, error: 'قاعدة البيانات غير متصلة' });
+        }
+        
+        const { query, type, dateFrom, dateTo, limit = 50 } = req.query;
+        
+        let filesRef = db.ref('file_storage');
+        
+        // تطبيق الفلاتر
+        const snapshot = await filesRef.orderByChild('uploadedAt').limitToLast(parseInt(limit)).once('value');
+        let files = [];
+        
+        snapshot.forEach((childSnapshot) => {
+            const file = childSnapshot.val();
+            
+            // فلترة حسب الاستعلام
+            if (query && !file.originalName.toLowerCase().includes(query.toLowerCase())) {
+                return;
+            }
+            
+            // فلترة حسب النوع
+            if (type && !file.mimeType.includes(type)) {
+                return;
+            }
+            
+            // فلترة حسب التاريخ
+            if (dateFrom && file.uploadedAt < parseInt(dateFrom)) {
+                return;
+            }
+            if (dateTo && file.uploadedAt > parseInt(dateTo)) {
+                return;
+            }
+            
+            files.push(file);
+        });
+        
+        res.json({
+            success: true,
+            count: files.length,
+            files: files
+        });
+        
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 11.2 إحصائيات الملفات
+app.get('/api/files/stats', async (req, res) => {
+    try {
+        if (!firebaseInitialized || !db) {
+            // إحصائيات من الملفات المحلية
+            const stats = await getLocalStats();
+            return res.json({
+                success: true,
+                source: 'local',
+                ...stats
+            });
+        }
+        
+        const [fileSnapshot, telegramSnapshot] = await Promise.all([
+            db.ref('file_storage').once('value'),
+            db.ref('telegram_files').once('value')
+        ]);
+        
+        const files = fileSnapshot.val() || {};
+        const telegramFiles = telegramSnapshot.val() || {};
+        
+        const fileArray = Object.values(files);
+        const telegramArray = Object.values(telegramFiles);
+        
+        const stats = {
+            totalFiles: fileArray.length,
+            totalSize: fileArray.reduce((sum, file) => sum + (file.size || 0), 0),
+            telegramFiles: telegramArray.length,
+            byType: {},
+            byFolder: {},
+            recentUploads: fileArray
+                .sort((a, b) => b.uploadedAt - a.uploadedAt)
+                .slice(0, 10)
+        };
+        
+        fileArray.forEach(file => {
+            // حسب النوع
+            const type = file.mimeType.split('/')[0];
+            stats.byType[type] = (stats.byType[type] || 0) + 1;
+            
+            // حسب المجلد
+            stats.byFolder[file.folder] = (stats.byFolder[file.folder] || 0) + 1;
+        });
+        
+        res.json({
+            success: true,
+            source: 'firebase',
+            ...stats
+        });
+        
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 11.3 حذف ملف
+app.delete('/api/files/:fileId', async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        const { adminKey } = req.query;
+        
+        if (adminKey !== CONFIG.ADMIN_ID) {
+            return res.status(403).json({ success: false, error: 'غير مصرح' });
+        }
+        
+        if (!firebaseInitialized || !db) {
+            return res.status(500).json({ success: false, error: 'قاعدة البيانات غير متصلة' });
+        }
+        
+        // الحصول على معلومات الملف
+        const fileRef = db.ref(`file_storage/${fileId}`);
+        const telegramRef = db.ref(`telegram_files`).orderByChild('fileName').equalTo(fileId);
+        
+        const [fileSnapshot, telegramSnapshot] = await Promise.all([
+            fileRef.once('value'),
+            telegramRef.once('value')
+        ]);
+        
+        const file = fileSnapshot.val();
+        
+        if (!file) {
+            return res.status(404).json({ success: false, error: 'الملف غير موجود' });
+        }
+        
+        // حذف من التخزين المحلي
+        try {
+            const filePath = path.join(STORAGE_BASE, file.folder, file.fileName);
+            await fs.unlink(filePath);
+            
+            // حذف الصورة المصغرة إذا كانت موجودة
+            if (file.thumbnailUrl) {
+                const thumbPath = path.join(STORAGE_BASE, file.folder, `thumb_${file.fileName}`);
+                try {
+                    await fs.unlink(thumbPath);
+                } catch (thumbError) {
+                    console.warn('⚠️ لم يتم العثور على الصورة المصغرة:', thumbPath);
+                }
+            }
+        } catch (fsError) {
+            console.warn(`⚠️ لم يتم العثور على الملف محلياً: ${file.fileName}`);
+        }
+        
+        // حذف من قاعدة البيانات
+        await fileRef.remove();
+        
+        // حذف معلومات Telegram إذا كانت موجودة
+        telegramSnapshot.forEach((childSnapshot) => {
+            childSnapshot.ref.remove();
+        });
+        
+        // إرسال إشعار إلى Telegram
+        await sendTelegramNotification(
+            `🗑️ ملف تم حذفه\n` +
+            `📄 الاسم: ${file.originalName}\n` +
+            `📊 الحجم: ${formatFileSize(file.size)}\n` +
+            `📁 المجلد: ${file.folder}\n` +
+            `👨‍💼 تم الحذف بواسطة: ${adminKey}\n` +
+            `🆔 معرف الملف: ${fileId}`
+        );
+        
+        res.json({
+            success: true,
+            message: 'تم حذف الملف بنجاح',
+            deletedFile: {
+                id: fileId,
+                name: file.originalName,
+                size: file.size,
+                folder: file.folder
+            }
+        });
+        
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+async function getLocalStats() {
+    try {
+        const stats = {
+            totalFiles: 0,
+            totalSize: 0,
+            byFolder: {},
+            byType: {}
+        };
+        
+        // حساب إحصائيات من جميع المجلدات
+        for (const folder of Object.values(FOLDERS)) {
+            const folderPath = path.join(STORAGE_BASE, folder);
+            try {
+                const files = await fs.readdir(folderPath);
+                const folderFiles = files.filter(f => !f.startsWith('thumb_'));
+                
+                stats.byFolder[folder] = folderFiles.length;
+                stats.totalFiles += folderFiles.length;
+                
+                // حساب حجم الملفات
+                for (const file of folderFiles) {
+                    try {
+                        const filePath = path.join(folderPath, file);
+                        const stat = await fs.stat(filePath);
+                        stats.totalSize += stat.size;
+                        
+                        // حسب نوع الملف
+                        const ext = path.extname(file).toLowerCase();
+                        if (ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.webp') {
+                            stats.byType['image'] = (stats.byType['image'] || 0) + 1;
+                        } else if (ext === '.pdf') {
+                            stats.byType['pdf'] = (stats.byType['pdf'] || 0) + 1;
+                        } else if (ext === '.mp4' || ext === '.webm') {
+                            stats.byType['video'] = (stats.byType['video'] || 0) + 1;
+                        } else {
+                            stats.byType['other'] = (stats.byType['other'] || 0) + 1;
+                        }
+                    } catch (err) {
+                        // تجاهل الملفات التي لا يمكن قراءتها
+                    }
+                }
+            } catch (err) {
+                // تجاهل المجلدات التي لا يمكن قراءتها
+            }
+        }
+        
+        return stats;
+    } catch (error) {
+        console.error('خطأ في حساب الإحصائيات المحلية:', error);
+        return { totalFiles: 0, totalSize: 0, byFolder: {}, byType: {} };
+    }
+}
+
+// ==================== [ 12. تهيئة النظام الكاملة ] ====================
+async function initializeSystem() {
+    console.log('🚀 بدء تهيئة النظام الشاملة...');
+    
+    // 1. تحميل الإعدادات من Hugging Face
+    const huggingFaceLoaded = await loadConfigFromHuggingFace();
+    
+    // 2. تهيئة Firebase
+    await initializeFirebase();
+    
+    // 3. تهيئة Telegram Bot
+    await initializeTelegramBot();
+    
+    // 4. فحص النظام
+    console.log('\n📊 حالة النظام النهائية:');
+    console.log(`✅ Hugging Face: ${huggingFaceLoaded ? 'محمل' : 'استخدام البديل'}`);
+    console.log(`✅ Telegram Bot: ${telegramInitialized ? 'جاهز' : 'غير جاهز'}`);
+    console.log(`✅ Firebase: ${firebaseInitialized ? 'متصل' : 'غير متصل'}`);
+    console.log(`✅ OpenAI: ${CONFIG.OPENAI_API_KEY ? 'جاهز' : 'غير جاهز'}`);
+    console.log(`✅ التخزين المحلي: جاهز (${STORAGE_BASE})`);
+    console.log(`✅ WebSocket: جاهز للمحادثات المباشرة`);
+    
+    // 5. إرسال رسالة بدء التشغيل إلى Telegram
+    if (telegramInitialized) {
+        try {
+            await telegramBot.telegram.sendMessage(
+                CONFIG.TELEGRAM_CHAT_ID,
+                `🚀 النظام بدأ التشغيل بنجاح!\n\n` +
+                `🕒 الوقت: ${new Date().toLocaleString('ar-SA')}\n` +
+                `🌐 السيرفر: ${process.env.BOT_URL || `http://localhost:${port}`}\n` +
+                `📊 الحالة: جميع الأنظمة تعمل\n\n` +
+                `🎥 البث المباشر: جاهز\n` +
+                `📚 المكتبة: جاهزة\n` +
+                `🤖 المساعد الذكي: ${CONFIG.OPENAI_API_KEY ? 'جاهز' : 'غير متاح'}\n` +
+                `💳 نظام الدفع: جاهز`
+            );
+        } catch (error) {
+            console.error('❌ فشل إرسال رسالة البدء إلى Telegram:', error.message);
+        }
+    }
+    
+    console.log('\n🎉 النظام جاهز للاستخدام بكامل ميزاته!');
+}
+
+// ==================== [ 13. الصفحة الرئيسية ] ====================
 
 app.get('/', (req, res) => {
     res.json({
-        name: 'Smart Education Platform',
-        version: '3.0.0',
-        description: 'منصة التعليم الذكي - بث مباشر جماعي + مساعد ذكي + نظام دفع',
+        name: 'Smart Education Platform + Telegram Bot',
+        version: '4.0.0',
+        description: 'منصة التعليم الذكي - بث مباشر جماعي + مساعد ذكي + نظام دفع + ربط Telegram',
         admin: {
-            name: ADMIN_NAME,
-            account: ADMIN_BANK_ACCOUNT
+            name: CONFIG.ADMIN_NAME,
+            account: CONFIG.ADMIN_BANK_ACCOUNT,
+            id: CONFIG.ADMIN_ID ? '****' + CONFIG.ADMIN_ID.slice(-4) : 'غير محدد'
         },
         pricing: {
-            student_weekly: WEEKLY_SUBSCRIPTION,
-            teacher_monthly: TEACHER_MONTHLY_FEE,
-            free_trial_days: FREE_TRIAL_DAYS,
-            free_teacher_months: FREE_TEACHER_MONTHS
+            student_weekly: CONFIG.WEEKLY_SUBSCRIPTION,
+            teacher_monthly: CONFIG.TEACHER_MONTHLY_FEE,
+            free_trial_days: CONFIG.FREE_TRIAL_DAYS,
+            free_teacher_months: CONFIG.FREE_TEACHER_MONTHS
         },
         limits: {
-            daily_ai_questions: MAX_DAILY_QUESTIONS
+            daily_ai_questions: CONFIG.MAX_DAILY_QUESTIONS
+        },
+        system_status: {
+            telegram_bot: telegramInitialized ? '🟢 نشط' : '🔴 غير نشط',
+            firebase: firebaseInitialized ? '🟢 متصل' : '🔴 غير متصل',
+            openai: CONFIG.OPENAI_API_KEY ? '🟢 جاهز' : '🔴 غير متاح',
+            websocket: '🟢 جاهز',
+            huggingface: CONFIG.TELEGRAM_BOT_TOKEN ? '🟢 محمل' : '🔴 غير محمل'
         },
         endpoints: {
             // البث المباشر
@@ -1344,24 +2069,160 @@ app.get('/', (req, res) => {
             user_stats: 'GET /api/user/stats/:userId',
             admin_stats: 'GET /api/admin/stats',
             
-            // الملفات
+            // الملفات مع Telegram
             upload_file: 'POST /api/upload/:folder',
             get_file: 'GET /api/file/:folder/:filename',
-            download: 'GET /api/download/:folder/:filename'
+            download: 'GET /api/download/:folder/:filename',
+            search_files: 'GET /api/files/search',
+            files_stats: 'GET /api/files/stats',
+            delete_file: 'DELETE /api/files/:fileId?adminKey=ADMIN_ID'
+        },
+        telegram: {
+            bot_ready: telegramInitialized,
+            chat_id: CONFIG.TELEGRAM_CHAT_ID || 'غير محدد',
+            notifications: CONFIG.TELEGRAM_NOTIFICATIONS_CHAT_ID ? 'مفعل' : 'غير مفعل'
         },
         websocket: `ws://${req.headers.host}/socket.io/`,
-        note: '🚀 النظام يعتمد على WebSocket للبث المباشر والتواصل الفوري'
+        note: '🚀 النظام يعتمد على WebSocket للبث المباشر والتواصل الفوري + Telegram لإرسال الملفات والإشعارات'
     });
 });
 
-// ==================== [ 11. تشغيل السيرفر ] ====================
+// ==================== [ 14. تشغيل السيرفر ] ====================
 
-server.listen(port, '0.0.0.0', () => {
-    console.log(`🚀 سيرفر التعليم الذكي يعمل على المنفذ ${port}`);
-    console.log(`📁 مساحة التخزين: ${path.resolve(STORAGE_BASE)}`);
+server.listen(port, '0.0.0.0', async () => {
+    console.log(`\n🚀 سيرفر التعليم الذكي يعمل على المنفذ ${port}`);
     console.log(`🔗 الواجهة الرئيسية: http://localhost:${port}`);
     console.log(`🔌 WebSocket: ws://localhost:${port}`);
-    console.log(`🏦 حساب الإدمن: ${ADMIN_BANK_ACCOUNT} (${ADMIN_NAME})`);
+    console.log(`🤖 Telegram Bot: ${telegramInitialized ? 'جاهز' : 'غير جاهز'}`);
+    console.log(`🏦 حساب الإدمن: ${CONFIG.ADMIN_BANK_ACCOUNT} (${CONFIG.ADMIN_NAME})`);
     console.log('🎥 نظام البث الجماعي جاهز!');
-    console.log('🤖 المساعد الذكي محدود بـ 100 سؤال/يوم');
+    console.log('🤖 المساعد الذكي محدود بـ ' + CONFIG.MAX_DAILY_QUESTIONS + ' سؤال/يوم');
+    console.log('📤 نظام رفع الملفات إلى Telegram جاهز!\n');
+    
+    // تهيئة النظام
+    await initializeSystem();
+    
+    // جدولة تحديث الإعدادات كل ساعة
+    setInterval(async () => {
+        console.log('🔄 تحديث الإعدادات من Hugging Face...');
+        await loadConfigFromHuggingFace();
+    }, 60 * 60 * 1000); // كل ساعة
+    
+    // جدولة إرسال إحصائيات يومية إلى Telegram
+    setInterval(async () => {
+        if (telegramInitialized && CONFIG.TELEGRAM_NOTIFICATIONS_CHAT_ID) {
+            await sendDailyStats();
+        }
+    }, 24 * 60 * 60 * 1000); // كل 24 ساعة
+});
+
+// دالة إرسال الإحصائيات اليومية
+async function sendDailyStats() {
+    try {
+        if (!db || !telegramInitialized) return;
+        
+        const today = moment().format('YYYY-MM-DD');
+        const yesterday = moment().subtract(1, 'day').format('YYYY-MM-DD');
+        
+        // الحصول على الإحصائيات
+        const [usersSnapshot, booksSnapshot, paymentsSnapshot] = await Promise.all([
+            db.ref('users').once('value'),
+            db.ref('books').once('value'),
+            db.ref('payments').once('value')
+        ]);
+        
+        const users = usersSnapshot.val() || {};
+        const books = booksSnapshot.val() || {};
+        const payments = paymentsSnapshot.val() || {};
+        
+        let todayRevenue = 0;
+        let newUsers = 0;
+        let newBooks = 0;
+        
+        // حساب إيرادات اليوم
+        Object.values(payments).forEach(userPayments => {
+            Object.values(userPayments).forEach(payment => {
+                const paymentDate = moment(payment.timestamp).format('YYYY-MM-DD');
+                if (paymentDate === today && payment.status === 'verified') {
+                    todayRevenue += payment.amount || 0;
+                }
+            });
+        });
+        
+        // حساب المستخدمين الجدد
+        Object.values(users).forEach(user => {
+            if (moment(user.joinDate).format('YYYY-MM-DD') === today) {
+                newUsers++;
+            }
+        });
+        
+        // حساب الكتب الجديدة
+        Object.values(books).forEach(book => {
+            if (moment(book.uploadDate).format('YYYY-MM-DD') === today) {
+                newBooks++;
+            }
+        });
+        
+        // إرسال الإحصائيات
+        await telegramBot.telegram.sendMessage(
+            CONFIG.TELEGRAM_NOTIFICATIONS_CHAT_ID,
+            `📊 الإحصائيات اليومية - ${today}\n\n` +
+            `👤 المستخدمين: ${Object.keys(users).length}\n` +
+            `🆕 مستخدمين جدد: ${newUsers}\n` +
+            `📚 الكتب: ${Object.keys(books).length}\n` +
+            `🆕 كتب جديدة: ${newBooks}\n` +
+            `💰 إيرادات اليوم: ${todayRevenue}\n` +
+            `💳 إجمالي الإيرادات: ${Object.values(payments).reduce((total, userPayments) => {
+                return total + Object.values(userPayments)
+                    .filter(p => p.status === 'verified')
+                    .reduce((sum, p) => sum + (p.amount || 0), 0);
+            }, 0)}\n\n` +
+            `🕒 وقت التقرير: ${new Date().toLocaleTimeString('ar-SA')}`
+        );
+        
+    } catch (error) {
+        console.error('❌ خطأ في إرسال الإحصائيات اليومية:', error.message);
+    }
+}
+
+// معالجة الإغلاق الأنسب
+process.on('SIGINT', async () => {
+    console.log('\n🛑 إيقاف النظام بأمان...');
+    
+    if (telegramBot) {
+        try {
+            await telegramBot.stop();
+            console.log('✅ Telegram Bot متوقف');
+        } catch (error) {
+            console.error('❌ خطأ في إيقاف Telegram Bot:', error.message);
+        }
+    }
+    
+    if (server) {
+        server.close(() => {
+            console.log('✅ السيرفر متوقف');
+            process.exit(0);
+        });
+    } else {
+        process.exit(0);
+    }
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('❌ خطأ غير متوقع:', error);
+    
+    // إرسال إشعار إلى Telegram عن الخطأ
+    if (telegramInitialized && CONFIG.TELEGRAM_ADMIN_CHAT_ID) {
+        telegramBot.telegram.sendMessage(
+            CONFIG.TELEGRAM_ADMIN_CHAT_ID,
+            `🚨 خطأ غير متوقع في النظام:\n\n` +
+            `📝 ${error.message}\n` +
+            `📂 ${error.stack ? error.stack.split('\n')[1] : 'لا يوجد stack trace'}\n\n` +
+            `🕒 ${new Date().toLocaleString('ar-SA')}`
+        ).catch(() => {});
+    }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ وعد مرفوض غير معالج:', reason);
 });
