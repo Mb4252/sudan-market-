@@ -1634,6 +1634,7 @@ async function loginUser() {
     try {
         showLoading('جاري تسجيل الدخول...');
         
+        // استخدام Firebase Auth مباشرة
         const userCredential = await auth.signInWithEmailAndPassword(email, password);
         const user = userCredential.user;
         
@@ -1649,8 +1650,17 @@ async function loginUser() {
         hideLoading();
         showAlert('نجاح', 'تم تسجيل الدخول بنجاح', 'success');
         
+        // تحديث واجهة المستخدم
         document.getElementById('login-screen').classList.add('hidden');
-        await loadUserData(user.uid);
+        document.getElementById('app-screen').classList.remove('hidden');
+        
+        // تحميل بيانات المستخدم من Firebase مباشرة
+        const snapshot = await db.ref('users/' + user.uid).once('value');
+        currentUserData = snapshot.val();
+        currentUserData.uid = user.uid;
+        
+        updateUI();
+        nav('home');
         
     } catch (error) {
         hideLoading();
