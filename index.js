@@ -156,7 +156,6 @@ async function storeFileMetadata(fileInfo) {
 }
 
 // ==================== [ المسارات الأساسية ] ====================
-
 app.post('/api/upload/:folder?', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
@@ -167,6 +166,28 @@ app.post('/api/upload/:folder?', upload.single('file'), async (req, res) => {
         const uploadedBy = req.body.userId || 'anonymous';
         const filePath = req.file.path;
         
+        // --- [ الجزء الجديد: إرسال الملف إلى تليجرام للتخزين ] ---
+        try {
+            const botToken = CONFIG.TELEGRAM_BOT_TOKEN;
+            const chatId = CONFIG.TELEGRAM_ADMIN_CHAT_ID || CONFIG.TELEGRAM_CHAT_ID;
+
+            if (botToken && chatId) {
+                const form = new FormData();
+                form.append('chat_id', chatId);
+                form.append('document', fs.createReadStream(filePath)); // نرسله كمستند للحفاظ على الجودة
+                form.append('caption', `📂 ملف جديد مرفوع:\n👤 بواسطة: ${uploadedBy}\n📁 المجلد: ${folder}\n📄 الاسم: ${req.file.originalname}`);
+
+                // إرسال الملف إلى تليجرام عبر API
+                await axios.post(`https://api.telegram.org/bot${botToken}/sendDocument`, form, {
+                    headers: form.getHeaders()
+                });
+                console.log('✅ تم إرسال نسخة من الملف إلى تليجرام بنجاح');
+            }
+        } catch (tgError) {
+            console.error('⚠️ فشل إرسال الملف لتليجرام، لكن تم حفظه محلياً:', tgError.message);
+        }
+        // --- [ نهاية التعديل ] ---
+
         let thumbnailUrl = null;
         let pdfInfo = null;
         
@@ -194,7 +215,7 @@ app.post('/api/upload/:folder?', upload.single('file'), async (req, res) => {
         
         res.json({
             success: true,
-            message: 'تم رفع الملف بنجاح',
+            message: 'تم رفع الملف بنجاح وحفظ نسخة في تليجرام',
             fileId: storedMetadata.id,
             metadata: storedMetadata
         });
@@ -205,41 +226,7 @@ app.post('/api/upload/:folder?', upload.single('file'), async (req, res) => {
     }
 });
 
-app.get('/api/file/:folder/:filename', async (req, res) => {
-    try {
-        const filePath = path.join(STORAGE_BASE, req.params.folder, req.params.filename);
-        await fs.access(filePath);
-        
-        const ext = path.extname(req.params.filename).toLowerCase();
-        const contentType = {
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.png': 'image/png',
-            '.webp': 'image/webp',
-            '.pdf': 'application/pdf',
-            '.mp4': 'video/mp4',
-            '.webm': 'video/webm'
-        }[ext] || 'application/octet-stream';
-        
-        res.setHeader('Content-Type', contentType);
-        res.sendFile(filePath);
-        
-    } catch (error) {
-        res.status(404).json({ success: false, error: 'الملف غير موجود' });
-    }
-});
 
-app.get('/', (req, res) => {
-    res.json({
-        name: 'Smart Education Platform',
-        version: '4.0.0',
-        status: '✅ يعمل بنجاح',
-        endpoints: {
-            upload: 'POST /api/upload/:folder',
-            get_file: 'GET /api/file/:folder/:filename'
-        }
-    });
-});
 
 // ==================== [ تشغيل السيرفر ] ====================
 
