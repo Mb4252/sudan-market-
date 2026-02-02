@@ -4649,119 +4649,49 @@ function connectToSocket() {
 }
 
 // ==================== [ 17. جعل الدوال متاحة عالمياً ] ====================
-window.loginUser = loginUser;
-window.registerStudent = registerStudent;
-window.registerTeacher = registerTeacher;
-window.showRegisterOptions = showRegisterOptions;
-window.showStudentForm = showStudentForm;
-window.showTeacherForm = showTeacherForm;
-window.backToLogin = backToLogin;
-window.backToRegister = backToRegister;
-window.resendVerification = resendVerification;
-window.nav = nav;
-window.handleBackButton = handleBackButton;
-window.showUploadFiles = showUploadFiles;
-window.showAdminUploadBook = showAdminUploadBook;
-window.handleFileSelect = handleFileSelect;
-window.handleBookFileSelect = handleBookFileSelect;
-window.removeFile = removeFile;
-window.removeBookFile = removeBookFile;
-window.uploadFiles = uploadFiles;
-window.uploadAdminBook = uploadAdminBook;
-window.showMyUploads = showMyUploads;
-window.downloadFile = downloadFile;
-window.deleteFile = deleteFile;
-window.loadBooks = loadBooks;
-window.viewBook = viewBook;
-window.downloadBook = downloadBook;
-window.addToFavorites = addToFavorites;
-window.removeFromFavorites = removeFromFavorites;
-window.showBookUpload = showBookUpload;
-window.searchBooks = searchBooks;
-window.showCreateRoom = showCreateRoom;
-window.submitCreateRoom = submitCreateRoom;
-window.joinLiveRoom = joinLiveRoom;
-window.backToLiveList = backToLiveList;
-window.removeStudentFromRoom = removeStudentFromRoom;
-window.startRecording = startRecording;
-window.stopRecording = stopRecording;
-window.sendChatMessage = sendChatMessage;
-window.playRecording = playRecording;
-window.downloadRecording = downloadRecording;
-window.subscribe = subscribe;
-window.generateQuiz = generateQuiz;
-window.selectAnswer = selectAnswer;
-window.submitQuiz = submitQuiz;
-window.backToAI = backToAI;
-window.viewQuizResult = viewQuizResult;
-window.retakeQuiz = retakeQuiz;
-window.showUserStats = showUserStats;
-window.showSubscriptionStatus = showSubscriptionStatus;
-window.showSettings = showSettings;
-window.changePassword = changePassword;
-window.deleteAccount = deleteAccount;
-window.logout = logout;
-window.renderAdminPanel = renderAdminPanel;
-window.showAdminUsers = showAdminUsers;
-window.showAdminPayments = showAdminPayments;
-window.showAdminBooks = showAdminBooks;
-window.showAdminRooms = showAdminRooms;
-
-// ==================== [ 18. Drag & Drop للملفات ] ====================
-document.addEventListener('DOMContentLoaded', function() {
-    const uploadArea = document.getElementById('upload-area');
-    const adminUploadArea = document.getElementById('admin-upload-area');
-    
-    function setupDragDrop(element) {
-        if (!element) return;
+// ==================== [ إصلاح نهائي ] ====================
+// جعل الدوال متاحة بشكل صحيح للنطاق العالمي
+(function() {
+    // تأكد من أن جميع الدوال في النطاق العالمي
+    if (typeof window !== 'undefined') {
+        // قائمة بجميع الدوال التي تحتاجها الأزرار
+        const functionsToExport = {
+            loginUser,
+            registerStudent,
+            registerTeacher,
+            showRegisterOptions,
+            showStudentForm,
+            showTeacherForm,
+            backToLogin,
+            backToRegister,
+            resendVerification,
+            nav,
+            handleBackButton
+        };
         
-        element.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            element.classList.add('dragover');
-        });
-        
-        element.addEventListener('dragleave', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            element.classList.remove('dragover');
-        });
-        
-        element.addEventListener('drop', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            element.classList.remove('dragover');
-            
-            const files = Array.from(e.dataTransfer.files);
-            
-            if (element.id === 'upload-area') {
-                // رفع الملفات العامة
-                if (files.length > 0) {
-                    filesToUpload = filesToUpload.concat(files);
-                    updateFilePreview();
-                }
-            } else if (element.id === 'admin-upload-area') {
-                // رفع كتب للإدمن
-                if (files.length > 0) {
-                    const pdfFiles = files.filter(file => file.type === 'application/pdf');
-                    
-                    if (pdfFiles.length > 0) {
-                        adminBookFile = pdfFiles[0];
-                        updateBookPreview();
-                    } else {
-                        showAlert('خطأ', 'يجب أن يكون الملف بصيغة PDF', 'error');
-                    }
-                }
+        // تصديرها إلى window
+        Object.keys(functionsToExport).forEach(funcName => {
+            if (typeof functionsToExport[funcName] === 'function') {
+                window[funcName] = functionsToExport[funcName];
+                console.log(`✅ تم تصدير ${funcName} إلى النطاق العالمي`);
             }
         });
     }
     
-    setupDragDrop(uploadArea);
-    setupDragDrop(adminUploadArea);
-});
-
-// ==================== [ 19. فتح التطبيق مباشرة ] ====================
-// ✅ التطبيق يبدأ مباشرة بشاشة تسجيل الدخول بدون شاشة سوداء
+    // إصلاح مستمعي الأحداث عند تحميل الصفحة
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("✅ الصفحة جاهزة");
+        
+        // إضافة event listeners يدوياً كنسخة احتياطية
+        setTimeout(() => {
+            const loginBtn = document.querySelector('.login-btn');
+            if (loginBtn) {
+                loginBtn.onclick = loginUser;
+                console.log("✅ تم إصلاح زر تسجيل الدخول");
+            }
+        }, 500);
+    });
+})();
 </script>
 </body>
 </html>
