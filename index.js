@@ -25,7 +25,7 @@ const io = socketIO(server, {
     }
 });
 
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 10000; // ✅ تم التعديل هنا
 
 // ==================== [ تهيئة المفاتيح ] ====================
 let CONFIG = {
@@ -226,7 +226,59 @@ app.post('/api/upload/:folder?', upload.single('file'), async (req, res) => {
     }
 });
 
+// ==================== [ نقاط نهاية جديدة ] ====================
+app.get('/api/test', (req, res) => {
+    res.json({ 
+        success: true, 
+        message: '✅ الخادم يعمل!', 
+        time: new Date().toISOString(),
+        server: 'Smart Education Platform',
+        port: port
+    });
+});
 
+app.get('/api/hello', (req, res) => {
+    res.json({ 
+        success: true, 
+        message: 'مرحباً! النظام جاهز',
+        endpoints: ['/api/test', '/api/books', '/api/upload/:folder']
+    });
+});
+
+app.get('/api/books', (req, res) => {
+    res.json({
+        success: true,
+        books: [
+            { id: '1', title: 'الرياضيات للصف الأول', author: 'وزارة التربية', grade: 'الأول الابتدائي', subject: 'الرياضيات' },
+            { id: '2', title: 'العلوم للصف الثاني', author: 'وزارة التربية', grade: 'الثاني الابتدائي', subject: 'العلوم' }
+        ]
+    });
+});
+
+app.get('/api/file/:folder/:filename', async (req, res) => {
+    try {
+        const { folder, filename } = req.params;
+        const filePath = path.join(STORAGE_BASE, folder, filename);
+        await fs.access(filePath);
+        
+        const ext = path.extname(filename).toLowerCase();
+        const contentType = {
+            '.pdf': 'application/pdf',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.webp': 'image/webp',
+            '.mp4': 'video/mp4',
+            '.webm': 'video/webm'
+        }[ext] || 'application/octet-stream';
+        
+        res.setHeader('Content-Type', contentType);
+        res.sendFile(filePath);
+        
+    } catch (error) {
+        res.status(404).json({ success: false, error: 'الملف غير موجود' });
+    }
+});
 
 // ==================== [ تشغيل السيرفر ] ====================
 
