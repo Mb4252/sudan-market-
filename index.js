@@ -29,13 +29,13 @@ const port = process.env.PORT || 3001;
 
 // ==================== [ تهيئة المفاتيح ] ====================
 let CONFIG = {
-    TELEGRAM_BOT_TOKEN: '',
-    TELEGRAM_CHAT_ID: '',
-    TELEGRAM_ADMIN_CHAT_ID: '',
-    TELEGRAM_NOTIFICATIONS_CHAT_ID: '',
-    FIREBASE_JSON: {},
-    OPENAI_API_KEY: '',
-    ADMIN_ID: '',
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
+    TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',
+    TELEGRAM_ADMIN_CHAT_ID: process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '',
+    TELEGRAM_NOTIFICATIONS_CHAT_ID: process.env.TELEGRAM_NOTIFICATIONS_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '',
+    FIREBASE_JSON: process.env.FIREBASE_ADMIN_JSON ? JSON.parse(process.env.FIREBASE_ADMIN_JSON) : {},
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
+    ADMIN_ID: process.env.ADMIN_ID || '',
     ADMIN_BANK_ACCOUNT: "4426148",
     ADMIN_NAME: "محمد عبدالمعطي علي",
     WEEKLY_SUBSCRIPTION: 7000,
@@ -45,39 +45,10 @@ let CONFIG = {
     MAX_DAILY_QUESTIONS: 100
 };
 
-const HUGGINGFACE_CONFIG_URL = process.env.HUGGINGFACE_CONFIG_URL || 'https://huggingface.co/datasets/your-username/your-repo/raw/main/config.json';
-
+// تم تعطيل جلب البيانات من Hugging Face ليعمل النظام على إعدادات البيئة مباشرة
 async function loadConfigFromHuggingFace() {
-    try {
-        console.log('🔄 جاري تحميل الإعدادات من Hugging Face...');
-        const response = await axios.get(HUGGINGFACE_CONFIG_URL, {
-            headers: {
-                'Accept': 'application/json',
-                'User-Agent': 'Telegram-File-Bot/1.0'
-            },
-            timeout: 10000
-        });
-        
-        if (response.data) {
-            CONFIG = { ...CONFIG, ...response.data };
-            console.log('✅ تم تحميل الإعدادات بنجاح');
-            return true;
-        }
-        throw new Error('لا توجد بيانات');
-    } catch (error) {
-        console.error('❌ فشل في تحميل الإعدادات:', error.message);
-        CONFIG = {
-            ...CONFIG,
-            TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
-            TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',
-            TELEGRAM_ADMIN_CHAT_ID: process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '',
-            TELEGRAM_NOTIFICATIONS_CHAT_ID: process.env.TELEGRAM_NOTIFICATIONS_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '',
-            FIREBASE_JSON: process.env.FIREBASE_ADMIN_JSON ? JSON.parse(process.env.FIREBASE_ADMIN_JSON) : {},
-            OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
-            ADMIN_ID: process.env.ADMIN_ID || ''
-        };
-        return false;
-    }
+    console.log('ℹ️ تم ضبط النظام للعمل بالإعدادات المحلية/البيئة مباشرة.');
+    return true; 
 }
 
 // ==================== [ إعدادات تخزين الملفات ] ====================
