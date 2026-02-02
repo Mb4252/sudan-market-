@@ -1568,7 +1568,7 @@ const MAX_DAILY_QUESTIONS = 100;
 // ==================== [ 2. تحديث API_BASE_URL ] ====================
 // ✅ تم إصلاح الرابط هنا فقط
 const API_BASE_URL = window.location.hostname === 'localhost' ? 
-    'http://localhost:10000' : 
+    'http://localhost:3001' : 
     'https://sdm-security-bot.onrender.com'; // ✅ الرابط الصحيح
 
 // ==================== [ 3. إعدادات Firebase ] ====================
@@ -1634,7 +1634,6 @@ async function loginUser() {
     try {
         showLoading('جاري تسجيل الدخول...');
         
-        // استخدام Firebase Auth مباشرة
         const userCredential = await auth.signInWithEmailAndPassword(email, password);
         const user = userCredential.user;
         
@@ -1650,17 +1649,8 @@ async function loginUser() {
         hideLoading();
         showAlert('نجاح', 'تم تسجيل الدخول بنجاح', 'success');
         
-        // تحديث واجهة المستخدم
         document.getElementById('login-screen').classList.add('hidden');
-        document.getElementById('app-screen').classList.remove('hidden');
-        
-        // تحميل بيانات المستخدم من Firebase مباشرة
-        const snapshot = await db.ref('users/' + user.uid).once('value');
-        currentUserData = snapshot.val();
-        currentUserData.uid = user.uid;
-        
-        updateUI();
-        nav('home');
+        await loadUserData(user.uid);
         
     } catch (error) {
         hideLoading();
@@ -4648,50 +4638,367 @@ function connectToSocket() {
     });
 }
 
-// ==================== [ 17. جعل الدوال متاحة عالمياً ] ====================
-// ==================== [ إصلاح نهائي ] ====================
-// جعل الدوال متاحة بشكل صحيح للنطاق العالمي
-(function() {
-    // تأكد من أن جميع الدوال في النطاق العالمي
-    if (typeof window !== 'undefined') {
-        // قائمة بجميع الدوال التي تحتاجها الأزرار
-        const functionsToExport = {
-            loginUser,
-            registerStudent,
-            registerTeacher,
-            showRegisterOptions,
-            showStudentForm,
-            showTeacherForm,
-            backToLogin,
-            backToRegister,
-            resendVerification,
-            nav,
-            handleBackButton
-        };
+// ==================== [ 17. نظام التنقل ] ====================
+function nav(page) {
+    console.log('التنقل إلى:', page);
+    
+    // تحديث سجل التنقل
+    if (navigationHistory[navigationHistory.length - 1] !== page) {
+        navigationHistory.push(page);
+    }
+    
+    // تحديث عنوان الشاشة
+    const titleMap = {
+        'home': 'الرئيسية',
+        'library': 'المكتبة',
+        'upload': 'رفع الملفات',
+        'live': 'البث المباشر',
+        'subscription': 'الاشتراكات',
+        'profile': 'ملفي الشخصي',
+        'admin': 'لوحة التحكم'
+    };
+    
+    document.getElementById('head-title').textContent = titleMap[page] || 'الرئيسية';
+    
+    // إخفاء جميع الشاشات الفرعية أولاً
+    const subScreens = [
+        'upload-screen', 'live-detail-screen', 'create-room-screen', 
+        'library-detail-screen', 'quiz-screen', 'quiz-results-screen',
+        'payment-screen', 'admin-screen', 'upload-book-screen'
+    ];
+    
+    subScreens.forEach(screenId => {
+        const screen = document.getElementById(screenId);
+        if (screen) {
+            screen.classList.add('hidden');
+        }
+    });
+    
+    // إظهار الشاشة الرئيسية
+    document.getElementById('app-screen').classList.remove('hidden');
+    
+    // تحميل المحتوى المناسب
+    switch(page) {
+        case 'home':
+            renderHome();
+            break;
+        case 'library':
+            renderLibrary();
+            break;
+        case 'upload':
+            renderUploadScreen();
+            break;
+        case 'live':
+            renderLiveRooms();
+            break;
+        case 'subscription':
+            renderSubscription();
+            break;
+        case 'profile':
+            renderProfile();
+            break;
+        case 'admin':
+            renderAdminPanel();
+            break;
+        default:
+            renderHome();
+    }
+    
+    // تحديث التبويبات النشطة
+    const tabs = document.querySelectorAll('.tab-btn');
+    tabs.forEach(tab => {
+        if (tab.textContent.includes(titleMap[page] || '')) {
+            tab.classList.add('active');
+            const icon = tab.querySelector('i');
+            if (icon) {
+                icon.style.transform = 'translateY(-5px)';
+                icon.style.textShadow = '0 0 10px var(--neon-blue)';
+            }
+        } else {
+            tab.classList.remove('active');
+            const icon = tab.querySelector('i');
+            if (icon) {
+                icon.style.transform = 'none';
+                icon.style.textShadow = 'none';
+            }
+        }
+    });
+}
+
+function highlightTab(element) {
+    const tabs = document.querySelectorAll('.tab-btn');
+    tabs.forEach(tab => tab.classList.remove('active'));
+    element.classList.add('active');
+}
+
+// ==================== [ 18. دوال مساعدة إضافية ] ====================
+function showLoading(message = 'جاري التحميل...') {
+    Swal.fire({
+        title: message,
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+}
+
+function hideLoading() {
+    Swal.close();
+}
+
+function showAlert(title, text, icon = 'info') {
+    Swal.fire({
+        title: title,
+        text: text,
+        icon: icon,
+        confirmButtonText: 'موافق'
+    });
+}
+
+function logout() {
+    Swal.fire({
+        title: 'تسجيل الخروج',
+        text: 'هل تريد تسجيل الخروج؟',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'نعم',
+        cancelButtonText: 'لا'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            try {
+                showLoading('جاري تسجيل الخروج...');
+                
+                if (currentUserData && currentUserData.uid) {
+                    await db.ref('users/' + currentUserData.uid + '/online').set(false);
+                }
+                
+                await auth.signOut();
+                
+                hideLoading();
+                
+                currentUserData = null;
+                navigationHistory = ['home'];
+                
+                document.getElementById('app-screen').classList.add('hidden');
+                document.getElementById('login-screen').classList.remove('hidden');
+                
+                showAlert('نجاح', 'تم تسجيل الخروج بنجاح', 'success');
+                
+            } catch (error) {
+                hideLoading();
+                console.error('خطأ في تسجيل الخروج:', error);
+                showAlert('خطأ', 'حدث خطأ في تسجيل الخروج', 'error');
+            }
+        }
+    });
+}
+
+// ==================== [ 19. الشاشة الرئيسية ] ====================
+function renderHome() {
+    const area = document.getElementById('content-area');
+    const isTeacher = currentUserData.role === 'teacher';
+    const isAdmin = currentUserData.role === 'admin';
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
+                <h2 style="margin-top:0;"><i class="fas fa-graduation-cap"></i> مرحباً ${currentUserData.name}!</h2>
+                <p>منصة التعليم الذكي - كل ما تحتاجه للتعلم في مكان واحد</p>
+            </div>
+            
+            <div class="grid">
+                <div class="card" onclick="nav('library')">
+                    <i class="fas fa-book"></i>
+                    <h3>المكتبة</h3>
+                    <p>آلاف الكتب والمراجع</p>
+                </div>
+                
+                <div class="card" onclick="nav('live')">
+                    <i class="fas fa-video"></i>
+                    <h3>البث المباشر</h3>
+                    <p>دروس مباشرة مع أساتذة</p>
+                </div>
+                
+                <div class="card" onclick="nav('upload')">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <h3>رفع الملفات</h3>
+                    <p>رفع وتخزين الملفات</p>
+                </div>
+                
+                <div class="card" onclick="generateQuiz()">
+                    <i class="fas fa-robot"></i>
+                    <h3>المساعد الذكي</h3>
+                    <p>اختبارات ذكية</p>
+                </div>
+                
+                <div class="card" onclick="nav('subscription')">
+                    <i class="fas fa-crown"></i>
+                    <h3>الاشتراك</h3>
+                    <p>اشترك الآن</p>
+                </div>
+                
+                <div class="card" onclick="nav('profile')">
+                    <i class="fas fa-user"></i>
+                    <h3>ملفي</h3>
+                    <p>الإعدادات والإحصائيات</p>
+                </div>
+                
+                ${isAdmin ? `
+                <div class="card" onclick="nav('admin')">
+                    <i class="fas fa-user-shield"></i>
+                    <h3>لوحة التحكم</h3>
+                    <p>الإدمن</p>
+                    <div class="card-badge">إدمن</div>
+                </div>
+                ` : ''}
+                
+                ${isTeacher ? `
+                <div class="card" onclick="showCreateRoom()">
+                    <i class="fas fa-chalkboard-teacher"></i>
+                    <h3>إنشاء درس</h3>
+                    <p>ابدأ بثاً جديداً</p>
+                </div>
+                ` : ''}
+            </div>
+            
+            <div style="margin-top:30px;">
+                <h3><i class="fas fa-newspaper"></i> آخر التحديثات</h3>
+                <div style="background:var(--bg-card); border-radius:15px; padding:20px; margin-top:15px;">
+                    <div style="display:flex; gap:15px; align-items:center; margin-bottom:15px;">
+                        <div style="background:var(--primary); width:50px; height:50px; border-radius:50%; display:flex; align-items:center; justify-content:center;">
+                            <i class="fas fa-bullhorn" style="color:white; font-size:20px;"></i>
+                        </div>
+                        <div>
+                            <h4 style="margin:0; color:var(--text-main);">إطلاق المنصة الإصدار 4.0</h4>
+                            <p style="margin:5px 0 0; color:var(--text-sec); font-size:14px;">${new Date().toLocaleDateString('ar-SA')}</p>
+                        </div>
+                    </div>
+                    <p style="color:var(--text-main); line-height:1.6;">
+                        تم إطلاق النسخة الجديدة من منصة التعليم الذكي مع ميزات متقدمة للبث المباشر، المساعد الذكي، ونظام دفع آمن.
+                    </p>
+                </div>
+            </div>
+        </div>`;
+}
+
+// ==================== [ 20. جعل الدوال متاحة عالمياً ] ====================
+window.loginUser = loginUser;
+window.registerStudent = registerStudent;
+window.registerTeacher = registerTeacher;
+window.showRegisterOptions = showRegisterOptions;
+window.showStudentForm = showStudentForm;
+window.showTeacherForm = showTeacherForm;
+window.backToLogin = backToLogin;
+window.backToRegister = backToRegister;
+window.resendVerification = resendVerification;
+window.nav = nav;
+window.highlightTab = highlightTab;
+window.handleBackButton = handleBackButton;
+window.showUploadFiles = showUploadFiles;
+window.showAdminUploadBook = showAdminUploadBook;
+window.handleFileSelect = handleFileSelect;
+window.handleBookFileSelect = handleBookFileSelect;
+window.removeFile = removeFile;
+window.removeBookFile = removeBookFile;
+window.uploadFiles = uploadFiles;
+window.uploadAdminBook = uploadAdminBook;
+window.showMyUploads = showMyUploads;
+window.downloadFile = downloadFile;
+window.deleteFile = deleteFile;
+window.loadBooks = loadBooks;
+window.viewBook = viewBook;
+window.downloadBook = downloadBook;
+window.addToFavorites = addToFavorites;
+window.removeFromFavorites = removeFromFavorites;
+window.showBookUpload = showBookUpload;
+window.searchBooks = searchBooks;
+window.showCreateRoom = showCreateRoom;
+window.submitCreateRoom = submitCreateRoom;
+window.joinLiveRoom = joinLiveRoom;
+window.backToLiveList = backToLiveList;
+window.removeStudentFromRoom = removeStudentFromRoom;
+window.startRecording = startRecording;
+window.stopRecording = stopRecording;
+window.sendChatMessage = sendChatMessage;
+window.playRecording = playRecording;
+window.downloadRecording = downloadRecording;
+window.subscribe = subscribe;
+window.generateQuiz = generateQuiz;
+window.selectAnswer = selectAnswer;
+window.submitQuiz = submitQuiz;
+window.backToAI = backToAI;
+window.viewQuizResult = viewQuizResult;
+window.retakeQuiz = retakeQuiz;
+window.showUserStats = showUserStats;
+window.showSubscriptionStatus = showSubscriptionStatus;
+window.showSettings = showSettings;
+window.changePassword = changePassword;
+window.deleteAccount = deleteAccount;
+window.logout = logout;
+window.renderAdminPanel = renderAdminPanel;
+window.showAdminUsers = showAdminUsers;
+window.showAdminPayments = showAdminPayments;
+window.showAdminBooks = showAdminBooks;
+window.showAdminRooms = showAdminRooms;
+window.showLoading = showLoading;
+window.hideLoading = hideLoading;
+window.showAlert = showAlert;
+
+// ==================== [ 21. Drag & Drop للملفات ] ====================
+document.addEventListener('DOMContentLoaded', function() {
+    const uploadArea = document.getElementById('upload-area');
+    const adminUploadArea = document.getElementById('admin-upload-area');
+    
+    function setupDragDrop(element) {
+        if (!element) return;
         
-        // تصديرها إلى window
-        Object.keys(functionsToExport).forEach(funcName => {
-            if (typeof functionsToExport[funcName] === 'function') {
-                window[funcName] = functionsToExport[funcName];
-                console.log(`✅ تم تصدير ${funcName} إلى النطاق العالمي`);
+        element.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            element.classList.add('dragover');
+        });
+        
+        element.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            element.classList.remove('dragover');
+        });
+        
+        element.addEventListener('drop', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            element.classList.remove('dragover');
+            
+            const files = Array.from(e.dataTransfer.files);
+            
+            if (element.id === 'upload-area') {
+                // رفع الملفات العامة
+                if (files.length > 0) {
+                    filesToUpload = filesToUpload.concat(files);
+                    updateFilePreview();
+                }
+            } else if (element.id === 'admin-upload-area') {
+                // رفع كتب للإدمن
+                if (files.length > 0) {
+                    const pdfFiles = files.filter(file => file.type === 'application/pdf');
+                    
+                    if (pdfFiles.length > 0) {
+                        adminBookFile = pdfFiles[0];
+                        updateBookPreview();
+                    } else {
+                        showAlert('خطأ', 'يجب أن يكون الملف بصيغة PDF', 'error');
+                    }
+                }
             }
         });
     }
     
-    // إصلاح مستمعي الأحداث عند تحميل الصفحة
-    document.addEventListener('DOMContentLoaded', function() {
-        console.log("✅ الصفحة جاهزة");
-        
-        // إضافة event listeners يدوياً كنسخة احتياطية
-        setTimeout(() => {
-            const loginBtn = document.querySelector('.login-btn');
-            if (loginBtn) {
-                loginBtn.onclick = loginUser;
-                console.log("✅ تم إصلاح زر تسجيل الدخول");
-            }
-        }, 500);
-    });
-})();
+    setupDragDrop(uploadArea);
+    setupDragDrop(adminUploadArea);
+});
+
+// ==================== [ 22. فتح التطبيق مباشرة ] ====================
+// ✅ التطبيق يبدأ مباشرة بشاشة تسجيل الدخول بدون شاشة سوداء
 </script>
 </body>
 </html>
