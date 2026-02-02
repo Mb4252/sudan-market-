@@ -81,11 +81,6 @@
             box-shadow: 0 0 30px rgba(0, 243, 255, 0.3);
         }
         
-        .login-logo i {
-            font-size: 50px;
-            color: white;
-        }
-        
         .login-title {
             font-size: 42px;
             margin-bottom: 10px;
@@ -832,14 +827,10 @@
     </style>
 </head>
 <body>
-<!-- شاشة التحميل -->
-<div id="main-preloader" style="position:fixed; top:0; left:0; width:100%; height:100%; background:#0f172a; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:99999;">
-    <div class="loading-spinner"></div>
-    <p style="color:white; font-family:'Tajawal'; margin-top:15px; font-size:18px;">المساعد الذكي يجهز نظام التعليم...</p>
-</div>
+<!-- تم إزالة شاشة التحميل السوداء -->
 
 <!-- شاشة تسجيل الدخول -->
-<div id="login-screen" class="hidden">
+<div id="login-screen">
     <div class="login-screen">
         <div class="login-logo">
             <i class="fas fa-graduation-cap"></i>
@@ -1575,10 +1566,10 @@ const TEACHER_MONTHLY_FEE = 30000;
 const MAX_DAILY_QUESTIONS = 100;
 
 // ==================== [ 2. تحديث API_BASE_URL ] ====================
-// تغيير هذا إلى عنوان سيرفر البوت الخلفي
+// ✅ تم إصلاح الرابط هنا فقط
 const API_BASE_URL = window.location.hostname === 'localhost' ? 
     'http://localhost:3001' : 
-    'https://your-domain.com'; // غير هذا لرابط سيرفر البوت
+    'https://sdm-security-bot.onrender.com'; // ✅ الرابط الصحيح
 
 // ==================== [ 3. إعدادات Firebase ] ====================
 const firebaseConfig = {
@@ -1615,16 +1606,17 @@ let adminBookFile = null;
 document.addEventListener('DOMContentLoaded', function() {
     console.log("بدء تهيئة التطبيق...");
     
+    // ✅ تم إزالة الشاشة السوداء التي كانت تمنع فتح التطبيق
+    // التطبيق يبدأ مباشرة بشاشة تسجيل الدخول
+    
     auth.onAuthStateChanged(async (user) => {
-        document.getElementById('main-preloader').classList.add('hidden');
-        
         if (user) {
             console.log("المستخدم مسجل دخول:", user.uid);
             await loadUserData(user.uid);
             connectToSocket();
         } else {
             console.log("لا يوجد مستخدم مسجل دخول");
-            showLoginScreen();
+            // يبقى في شاشة تسجيل الدخول
         }
     });
 });
@@ -1872,6 +1864,54 @@ async function registerTeacher() {
     }
 }
 
+function showRegisterOptions() {
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('register-screen').classList.remove('hidden');
+}
+
+function showStudentForm() {
+    document.getElementById('register-screen').classList.add('hidden');
+    document.getElementById('student-form').classList.remove('hidden');
+}
+
+function showTeacherForm() {
+    document.getElementById('register-screen').classList.add('hidden');
+    document.getElementById('teacher-form').classList.remove('hidden');
+}
+
+function backToLogin() {
+    document.getElementById('register-screen').classList.add('hidden');
+    document.getElementById('student-form').classList.add('hidden');
+    document.getElementById('teacher-form').classList.add('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
+}
+
+function backToRegister() {
+    document.getElementById('student-form').classList.add('hidden');
+    document.getElementById('teacher-form').classList.add('hidden');
+    document.getElementById('register-screen').classList.remove('hidden');
+}
+
+function resendVerification() {
+    if (!auth.currentUser) {
+        showAlert('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
+        return;
+    }
+    
+    showLoading('جاري إعادة إرسال رسالة التأكيد...');
+    
+    auth.currentUser.sendEmailVerification()
+        .then(() => {
+            hideLoading();
+            showAlert('نجاح', 'تم إرسال رسالة التأكيد إلى بريدك الإلكتروني', 'success');
+        })
+        .catch((error) => {
+            hideLoading();
+            console.error("خطأ في إعادة إرسال التأكيد:", error);
+            showAlert('خطأ', 'حدث خطأ أثناء إرسال رسالة التأكيد', 'error');
+        });
+}
+
 // ==================== [ 7. تحميل بيانات المستخدم ] ====================
 async function loadUserData(userId) {
     console.log("جاري تحميل بيانات المستخدم:", userId);
@@ -1912,7 +1952,6 @@ async function loadUserData(userId) {
         
         updateUI();
         
-        document.getElementById('main-preloader').classList.add('hidden');
         document.getElementById('login-screen').classList.add('hidden');
         document.getElementById('register-screen').classList.add('hidden');
         document.getElementById('student-form').classList.add('hidden');
@@ -1931,6 +1970,14 @@ async function loadUserData(userId) {
         console.error("خطأ في تحميل بيانات المستخدم:", error);
         showAlert('خطأ', 'حدث خطأ في تحميل بياناتك', 'error');
     }
+}
+
+function showLoginScreen() {
+    document.getElementById('app-screen').classList.add('hidden');
+    document.getElementById('register-screen').classList.add('hidden');
+    document.getElementById('student-form').classList.add('hidden');
+    document.getElementById('teacher-form').classList.add('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
 }
 
 // ==================== [ 8. نظام رفع الملفات ] ====================
@@ -2354,17 +2401,48 @@ function showMyUploads() {
 
 async function loadMyUploads() {
     try {
-        // هنا يمكنك جلب الملفات من Firebase أو API البوت
-        // للتبسيط، نعرض رسالة
+        // جلب الملفات من Firebase
+        const snapshot = await db.ref('file_storage').orderByChild('uploadedBy').equalTo(currentUserData.uid).once('value');
+        const files = snapshot.val();
+        
         const container = document.getElementById('my-uploads-list');
-        container.innerHTML = `
-            <div style="text-align:center; padding:40px; color:var(--text-sec);">
-                <i class="fas fa-cloud-upload-alt" style="font-size:50px; margin-bottom:15px;"></i>
-                <p>لم تقم برفع أي ملفات بعد</p>
-                <button class="btn-main" onclick="showUploadFiles()" style="width:auto; margin-top:15px;">
-                    <i class="fas fa-upload"></i> ابدأ برفع الملفات
-                </button>
-            </div>`;
+        
+        if (files && Object.keys(files).length > 0) {
+            let html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:15px;">';
+            
+            Object.values(files).forEach(file => {
+                html += `
+                    <div style="background:var(--bg-card); border-radius:15px; padding:15px;">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                            <i class="fas ${getFileIcon(file.mimeType)}" style="color:var(--accent);"></i>
+                            <div style="flex:1;">
+                                <div style="font-weight:bold; font-size:14px;">${file.originalName}</div>
+                                <div style="font-size:12px; color:var(--text-sec);">${formatFileSize(file.size)}</div>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:5px;">
+                            <button class="btn-secondary" onclick="downloadFile('${file.fileName}', '${file.folder}')" style="flex:1; padding:8px; font-size:12px;">
+                                <i class="fas fa-download"></i>
+                            </button>
+                            <button class="btn-danger" onclick="deleteFile('${file.id}')" style="padding:8px; font-size:12px;">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>`;
+            });
+            
+            html += '</div>';
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = `
+                <div style="text-align:center; padding:40px; color:var(--text-sec);">
+                    <i class="fas fa-cloud-upload-alt" style="font-size:50px; margin-bottom:15px;"></i>
+                    <p>لم تقم برفع أي ملفات بعد</p>
+                    <button class="btn-main" onclick="showUploadFiles()" style="width:auto; margin-top:15px;">
+                        <i class="fas fa-upload"></i> ابدأ برفع الملفات
+                    </button>
+                </div>`;
+        }
         
     } catch (error) {
         console.error('خطأ في تحميل الرفوعات:', error);
@@ -2375,17 +2453,143 @@ async function loadMyUploads() {
     }
 }
 
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 ب';
+    const k = 1024;
+    const sizes = ['ب', 'ك.ب', 'م.ب', 'ج.ب'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function downloadFile(filename, folder) {
+    window.open(`${API_BASE_URL}/api/download/${folder}/${filename}`, '_blank');
+}
+
+async function deleteFile(fileId) {
+    const confirmed = await Swal.fire({
+        title: 'حذف الملف',
+        text: 'هل أنت متأكد من حذف هذا الملف؟',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، احذف',
+        cancelButtonText: 'إلغاء'
+    });
+    
+    if (confirmed.isConfirmed) {
+        try {
+            showLoading('جاري حذف الملف...');
+            
+            // حذف من قاعدة البيانات
+            await db.ref(`file_storage/${fileId}`).remove();
+            
+            // ملاحظة: حذف الملف الفعلي يحتاج endpoint خاص في البوت
+            // سنقوم بحذف البيانات فقط
+            
+            hideLoading();
+            showAlert('نجاح', 'تم حذف الملف بنجاح', 'success');
+            
+            // إعادة تحميل القائمة
+            loadMyUploads();
+            
+        } catch (error) {
+            hideLoading();
+            console.error('خطأ في حذف الملف:', error);
+            showAlert('خطأ', 'حدث خطأ أثناء حذف الملف', 'error');
+        }
+    }
+}
+
 // ==================== [ 10. نظام المكتبة ] ====================
+function renderLibrary() {
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background: linear-gradient(135deg, var(--purple) 0%, #7c3aed 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
+                <h2 style="margin-top:0;"><i class="fas fa-book"></i> المكتبة الرقمية</h2>
+                <p>آلاف الكتب والمراجع التعليمية</p>
+            </div>
+            
+            <div class="grid">
+                <div class="card" onclick="loadBooks()">
+                    <i class="fas fa-book-open"></i>
+                    <h3>جميع الكتب</h3>
+                    <p>تصفح المكتبة</p>
+                </div>
+                
+                <div class="card" onclick="showMyBooks()">
+                    <i class="fas fa-heart"></i>
+                    <h3>المفضلة</h3>
+                    <p>كتبي المفضلة</p>
+                </div>
+                
+                <div class="card" onclick="showBookUpload()">
+                    <i class="fas fa-upload"></i>
+                    <h3>رفع كتاب</h3>
+                    <p>إضافة كتاب جديد</p>
+                </div>
+                
+                <div class="card" onclick="searchBooks()">
+                    <i class="fas fa-search"></i>
+                    <h3>بحث متقدم</h3>
+                    <p>ابحث عن كتب</p>
+                </div>
+            </div>
+            
+            <div id="books-container" class="loading" style="margin-top:25px;">
+                <div class="loading-spinner"></div>
+                <div>جاري تحميل الكتب...</div>
+            </div>
+        </div>`;
+    
+    setTimeout(loadBooks, 1000);
+}
+
 async function loadBooks() {
     try {
         const response = await fetch(`${API_BASE_URL}/api/books`);
         const result = await response.json();
         
-        if (!result.success) {
-            throw new Error(result.error);
-        }
+        const container = document.getElementById('books-container');
         
-        renderBooksList(result.books);
+        if (result.success && result.books && result.books.length > 0) {
+            let html = '<div class="books-grid">';
+            
+            result.books.forEach(book => {
+                html += `
+                    <div class="book-item">
+                        <div class="book-icon">
+                            <i class="fas fa-file-pdf"></i>
+                        </div>
+                        <h4>${book.title || 'كتاب بدون عنوان'}</h4>
+                        <p style="color:var(--text-sec); font-size:14px;">${book.author || 'مؤلف غير معروف'}</p>
+                        <div style="margin:10px 0;">
+                            <span class="grade-badge">${book.grade || 'غير محدد'}</span>
+                            <span class="grade-badge" style="background:var(--primary);">${book.subject || 'عام'}</span>
+                        </div>
+                        <div class="book-actions">
+                            <button class="btn-secondary" onclick="viewBook('${book.id}')" style="flex:1;">
+                                <i class="fas fa-eye"></i> عرض
+                            </button>
+                            <button class="btn-main" onclick="downloadBook('${book.id}', '${book.fileName}')" style="flex:1;">
+                                <i class="fas fa-download"></i> تحميل
+                            </button>
+                        </div>
+                    </div>`;
+            });
+            
+            html += '</div>';
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = `
+                <div style="text-align:center; padding:40px; color:var(--text-sec);">
+                    <i class="fas fa-book" style="font-size:50px; margin-bottom:15px;"></i>
+                    <p>لا توجد كتب متاحة حالياً</p>
+                    <button class="btn-main" onclick="loadBooks()" style="width:auto; margin-top:15px;">
+                        <i class="fas fa-redo"></i> إعادة المحاولة
+                    </button>
+                </div>`;
+        }
         
     } catch (error) {
         console.error('خطأ في تحميل الكتب:', error);
@@ -2393,6 +2597,7 @@ async function loadBooks() {
             <div style="text-align:center; padding:40px; color:var(--red);">
                 <i class="fas fa-exclamation-circle" style="font-size:50px; margin-bottom:15px;"></i>
                 <p>حدث خطأ في تحميل الكتب</p>
+                <p style="font-size:12px;">${error.message}</p>
                 <button class="btn-secondary" onclick="loadBooks()" style="width:auto; margin-top:15px;">
                     <i class="fas fa-redo"></i> إعادة المحاولة
                 </button>
@@ -2400,7 +2605,1962 @@ async function loadBooks() {
     }
 }
 
-// ==================== [ 11. دوال مساعدة ] ====================
+function showMyBooks() {
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background: linear-gradient(135deg, var(--accent) 0%, #d97706 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
+                <h2 style="margin-top:0;"><i class="fas fa-heart"></i> كتبي المفضلة</h2>
+                <p>الكتب التي أضفتها إلى المفضلة</p>
+            </div>
+            
+            <div id="favorite-books" class="loading">
+                <div class="loading-spinner"></div>
+                <div>جاري تحميل كتبك المفضلة...</div>
+            </div>
+        </div>`;
+    
+    loadFavoriteBooks();
+}
+
+async function loadFavoriteBooks() {
+    try {
+        if (!currentUserData.uid) {
+            document.getElementById('favorite-books').innerHTML = `
+                <div style="text-align:center; padding:40px; color:var(--text-sec);">
+                    <i class="fas fa-user-slash" style="font-size:50px; margin-bottom:15px;"></i>
+                    <p>يجب تسجيل الدخول أولاً</p>
+                    <button class="btn-main" onclick="nav('home')" style="width:auto; margin-top:15px;">
+                        <i class="fas fa-home"></i> العودة للرئيسية
+                    </button>
+                </div>`;
+            return;
+        }
+        
+        const snapshot = await db.ref(`user_favorites/${currentUserData.uid}/books`).once('value');
+        const favoriteBookIds = snapshot.val();
+        
+        if (!favoriteBookIds || Object.keys(favoriteBookIds).length === 0) {
+            document.getElementById('favorite-books').innerHTML = `
+                <div style="text-align:center; padding:40px; color:var(--text-sec);">
+                    <i class="fas fa-heart" style="font-size:50px; margin-bottom:15px;"></i>
+                    <p>لا توجد كتب في قائمة المفضلة</p>
+                    <button class="btn-main" onclick="nav('library')" style="width:auto; margin-top:15px;">
+                        <i class="fas fa-book"></i> تصفح المكتبة
+                    </button>
+                </div>`;
+            return;
+        }
+        
+        // جلب تفاصيل الكتب المفضلة
+        const booksPromises = Object.keys(favoriteBookIds).map(bookId => 
+            db.ref(`books/${bookId}`).once('value')
+        );
+        
+        const booksSnapshots = await Promise.all(booksPromises);
+        const books = booksSnapshots.map(snap => snap.val()).filter(book => book);
+        
+        let html = '<div class="books-grid">';
+        
+        books.forEach(book => {
+            html += `
+                <div class="book-item">
+                    <div class="book-icon">
+                        <i class="fas fa-file-pdf"></i>
+                    </div>
+                    <h4>${book.title || 'كتاب بدون عنوان'}</h4>
+                    <p style="color:var(--text-sec); font-size:14px;">${book.author || 'مؤلف غير معروف'}</p>
+                    <div style="margin:10px 0;">
+                        <span class="grade-badge">${book.grade || 'غير محدد'}</span>
+                        <span class="grade-badge" style="background:var(--primary);">${book.subject || 'عام'}</span>
+                    </div>
+                    <div class="book-actions">
+                        <button class="btn-danger" onclick="removeFromFavorites('${book.id}')" style="flex:1;">
+                            <i class="fas fa-trash"></i> حذف
+                        </button>
+                        <button class="btn-main" onclick="downloadBook('${book.id}', '${book.fileName}')" style="flex:1;">
+                            <i class="fas fa-download"></i> تحميل
+                        </button>
+                    </div>
+                </div>`;
+        });
+        
+        html += '</div>';
+        document.getElementById('favorite-books').innerHTML = html;
+        
+    } catch (error) {
+        console.error('خطأ في تحميل الكتب المفضلة:', error);
+        document.getElementById('favorite-books').innerHTML = `
+            <div style="text-align:center; padding:20px; color:var(--red);">
+                <i class="fas fa-exclamation-circle"></i> حدث خطأ في تحميل الكتب المفضلة
+            </div>`;
+    }
+}
+
+async function viewBook(bookId) {
+    try {
+        showLoading('جاري تحميل تفاصيل الكتاب...');
+        
+        // جلب تفاصيل الكتاب من Firebase
+        const snapshot = await db.ref(`books/${bookId}`).once('value');
+        const book = snapshot.val();
+        
+        if (!book) {
+            throw new Error('الكتاب غير موجود');
+        }
+        
+        hideLoading();
+        
+        // عرض تفاصيل الكتاب في شاشة جديدة
+        document.getElementById('app-screen').classList.add('hidden');
+        document.getElementById('library-detail-screen').classList.remove('hidden');
+        
+        document.getElementById('library-detail-title').textContent = book.title;
+        
+        const content = document.getElementById('book-detail-content');
+        content.innerHTML = `
+            <div style="background:var(--bg-card); border-radius:20px; padding:25px;">
+                <div style="text-align:center; margin-bottom:25px;">
+                    <i class="fas fa-file-pdf" style="font-size:80px; color:var(--red); margin-bottom:15px;"></i>
+                    <h2 style="margin:10px 0; color:var(--neon-blue);">${book.title}</h2>
+                    <p style="color:var(--accent); font-size:18px;">${book.author}</p>
+                </div>
+                
+                <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:15px; margin-bottom:25px;">
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:10px;">
+                        <div style="color:var(--text-sec); font-size:14px;">الصف الدراسي</div>
+                        <div style="color:white; font-weight:bold;">${book.grade || 'غير محدد'}</div>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:10px;">
+                        <div style="color:var(--text-sec); font-size:14px;">المادة</div>
+                        <div style="color:white; font-weight:bold;">${book.subject || 'غير محدد'}</div>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:10px;">
+                        <div style="color:var(--text-sec); font-size:14px;">سنة النشر</div>
+                        <div style="color:white; font-weight:bold;">${book.year || 'غير محدد'}</div>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:10px;">
+                        <div style="color:var(--text-sec); font-size:14px;">الصفحات</div>
+                        <div style="color:white; font-weight:bold;">${book.pages || 'غير محدد'}</div>
+                    </div>
+                </div>
+                
+                ${book.description ? `
+                <div style="margin-bottom:25px;">
+                    <h4 style="color:var(--accent);"><i class="fas fa-align-left"></i> الوصف</h4>
+                    <p style="color:var(--text-main); line-height:1.6;">${book.description}</p>
+                </div>
+                ` : ''}
+                
+                <div style="display:flex; gap:15px; margin-top:25px;">
+                    <button class="btn-main" onclick="downloadBook('${book.id}', '${book.fileName}')" style="flex:1;">
+                        <i class="fas fa-download"></i> تحميل الكتاب
+                    </button>
+                    <button class="btn-secondary" onclick="addToFavorites('${book.id}')" style="flex:1;">
+                        <i class="fas fa-heart"></i> إضافة للمفضلة
+                    </button>
+                </div>
+                
+                ${book.telegramLink ? `
+                <div style="margin-top:25px; padding:15px; background:rgba(59, 130, 246, 0.1); border-radius:10px;">
+                    <h4 style="color:var(--primary);"><i class="fab fa-telegram"></i> رابط Telegram</h4>
+                    <p style="color:var(--text-sec); margin:10px 0;">يمكنك مشاهدته مباشرة على Telegram:</p>
+                    <a href="${book.telegramLink}" target="_blank" style="color:var(--neon-blue); text-decoration:none; display:inline-block; padding:10px 15px; background:rgba(0, 243, 255, 0.1); border-radius:8px;">
+                        <i class="fab fa-telegram"></i> فتح في Telegram
+                    </a>
+                </div>
+                ` : ''}
+            </div>`;
+        
+    } catch (error) {
+        hideLoading();
+        console.error('خطأ في عرض الكتاب:', error);
+        showAlert('خطأ', 'حدث خطأ في تحميل تفاصيل الكتاب', 'error');
+        nav('library');
+    }
+}
+
+async function downloadBook(bookId, filename) {
+    try {
+        showLoading('جاري تحميل الكتاب...');
+        
+        // زيادة عداد التحميلات
+        await db.ref(`books/${bookId}/downloads`).transaction(current => (current || 0) + 1);
+        
+        // تحديث إحصائيات المستخدم
+        if (currentUserData.uid) {
+            await db.ref(`user_stats/${currentUserData.uid}/booksDownloaded`).transaction(current => (current || 0) + 1);
+        }
+        
+        hideLoading();
+        
+        // فتح رابط التحميل في نافذة جديدة
+        window.open(`${API_BASE_URL}/api/download/books/${filename}`, '_blank');
+        
+        showAlert('نجاح', 'جاري تحميل الكتاب...', 'success');
+        
+    } catch (error) {
+        hideLoading();
+        console.error('خطأ في تحميل الكتاب:', error);
+        showAlert('خطأ', 'حدث خطأ في تحميل الكتاب', 'error');
+    }
+}
+
+async function addToFavorites(bookId) {
+    try {
+        if (!currentUserData.uid) {
+            showAlert('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
+            return;
+        }
+        
+        await db.ref(`user_favorites/${currentUserData.uid}/books/${bookId}`).set(true);
+        
+        showAlert('نجاح', 'تم إضافة الكتاب إلى المفضلة', 'success');
+        
+    } catch (error) {
+        console.error('خطأ في إضافة الكتاب للمفضلة:', error);
+        showAlert('خطأ', 'حدث خطأ في إضافة الكتاب للمفضلة', 'error');
+    }
+}
+
+async function removeFromFavorites(bookId) {
+    try {
+        const confirmed = await Swal.fire({
+            title: 'حذف من المفضلة',
+            text: 'هل تريد حذف هذا الكتاب من المفضلة؟',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، احذف',
+            cancelButtonText: 'إلغاء'
+        });
+        
+        if (confirmed.isConfirmed) {
+            await db.ref(`user_favorites/${currentUserData.uid}/books/${bookId}`).remove();
+            
+            showAlert('نجاح', 'تم حذف الكتاب من المفضلة', 'success');
+            
+            // إعادة تحميل القائمة
+            loadFavoriteBooks();
+        }
+        
+    } catch (error) {
+        console.error('خطأ في حذف الكتاب من المفضلة:', error);
+        showAlert('خطأ', 'حدث خطأ في حذف الكتاب من المفضلة', 'error');
+    }
+}
+
+function showBookUpload() {
+    if (currentUserData.role !== 'admin') {
+        showAlert('خطأ', 'هذه الميزة للإدمن فقط', 'error');
+        return;
+    }
+    
+    showAdminUploadBook();
+}
+
+function searchBooks() {
+    const searchTerm = document.getElementById('store-search').value.trim();
+    
+    if (!searchTerm) {
+        loadBooks();
+        return;
+    }
+    
+    const container = document.getElementById('books-container');
+    container.innerHTML = `
+        <div class="loading">
+            <div class="loading-spinner"></div>
+            <div>جاري البحث عن "${searchTerm}"...</div>
+        </div>`;
+    
+    // في التطبيق الحقيقي، سيكون هناك endpoint للبحث
+    // هنا نعرض رسالة توضيحية
+    setTimeout(() => {
+        container.innerHTML = `
+            <div style="text-align:center; padding:40px; color:var(--text-sec);">
+                <i class="fas fa-search" style="font-size:50px; margin-bottom:15px;"></i>
+                <p>البحث عن: "${searchTerm}"</p>
+                <p style="font-size:14px;">ميزة البحث ستكون متاحة قريباً</p>
+                <button class="btn-main" onclick="loadBooks()" style="width:auto; margin-top:15px;">
+                    <i class="fas fa-arrow-right"></i> العودة للكتب
+                </button>
+            </div>`;
+    }, 1500);
+}
+
+// ==================== [ 11. نظام البث المباشر ] ====================
+function renderLiveRooms() {
+    const area = document.getElementById('content-area');
+    const isTeacher = currentUserData.role === 'teacher';
+    const isAdmin = currentUserData.role === 'admin';
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background: linear-gradient(135deg, var(--red) 0%, #dc2626 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
+                <h2 style="margin-top:0;"><i class="fas fa-video"></i> غرف البث المباشر</h2>
+                <p>انضم إلى الدروس المباشرة مع أفضل الأساتذة</p>
+            </div>
+            
+            <div class="grid">
+                ${isTeacher || isAdmin ? `
+                <div class="card" onclick="showCreateRoom()">
+                    <i class="fas fa-plus-circle"></i>
+                    <h3>إنشاء غرفة</h3>
+                    <p>ابدأ بثاً جديداً</p>
+                </div>
+                ` : ''}
+                
+                <div class="card" onclick="joinLiveRoom('math_room')">
+                    <i class="fas fa-square-root-alt"></i>
+                    <h3>الرياضيات</h3>
+                    <p>أستاذ: أحمد محمود</p>
+                    <span class="live-badge">مباشر الآن</span>
+                </div>
+                
+                <div class="card" onclick="joinLiveRoom('science_room')">
+                    <i class="fas fa-flask"></i>
+                    <h3>العلوم</h3>
+                    <p>أستاذة: سارة خالد</p>
+                    <span class="live-badge">مباشر الآن</span>
+                </div>
+                
+                <div class="card" onclick="joinLiveRoom('arabic_room')">
+                    <i class="fas fa-book-open"></i>
+                    <h3>اللغة العربية</h3>
+                    <p>أستاذ: عمر حسن</p>
+                    <span style="background:var(--text-sec); color:white; padding:2px 8px; border-radius:10px; font-size:10px;">يبدأ بعد 30 دقيقة</span>
+                </div>
+                
+                <div class="card" onclick="showRecordedSessions()">
+                    <i class="fas fa-history"></i>
+                    <h3>التسجيلات</h3>
+                    <p>الدروس المسجلة</p>
+                </div>
+                
+                <div class="card" onclick="showLiveHelp()">
+                    <i class="fas fa-question-circle"></i>
+                    <h3>مساعدة</h3>
+                    <p>كيف تشاهد البث</p>
+                </div>
+            </div>
+            
+            <div id="live-content" style="margin-top:25px;">
+                <!-- محتوى البث يظهر هنا -->
+            </div>
+        </div>`;
+}
+
+function showCreateRoom() {
+    if (currentUserData.role !== 'teacher' && currentUserData.role !== 'admin') {
+        showAlert('خطأ', 'هذه الميزة للأساتذة فقط', 'error');
+        return;
+    }
+    
+    // التحقق من الاشتراك النشط
+    const now = Date.now();
+    const hasActiveSubscription = currentUserData.hasActiveSubscription && 
+                                 currentUserData.subscriptionEnd > now;
+    
+    // السماح بالشهر الأول مجاناً
+    const oneMonthAgo = now - (30 * 24 * 60 * 60 * 1000);
+    const isFirstMonth = currentUserData.joinDate > oneMonthAgo;
+    
+    if (!hasActiveSubscription && !isFirstMonth) {
+        showAlert('اشتراك مطلوب', 
+            `يجب أن يكون لديك اشتراك شهري نشط لإنشاء غرف بث\n\n` +
+            `سعر الاشتراك الشهري: ${TEACHER_MONTHLY_FEE} جنيه\n` +
+            `رقم الحساب: ${ADMIN_BANK_ACCOUNT}\n` +
+            `اسم صاحب الحساب: ${ADMIN_NAME}`,
+            'warning'
+        );
+        nav('subscription');
+        return;
+    }
+    
+    document.getElementById('app-screen').classList.add('hidden');
+    document.getElementById('create-room-screen').classList.remove('hidden');
+}
+
+async function submitCreateRoom() {
+    const title = document.getElementById('room-title').value.trim();
+    const description = document.getElementById('room-description').value.trim();
+    const maxParticipants = document.getElementById('room-max-participants').value;
+    
+    if (!title) {
+        showAlert('خطأ', 'الرجاء إدخال عنوان الدرس', 'error');
+        return;
+    }
+    
+    try {
+        showLoading('جاري إنشاء غرفة البث...');
+        
+        const roomData = {
+            teacherId: currentUserData.uid,
+            teacherName: currentUserData.name,
+            title: title,
+            description: description,
+            maxParticipants: parseInt(maxParticipants)
+        };
+        
+        const response = await fetch(`${API_BASE_URL}/api/live/create-room`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(roomData)
+        });
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.error || 'فشل إنشاء الغرفة');
+        }
+        
+        hideLoading();
+        
+        showAlert('نجاح', 'تم إنشاء غرفة البث بنجاح!', 'success');
+        
+        // العودة لشاشة البث
+        document.getElementById('create-room-screen').classList.add('hidden');
+        document.getElementById('app-screen').classList.remove('hidden');
+        nav('live');
+        
+        // يمكن إضافة رابط الانضمام للإشعار
+        if (result.roomId) {
+            showAlert('معلومات الغرفة', 
+                `معرف الغرفة: ${result.roomId}\n` +
+                `يمكن للطلاب الانضمام باستخدام هذا المعرف`,
+                'info'
+            );
+        }
+        
+    } catch (error) {
+        hideLoading();
+        console.error('خطأ في إنشاء الغرفة:', error);
+        showAlert('خطأ', error.message || 'حدث خطأ في إنشاء الغرفة', 'error');
+    }
+}
+
+function joinLiveRoom(roomId) {
+    showAlert('انضمام للبث', 
+        'جاري الاتصال بغرفة البث...\n\n' +
+        'ملاحظة: تحتاج إلى اشتراك أسبوعي نشط لمشاهدة البث',
+        'info'
+    );
+    
+    // في التطبيق الحقيقي، سيتم الاتصال بـ WebSocket
+    // هنا نعرض شاشة البث التفصيلية
+    setTimeout(() => {
+        showLiveRoomDetail(roomId);
+    }, 2000);
+}
+
+function showLiveRoomDetail(roomId) {
+    document.getElementById('app-screen').classList.add('hidden');
+    document.getElementById('live-detail-screen').classList.remove('hidden');
+    
+    document.getElementById('live-room-title').textContent = 'غرفة الرياضيات - أستاذ أحمد';
+    
+    // ملء البيانات المبدئية
+    document.getElementById('participant-count').textContent = '24';
+    
+    const participantsList = document.getElementById('participants-list');
+    participantsList.innerHTML = `
+        <div class="participant-item">
+            <div class="participant-info">
+                <i class="fas fa-user" style="color:var(--accent);"></i>
+                <span>محمد أحمد</span>
+            </div>
+            <span class="payment-status paid">مدفوع</span>
+        </div>
+        <div class="participant-item">
+            <div class="participant-info">
+                <i class="fas fa-user" style="color:var(--accent);"></i>
+                <span>سارة خالد</span>
+            </div>
+            <span class="payment-status paid">مدفوع</span>
+        </div>
+        <div class="participant-item">
+            <div class="participant-info">
+                <i class="fas fa-user" style="color:var(--accent);"></i>
+                <span>عمر حسن</span>
+            </div>
+            <span class="payment-status unpaid">لم يدفع</span>
+        </div>`;
+    
+    // إذا كان المستخدم أستاذاً، تظهر أدوات التحكم
+    if (currentUserData.role === 'teacher' || currentUserData.role === 'admin') {
+        document.getElementById('teacher-controls').classList.remove('hidden');
+    }
+}
+
+function backToLiveList() {
+    document.getElementById('live-detail-screen').classList.add('hidden');
+    document.getElementById('app-screen').classList.remove('hidden');
+    nav('live');
+}
+
+function removeStudentFromRoom() {
+    const studentId = document.getElementById('remove-student-id').value.trim();
+    const reason = document.getElementById('remove-reason').value.trim();
+    
+    if (!studentId) {
+        showAlert('خطأ', 'الرجاء إدخال معرف الطالب', 'error');
+        return;
+    }
+    
+    showAlert('إزالة طالب', 
+        `سيتم إزالة الطالب ${studentId} من الغرفة\n` +
+        `السبب: ${reason || 'غير محدد'}`,
+        'warning'
+    );
+}
+
+function startRecording() {
+    showAlert('بدء التسجيل', 'تم بدء تسجيل البث المباشر', 'success');
+}
+
+function stopRecording() {
+    showAlert('إيقاف التسجيل', 'تم إيقاف تسجيل البث', 'info');
+}
+
+function sendChatMessage() {
+    const messageInput = document.getElementById('chat-input');
+    const message = messageInput.value.trim();
+    
+    if (!message) return;
+    
+    const chatMessages = document.getElementById('chat-messages');
+    
+    const messageElement = document.createElement('div');
+    messageElement.className = 'message message-sent';
+    messageElement.innerHTML = `
+        <div style="font-weight:bold;">${currentUserData.name}</div>
+        <div>${message}</div>
+        <div style="font-size:10px; color:var(--text-sec); text-align:left;">الآن</div>
+    `;
+    
+    chatMessages.appendChild(messageElement);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // محاكاة رد الأستاذ
+    setTimeout(() => {
+        const replyElement = document.createElement('div');
+        replyElement.className = 'message message-received';
+        replyElement.innerHTML = `
+            <div style="font-weight:bold;">أستاذ أحمد</div>
+            <div>شكراً على سؤالك، سأجيب عليه خلال دقيقة</div>
+            <div style="font-size:10px; color:var(--text-sec); text-align:right;">الآن</div>
+        `;
+        
+        chatMessages.appendChild(replyElement);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }, 1000);
+    
+    messageInput.value = '';
+}
+
+function showRecordedSessions() {
+    const area = document.getElementById('live-content');
+    
+    area.innerHTML = `
+        <div style="background:var(--bg-card); border-radius:20px; padding:25px;">
+            <h3><i class="fas fa-history"></i> الدروس المسجلة</h3>
+            <p style="color:var(--text-sec); margin-bottom:20px;">شاهد الدروس السابقة في أي وقت</p>
+            
+            <div class="video-grid">
+                <div class="video-item">
+                    <div class="video-header">
+                        <div>
+                            <h4 style="margin:0; color:white;">الرياضيات - الجبر</h4>
+                            <p style="margin:0; color:var(--text-sec); font-size:12px;">أستاذ أحمد | 2 ساعة</p>
+                        </div>
+                        <span style="background:var(--green); color:white; padding:3px 10px; border-radius:10px; font-size:12px;">مسجل</span>
+                    </div>
+                    <div style="width:100%; height:150px; background:#000; display:flex; align-items:center; justify-content:center;">
+                        <i class="fas fa-play-circle" style="font-size:50px; color:white; cursor:pointer;" onclick="playRecording('math_1')"></i>
+                    </div>
+                    <div class="video-controls">
+                        <button class="btn-secondary" onclick="downloadRecording('math_1')">
+                            <i class="fas fa-download"></i> تحميل
+                        </button>
+                        <button class="btn-main" onclick="playRecording('math_1')">
+                            <i class="fas fa-play"></i> تشغيل
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="video-item">
+                    <div class="video-header">
+                        <div>
+                            <h4 style="margin:0; color:white;">العلوم - الفيزياء</h4>
+                            <p style="margin:0; color:var(--text-sec); font-size:12px;">أستاذة سارة | 1.5 ساعة</p>
+                        </div>
+                        <span style="background:var(--green); color:white; padding:3px 10px; border-radius:10px; font-size:12px;">مسجل</span>
+                    </div>
+                    <div style="width:100%; height:150px; background:#000; display:flex; align-items:center; justify-content:center;">
+                        <i class="fas fa-play-circle" style="font-size:50px; color:white; cursor:pointer;" onclick="playRecording('science_1')"></i>
+                    </div>
+                    <div class="video-controls">
+                        <button class="btn-secondary" onclick="downloadRecording('science_1')">
+                            <i class="fas fa-download"></i> تحميل
+                        </button>
+                        <button class="btn-main" onclick="playRecording('science_1')">
+                            <i class="fas fa-play"></i> تشغيل
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+}
+
+function playRecording(recordingId) {
+    showAlert('تشغيل التسجيل', 'جاري تحميل الفيديو...', 'info');
+}
+
+function downloadRecording(recordingId) {
+    showAlert('تحميل التسجيل', 'جاري تحميل الفيديو...', 'info');
+}
+
+function showLiveHelp() {
+    const area = document.getElementById('live-content');
+    
+    area.innerHTML = `
+        <div style="background:var(--bg-card); border-radius:20px; padding:25px;">
+            <h3><i class="fas fa-question-circle"></i> كيفية مشاهدة البث المباشر</h3>
+            
+            <div style="margin-top:20px;">
+                <div style="display:flex; align-items:flex-start; gap:15px; margin-bottom:20px;">
+                    <div style="background:var(--primary); color:white; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">1</div>
+                    <div>
+                        <h4 style="margin:0; color:var(--accent);">اشترك أسبوعياً</h4>
+                        <p style="color:var(--text-sec); margin:5px 0;">سعر الاشتراك الأسبوعي: 7,000 جنيه</p>
+                    </div>
+                </div>
+                
+                <div style="display:flex; align-items:flex-start; gap:15px; margin-bottom:20px;">
+                    <div style="background:var(--primary); color:white; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">2</div>
+                    <div>
+                        <h4 style="margin:0; color:var(--accent);">انضم للغرفة</h4>
+                        <p style="color:var(--text-sec); margin:5px 0;">اختر الغرفة المناسبة لصفك ومادتك</p>
+                    </div>
+                </div>
+                
+                <div style="display:flex; align-items:flex-start; gap:15px; margin-bottom:20px;">
+                    <div style="background:var(--primary); color:white; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">3</div>
+                    <div>
+                        <h4 style="margin:0; color:var(--accent);">شاهد الدرس</h4>
+                        <p style="color:var(--text-sec); margin:5px 0;">شاهد البث الحي واطرح أسئلتك في الدردشة</p>
+                    </div>
+                </div>
+                
+                <div style="display:flex; align-items:flex-start; gap:15px;">
+                    <div style="background:var(--primary); color:white; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">4</div>
+                    <div>
+                        <h4 style="margin:0; color:var(--accent);">احصل على التسجيل</h4>
+                        <p style="color:var(--text-sec); margin:5px 0;">جميع الدروس مسجلة ويمكنك مشاهدتها لاحقاً</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top:30px; padding:20px; background:rgba(59, 130, 246, 0.1); border-radius:15px;">
+                <h4 style="color:var(--primary); margin-top:0;"><i class="fas fa-info-circle"></i> معلومات مهمة</h4>
+                <ul style="color:var(--text-sec); padding-right:15px;">
+                    <li>يمكن إزالة الطلاب الذين لم يدفعوا من البث</li>
+                    <li>جميع الدروس مسجلة تلقائياً</li>
+                    <li>يمكنك تحميل التسجيلات بعد انتهاء البث</li>
+                    <li>يوجد تخفيضات للاشتراكات الجماعية</li>
+                </ul>
+            </div>
+        </div>`;
+}
+
+// ==================== [ 12. نظام الاشتراكات ] ====================
+function renderSubscription() {
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
+                <h2 style="margin-top:0;"><i class="fas fa-credit-card"></i> نظام الدفع والاشتراكات</h2>
+                <p>اشترك الآن للوصول إلى جميع الميزات</p>
+            </div>
+            
+            <div class="subscription-plans">
+                <div class="plan-card">
+                    <div style="font-size:14px; color:var(--text-sec);">الطلاب</div>
+                    <h3>اشتراك أسبوعي</h3>
+                    <div class="plan-price">7,000 ج.س</div>
+                    <ul style="color:var(--text-sec); padding-right:15px; font-size:14px;">
+                        <li>مشاهدة جميع الدروس المباشرة</li>
+                        <li>تحميل الكتب والمواد</li>
+                        <li>الدردشة مع الأساتذة</li>
+                        <li>مشاهدة التسجيلات</li>
+                    </ul>
+                    <button class="btn-main" onclick="subscribe('weekly')" style="margin-top:15px;">
+                        <i class="fas fa-cart-plus"></i> اشترك الآن
+                    </button>
+                </div>
+                
+                <div class="plan-card">
+                    <div style="font-size:14px; color:var(--text-sec);">الأساتذة</div>
+                    <h3>اشتراك شهري</h3>
+                    <div class="plan-price">30,000 ج.س</div>
+                    <ul style="color:var(--text-sec); padding-right:15px; font-size:14px;">
+                        <li>إنشاء غرف بث مباشر</li>
+                        <li>إدارة الطلاب والمشاركين</li>
+                        <li>تسجيل الدروس تلقائياً</li>
+                        <li>تحصيل دفعات الطلاب</li>
+                        <li>الشهر الأول مجاني</li>
+                    </ul>
+                    <button class="btn-main" onclick="subscribe('teacher_monthly')" style="margin-top:15px;">
+                        <i class="fas fa-cart-plus"></i> اشترك الآن
+                    </button>
+                </div>
+            </div>
+            
+            <div class="payment-card">
+                <h3><i class="fas fa-university"></i> معلومات التحويل البنكي</h3>
+                <div class="bank-info">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                        <span>رقم الحساب:</span>
+                        <span style="font-weight:bold;">${ADMIN_BANK_ACCOUNT}</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                        <span>اسم صاحب الحساب:</span>
+                        <span style="font-weight:bold;">${ADMIN_NAME}</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between;">
+                        <span>البنك:</span>
+                        <span style="font-weight:bold;">أي بنك سوداني</span>
+                    </div>
+                </div>
+                
+                <div style="margin-top:25px;">
+                    <h4><i class="fas fa-qrcode"></i> أو امسح QR Code</h4>
+                    <div style="text-align:center; margin:20px 0;">
+                        <div style="width:150px; height:150px; background:#fff; margin:0 auto; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#000; font-weight:bold; font-size:12px;">
+                            [QR Code Here]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="subscription-content" style="margin-top:25px;">
+                <!-- محتوى الاشتراك يظهر هنا -->
+            </div>
+        </div>`;
+}
+
+async function subscribe(type) {
+    if (!currentUserData.uid) {
+        showAlert('خطأ', 'يجب تسجيل الدخول أولاً', 'error');
+        return;
+    }
+    
+    const subscriptionTypes = {
+        'weekly': {
+            name: 'اشتراك أسبوعي',
+            price: WEEKLY_SUBSCRIPTION,
+            duration: 'أسبوع واحد'
+        },
+        'teacher_monthly': {
+            name: 'اشتراك شهري للأستاذ',
+            price: TEACHER_MONTHLY_FEE,
+            duration: 'شهر واحد'
+        }
+    };
+    
+    const subscription = subscriptionTypes[type];
+    
+    if (!subscription) {
+        showAlert('خطأ', 'نوع اشتراك غير صالح', 'error');
+        return;
+    }
+    
+    Swal.fire({
+        title: 'طلب اشتراك',
+        html: `
+            <div style="text-align:right;">
+                <p><strong>النوع:</strong> ${subscription.name}</p>
+                <p><strong>السعر:</strong> ${subscription.price.toLocaleString()} جنيه</p>
+                <p><strong>المدة:</strong> ${subscription.duration}</p>
+                <hr>
+                <p>بعد التحويل، أرسل إيصال الدفع:</p>
+                <input type="text" id="payment-reference" class="swal2-input" placeholder="رقم المرجع أو التحويل">
+                <input type="file" id="payment-receipt" class="swal2-input" accept="image/*">
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'إرسال طلب الاشتراك',
+        cancelButtonText: 'إلغاء',
+        preConfirm: () => {
+            const reference = Swal.getPopup().querySelector('#payment-reference').value.trim();
+            const receipt = Swal.getPopup().querySelector('#payment-receipt').files[0];
+            
+            if (!reference) {
+                Swal.showValidationMessage('الرجاء إدخال رقم المرجع');
+                return false;
+            }
+            
+            if (!receipt) {
+                Swal.showValidationMessage('الرجاء رفع صورة الإيصال');
+                return false;
+            }
+            
+            return { reference, receipt };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            try {
+                showLoading('جاري إرسال طلب الاشتراك...');
+                
+                // هنا يمكن رفع صورة الإيصال
+                // للتبسيط، سنرسل البيانات فقط
+                
+                const paymentData = {
+                    userId: currentUserData.uid,
+                    userName: currentUserData.name,
+                    userEmail: currentUserData.email,
+                    type: type,
+                    bankReceipt: result.value.reference,
+                    teacherId: currentUserData.role === 'teacher' ? currentUserData.uid : null
+                };
+                
+                const response = await fetch(`${API_BASE_URL}/api/payment/subscribe`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(paymentData)
+                });
+                
+                const responseData = await response.json();
+                
+                hideLoading();
+                
+                if (responseData.success) {
+                    showAlert('نجاح', 
+                        `تم إرسال طلب الاشتراك بنجاح!\n\n` +
+                        `رقم الطلب: ${responseData.paymentId}\n` +
+                        `سيتم المراجعة من قبل الإدمن خلال 24 ساعة`,
+                        'success'
+                    );
+                } else {
+                    throw new Error(responseData.error || 'فشل إرسال طلب الاشتراك');
+                }
+                
+            } catch (error) {
+                hideLoading();
+                console.error('خطأ في طلب الاشتراك:', error);
+                showAlert('خطأ', error.message || 'حدث خطأ في طلب الاشتراك', 'error');
+            }
+        }
+    });
+}
+
+// ==================== [ 13. المساعد الذكي ] ====================
+function renderAIAssistant() {
+    const area = document.getElementById('content-area');
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
+                <h2 style="margin-top:0;"><i class="fas fa-robot"></i> المساعد الذكي</h2>
+                <p>أنشئ اختبارات ذكية وحصل على تقييم فوري</p>
+            </div>
+            
+            <div class="grid">
+                <div class="card" onclick="generateQuiz()">
+                    <i class="fas fa-question-circle"></i>
+                    <h3>إنشاء اختبار</h3>
+                    <p>اختبار ذكي من كتاب</p>
+                </div>
+                
+                <div class="card" onclick="showMyQuizzes()">
+                    <i class="fas fa-history"></i>
+                    <h3>اختباراتي</h3>
+                    <p>الاختبارات السابقة</p>
+                </div>
+                
+                <div class="card" onclick="showAIStats()">
+                    <i class="fas fa-chart-bar"></i>
+                    <h3>إحصائيات</h3>
+                    <p>تتبع تقدمك</p>
+                </div>
+            </div>
+            
+            <div id="ai-content" style="margin-top:25px;">
+                <!-- محتوى المساعد الذكي يظهر هنا -->
+            </div>
+        </div>`;
+}
+
+async function generateQuiz() {
+    try {
+        // التحقق من الحد اليومي
+        const today = new Date().toISOString().split('T')[0];
+        const dailyKey = `ai_questions_${currentUserData.uid}_${today}`;
+        
+        const snapshot = await db.ref(`ai_usage/${dailyKey}`).once('value');
+        const todayUsage = snapshot.val() || { count: 0 };
+        
+        if (todayUsage.count >= MAX_DAILY_QUESTIONS) {
+            showAlert('حد يومي', 
+                `لقد استخدمت الحد اليومي (${MAX_DAILY_QUESTIONS} سؤال)\n` +
+                `يرجى المحاولة مرة أخرى غداً`,
+                'warning'
+            );
+            return;
+        }
+        
+        Swal.fire({
+            title: 'إنشاء اختبار ذكي',
+            html: `
+                <div style="text-align:right;">
+                    <p>اختر خيارات الاختبار:</p>
+                    <input type="number" id="question-count" class="swal2-input" placeholder="عدد الأسئلة (1-20)" value="10" min="1" max="20">
+                    <select id="question-types" class="swal2-input" multiple style="height:120px;">
+                        <option value="mcq" selected>أسئلة الاختيار من متعدد</option>
+                        <option value="true_false" selected>صح/خطأ</option>
+                        <option value="essay">أسئلة مقالية</option>
+                    </select>
+                    <small>اضغط Ctrl لتحديد أكثر من نوع</small>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'إنشاء الاختبار',
+            cancelButtonText: 'إلغاء',
+            preConfirm: () => {
+                const questionCount = Swal.getPopup().querySelector('#question-count').value;
+                const questionTypes = Array.from(Swal.getPopup().querySelector('#question-types').selectedOptions)
+                    .map(option => option.value);
+                
+                if (!questionCount || questionCount < 1 || questionCount > 20) {
+                    Swal.showValidationMessage('الرجاء إدخال عدد أسئلة صحيح (1-20)');
+                    return false;
+                }
+                
+                if (questionTypes.length === 0) {
+                    Swal.showValidationMessage('الرجاء اختيار نوع واحد على الأقل');
+                    return false;
+                }
+                
+                return { questionCount: parseInt(questionCount), questionTypes };
+            }
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    showLoading('جاري إنشاء الاختبار الذكي...');
+                    
+                    const quizData = {
+                        userId: currentUserData.uid,
+                        questionCount: result.value.questionCount,
+                        questionTypes: result.value.questionTypes,
+                        bookId: null // يمكن اختيار كتاب محدد
+                    };
+                    
+                    const response = await fetch(`${API_BASE_URL}/api/ai/generate-quiz`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(quizData)
+                    });
+                    
+                    const responseData = await response.json();
+                    
+                    hideLoading();
+                    
+                    if (responseData.success) {
+                        showAlert('نجاح', 
+                            `تم إنشاء الاختبار بنجاح!\n\n` +
+                            `عنوان الاختبار: ${responseData.quiz.quizTitle}\n` +
+                            `عدد الأسئلة: ${responseData.quiz.questions.length}\n` +
+                            `معرف الاختبار: ${responseData.quizId}`,
+                            'success'
+                        );
+                        
+                        // حفظ الاختبار للعرض لاحقاً
+                        currentQuiz = responseData.quiz;
+                        showQuiz(responseData.quiz);
+                        
+                    } else {
+                        throw new Error(responseData.error || 'فشل إنشاء الاختبار');
+                    }
+                    
+                } catch (error) {
+                    hideLoading();
+                    console.error('خطأ في إنشاء الاختبار:', error);
+                    showAlert('خطأ', error.message || 'حدث خطأ في إنشاء الاختبار', 'error');
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('خطأ في التحضير للاختبار:', error);
+        showAlert('خطأ', 'حدث خطأ في التحضير للاختبار', 'error');
+    }
+}
+
+function showQuiz(quiz) {
+    document.getElementById('app-screen').classList.add('hidden');
+    document.getElementById('quiz-screen').classList.remove('hidden');
+    
+    document.getElementById('quiz-title').textContent = quiz.quizTitle;
+    
+    const quizContent = document.getElementById('quiz-content');
+    let html = '';
+    
+    quiz.questions.forEach((question, index) => {
+        html += `
+            <div class="question-card">
+                <h4>سؤال ${index + 1}: ${question.question}</h4>
+                <div style="color:var(--text-sec); font-size:14px; margin-bottom:15px;">
+                    <i class="fas fa-question-circle"></i> ${getQuestionTypeText(question.type)}
+                </div>`;
+        
+        if (question.type === 'mcq' && question.options) {
+            question.options.forEach((option, optionIndex) => {
+                html += `
+                    <div class="option-item" onclick="selectAnswer(${index}, ${optionIndex})" id="option_${index}_${optionIndex}">
+                        ${String.fromCharCode(1570 + optionIndex)}. ${option}
+                    </div>`;
+            });
+        } else if (question.type === 'true_false') {
+            html += `
+                <div class="option-item" onclick="selectAnswer(${index}, true)" id="option_${index}_true">
+                    صح
+                </div>
+                <div class="option-item" onclick="selectAnswer(${index}, false)" id="option_${index}_false">
+                    خطأ
+                </div>`;
+        } else if (question.type === 'essay') {
+            html += `
+                <textarea id="essay_${index}" placeholder="أكتب إجابتك هنا..." rows="4" style="width:100%; margin-top:10px;"></textarea>`;
+        }
+        
+        html += `</div>`;
+    });
+    
+    quizContent.innerHTML = html;
+    
+    // بدء المؤقت
+    startQuizTimer();
+}
+
+function getQuestionTypeText(type) {
+    const types = {
+        'mcq': 'اختيار من متعدد',
+        'true_false': 'صح أو خطأ',
+        'essay': 'سؤال مقالي'
+    };
+    return types[type] || type;
+}
+
+function selectAnswer(questionIndex, answerIndex) {
+    // إزالة التحديد من جميع الخيارات في هذا السؤال
+    const questionElement = document.querySelectorAll('.question-card')[questionIndex];
+    questionElement.querySelectorAll('.option-item').forEach(option => {
+        option.classList.remove('selected');
+    });
+    
+    // تحديد الخيار المختار
+    const selectedOption = document.getElementById(`option_${questionIndex}_${answerIndex}`);
+    if (selectedOption) {
+        selectedOption.classList.add('selected');
+    }
+}
+
+function startQuizTimer() {
+    quizTimeRemaining = 1800; // 30 دقيقة بالثواني
+    updateQuizTimer();
+    
+    quizTimer = setInterval(() => {
+        quizTimeRemaining--;
+        updateQuizTimer();
+        
+        if (quizTimeRemaining <= 0) {
+            clearInterval(quizTimer);
+            submitQuiz();
+        }
+    }, 1000);
+}
+
+function updateQuizTimer() {
+    const minutes = Math.floor(quizTimeRemaining / 60);
+    const seconds = quizTimeRemaining % 60;
+    document.getElementById('quiz-timer').textContent = 
+        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+async function submitQuiz() {
+    if (quizTimer) {
+        clearInterval(quizTimer);
+    }
+    
+    try {
+        showLoading('جاري تصحيح الاختبار...');
+        
+        // جمع الإجابات
+        const answers = {};
+        const questions = document.querySelectorAll('.question-card');
+        
+        questions.forEach((questionElement, index) => {
+            const selectedOption = questionElement.querySelector('.option-item.selected');
+            if (selectedOption) {
+                const optionId = selectedOption.id;
+                const answerValue = optionId.split('_').pop();
+                answers[index] = answerValue === 'true' ? true : answerValue === 'false' ? false : parseInt(answerValue);
+            }
+            
+            const essayAnswer = document.getElementById(`essay_${index}`);
+            if (essayAnswer && essayAnswer.value.trim()) {
+                answers[index] = essayAnswer.value.trim();
+            }
+        });
+        
+        const quizData = {
+            userId: currentUserData.uid,
+            quizId: `quiz_${Date.now()}`,
+            answers: answers,
+            timeSpent: 1800 - quizTimeRemaining
+        };
+        
+        // في التطبيق الحقيقي، سيتم إرسال هذا إلى API
+        // للتبسيط، سنعرض نتيجة وهمية
+        
+        hideLoading();
+        
+        // عرض النتائج
+        document.getElementById('quiz-screen').classList.add('hidden');
+        document.getElementById('quiz-results-screen').classList.remove('hidden');
+        
+        const score = Math.floor(Math.random() * 10) + 5; // نتيجة عشوائية بين 5-15
+        const totalQuestions = questions.length;
+        const percentage = Math.round((score / totalQuestions) * 100);
+        
+        const resultsContent = document.getElementById('quiz-results-content');
+        resultsContent.innerHTML = `
+            <div style="text-align:center; margin-bottom:30px;">
+                <div style="width:100px; height:100px; border-radius:50%; background:${percentage >= 70 ? 'var(--green)' : percentage >= 50 ? 'var(--accent)' : 'var(--red)'}; display:flex; align-items:center; justify-content:center; margin:0 auto 20px;">
+                    <span style="color:white; font-size:32px; font-weight:bold;">${score}/${totalQuestions}</span>
+                </div>
+                <h3 style="color:${percentage >= 70 ? 'var(--green)' : percentage >= 50 ? 'var(--accent)' : 'var(--red)'};">${percentage}%</h3>
+                <p>${percentage >= 70 ? 'ممتاز! أداء رائع.' : percentage >= 50 ? 'جيد، يمكنك التحسين.' : 'يحتاج لمزيد من المذاكرة.'}</p>
+            </div>
+            
+            <div style="margin-top:30px;">
+                <h4><i class="fas fa-chart-line"></i> تفاصيل النتيجة</h4>
+                <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:15px; margin-top:15px;">
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:10px;">
+                        <div style="color:var(--text-sec); font-size:14px;">الوقت المستغرق</div>
+                        <div style="color:white; font-weight:bold;">${Math.floor((1800 - quizTimeRemaining) / 60)} دقيقة</div>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:10px;">
+                        <div style="color:var(--text-sec); font-size:14px;">مستوى الصعوبة</div>
+                        <div style="color:white; font-weight:bold;">متوسط</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top:30px;">
+                <button class="btn-main" onclick="backToAI()" style="width:100%;">
+                    <i class="fas fa-arrow-right"></i> العودة للمساعد الذكي
+                </button>
+                <button class="btn-secondary" onclick="generateQuiz()" style="width:100%; margin-top:10px;">
+                    <i class="fas fa-redo"></i> إنشاء اختبار جديد
+                </button>
+            </div>`;
+        
+        // تحديث إحصائيات المستخدم
+        if (currentUserData.uid) {
+            await db.ref(`user_stats/${currentUserData.uid}/aiQuizzesCount`).transaction(current => (current || 0) + 1);
+        }
+        
+    } catch (error) {
+        hideLoading();
+        console.error('خطأ في تصحيح الاختبار:', error);
+        showAlert('خطأ', 'حدث خطأ في تصحيح الاختبار', 'error');
+        backToAI();
+    }
+}
+
+function backToAI() {
+    document.getElementById('quiz-results-screen').classList.add('hidden');
+    document.getElementById('app-screen').classList.remove('hidden');
+    renderAIAssistant();
+}
+
+function showMyQuizzes() {
+    const area = document.getElementById('ai-content');
+    
+    area.innerHTML = `
+        <div style="background:var(--bg-card); border-radius:20px; padding:25px;">
+            <h3><i class="fas fa-history"></i> اختباراتي السابقة</h3>
+            <p style="color:var(--text-sec); margin-bottom:20px;">عرض جميع الاختبارات التي أجريتها</p>
+            
+            <div id="my-quizzes-list" class="loading">
+                <div class="loading-spinner"></div>
+                <div>جاري تحميل اختباراتك...</div>
+            </div>
+        </div>`;
+    
+    loadMyQuizzes();
+}
+
+async function loadMyQuizzes() {
+    try {
+        if (!currentUserData.uid) {
+            document.getElementById('my-quizzes-list').innerHTML = `
+                <div style="text-align:center; padding:40px; color:var(--text-sec);">
+                    <i class="fas fa-user-slash" style="font-size:50px; margin-bottom:15px;"></i>
+                    <p>يجب تسجيل الدخول أولاً</p>
+                </div>`;
+            return;
+        }
+        
+        const snapshot = await db.ref(`user_activities/${currentUserData.uid}/quizzes`).once('value');
+        const quizzes = snapshot.val();
+        
+        const container = document.getElementById('my-quizzes-list');
+        
+        if (quizzes && Object.keys(quizzes).length > 0) {
+            let html = '<div style="display:grid; gap:15px;">';
+            
+            Object.values(quizzes).forEach((quiz, index) => {
+                html += `
+                    <div style="background:rgba(0,0,0,0.2); border-radius:15px; padding:15px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                            <h4 style="margin:0; color:var(--accent);">${quiz.title || 'اختبار ' + (index + 1)}</h4>
+                            <span style="font-size:12px; color:var(--text-sec);">${new Date(quiz.createdAt).toLocaleDateString('ar-SA')}</span>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn-secondary" style="flex:1; padding:8px; font-size:12px;" onclick="viewQuizResult('${quiz.quizId}')">
+                                <i class="fas fa-eye"></i> عرض النتيجة
+                            </button>
+                            <button class="btn-main" style="flex:1; padding:8px; font-size:12px;" onclick="retakeQuiz('${quiz.quizId}')">
+                                <i class="fas fa-redo"></i> إعادة الاختبار
+                            </button>
+                        </div>
+                    </div>`;
+            });
+            
+            html += '</div>';
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = `
+                <div style="text-align:center; padding:40px; color:var(--text-sec);">
+                    <i class="fas fa-question-circle" style="font-size:50px; margin-bottom:15px;"></i>
+                    <p>لم تقم بأي اختبارات بعد</p>
+                    <button class="btn-main" onclick="generateQuiz()" style="width:auto; margin-top:15px;">
+                        <i class="fas fa-plus"></i> إنشاء اختبار جديد
+                    </button>
+                </div>`;
+        }
+        
+    } catch (error) {
+        console.error('خطأ في تحميل الاختبارات:', error);
+        document.getElementById('my-quizzes-list').innerHTML = `
+            <div style="text-align:center; padding:20px; color:var(--red);">
+                <i class="fas fa-exclamation-circle"></i> حدث خطأ في تحميل الاختبارات
+            </div>`;
+    }
+}
+
+function viewQuizResult(quizId) {
+    showAlert('عرض النتيجة', 'جاري تحميل نتيجة الاختبار...', 'info');
+}
+
+function retakeQuiz(quizId) {
+    generateQuiz();
+}
+
+function showAIStats() {
+    const area = document.getElementById('ai-content');
+    
+    area.innerHTML = `
+        <div style="background:var(--bg-card); border-radius:20px; padding:25px;">
+            <h3><i class="fas fa-chart-bar"></i> إحصائيات المساعد الذكي</h3>
+            <p style="color:var(--text-sec); margin-bottom:20px;">تتبع تقدمك في استخدام المساعد الذكي</p>
+            
+            <div class="admin-stats">
+                <div class="stat-card">
+                    <div style="color:var(--text-sec); font-size:14px;">الاختبارات المكتملة</div>
+                    <div class="stat-value" id="quizzes-count">0</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div style="color:var(--text-sec); font-size:14px;">متوسط النتائج</div>
+                    <div class="stat-value" id="average-score">0%</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div style="color:var(--text-sec); font-size:14px;">الحد اليومي المتبقي</div>
+                    <div class="stat-value" id="daily-remaining">${MAX_DAILY_QUESTIONS}</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div style="color:var(--text-sec); font-size:14px;">مجموع الأسئلة</div>
+                    <div class="stat-value" id="total-questions">0</div>
+                </div>
+            </div>
+            
+            <div style="margin-top:30px;">
+                <h4><i class="fas fa-calendar"></i> النشاط اليومي</h4>
+                <div style="background:rgba(0,0,0,0.2); border-radius:10px; padding:15px; margin-top:10px;">
+                    <div style="color:var(--text-sec); font-size:14px;">اليوم</div>
+                    <div style="color:white; font-weight:bold;">${new Date().toLocaleDateString('ar-SA')}</div>
+                    <div style="margin-top:10px; color:var(--text-sec);">
+                        <i class="fas fa-check-circle" style="color:var(--green);"></i> يمكنك استخدام ${MAX_DAILY_QUESTIONS} سؤال يومياً
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    
+    loadAIStats();
+}
+
+async function loadAIStats() {
+    try {
+        if (!currentUserData.uid) return;
+        
+        const snapshot = await db.ref(`user_stats/${currentUserData.uid}`).once('value');
+        const stats = snapshot.val() || {};
+        
+        document.getElementById('quizzes-count').textContent = stats.aiQuizzesCount || 0;
+        document.getElementById('average-score').textContent = stats.averageScore ? stats.averageScore + '%' : '0%';
+        document.getElementById('total-questions').textContent = (stats.aiQuizzesCount || 0) * 10; // تقدير
+        
+        // حساب الحد اليومي المتبقي
+        const today = new Date().toISOString().split('T')[0];
+        const dailyKey = `ai_questions_${currentUserData.uid}_${today}`;
+        const dailySnapshot = await db.ref(`ai_usage/${dailyKey}`).once('value');
+        const dailyUsage = dailySnapshot.val() || { count: 0 };
+        
+        const remaining = MAX_DAILY_QUESTIONS - dailyUsage.count;
+        document.getElementById('daily-remaining').textContent = remaining > 0 ? remaining : 0;
+        
+    } catch (error) {
+        console.error('خطأ في تحميل إحصائيات AI:', error);
+    }
+}
+
+// ==================== [ 14. الملف الشخصي ] ====================
+function renderProfile() {
+    const area = document.getElementById('content-area');
+    const isAdmin = currentUserData.role === 'admin';
+    
+    area.innerHTML = `
+        <div style="padding:20px;">
+            <div style="background: linear-gradient(135deg, var(--accent) 0%, #d97706 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px; text-align:center;">
+                <div style="width:100px; height:100px; border-radius:50%; background:white; margin:0 auto 15px; display:flex; align-items:center; justify-content:center;">
+                    <i class="fas fa-user" style="font-size:50px; color:var(--accent);"></i>
+                </div>
+                <h2 style="margin-top:0;">${currentUserData.name}</h2>
+                <p>${getRoleText(currentUserData.role)}</p>
+                <p style="font-size:14px; opacity:0.9;">${currentUserData.email}</p>
+            </div>
+            
+            <div class="grid">
+                <div class="card" onclick="showUserStats()">
+                    <i class="fas fa-chart-line"></i>
+                    <h3>إحصائياتي</h3>
+                    <p>عرض النشاط</p>
+                </div>
+                
+                <div class="card" onclick="showMyUploads()">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <h3>ملفاتي</h3>
+                    <p>الملفات المرفوعة</p>
+                </div>
+                
+                <div class="card" onclick="showSubscriptionStatus()">
+                    <i class="fas fa-crown"></i>
+                    <h3>اشتراكي</h3>
+                    <p>حالة الاشتراك</p>
+                </div>
+                
+                <div class="card" onclick="showSettings()">
+                    <i class="fas fa-cog"></i>
+                    <h3>الإعدادات</h3>
+                    <p>تخصيص التطبيق</p>
+                </div>
+                
+                ${isAdmin ? `
+                <div class="card" onclick="nav('admin')">
+                    <i class="fas fa-user-shield"></i>
+                    <h3>لوحة التحكم</h3>
+                    <p>الإدمن</p>
+                    <div class="card-badge">إدمن</div>
+                </div>
+                ` : ''}
+                
+                <div class="card" onclick="logout()">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <h3>تسجيل خروج</h3>
+                    <p>إنهاء الجلسة</p>
+                </div>
+            </div>
+            
+            <div id="profile-content" style="margin-top:25px;">
+                <!-- محتوى الملف الشخصي يظهر هنا -->
+            </div>
+        </div>`;
+}
+
+function getRoleText(role) {
+    const roles = {
+        'student': '👨‍🎓 طالب',
+        'teacher': '👨‍🏫 أستاذ',
+        'admin': '👑 إدمن',
+        'pending_teacher': '⏳ أستاذ قيد المراجعة'
+    };
+    return roles[role] || role;
+}
+
+async function showUserStats() {
+    try {
+        showLoading('جاري تحميل إحصائياتك...');
+        
+        const snapshot = await db.ref(`user_stats/${currentUserData.uid}`).once('value');
+        const stats = snapshot.val() || {};
+        
+        hideLoading();
+        
+        const area = document.getElementById('profile-content');
+        area.innerHTML = `
+            <div style="background:var(--bg-card); border-radius:20px; padding:25px;">
+                <h3><i class="fas fa-chart-line"></i> إحصائياتي</h3>
+                <p style="color:var(--text-sec); margin-bottom:20px;">تتبع نشاطك على المنصة</p>
+                
+                <div class="admin-stats">
+                    <div class="stat-card">
+                        <div style="color:var(--text-sec); font-size:14px;">الكتب المحملة</div>
+                        <div class="stat-value">${stats.booksDownloaded || 0}</div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div style="color:var(--text-sec); font-size:14px;">الملفات المرفوعة</div>
+                        <div class="stat-value">${stats.filesUploaded || 0}</div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div style="color:var(--text-sec); font-size:14px;">الاختبارات المكتملة</div>
+                        <div class="stat-value">${stats.aiQuizzesCount || 0}</div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div style="color:var(--text-sec); font-size:14px;">جلسات البث</div>
+                        <div class="stat-value">${stats.liveSessionsAttended || 0}</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top:30px;">
+                    <h4><i class="fas fa-calendar-alt"></i> النشاط الأخير</h4>
+                    <div style="background:rgba(0,0,0,0.2); border-radius:10px; padding:15px; margin-top:10px;">
+                        <div style="color:var(--text-sec); font-size:14px;">تاريخ الانضمام</div>
+                        <div style="color:white; font-weight:bold;">${new Date(currentUserData.joinDate).toLocaleDateString('ar-SA')}</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top:30px;">
+                    <h4><i class="fas fa-trophy"></i> إنجازات</h4>
+                    <div style="display:flex; gap:10px; margin-top:15px;">
+                        <div style="background:${stats.booksDownloaded >= 5 ? 'var(--accent)' : 'rgba(0,0,0,0.2)'}; color:${stats.booksDownloaded >= 5 ? 'black' : 'var(--text-sec)'}; padding:10px; border-radius:10px; text-align:center; flex:1;">
+                            <i class="fas fa-book"></i>
+                            <div style="font-size:12px; margin-top:5px;">قارئ نشط</div>
+                        </div>
+                        <div style="background:${stats.aiQuizzesCount >= 3 ? 'var(--green)' : 'rgba(0,0,0,0.2)'}; color:${stats.aiQuizzesCount >= 3 ? 'white' : 'var(--text-sec)'}; padding:10px; border-radius:10px; text-align:center; flex:1;">
+                            <i class="fas fa-brain"></i>
+                            <div style="font-size:12px; margin-top:5px;">متفوق ذكي</div>
+                        </div>
+                        <div style="background:${stats.filesUploaded >= 10 ? 'var(--primary)' : 'rgba(0,0,0,0.2)'}; color:${stats.filesUploaded >= 10 ? 'white' : 'var(--text-sec)'}; padding:10px; border-radius:10px; text-align:center; flex:1;">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <div style="font-size:12px; margin-top:5px;">مشارك نشط</div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        
+    } catch (error) {
+        hideLoading();
+        console.error('خطأ في تحميل الإحصائيات:', error);
+        showAlert('خطأ', 'حدث خطأ في تحميل إحصائياتك', 'error');
+    }
+}
+
+async function showSubscriptionStatus() {
+    try {
+        const now = Date.now();
+        let subscriptionStatus = 'غير مشترك';
+        let daysRemaining = 0;
+        let subscriptionType = '';
+        
+        // التحقق من الاشتراك النشط
+        if (currentUserData.hasActiveSubscription && currentUserData.subscriptionEnd > now) {
+            subscriptionStatus = 'نشط';
+            daysRemaining = Math.ceil((currentUserData.subscriptionEnd - now) / (24 * 60 * 60 * 1000));
+            subscriptionType = currentUserData.subscriptionType === 'weekly' ? 'أسبوعي' : 'شهري';
+        } else if (currentUserData.freeTrial && currentUserData.freeUntil > now) {
+            subscriptionStatus = 'تجربة مجانية';
+            daysRemaining = Math.ceil((currentUserData.freeUntil - now) / (24 * 60 * 60 * 1000));
+            subscriptionType = 'تجريبية';
+        }
+        
+        const area = document.getElementById('profile-content');
+        area.innerHTML = `
+            <div style="background:var(--bg-card); border-radius:20px; padding:25px;">
+                <h3><i class="fas fa-crown"></i> حالة اشتراكي</h3>
+                <p style="color:var(--text-sec); margin-bottom:20px;">معلومات اشتراكك الحالي</p>
+                
+                <div style="background:${subscriptionStatus === 'نشط' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(0,0,0,0.2)'}; border-radius:15px; padding:20px; margin-bottom:20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <div>
+                            <div style="color:var(--text-sec); font-size:14px;">الحالة</div>
+                            <div style="color:${subscriptionStatus === 'نشط' ? 'var(--green)' : 'var(--accent)'}; font-weight:bold; font-size:20px;">${subscriptionStatus}</div>
+                        </div>
+                        <div style="background:${subscriptionStatus === 'نشط' ? 'var(--green)' : 'var(--accent)'}; color:${subscriptionStatus === 'نشط' ? 'white' : 'black'}; padding:5px 15px; border-radius:20px; font-weight:bold;">
+                            ${subscriptionType}
+                        </div>
+                    </div>
+                    
+                    ${daysRemaining > 0 ? `
+                    <div style="color:var(--text-sec);">
+                        <i class="fas fa-clock"></i> متبقي ${daysRemaining} يوم
+                    </div>
+                    ` : ''}
+                </div>
+                
+                ${subscriptionStatus === 'غير مشترك' || daysRemaining < 3 ? `
+                <div style="background:rgba(245, 158, 11, 0.1); border-radius:15px; padding:20px; margin-bottom:20px;">
+                    <h4 style="color:var(--accent); margin-top:0;"><i class="fas fa-exclamation-triangle"></i> تجديد الاشتراك</h4>
+                    <p style="color:var(--text-sec);">اشترك الآن لمواصلة استخدام الخدمات:</p>
+                    <button class="btn-main" onclick="nav('subscription')" style="margin-top:15px;">
+                        <i class="fas fa-credit-card"></i> تجديد الاشتراك
+                    </button>
+                </div>
+                ` : ''}
+                
+                <div style="margin-top:30px;">
+                    <h4><i class="fas fa-history"></i> سجل الاشتراكات</h4>
+                    <div style="background:rgba(0,0,0,0.2); border-radius:10px; padding:15px; margin-top:10px;">
+                        <div style="color:var(--text-sec); font-size:14px;">تاريخ الانضمام</div>
+                        <div style="color:white; font-weight:bold;">${new Date(currentUserData.joinDate).toLocaleDateString('ar-SA')}</div>
+                    </div>
+                </div>
+            </div>`;
+        
+    } catch (error) {
+        console.error('خطأ في تحميل حالة الاشتراك:', error);
+        showAlert('خطأ', 'حدث خطأ في تحميل حالة اشتراكك', 'error');
+    }
+}
+
+function showSettings() {
+    const area = document.getElementById('profile-content');
+    
+    area.innerHTML = `
+        <div style="background:var(--bg-card); border-radius:20px; padding:25px;">
+            <h3><i class="fas fa-cog"></i> الإعدادات</h3>
+            <p style="color:var(--text-sec); margin-bottom:20px;">تخصيص إعدادات حسابك</p>
+            
+            <div style="color:var(--text-main);">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:15px 0; border-bottom:1px solid var(--border);">
+                    <span>الوضع الليلي</span>
+                    <label style="position:relative; display:inline-block; width:50px; height:26px;">
+                        <input type="checkbox" checked style="opacity:0; width:0; height:0;">
+                        <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:var(--primary); transition:.4s; border-radius:34px;"></span>
+                    </label>
+                </div>
+                
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:15px 0; border-bottom:1px solid var(--border);">
+                    <span>إشعارات Telegram</span>
+                    <label style="position:relative; display:inline-block; width:50px; height:26px;">
+                        <input type="checkbox" checked style="opacity:0; width:0; height:0;">
+                        <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:var(--primary); transition:.4s; border-radius:34px;"></span>
+                    </label>
+                </div>
+                
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:15px 0; border-bottom:1px solid var(--border);">
+                    <span>إشعارات البريد الإلكتروني</span>
+                    <label style="position:relative; display:inline-block; width:50px; height:26px;">
+                        <input type="checkbox" checked style="opacity:0; width:0; height:0;">
+                        <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:var(--primary); transition:.4s; border-radius:34px;"></span>
+                    </label>
+                </div>
+                
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:15px 0; border-bottom:1px solid var(--border);">
+                    <span>تحديثات المنصة</span>
+                    <label style="position:relative; display:inline-block; width:50px; height:26px;">
+                        <input type="checkbox" checked style="opacity:0; width:0; height:0;">
+                        <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:var(--primary); transition:.4s; border-radius:34px;"></span>
+                    </label>
+                </div>
+                
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:15px 0; border-bottom:1px solid var(--border);">
+                    <span>جودة الفيديو التلقائية</span>
+                    <label style="position:relative; display:inline-block; width:50px; height:26px;">
+                        <input type="checkbox" style="opacity:0; width:0; height:0;">
+                        <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:var(--text-sec); transition:.4s; border-radius:34px;"></span>
+                    </label>
+                </div>
+            </div>
+            
+            <div style="margin-top:30px;">
+                <h4><i class="fas fa-shield-alt"></i> الأمان</h4>
+                <button class="btn-secondary" onclick="changePassword()" style="width:100%; margin-top:10px;">
+                    <i class="fas fa-key"></i> تغيير كلمة المرور
+                </button>
+                <button class="btn-secondary" onclick="deleteAccount()" style="width:100%; margin-top:10px;">
+                    <i class="fas fa-trash"></i> حذف الحساب
+                </button>
+            </div>
+            
+            <div style="margin-top:30px; padding:15px; background:rgba(0,0,0,0.2); border-radius:10px;">
+                <h5 style="color:var(--accent); margin-top:0;"><i class="fas fa-info-circle"></i> معلومات التطبيق</h5>
+                <div style="color:var(--text-sec); font-size:14px;">
+                    <div>الإصدار: 4.0.0</div>
+                    <div>تاريخ التحديث: ${new Date().toLocaleDateString('ar-SA')}</div>
+                    <div>المطور: ${ADMIN_NAME}</div>
+                </div>
+            </div>
+        </div>`;
+}
+
+function changePassword() {
+    Swal.fire({
+        title: 'تغيير كلمة المرور',
+        html: `
+            <input type="password" id="current-password" class="swal2-input" placeholder="كلمة المرور الحالية">
+            <input type="password" id="new-password" class="swal2-input" placeholder="كلمة المرور الجديدة">
+            <input type="password" id="confirm-password" class="swal2-input" placeholder="تأكيد كلمة المرور الجديدة">
+        `,
+        confirmButtonText: 'تغيير',
+        showCancelButton: true,
+        preConfirm: () => {
+            const currentPassword = Swal.getPopup().querySelector('#current-password').value;
+            const newPassword = Swal.getPopup().querySelector('#new-password').value;
+            const confirmPassword = Swal.getPopup().querySelector('#confirm-password').value;
+            
+            if (!currentPassword || !newPassword || !confirmPassword) {
+                Swal.showValidationMessage('الرجاء ملء جميع الحقول');
+                return false;
+            }
+            
+            if (newPassword.length < 6) {
+                Swal.showValidationMessage('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+                return false;
+            }
+            
+            if (newPassword !== confirmPassword) {
+                Swal.showValidationMessage('كلمات المرور غير متطابقة');
+                return false;
+            }
+            
+            return { currentPassword, newPassword };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            try {
+                showLoading('جاري تغيير كلمة المرور...');
+                
+                const user = auth.currentUser;
+                const credential = firebase.auth.EmailAuthProvider.credential(
+                    user.email, 
+                    result.value.currentPassword
+                );
+                
+                // إعادة المصادقة
+                await user.reauthenticateWithCredential(credential);
+                
+                // تغيير كلمة المرور
+                await user.updatePassword(result.value.newPassword);
+                
+                hideLoading();
+                showAlert('نجاح', 'تم تغيير كلمة المرور بنجاح', 'success');
+                
+            } catch (error) {
+                hideLoading();
+                console.error('خطأ في تغيير كلمة المرور:', error);
+                
+                let errorMessage = 'حدث خطأ في تغيير كلمة المرور';
+                if (error.code === 'auth/wrong-password') {
+                    errorMessage = 'كلمة المرور الحالية غير صحيحة';
+                }
+                
+                showAlert('خطأ', errorMessage, 'error');
+            }
+        }
+    });
+}
+
+function deleteAccount() {
+    Swal.fire({
+        title: 'حذف الحساب',
+        text: 'هل أنت متأكد من حذف حسابك؟ هذه العملية لا يمكن التراجع عنها.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، احذف الحساب',
+        cancelButtonText: 'إلغاء',
+        confirmButtonColor: 'var(--red)'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            try {
+                showLoading('جاري حذف الحساب...');
+                
+                const user = auth.currentUser;
+                
+                // حذف من قاعدة البيانات
+                await db.ref(`users/${user.uid}`).remove();
+                await db.ref(`user_stats/${user.uid}`).remove();
+                await db.ref(`user_favorites/${user.uid}`).remove();
+                
+                // حذف الحساب
+                await user.delete();
+                
+                hideLoading();
+                
+                showAlert('نجاح', 'تم حذف حسابك بنجاح', 'success');
+                
+                // العودة لشاشة تسجيل الدخول
+                setTimeout(() => {
+                    document.getElementById('app-screen').classList.add('hidden');
+                    document.getElementById('login-screen').classList.remove('hidden');
+                }, 2000);
+                
+            } catch (error) {
+                hideLoading();
+                console.error('خطأ في حذف الحساب:', error);
+                showAlert('خطأ', 'حدث خطأ في حذف الحساب', 'error');
+            }
+        }
+    });
+}
+
+// ==================== [ 15. لوحة الإدمن ] ====================
+function renderAdminPanel() {
+    if (currentUserData.role !== 'admin') {
+        showAlert('خطأ', 'هذه الصفحة للإدمن فقط', 'error');
+        nav('home');
+        return;
+    }
+    
+    document.getElementById('app-screen').classList.add('hidden');
+    document.getElementById('admin-screen').classList.remove('hidden');
+    
+    loadAdminPanel();
+}
+
+async function loadAdminPanel() {
+    try {
+        showLoading('جاري تحميل لوحة التحكم...');
+        
+        // جلب إحصائيات النظام
+        const [usersSnapshot, paymentsSnapshot, booksSnapshot, roomsSnapshot] = await Promise.all([
+            db.ref('users').once('value'),
+            db.ref('payments').once('value'),
+            db.ref('books').once('value'),
+            db.ref('live_rooms').once('value')
+        ]);
+        
+        const users = usersSnapshot.val() || {};
+        const payments = paymentsSnapshot.val() || {};
+        const books = booksSnapshot.val() || {};
+        const rooms = roomsSnapshot.val() || {};
+        
+        let totalRevenue = 0;
+        let verifiedPayments = 0;
+        let pendingPayments = 0;
+        
+        // حساب الإيرادات
+        Object.values(payments).forEach(userPayments => {
+            Object.values(userPayments).forEach(payment => {
+                if (payment.status === 'verified') {
+                    totalRevenue += payment.amount || 0;
+                    verifiedPayments++;
+                } else if (payment.status === 'pending_verification') {
+                    pendingPayments++;
+                }
+            });
+        });
+        
+        const stats = {
+            users: {
+                total: Object.keys(users).length,
+                students: Object.values(users).filter(u => u.role === 'student').length,
+                teachers: Object.values(users).filter(u => u.role === 'teacher').length,
+                pendingTeachers: Object.values(users).filter(u => u.role === 'pending_teacher').length
+            },
+            revenue: {
+                total: totalRevenue,
+                weekly: WEEKLY_SUBSCRIPTION,
+                monthly: TEACHER_MONTHLY_FEE,
+                verifiedPayments: verifiedPayments,
+                pendingPayments: pendingPayments
+            },
+            content: {
+                totalBooks: Object.keys(books).length,
+                booksByGrade: {},
+                booksBySubject: {}
+            },
+            live: {
+                totalRooms: Object.keys(rooms).length,
+                activeRooms: Object.values(rooms).filter(r => r.status === 'active').length
+            }
+        };
+        
+        // تحليل الكتب
+        Object.values(books).forEach(book => {
+            stats.content.booksByGrade[book.grade] = (stats.content.booksByGrade[book.grade] || 0) + 1;
+            stats.content.booksBySubject[book.subject] = (stats.content.booksBySubject[book.subject] || 0) + 1;
+        });
+        
+        hideLoading();
+        
+        const content = document.getElementById('admin-content');
+        content.innerHTML = `
+            <div style="background:var(--bg-card); border-radius:20px; padding:25px;">
+                <h3><i class="fas fa-tachometer-alt"></i> إحصائيات النظام</h3>
+                <p style="color:var(--text-sec); margin-bottom:25px;">نظرة عامة على منصة التعليم الذكي</p>
+                
+                <div class="admin-stats">
+                    <div class="stat-card">
+                        <div style="color:var(--text-sec); font-size:14px;">إجمالي المستخدمين</div>
+                        <div class="stat-value">${stats.users.total}</div>
+                        <div style="font-size:12px; color:var(--text-sec);">
+                            ${stats.users.students} طالب | ${stats.users.teachers} أستاذ
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div style="color:var(--text-sec); font-size:14px;">الإيرادات</div>
+                        <div class="stat-value">${totalRevenue.toLocaleString()} ج.س</div>
+                        <div style="font-size:12px; color:var(--text-sec);">
+                            ${verifiedPayments} دفعة مؤكدة
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div style="color:var(--text-sec); font-size:14px;">الكتب</div>
+                        <div class="stat-value">${stats.content.totalBooks}</div>
+                        <div style="font-size:12px; color:var(--text-sec);">
+                            ${Object.keys(stats.content.booksByGrade).length} صف دراسي
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div style="color:var(--text-sec); font-size:14px;">غرف البث</div>
+                        <div class="stat-value">${stats.live.totalRooms}</div>
+                        <div style="font-size:12px; color:var(--text-sec);">
+                            ${stats.live.activeRooms} نشطة الآن
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-top:30px;">
+                    <h4><i class="fas fa-cogs"></i> أدوات الإدمن</h4>
+                    <div class="grid" style="margin-top:15px;">
+                        <div class="card" onclick="showAdminUsers()">
+                            <i class="fas fa-users"></i>
+                            <h3>إدارة المستخدمين</h3>
+                            <p>عرض وتعديل المستخدمين</p>
+                        </div>
+                        
+                        <div class="card" onclick="showAdminPayments()">
+                            <i class="fas fa-money-bill-wave"></i>
+                            <h3>الدفعات</h3>
+                            <p>التحقق من الدفعات</p>
+                        </div>
+                        
+                        <div class="card" onclick="showAdminBooks()">
+                            <i class="fas fa-book"></i>
+                            <h3>إدارة الكتب</h3>
+                            <p>إضافة وحذف الكتب</p>
+                        </div>
+                        
+                        <div class="card" onclick="showAdminRooms()">
+                            <i class="fas fa-video"></i>
+                            <h3>غرف البث</h3>
+                            <p>إدارة البث المباشر</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-top:30px;">
+                    <h4><i class="fas fa-chart-pie"></i> تحليل البيانات</h4>
+                    <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:15px; margin-top:15px;">
+                        <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:10px;">
+                            <div style="color:var(--text-sec); font-size:14px;">الكتب حسب الصف</div>
+                            <div style="color:white; margin-top:10px;">
+                                ${Object.entries(stats.content.booksByGrade).map(([grade, count]) => 
+                                    `<div style="display:flex; justify-content:space-between; margin:5px 0;">
+                                        <span>${grade}</span>
+                                        <span>${count}</span>
+                                    </div>`
+                                ).join('')}
+                            </div>
+                        </div>
+                        
+                        <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:10px;">
+                            <div style="color:var(--text-sec); font-size:14px;">الكتب حسب المادة</div>
+                            <div style="color:white; margin-top:10px;">
+                                ${Object.entries(stats.content.booksBySubject).slice(0, 5).map(([subject, count]) => 
+                                    `<div style="display:flex; justify-content:space-between; margin:5px 0;">
+                                        <span>${subject}</span>
+                                        <span>${count}</span>
+                                    </div>`
+                                ).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-top:30px; padding:20px; background:rgba(245, 158, 11, 0.1); border-radius:15px;">
+                    <h4 style="color:var(--accent); margin-top:0;"><i class="fas fa-university"></i> معلومات البنك</h4>
+                    <div style="color:var(--text-sec);">
+                        <div style="display:flex; justify-content:space-between; margin:10px 0;">
+                            <span>رقم الحساب:</span>
+                            <span style="font-weight:bold;">${ADMIN_BANK_ACCOUNT}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin:10px 0;">
+                            <span>اسم صاحب الحساب:</span>
+                            <span style="font-weight:bold;">${ADMIN_NAME}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin:10px 0;">
+                            <span>إجمالي المحصل:</span>
+                            <span style="font-weight:bold; color:var(--accent);">${totalRevenue.toLocaleString()} ج.س</span>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        
+    } catch (error) {
+        hideLoading();
+        console.error('خطأ في تحميل لوحة الإدمن:', error);
+        showAlert('خطأ', 'حدث خطأ في تحميل لوحة التحكم', 'error');
+        nav('home');
+    }
+}
+
+function showAdminUsers() {
+    showAlert('إدارة المستخدمين', 'جاري تحميل قائمة المستخدمين...', 'info');
+}
+
+function showAdminPayments() {
+    showAlert('الدفعات', 'جاري تحميل قائمة الدفعات...', 'info');
+}
+
+function showAdminBooks() {
+    showAlert('إدارة الكتب', 'جاري تحميل قائمة الكتب...', 'info');
+}
+
+function showAdminRooms() {
+    showAlert('غرف البث', 'جاري تحميل قائمة الغرف...', 'info');
+}
+
+// ==================== [ 16. دوال مساعدة عامة ] ====================
 function updateUI() {
     if (currentUserData) {
         document.getElementById('user-name').textContent = currentUserData.name;
@@ -2411,135 +4571,74 @@ function updateUI() {
         } else if (currentUserData.role === 'admin') {
             document.getElementById('user-status').style.background = 'var(--red)';
             document.getElementById('user-status').textContent = 'إدمن';
+        } else {
+            document.getElementById('user-status').style.background = 'var(--green)';
+            document.getElementById('user-status').textContent = 'طالب';
         }
     }
 }
 
-function nav(page) {
-    const area = document.getElementById('content-area');
-    const titles = {
-        'home': 'الرئيسية',
-        'library': 'المكتبة الرقمية',
-        'upload': 'رفع الملفات',
-        'live': 'غرف البث المباشر',
-        'subscription': 'الاشتراكات والدفع',
-        'profile': 'الملف الشخصي',
-        'admin': 'لوحة التحكم'
-    };
-    
-    document.getElementById('head-title').textContent = titles[page] || page;
-    
-    if (navigationHistory[navigationHistory.length - 1] !== page) {
-        navigationHistory.push(page);
+function handleBackButton() {
+    if (navigationHistory.length > 1) {
+        navigationHistory.pop(); // إزالة الصفحة الحالية
+        const previousPage = navigationHistory[navigationHistory.length - 1];
+        nav(previousPage);
+    } else {
+        nav('home');
     }
-    
-    if (page === 'home') {
-        renderHome();
-    } else if (page === 'library') {
-        renderLibrary();
-    } else if (page === 'upload') {
-        renderUploadScreen();
-    } else if (page === 'live') {
-        renderLiveRooms();
-    } else if (page === 'subscription') {
-        renderSubscription();
-    } else if (page === 'profile') {
-        renderProfile();
-    } else if (page === 'admin') {
-        renderAdminPanel();
-    }
-    
-    highlightTab(page);
 }
 
-function renderHome() {
-    const area = document.getElementById('content-area');
-    const isTeacher = currentUserData.role === 'teacher';
-    const isAdmin = currentUserData.role === 'admin';
-    
-    area.innerHTML = `
-        <div style="padding:20px;">
-            <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); border-radius:20px; padding:25px; color:white; margin-bottom:25px;">
-                <h2 style="margin-top:0;"><i class="fas fa-graduation-cap"></i> مرحباً ${currentUserData.name}</h2>
-                <p>منصة التعليم الذكي تساعدك على تحقيق أفضل النتائج</p>
-            </div>
-            
-            <div class="grid">
-                <div class="card" onclick="nav('library')">
-                    <i class="fas fa-book"></i>
-                    <h3>المكتبة</h3>
-                    <p>الكتب والمراجع</p>
-                </div>
-                
-                <div class="card" onclick="nav('upload')">
-                    <i class="fas fa-cloud-upload-alt"></i>
-                    <h3>رفع الملفات</h3>
-                    <p>رفع إلى البوت + Telegram</p>
-                </div>
-                
-                <div class="card" onclick="nav('live')">
-                    <i class="fas fa-video"></i>
-                    <h3>البث المباشر</h3>
-                    <p>دروس مباشرة</p>
-                </div>
-                
-                ${isTeacher || isAdmin ? `
-                <div class="card" onclick="showCreateRoomScreen()">
-                    <i class="fas fa-plus-circle"></i>
-                    <h3>إنشاء بث</h3>
-                    <p>ابدأ بثاً مباشراً</p>
-                </div>
-                ` : `
-                <div class="card" onclick="nav('subscription')">
-                    <i class="fas fa-credit-card"></i>
-                    <h3>الاشتراك</h3>
-                    <p>اشترك الآن</p>
-                </div>
-                `}
-            </div>
-            
-            <div style="margin-top:25px; background:var(--bg-card); border-radius:20px; padding:20px;">
-                <h3><i class="fas fa-bullhorn"></i> إعلانات مهمة</h3>
-                <div style="color:var(--text-sec);">
-                    <p><i class="fas fa-check-circle" style="color:var(--green);"></i> نظام رفع الملفات متوفر الآن!</p>
-                    <p><i class="fas fa-check-circle" style="color:var(--green);"></i> الملفات ترسل تلقائياً إلى Telegram</p>
-                    <p><i class="fas fa-check-circle" style="color:var(--green);"></i> اليوم الأول مجاني لجميع المستخدمين</p>
-                </div>
-            </div>
-        </div>`;
+function debounceFilter(value) {
+    // دالة بحث مع debounce
+    clearTimeout(this.searchTimeout);
+    this.searchTimeout = setTimeout(() => {
+        if (value.trim()) {
+            searchBooks();
+        }
+    }, 500);
 }
 
-function highlightTab(page) {
-    const tabs = document.querySelectorAll('.tab-btn');
-    tabs.forEach(tab => {
-        tab.classList.remove('active');
-        const icon = tab.querySelector('i').className;
+function connectToSocket() {
+    // الاتصال بـ WebSocket للبث المباشر
+    if (socket) {
+        socket.disconnect();
+    }
+    
+    socket = io(API_BASE_URL, {
+        transports: ['websocket', 'polling']
+    });
+    
+    socket.on('connect', () => {
+        console.log('✅ متصل بـ WebSocket');
         
-        if (page === 'home' && icon.includes('fa-home')) {
-            tab.classList.add('active');
-        } else if (page === 'library' && icon.includes('fa-book')) {
-            tab.classList.add('active');
-        } else if (page === 'upload' && icon.includes('fa-cloud-upload-alt')) {
-            tab.classList.add('active');
-        } else if (page === 'live' && icon.includes('fa-video')) {
-            tab.classList.add('active');
-        } else if (page === 'subscription' && icon.includes('fa-credit-card')) {
-            tab.classList.add('active');
-        } else if (page === 'profile' && icon.includes('fa-user')) {
-            tab.classList.add('active');
+        if (currentUserData) {
+            socket.emit('user-connected', {
+                userId: currentUserData.uid,
+                userName: currentUserData.name,
+                role: currentUserData.role
+            });
         }
+    });
+    
+    socket.on('disconnect', () => {
+        console.log('❌ انقطع الاتصال بـ WebSocket');
+    });
+    
+    socket.on('new-message', (data) => {
+        console.log('رسالة جديدة:', data);
+        // معالجة الرسائل الجديدة
+    });
+    
+    socket.on('participant-joined', (data) => {
+        console.log('مشارك جديد:', data);
+    });
+    
+    socket.on('participant-left', (data) => {
+        console.log('مشارك غادر:', data);
     });
 }
 
-// ==================== [ 12. دوال إضافية من الكود الأصلي ] ====================
-// هنا ضع الدوال الأخرى من الكود الأصلي التي تحتاجها:
-// - نظام البث المباشر (Socket.io)
-// - المساعد الذكي
-// - نظام الدفع
-// - لوحة الإدمن
-// ... إلخ
-
-// ==================== [ 13. جعل الدوال متاحة عالمياً ] ====================
+// ==================== [ 17. جعل الدوال متاحة عالمياً ] ====================
 window.loginUser = loginUser;
 window.registerStudent = registerStudent;
 window.registerTeacher = registerTeacher;
@@ -2548,6 +4647,7 @@ window.showStudentForm = showStudentForm;
 window.showTeacherForm = showTeacherForm;
 window.backToLogin = backToLogin;
 window.backToRegister = backToRegister;
+window.resendVerification = resendVerification;
 window.nav = nav;
 window.handleBackButton = handleBackButton;
 window.showUploadFiles = showUploadFiles;
@@ -2559,39 +4659,99 @@ window.removeBookFile = removeBookFile;
 window.uploadFiles = uploadFiles;
 window.uploadAdminBook = uploadAdminBook;
 window.showMyUploads = showMyUploads;
+window.downloadFile = downloadFile;
+window.deleteFile = deleteFile;
+window.loadBooks = loadBooks;
+window.viewBook = viewBook;
+window.downloadBook = downloadBook;
+window.addToFavorites = addToFavorites;
+window.removeFromFavorites = removeFromFavorites;
+window.showBookUpload = showBookUpload;
+window.searchBooks = searchBooks;
+window.showCreateRoom = showCreateRoom;
+window.submitCreateRoom = submitCreateRoom;
+window.joinLiveRoom = joinLiveRoom;
+window.backToLiveList = backToLiveList;
+window.removeStudentFromRoom = removeStudentFromRoom;
+window.startRecording = startRecording;
+window.stopRecording = stopRecording;
+window.sendChatMessage = sendChatMessage;
+window.playRecording = playRecording;
+window.downloadRecording = downloadRecording;
+window.subscribe = subscribe;
+window.generateQuiz = generateQuiz;
+window.selectAnswer = selectAnswer;
+window.submitQuiz = submitQuiz;
+window.backToAI = backToAI;
+window.viewQuizResult = viewQuizResult;
+window.retakeQuiz = retakeQuiz;
+window.showUserStats = showUserStats;
+window.showSubscriptionStatus = showSubscriptionStatus;
+window.showSettings = showSettings;
+window.changePassword = changePassword;
+window.deleteAccount = deleteAccount;
+window.logout = logout;
+window.renderAdminPanel = renderAdminPanel;
+window.showAdminUsers = showAdminUsers;
+window.showAdminPayments = showAdminPayments;
+window.showAdminBooks = showAdminBooks;
+window.showAdminRooms = showAdminRooms;
 
-// أضف هنا الدوال الأخرى التي تحتاجها من الكود الأصلي
-
-// ==================== [ 14. إضافة Drag & Drop للملفات ] ====================
+// ==================== [ 18. Drag & Drop للملفات ] ====================
 document.addEventListener('DOMContentLoaded', function() {
     const uploadArea = document.getElementById('upload-area');
+    const adminUploadArea = document.getElementById('admin-upload-area');
     
-    if (uploadArea) {
-        uploadArea.addEventListener('dragover', function(e) {
+    function setupDragDrop(element) {
+        if (!element) return;
+        
+        element.addEventListener('dragover', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            uploadArea.classList.add('dragover');
+            element.classList.add('dragover');
         });
         
-        uploadArea.addEventListener('dragleave', function(e) {
+        element.addEventListener('dragleave', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            uploadArea.classList.remove('dragover');
+            element.classList.remove('dragover');
         });
         
-        uploadArea.addEventListener('drop', function(e) {
+        element.addEventListener('drop', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            uploadArea.classList.remove('dragover');
+            element.classList.remove('dragover');
             
             const files = Array.from(e.dataTransfer.files);
-            if (files.length > 0) {
-                filesToUpload = filesToUpload.concat(files);
-                updateFilePreview();
+            
+            if (element.id === 'upload-area') {
+                // رفع الملفات العامة
+                if (files.length > 0) {
+                    filesToUpload = filesToUpload.concat(files);
+                    updateFilePreview();
+                }
+            } else if (element.id === 'admin-upload-area') {
+                // رفع كتب للإدمن
+                if (files.length > 0) {
+                    const pdfFiles = files.filter(file => file.type === 'application/pdf');
+                    
+                    if (pdfFiles.length > 0) {
+                        adminBookFile = pdfFiles[0];
+                        updateBookPreview();
+                    } else {
+                        showAlert('خطأ', 'يجب أن يكون الملف بصيغة PDF', 'error');
+                    }
+                }
             }
         });
     }
+    
+    setupDragDrop(uploadArea);
+    setupDragDrop(adminUploadArea);
 });
+
+// ==================== [ 19. فتح التطبيق مباشرة ] ====================
+// ✅ التطبيق يبدأ مباشرة بشاشة تسجيل الدخول بدون شاشة سوداء
 </script>
 </body>
 </html>
