@@ -11,6 +11,8 @@ const { OpenAI } = require('openai');
 const socketIO = require('socket.io');
 const { Telegraf } = require('telegraf');
 const http = require('http');
+const cors = require('cors');
+require('dotenv').config(); // إضافة هذا السطر
 
 const app = express();
 const server = http.createServer(app);
@@ -22,7 +24,14 @@ const io = socketIO(server, {
 });
 
 const port = process.env.PORT || 10000;
-const BOT_URL = process.env.BOT_URL || 'https://sdm-security-bot.onrender.com';
+const BOT_URL = process.env.BOT_URL || 'http://localhost:10000';
+
+// ==================== [ إعداد CORS ] ====================
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // ==================== [ تهيئة المفاتيح ] ====================
 let CONFIG = {
@@ -1294,6 +1303,7 @@ async function askDeepSeek(question, subject, grade) {
 // ==================== [ Middleware ] ====================
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cors());
 
 // ==================== [ نقاط النهاية الرئيسية ] ====================
 app.get('/api/test', (req, res) => {
@@ -1690,6 +1700,24 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
     }
 });
 
+app.get('/api/live/rooms', (req, res) => {
+    const rooms = Array.from(liveRooms.values()).map(room => ({
+        id: room.id,
+        participants: Array.from(room.participants.entries()).map(([id, data]) => ({
+            userId: id,
+            userName: data.userName,
+            role: data.role
+        })),
+        teacherId: room.teacherId,
+        isRecording: room.isRecording,
+        createdAt: new Date(room.createdAt).toISOString(),
+        active: room.participants.size > 0
+    }));
+    
+    res.json({ success: true, rooms });
+});
+
+// ==================== [ نقطة نهاية root للوصول ] ====================
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -1710,6 +1738,8 @@ app.get('/', (req, res) => {
                 a { color: #3498db; text-decoration: none; }
                 a:hover { text-decoration: underline; }
                 .pricing { background: #e8f4fc; padding: 15px; border-radius: 5px; margin: 15px 0; }
+                .btn { display: inline-block; background: #3498db; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; margin: 5px; }
+                .btn:hover { background: #2980b9; }
             </style>
         </head>
         <body>
@@ -1717,6 +1747,7 @@ app.get('/', (req, res) => {
                 <h1>🤖 Smart Education Platform v4.0</h1>
                 <p><strong>نظام التعليم الذكي مع DeepSeek AI</strong></p>
                 <p><strong>Base URL:</strong> ${BOT_URL}</p>
+                <p><strong>Status:</strong> <span style="color: green;">✅ Online</span></p>
                 
                 <div class="status ${deepseekClient ? 'success' : 'warning'}">
                     <strong>DeepSeek AI:</strong> ${deepseekClient ? '✅ Connected' : '⚠️ Mock Mode'}
@@ -1724,6 +1755,10 @@ app.get('/', (req, res) => {
                 
                 <div class="status ${telegramBot ? 'success' : 'error'}">
                     <strong>Telegram Bot:</strong> ${telegramBot ? '✅ Connected' : '❌ Disconnected'}
+                </div>
+                
+                <div class="status ${isFirebaseInitialized ? 'success' : 'error'}">
+                    <strong>Firebase Database:</strong> ${isFirebaseInitialized ? '✅ Connected' : '❌ Disconnected'}
                 </div>
                 
                 <div class="pricing">
@@ -1736,6 +1771,14 @@ app.get('/', (req, res) => {
                     <p><strong>💳 طرق الدفع:</strong> ${CONFIG.PAYMENT_METHODS.join(', ')}</p>
                     <p><strong>🏦 رقم الحساب:</strong> ${CONFIG.ADMIN_BANK_ACCOUNT}</p>
                     <p><strong>👤 اسم صاحب الحساب:</strong> ${CONFIG.ADMIN_NAME}</p>
+                    <p><strong>📞 للتواصل:</strong> ${CONFIG.ADMIN_PHONE}</p>
+                </div>
+                
+                <div style="margin: 20px 0;">
+                    <a href="/health" class="btn">🔍 Health Check</a>
+                    <a href="/api/test" class="btn">🧪 API Test</a>
+                    <a href="/api/books" class="btn">📚 الكتب</a>
+                    <a href="/api/live/rooms" class="btn">🎥 الغرف النشطة</a>
                 </div>
                 
                 <h3>🔗 نقاط النهاية الرئيسية</h3>
@@ -1760,6 +1803,10 @@ app.get('/', (req, res) => {
                     <code>POST ${BOT_URL}/api/upload/dual/:folder</code> - رفع ملفات
                 </div>
                 
+                <div class="endpoint">
+                    <code>GET ${BOT_URL}/api/file/:folder/:filename</code> - تحميل الملفات
+                </div>
+                
                 <h3>📞 للدعم الفني</h3>
                 <p>${CONFIG.ADMIN_PHONE} - ${CONFIG.ADMIN_NAME}</p>
                 
@@ -1770,6 +1817,18 @@ app.get('/', (req, res) => {
         </body>
         </html>
     `);
+});
+
+// ==================== [ نقطة نهاية 404 ] ====================
+app.use((req, res) => {
+    res.status(404).json({
+        success: false,
+        error: 'Route not found',
+        availableEndpoints: {
+            GET: ['/', '/health', '/api/test', '/api/books', '/api/subscription/status/:userId', '/api/payment/status/:paymentId', '/api/file/:folder/:filename', '/api/live/rooms'],
+            POST: ['/api/ai/ask', '/api/payment/request', '/api/upload/dual/:folder']
+        }
+    });
 });
 
 // ==================== [ تشغيل السيرفر ] ====================
@@ -1796,6 +1855,7 @@ server.listen(port, '0.0.0.0', () => {
     • Firebase: ${isFirebaseInitialized ? '✅ Connected' : '❌ Disabled'}
     
     🎯 ENDPOINTS:
+    • Home: GET ${BOT_URL}/
     • AI Ask: POST ${BOT_URL}/api/ai/ask
     • Subscription: GET ${BOT_URL}/api/subscription/status/:userId
     • Payment: POST ${BOT_URL}/api/payment/request
