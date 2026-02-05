@@ -43,34 +43,31 @@ let CONFIG = {
     FIREBASE_JSON: process.env.FIREBASE_ADMIN_JSON ? JSON.parse(process.env.FIREBASE_ADMIN_JSON) : {},
     DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || '',
     ADMIN_ID: process.env.ADMIN_ID || '',
-    ADMIN_BANK_ACCOUNT: "4426148",
-    ADMIN_NAME: "محمد عبدالمعطي علي",
-    ADMIN_PHONE: "+249903245198",
+    ADMIN_BANK_ACCOUNT: process.env.ADMIN_BANK_ACCOUNT || "4426148",
+    ADMIN_NAME: process.env.ADMIN_NAME || "محمد عبدالمعطي علي",
+    ADMIN_PHONE: process.env.ADMIN_PHONE || "+249XXXXXXXXX",
     // نظام الاشتراكات
-    FREE_TRIAL_DAYS: 7,
-    WEEKLY_SUBSCRIPTION: 7000,
-    MONTHLY_SUBSCRIPTION: 25000,
-    TEACHER_MONTHLY_FEE: 30000,
+    FREE_TRIAL_DAYS: parseInt(process.env.FREE_TRIAL_DAYS) || 7,
+    WEEKLY_SUBSCRIPTION: parseInt(process.env.WEEKLY_SUBSCRIPTION) || 7000,
+    MONTHLY_SUBSCRIPTION: parseInt(process.env.MONTHLY_SUBSCRIPTION) || 25000,
+    TEACHER_MONTHLY_FEE: parseInt(process.env.TEACHER_MONTHLY_FEE) || 30000,
     MAX_DAILY_QUESTIONS: {
-        trial: 50,
-        free: 20,
-        paid: 500
+        trial: parseInt(process.env.MAX_DAILY_QUESTIONS_TRIAL) || 50,
+        free: parseInt(process.env.MAX_DAILY_QUESTIONS_FREE) || 20,
+        paid: parseInt(process.env.MAX_DAILY_QUESTIONS_PAID) || 500
     },
-    PAYMENT_METHODS: ["حساب بنكي", "فودافون كاش", "زين كاش", "مصرفي"],
-    AUTO_APPROVE_PAYMENTS: false,
-    STORAGE_MODE: "TELEGRAM_AND_SERVER",
-    MAX_FILE_SIZE: 50 * 1024 * 1024,
-    AUTO_DELETE_LOCAL_AFTER_UPLOAD: false,
-    // إعدادات إضافية
-    ALLOWED_ORIGINS: ['*'],
-    SESSION_TIMEOUT: 30 * 60 * 1000 // 30 دقيقة
+    PAYMENT_METHODS: process.env.PAYMENT_METHODS ? process.env.PAYMENT_METHODS.split(',') : ["حساب بنكي", "فودافون كاش", "زين كاش", "مصرفي"],
+    AUTO_APPROVE_PAYMENTS: process.env.AUTO_APPROVE_PAYMENTS === 'true',
+    STORAGE_MODE: process.env.STORAGE_MODE || "TELEGRAM_AND_SERVER",
+    MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE) || (50 * 1024 * 1024),
+    AUTO_DELETE_LOCAL_AFTER_UPLOAD: process.env.AUTO_DELETE_LOCAL_AFTER_UPLOAD === 'true'
 };
 
 // ==================== [ تهيئة بوت Telegram ] ====================
 let telegramBot = null;
 let telegramStorageChannel = CONFIG.TELEGRAM_STORAGE_CHANNEL;
 
-if (CONFIG.TELEGRAM_BOT_TOKEN) {
+if (CONFIG.TELEGRAM_BOT_TOKEN && CONFIG.TELEGRAM_BOT_TOKEN.length > 10) {
     try {
         telegramBot = new Telegraf(CONFIG.TELEGRAM_BOT_TOKEN);
         console.log('✅ Telegram Bot initialized successfully');
@@ -82,7 +79,7 @@ if (CONFIG.TELEGRAM_BOT_TOKEN) {
                 await new Promise(resolve => setTimeout(resolve, 3000));
                 
                 const webhookUrl = `${BOT_URL}/bot${CONFIG.TELEGRAM_BOT_TOKEN}`;
-                console.log(`🔗 Setting webhook to: ${webhookUrl}`);
+                console.log(`🔗 Setting webhook to: ${webhookUrl.substring(0, 50)}...`);
                 
                 await telegramBot.telegram.setWebhook(webhookUrl, {
                     drop_pending_updates: true,
@@ -143,10 +140,10 @@ if (CONFIG.TELEGRAM_BOT_TOKEN) {
                     const message = `
 💰 **خطط الاشتراك:**
 
-🎁 *تجربة مجانية:* 7 أيام (50 سؤال/يوم)
-📦 *أسبوعي:* 7,000 SDG (500 سؤال/يوم)
-📅 *شهري:* 25,000 SDG (500 سؤال/يوم)
-👨‍🏫 *معلم شهري:* 30,000 SDG (500 سؤال/يوم)
+🎁 *تجربة مجانية:* ${CONFIG.FREE_TRIAL_DAYS} يوم (${CONFIG.MAX_DAILY_QUESTIONS.trial} سؤال/يوم)
+📦 *أسبوعي:* ${CONFIG.WEEKLY_SUBSCRIPTION} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)
+📅 *شهري:* ${CONFIG.MONTHLY_SUBSCRIPTION} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)
+👨‍🏫 *معلم شهري:* ${CONFIG.TEACHER_MONTHLY_FEE} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)
 
 💳 **طرق الدفع:** ${CONFIG.PAYMENT_METHODS.join(', ')}
 🏦 **رقم الحساب:** ${CONFIG.ADMIN_BANK_ACCOUNT}
@@ -173,14 +170,17 @@ if (CONFIG.TELEGRAM_BOT_TOKEN) {
                 });
                 
                 telegramBot.command('status', (ctx) => {
+                    const activeRooms = Array.from(liveRooms.values());
+                    const totalParticipants = activeRooms.reduce((acc, room) => acc + room.participants.size, 0);
+                    
                     const statusMessage = `
 ✅ **حالة النظام:**
 
 🤖 *البوت:* 🟢 يعمل
 🌐 *السيرفر:* ${BOT_URL}
 📅 *الوقت:* ${new Date().toLocaleString('ar-SA')}
-👥 *المستخدمون النشطون:* ${Array.from(liveRooms.values()).reduce((acc, room) => acc + room.participants.size, 0)}
-📚 *عدد الكتب:* ${getAllEducationalBooks().length}
+👥 *المستخدمون النشطون:* ${totalParticipants}
+🎥 *الغرف النشطة:* ${activeRooms.length}
 
 🔧 *الخدمات:*
 • DeepSeek AI: ${deepseekClient ? '🟢 نشط' : '🔴 غير نشط'}
@@ -195,11 +195,9 @@ if (CONFIG.TELEGRAM_BOT_TOKEN) {
 🆘 **مركز المساعدة:**
 
 📞 *الدعم الفني:* ${CONFIG.ADMIN_PHONE}
-📧 *البريد:* support@example.com
 
 🔗 **الروابط المهمة:**
 • المنصة الرئيسية: ${BOT_URL}
-• توثيق API: ${BOT_URL}/api/docs
 • حالة الخدمة: ${BOT_URL}/health
 
 ⚡ **نصائح سريعة:**
@@ -243,7 +241,7 @@ if (CONFIG.TELEGRAM_BOT_TOKEN) {
                     }
                     else if (callbackData === 'show_subscription') {
                         ctx.answerCbQuery('عرض خطط الاشتراك');
-                        ctx.reply(`💰 **خطط الاشتراك:**\n\n🎁 تجربة مجانية: 7 أيام\n📦 أسبوعي: 7,000 SDG\n📅 شهري: 25,000 SDG\n👨‍🏫 معلم: 30,000 SDG\n\n${BOT_URL}`, {
+                        ctx.reply(`💰 **خطط الاشتراك:**\n\n🎁 تجربة مجانية: ${CONFIG.FREE_TRIAL_DAYS} أيام\n📦 أسبوعي: ${CONFIG.WEEKLY_SUBSCRIPTION} SDG\n📅 شهري: ${CONFIG.MONTHLY_SUBSCRIPTION} SDG\n👨‍🏫 معلم: ${CONFIG.TEACHER_MONTHLY_FEE} SDG\n\n${BOT_URL}`, {
                             parse_mode: 'Markdown'
                         });
                     }
@@ -268,7 +266,6 @@ if (CONFIG.TELEGRAM_BOT_TOKEN) {
                 // معالجة الصور (لإيصالات الدفع)
                 telegramBot.on('photo', async (ctx) => {
                     const photo = ctx.message.photo[ctx.message.photo.length - 1];
-                    const fileId = photo.file_id;
                     
                     ctx.reply(`📸 **تم استلام صورة**\n\nإذا كانت هذه إيصال دفع، يرجى:\n\n1. إرسال رقم المعاملة\n2. طريقة الدفع\n3. المبلغ المدفوع\n4. رقم هاتفك\n\nأو تواصل مع الدعم: ${CONFIG.ADMIN_PHONE}`, {
                         parse_mode: 'Markdown'
@@ -282,11 +279,11 @@ if (CONFIG.TELEGRAM_BOT_TOKEN) {
         }, 8000);
         
     } catch (error) {
-        console.error('❌ Failed to initialize Telegram Bot:', error.message);
+        console.error('❌ Failed to initialize Telegram Bot');
         telegramBot = null;
     }
 } else {
-    console.log('⚠️ Telegram Bot Token not provided');
+    console.log('⚠️ Telegram Bot Token not provided or invalid');
 }
 
 // ==================== [ تهيئة Firebase Admin ] ====================
@@ -297,8 +294,8 @@ if (CONFIG.FIREBASE_JSON && Object.keys(CONFIG.FIREBASE_JSON).length > 0) {
     try {
         admin.initializeApp({
             credential: admin.credential.cert(CONFIG.FIREBASE_JSON),
-            databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
-            storageBucket: "sudan-market-6b122.appspot.com"
+            databaseURL: process.env.FIREBASE_DATABASE_URL || "https://sudan-market-6b122-default-rtdb.firebaseio.com",
+            storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "sudan-market-6b122.appspot.com"
         });
         console.log('✅ Firebase Admin initialized successfully');
         isFirebaseInitialized = true;
@@ -332,7 +329,7 @@ if (CONFIG.FIREBASE_JSON && Object.keys(CONFIG.FIREBASE_JSON).length > 0) {
                 }
                 
             } catch (error) {
-                console.error('❌ Error checking books:', error);
+                console.error('❌ Error checking books:', error.message);
             }
         }, 3000);
         
@@ -345,7 +342,7 @@ if (CONFIG.FIREBASE_JSON && Object.keys(CONFIG.FIREBASE_JSON).length > 0) {
 
 // ==================== [ تهيئة DeepSeek API ] ====================
 let deepseekClient = null;
-if (CONFIG.DEEPSEEK_API_KEY) {
+if (CONFIG.DEEPSEEK_API_KEY && CONFIG.DEEPSEEK_API_KEY.length > 10) {
     try {
         deepseekClient = new OpenAI({
             apiKey: CONFIG.DEEPSEEK_API_KEY,
@@ -353,7 +350,7 @@ if (CONFIG.DEEPSEEK_API_KEY) {
         });
         console.log('✅ DeepSeek API initialized successfully');
     } catch (error) {
-        console.error('❌ Failed to initialize DeepSeek API:', error.message);
+        console.error('❌ Failed to initialize DeepSeek API');
     }
 } else {
     console.log('⚠️ DeepSeek API Key not provided - AI features disabled');
@@ -385,7 +382,7 @@ const FOLDERS = {
         console.log('✅ Storage folders created successfully');
         await cleanupTempFiles();
     } catch (error) {
-        console.error('❌ Error creating storage folders:', error);
+        console.error('❌ Error creating storage folders:', error.message);
     }
 })();
 
@@ -784,7 +781,7 @@ async function initializeBooksDatabase() {
         console.log(`✅ Successfully added ${addedCount} educational books to database`);
         
     } catch (error) {
-        console.error('❌ Error initializing books database:', error);
+        console.error('❌ Error initializing books database:', error.message);
     }
 }
 
@@ -923,7 +920,7 @@ io.on('connection', (socket) => {
                     participantCount: room.participants.size
                 });
             } catch (error) {
-                console.error('Error updating Firebase:', error);
+                console.error('Error updating Firebase:', error.message);
             }
         }
     });
@@ -954,7 +951,7 @@ io.on('connection', (socket) => {
                 const messageId = `msg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
                 db.ref(`live_chats/${roomId}/${messageId}`).set(chatMessage);
             } catch (error) {
-                console.error('Error saving chat message:', error);
+                console.error('Error saving chat message:', error.message);
             }
         }
     });
@@ -1070,7 +1067,7 @@ async function checkSubscription(userId) {
         };
 
     } catch (error) {
-        console.error('Error checking subscription:', error);
+        console.error('Error checking subscription:', error.message);
         return { 
             hasAccess: true, 
             isTrial: true, 
@@ -1109,7 +1106,7 @@ async function checkDailyUsage(userId) {
         };
         
     } catch (error) {
-        console.error('Error checking daily usage:', error);
+        console.error('Error checking daily usage:', error.message);
         return { used: 0, limit: 50, remaining: 50, canAsk: true, serverUrl: BOT_URL };
     }
 }
@@ -1134,7 +1131,7 @@ async function updateDailyUsage(userId) {
             });
         }
     } catch (error) {
-        console.error('Error updating daily usage:', error);
+        console.error('Error updating daily usage:', error.message);
     }
 }
 
@@ -1180,7 +1177,7 @@ async function createPaymentRequest(userData) {
         return { success: true, paymentId, ...paymentData };
         
     } catch (error) {
-        console.error('Error creating payment request:', error);
+        console.error('Error creating payment request:', error.message);
         return { success: false, error: error.message };
     }
 }
@@ -1236,7 +1233,7 @@ async function notifyAdminAboutPayment(paymentData) {
         return true;
         
     } catch (error) {
-        console.error('Error notifying admin:', error);
+        console.error('Error notifying admin:', error.message);
         return false;
     }
 }
@@ -1323,7 +1320,7 @@ async function approvePayment(paymentId, adminId, note = '') {
         };
         
     } catch (error) {
-        console.error('Error approving payment:', error);
+        console.error('Error approving payment:', error.message);
         return { success: false, error: error.message };
     }
 }
@@ -1359,7 +1356,7 @@ async function rejectPayment(paymentId, adminId, reason = '') {
         return { success: true, paymentId, message: 'تم رفض الدفع', serverUrl: BOT_URL };
         
     } catch (error) {
-        console.error('Error rejecting payment:', error);
+        console.error('Error rejecting payment:', error.message);
         return { success: false, error: error.message };
     }
 }
@@ -1413,7 +1410,7 @@ async function notifyUserAboutPaymentApproval(userId, paymentId, days) {
         }
         
     } catch (error) {
-        console.error('Error notifying user:', error);
+        console.error('Error notifying user:', error.message);
     }
 }
 
@@ -1456,7 +1453,7 @@ async function notifyUserAboutPaymentRejection(userId, paymentId, reason) {
         });
         
     } catch (error) {
-        console.error('Error notifying user about rejection:', error);
+        console.error('Error notifying user about rejection:', error.message);
     }
 }
 
@@ -1498,7 +1495,7 @@ async function askDeepSeek(question, subject, grade) {
         };
         
     } catch (error) {
-        console.error('DeepSeek ask error:', error);
+        console.error('DeepSeek ask error:', error.message);
         throw error;
     }
 }
@@ -1586,7 +1583,7 @@ app.get('/api/subscription/status/:userId', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Subscription status error:', error);
+        console.error('Subscription status error:', error.message);
         res.status(500).json({ 
             success: false, 
             error: 'خطأ في التحقق من الاشتراك',
@@ -1651,7 +1648,7 @@ app.post('/api/payment/request', async (req, res) => {
         }
         
     } catch (error) {
-        console.error('Payment request error:', error);
+        console.error('Payment request error:', error.message);
         res.status(500).json({ 
             success: false, 
             error: 'خطأ في إنشاء طلب الدفع',
@@ -1695,7 +1692,7 @@ app.get('/api/payment/status/:paymentId', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Payment status error:', error);
+        console.error('Payment status error:', error.message);
         res.status(500).json({ 
             success: false, 
             error: 'خطأ في التحقق من حالة الدفع',
@@ -1774,7 +1771,7 @@ app.post('/api/ai/ask', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Error in AI ask:', error);
+        console.error('Error in AI ask:', error.message);
         res.status(500).json({ 
             success: false, 
             error: 'حدث خطأ في معالجة السؤال',
@@ -1857,7 +1854,7 @@ app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => 
         });
         
     } catch (error) {
-        console.error('❌ Upload error:', error);
+        console.error('❌ Upload error:', error.message);
         
         if (req.file && req.file.path) {
             try {
@@ -1938,7 +1935,7 @@ app.get('/api/books', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Error fetching books:', error);
+        console.error('Error fetching books:', error.message);
         res.status(500).json({ 
             success: false, 
             error: 'Failed to fetch books',
@@ -1964,7 +1961,7 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
         
         res.download(filePath, filename, (err) => {
             if (err) {
-                console.error('Download error:', err);
+                console.error('Download error:', err.message);
                 if (!res.headersSent) {
                     res.status(500).json({ 
                         success: false, 
@@ -1976,7 +1973,7 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('File serve error:', error);
+        console.error('File serve error:', error.message);
         res.status(500).json({ 
             success: false, 
             error: 'Failed to serve file',
@@ -2046,7 +2043,7 @@ app.get('/api/stats', (req, res) => {
         urls: {
             server: BOT_URL,
             telegramWebhook: telegramBot ? `${BOT_URL}/bot${CONFIG.TELEGRAM_BOT_TOKEN}` : null,
-            apiDocs: `${BOT_URL}/api/docs`
+            apiDocs: `${BOT_URL}`
         }
     };
     
@@ -2500,7 +2497,6 @@ server.listen(port, '0.0.0.0', () => {
     🧠 DEEPSEEK AI SYSTEM:
     • Status: ${deepseekClient ? '✅ Connected' : '⚠️ Mock Mode'}
     • Model: deepseek-chat
-    • Base URL: https://api.deepseek.com/v1
     
     💰 SUBSCRIPTION SYSTEM:
     • Free Trial: ${CONFIG.FREE_TRIAL_DAYS} days
@@ -2508,7 +2504,6 @@ server.listen(port, '0.0.0.0', () => {
     • Monthly: ${CONFIG.MONTHLY_SUBSCRIPTION} SDG
     • Teacher: ${CONFIG.TEACHER_MONTHLY_FEE} SDG
     • Admin Approval: ${CONFIG.AUTO_APPROVE_PAYMENTS ? '❌ Auto' : '✅ Manual'}
-    • Payment Methods: ${CONFIG.PAYMENT_METHODS.join(', ')}
     
     📊 STORAGE:
     • Telegram: ${telegramBot ? '✅ Active' : '❌ Disabled'}
@@ -2520,20 +2515,12 @@ server.listen(port, '0.0.0.0', () => {
     • Health: GET ${BOT_URL}/health
     • API Test: GET ${BOT_URL}/api/test
     • AI Ask: POST ${BOT_URL}/api/ai/ask
-    • Subscription: GET ${BOT_URL}/api/subscription/status/:userId
-    • Payment: POST ${BOT_URL}/api/payment/request
     • Books: GET ${BOT_URL}/api/books
     • Live Rooms: GET ${BOT_URL}/api/live/rooms
-    
-    🤖 TELEGRAM BOT:
-    • Token: ${CONFIG.TELEGRAM_BOT_TOKEN ? '✅ Provided' : '❌ Missing'}
-    • Webhook: ${BOT_URL}/bot${CONFIG.TELEGRAM_BOT_TOKEN}
-    • Commands: /start, /subscribe, /status, /help
     
     📞 ADMIN CONTACT:
     • Phone: ${CONFIG.ADMIN_PHONE}
     • Account: ${CONFIG.ADMIN_BANK_ACCOUNT}
-    • Name: ${CONFIG.ADMIN_NAME}
     
     ⚡ SYSTEM READY! All services initialized successfully.
     `);
@@ -2542,7 +2529,7 @@ server.listen(port, '0.0.0.0', () => {
 // تنظيف الجلسات القديمة كل 5 دقائق
 setInterval(() => {
     const now = Date.now();
-    const timeout = CONFIG.SESSION_TIMEOUT;
+    const timeout = 30 * 60 * 1000;
     
     for (const [socketId, session] of userSessions.entries()) {
         if (now - session.lastActivity > timeout) {
@@ -2553,7 +2540,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 process.on('uncaughtException', (error) => {
-    console.error('❌ Uncaught Exception:', error);
+    console.error('❌ Uncaught Exception:', error.message);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
