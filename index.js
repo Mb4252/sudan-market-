@@ -12,8 +12,6 @@ const socketIO = require('socket.io');
 const { Telegraf } = require('telegraf');
 const http = require('http');
 
-require('dotenv').config();
-
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {
@@ -24,7 +22,7 @@ const io = socketIO(server, {
 });
 
 const port = process.env.PORT || 10000;
-const BOT_URL = process.env.BOT_URL || `https://sdm-security-bot.onrender.com`;
+const BOT_URL = process.env.BOT_URL || 'https://sdm-security-bot.onrender.com';
 
 // ==================== [ تهيئة المفاتيح ] ====================
 let CONFIG = {
@@ -38,30 +36,122 @@ let CONFIG = {
     ADMIN_ID: process.env.ADMIN_ID || '',
     ADMIN_BANK_ACCOUNT: "4426148",
     ADMIN_NAME: "محمد عبدالمعطي علي",
+    ADMIN_PHONE: "+249XXXXXXXXX",
+    // نظام الاشتراكات
+    FREE_TRIAL_DAYS: 7,
     WEEKLY_SUBSCRIPTION: 7000,
+    MONTHLY_SUBSCRIPTION: 25000,
     TEACHER_MONTHLY_FEE: 30000,
-    FREE_TRIAL_DAYS: 1,
-    FREE_TEACHER_MONTHS: 1,
-    MAX_DAILY_QUESTIONS: 100,
+    MAX_DAILY_QUESTIONS: {
+        trial: 50,
+        free: 20,
+        paid: 500
+    },
+    PAYMENT_METHODS: ["حساب بنكي", "فودافون كاش", "زين كاش", "مصرفي"],
+    AUTO_APPROVE_PAYMENTS: false,
     STORAGE_MODE: "TELEGRAM_AND_SERVER",
     MAX_FILE_SIZE: 50 * 1024 * 1024,
     AUTO_DELETE_LOCAL_AFTER_UPLOAD: false
 };
 
-// ==================== [ تهيئة DeepSeek API ] ====================
-let deepseekClient = null;
-if (CONFIG.DEEPSEEK_API_KEY) {
+// ==================== [ تهيئة بوت Telegram ] ====================
+let telegramBot = null;
+let telegramStorageChannel = CONFIG.TELEGRAM_STORAGE_CHANNEL;
+
+if (CONFIG.TELEGRAM_BOT_TOKEN) {
     try {
-        deepseekClient = new OpenAI({
-            apiKey: CONFIG.DEEPSEEK_API_KEY,
-            baseURL: 'https://api.deepseek.com/v1'
-        });
-        console.log('✅ DeepSeek API initialized successfully');
+        telegramBot = new Telegraf(CONFIG.TELEGRAM_BOT_TOKEN);
+        console.log('✅ Telegram Bot initialized successfully');
+        
+        setTimeout(async () => {
+            try {
+                console.log('🔄 Setting up Telegram bot with webhook...');
+                await telegramBot.telegram.deleteWebhook({ drop_pending_updates: true });
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                
+                const webhookUrl = `${BOT_URL}/bot${CONFIG.TELEGRAM_BOT_TOKEN}`;
+                console.log(`🔗 Setting webhook to: ${webhookUrl}`);
+                
+                await telegramBot.telegram.setWebhook(webhookUrl, {
+                    drop_pending_updates: true,
+                    allowed_updates: ['message', 'callback_query']
+                });
+                
+                console.log('✅ Telegram bot configured with webhook');
+                
+                app.post(`/bot${CONFIG.TELEGRAM_BOT_TOKEN}`, (req, res) => {
+                    telegramBot.handleUpdate(req.body, res);
+                });
+                
+                console.log('🤖 Telegram Bot Webhook is ready!');
+                
+                // أوامر Telegram
+                telegramBot.command('start', (ctx) => {
+                    ctx.reply('🤖 **Smart Education Platform**\n\nمنصة التعليم الذكي مع DeepSeek AI\n📚 كتب تعليمية - 🧠 مساعد ذكي - 🎥 بث مباشر');
+                });
+                
+                telegramBot.command('subscribe', (ctx) => {
+                    const message = `
+💰 **خطط الاشتراك:**
+
+🎁 تجربة مجانية: 7 أيام (50 سؤال/يوم)
+📦 أسبوعي: 7,000 SDG (500 سؤال/يوم)
+📅 شهري: 25,000 SDG (500 سؤال/يوم)
+👨‍🏫 معلم شهري: 30,000 SDG (500 سؤال/يوم)
+
+💳 **طرق الدفع:** ${CONFIG.PAYMENT_METHODS.join(', ')}
+🏦 **رقم الحساب:** ${CONFIG.ADMIN_BANK_ACCOUNT}
+👤 **اسم صاحب الحساب:** ${CONFIG.ADMIN_NAME}
+
+📞 **للتواصل:** ${CONFIG.ADMIN_PHONE}
+                    `;
+                    ctx.reply(message, { parse_mode: 'Markdown' });
+                });
+                
+                telegramBot.command('status', (ctx) => {
+                    ctx.reply(`✅ البوت يعمل بنظام webhook\n📅 ${new Date().toLocaleString()}\n🌐 ${BOT_URL}`);
+                });
+                
+                // معالجة موافقات الأدمن
+                telegramBot.on('callback_query', async (ctx) => {
+                    const callbackData = ctx.callbackQuery.data;
+                    
+                    if (callbackData.startsWith('approve_')) {
+                        const paymentId = callbackData.replace('approve_', '');
+                        const result = await approvePayment(paymentId, 'telegram_admin', 'موافقة عبر Telegram');
+                        
+                        if (result.success) {
+                            ctx.answerCbQuery('✅ تمت الموافقة على الدفع');
+                            ctx.editMessageText(`💰 **تمت الموافقة على الدفع**\n\n🆔 ${paymentId}\n👤 ${result.userId}\n📅 ${result.subscriptionDays} يوم\n✅ ${result.message}`);
+                        } else {
+                            ctx.answerCbQuery('❌ فشلت الموافقة');
+                        }
+                    }
+                    else if (callbackData.startsWith('reject_')) {
+                        const paymentId = callbackData.replace('reject_', '');
+                        const result = await rejectPayment(paymentId, 'telegram_admin', 'مرفوض عبر Telegram');
+                        
+                        if (result.success) {
+                            ctx.answerCbQuery('❌ تم رفض الدفع');
+                            ctx.editMessageText(`❌ **تم رفض الدفع**\n\n🆔 ${paymentId}\n📌 السبب: مرفوض عبر Telegram`);
+                        } else {
+                            ctx.answerCbQuery('❌ فشل الرفض');
+                        }
+                    }
+                });
+                
+            } catch (err) {
+                console.error('❌ Error setting up Telegram webhook:', err.message);
+                telegramBot = null;
+            }
+        }, 8000);
+        
     } catch (error) {
-        console.error('❌ Failed to initialize DeepSeek API:', error.message);
+        console.error('❌ Failed to initialize Telegram Bot:', error.message);
+        telegramBot = null;
     }
 } else {
-    console.log('⚠️ DeepSeek API Key not provided - AI features disabled');
+    console.log('⚠️ Telegram Bot Token not provided');
 }
 
 // ==================== [ تهيئة Firebase Admin ] ====================
@@ -78,7 +168,6 @@ if (CONFIG.FIREBASE_JSON && Object.keys(CONFIG.FIREBASE_JSON).length > 0) {
         console.log('✅ Firebase Admin initialized successfully');
         isFirebaseInitialized = true;
         
-        // تهيئة الكتب عند بدء التشغيل
         setTimeout(async () => {
             try {
                 const db = admin.database();
@@ -101,383 +190,23 @@ if (CONFIG.FIREBASE_JSON && Object.keys(CONFIG.FIREBASE_JSON).length > 0) {
         console.error('❌ Failed to initialize Firebase Admin:', error.message);
     }
 } else {
-    console.log('⚠️ Firebase Admin JSON not provided - Firebase features will be limited');
+    console.log('⚠️ Firebase Admin JSON not provided');
 }
 
-// ==================== [ تهيئة بوت Telegram مع Webhook ] ====================
-let telegramBot = null;
-let telegramStorageChannel = CONFIG.TELEGRAM_STORAGE_CHANNEL;
-
-if (CONFIG.TELEGRAM_BOT_TOKEN) {
+// ==================== [ تهيئة DeepSeek API ] ====================
+let deepseekClient = null;
+if (CONFIG.DEEPSEEK_API_KEY) {
     try {
-        telegramBot = new Telegraf(CONFIG.TELEGRAM_BOT_TOKEN);
-        console.log('✅ Telegram Bot initialized successfully');
-        
-        // 1. مسار Webhook
-        app.post(`/telegram-webhook`, async (req, res) => {
-            try {
-                await telegramBot.handleUpdate(req.body, res);
-            } catch (err) {
-                console.error('Webhook error:', err);
-                res.status(200).end();
-            }
+        deepseekClient = new OpenAI({
+            apiKey: CONFIG.DEEPSEEK_API_KEY,
+            baseURL: 'https://api.deepseek.com/v1'
         });
-        
-        // 2. عند بدء التشغيل، إعداد Webhook
-        (async () => {
-            try {
-                // مسح أي Webhook سابق
-                await telegramBot.telegram.deleteWebhook({ drop_pending_updates: true });
-                console.log('🧹 Cleared previous webhook');
-                
-                // الانتظار قليلاً
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                
-                // إعداد Webhook جديد
-                const webhookUrl = `${BOT_URL}/telegram-webhook`;
-                console.log(`🔗 Setting webhook to: ${webhookUrl}`);
-                
-                await telegramBot.telegram.setWebhook(webhookUrl, {
-                    drop_pending_updates: true,
-                    allowed_updates: ['message', 'callback_query']
-                });
-                
-                console.log('✅ Telegram Webhook configured successfully!');
-                
-            } catch (error) {
-                console.error('❌ Webhook setup error:', error.message);
-            }
-        })();
-        
-        // 3. الأوامر الأساسية
-        telegramBot.start((ctx) => {
-            ctx.replyWithHTML(
-                `🤖 <b>Smart Education Platform Bot</b>\n\n` +
-                `🎯 <b>وظائف البوت:</b>\n` +
-                `📁 <b>التخزين:</b> رفع الملفات التعليمية\n` +
-                `🧠 <b>المساعد الذكي:</b> DeepSeek AI\n` +
-                `📚 <b>المكتبة:</b> ${getAllEducationalBooks().length} كتاب\n` +
-                `🎥 <b>البث المباشر:</b> فصول تفاعلية\n\n` +
-                `🔗 <b>المنصة:</b> ${BOT_URL}\n` +
-                `📞 <b>الدعم:</b> @sdm_support`
-            );
-        });
-        
-        telegramBot.help((ctx) => {
-            ctx.replyWithHTML(
-                `🆘 <b>أوامر البوت:</b>\n\n` +
-                `/start - بدء البوت ومعلومات\n` +
-                `/status - حالة النظام\n` +
-                `/books - الكتب التعليمية\n` +
-                `/ai - المساعد الذكي (DeepSeek)\n` +
-                `/upload - رفع ملف\n` +
-                `/storage - معلومات التخزين\n` +
-                `/quiz - اختبار ذكي\n` +
-                `/live - البث المباشر`
-            );
-        });
-        
-        telegramBot.command('status', (ctx) => {
-            const stats = {
-                bot: telegramBot ? '✅ نشط' : '❌ غير نشط',
-                deepseek: deepseekClient ? '✅ متصل' : '❌ غير متصل',
-                firebase: isFirebaseInitialized ? '✅ متصل' : '❌ غير متصل',
-                books: getAllEducationalBooks().length,
-                date: new Date().toLocaleString('ar-SA'),
-                url: BOT_URL
-            };
-            
-            ctx.replyWithHTML(
-                `📊 <b>حالة النظام:</b>\n\n` +
-                `🤖 <b>البوت:</b> ${stats.bot}\n` +
-                `🧠 <b>DeepSeek AI:</b> ${stats.deepseek}\n` +
-                `🔥 <b>Firebase:</b> ${stats.firebase}\n` +
-                `📚 <b>الكتب:</b> ${stats.books} كتاب\n` +
-                `📅 <b>التاريخ:</b> ${stats.date}\n\n` +
-                `🌐 <b>المنصة:</b> ${stats.url}`
-            );
-        });
-        
-        telegramBot.command('ai', async (ctx) => {
-            const message = ctx.message.text.replace('/ai', '').trim();
-            
-            if (!message) {
-                ctx.reply('❌ الرجاء كتابة سؤالك بعد /ai\nمثال: /ai ما هو قانون نيوتن الأول؟');
-                return;
-            }
-            
-            try {
-                ctx.replyChatAction('typing');
-                
-                if (deepseekClient) {
-                    const response = await askDeepSeek(message);
-                    ctx.replyWithHTML(
-                        `🧠 <b>إجابة DeepSeek:</b>\n\n` +
-                        `${response.answer.substring(0, 4000)}\n\n` +
-                        `📌 <b>المصدر:</b> DeepSeek AI\n` +
-                        `🔗 <b>منصتنا:</b> ${BOT_URL}`
-                    );
-                } else {
-                    ctx.reply('⚠️ المساعد الذكي غير متاح حالياً. جاري استخدام وضع الاختبار...');
-                    const mockResponse = generateMockAIResponse(message);
-                    ctx.reply(mockResponse);
-                }
-                
-            } catch (error) {
-                console.error('AI command error:', error);
-                ctx.reply('❌ حدث خطأ في معالجة سؤالك. الرجاء المحاولة لاحقاً.');
-            }
-        });
-        
-        telegramBot.command('quiz', async (ctx) => {
-            const args = ctx.message.text.replace('/quiz', '').trim();
-            
-            if (!args) {
-                ctx.replyWithHTML(
-                    `📝 <b>إنشاء اختبار ذكي</b>\n\n` +
-                    `استخدم: <code>/quiz مادة الصف عدد_الأسئلة</code>\n\n` +
-                    `<b>أمثلة:</b>\n` +
-                    `<code>/quiz الرياضيات الأول الثانوي 10</code>\n` +
-                    `<code>/quiz العلوم السادس الابتدائي 5</code>\n` +
-                    `<code>/quiz اللغة العربية الثالث المتوسط 8</code>\n\n` +
-                    `🔗 <b>أو من الموقع:</b>\n` +
-                    `${BOT_URL}`
-                );
-                return;
-            }
-            
-            try {
-                const parts = args.split(' ');
-                if (parts.length < 3) {
-                    ctx.reply('❌ صيغة غير صحيحة. مثال: /quiz الرياضيات الأول الثانوي 10');
-                    return;
-                }
-                
-                const subject = parts[0];
-                const grade = parts[1];
-                const count = parseInt(parts[2]) || 10;
-                
-                ctx.replyChatAction('typing');
-                ctx.reply(`⏳ جاري إنشاء اختبار ${subject} للصف ${grade}...`);
-                
-                const quiz = await generateDeepSeekQuiz(subject, grade, count, ['mcq'], 'medium');
-                
-                let quizText = `📝 <b>اختبار ${subject} - الصف ${grade}</b>\n\n`;
-                
-                quiz.questions.forEach((q, i) => {
-                    quizText += `${i + 1}. ${q.question}\n`;
-                    q.options.forEach((opt, j) => {
-                        quizText += `   ${String.fromCharCode(65 + j)}) ${opt}\n`;
-                    });
-                    quizText += `\n`;
-                });
-                
-                quizText += `\n⏰ <b>الوقت:</b> 30 دقيقة\n`;
-                quizText += `🔗 <b>المنصة:</b> ${BOT_URL}\n`;
-                quizText += `🎯 <b>الإجابات:</b> أرسلها في رسالة واحدة`;
-                
-                ctx.replyWithHTML(quizText.substring(0, 4000));
-                
-            } catch (error) {
-                console.error('Quiz error:', error);
-                ctx.reply('❌ حدث خطأ في إنشاء الاختبار. الرجاء المحاولة لاحقاً.');
-            }
-        });
-        
-        telegramBot.command('books', (ctx) => {
-            const books = getAllEducationalBooks();
-            const elementary = books.filter(b => b.grade.includes('الابتدائي')).length;
-            const intermediate = books.filter(b => b.grade.includes('المتوسط')).length;
-            const secondary = books.filter(b => b.grade.includes('الثانوي')).length;
-            const aiBooks = books.filter(b => b.subject.includes('الذكاء')).length;
-            
-            ctx.replyWithHTML(
-                `📚 <b>المكتبة التعليمية</b>\n\n` +
-                `📊 <b>الإحصاءات:</b>\n` +
-                `🏫 <b>المرحلة الابتدائية:</b> ${elementary} كتاب\n` +
-                `🏫 <b>المرحلة المتوسطة:</b> ${intermediate} كتاب\n` +
-                `🏫 <b>المرحلة الثانوية:</b> ${secondary} كتاب\n` +
-                `🤖 <b>الذكاء الاصطناعي:</b> ${aiBooks} كتاب\n` +
-                `📈 <b>المجموع:</b> ${books.length} كتاب\n\n` +
-                `🔗 <b>رابط المكتبة:</b>\n` +
-                `${BOT_URL}/api/books\n\n` +
-                `🔍 <b>أمثلة للبحث:</b>\n` +
-                `<code>${BOT_URL}/api/books?grade=الأول+الثانوي</code>\n` +
-                `<code>${BOT_URL}/api/books?subject=الرياضيات</code>\n` +
-                `<code>${BOT_URL}/api/books?search=الجبر</code>`
-            );
-        });
-        
-        telegramBot.command('storage', (ctx) => {
-            ctx.replyWithHTML(
-                `💾 <b>نظام التخزين الذكي</b>\n\n` +
-                `📁 <b>أنواع التخزين:</b>\n` +
-                `1. <b>Telegram Channels</b> - نسخة احتياطية\n` +
-                `2. <b>Local Server</b> - وصول سريع\n` +
-                `3. <b>Firebase</b> - قاعدة بيانات\n\n` +
-                `📤 <b>رفع الملفات:</b>\n` +
-                `• الصور (JPG, PNG, WebP)\n` +
-                `• الكتب (PDF, DOC, EPUB)\n` +
-                `• الفيديو (MP4, AVI)\n` +
-                `• الصوت (MP3, WAV)\n\n` +
-                `🔗 <b>رفع من الموقع:</b>\n` +
-                `${BOT_URL}\n\n` +
-                `📝 <b>أو أرسل الملف مباشرة للبوت</b>`
-            );
-        });
-        
-        telegramBot.command('live', (ctx) => {
-            ctx.replyWithHTML(
-                `🎥 <b>الفصول الدراسية المباشرة</b>\n\n` +
-                `🌟 <b>المميزات:</b>\n` +
-                `• بث فيديو مباشر\n` +
-                `• دردشة تفاعلية\n` +
-                `• مشاركة الشاشة\n` +
-                `• تسجيل الحصص\n\n` +
-                `🔗 <b>الدخول للفصل:</b>\n` +
-                `${BOT_URL}\n\n` +
-                `👨‍🏫 <b>للمعلمين:</b>\n` +
-                `1. أنشئ غرفة جديدة\n` +
-                `2. شارك الرابط مع الطلاب\n` +
-                `3. ابدأ البث المباشر\n\n` +
-                `👨‍🎓 <b>للطلاب:</b>\n` +
-                `1. أدخل الرابط\n` +
-                `2. انضم للغرفة\n` +
-                `3. تفاعل مع المعلم`
-            );
-        });
-        
-        // معالجة النصوص العادية
-        telegramBot.on('text', (ctx) => {
-            const text = ctx.message.text;
-            
-            // إذا كان سؤالاً
-            if (text.includes('؟') || text.includes('?') || 
-                text.toLowerCase().startsWith('سؤال') ||
-                text.toLowerCase().includes('ماذا') ||
-                text.toLowerCase().includes('كيف') ||
-                text.toLowerCase().includes('لماذا') ||
-                text.toLowerCase().includes('ما هو') ||
-                text.toLowerCase().includes('ما هي')) {
-                
-                ctx.replyWithHTML(
-                    `🤔 <b>يبدو أن لديك سؤالاً!</b>\n\n` +
-                    `💡 <b>للحصول على إجابة دقيقة:</b>\n\n` +
-                    `1. استخدم الأمر <code>/ai ${text.substring(0, 30)}</code>\n\n` +
-                    `2. أو زر الموقع:\n` +
-                    `${BOT_URL}\n\n` +
-                    `3. <b>أمثلة:</b>\n` +
-                    `<code>/ai ما هو قانون نيوتن الأول؟</code>\n` +
-                    `<code>/ai كيف تحدث عملية البناء الضوئي؟</code>\n` +
-                    `<code>/ai ماذا تعرف عن الحرب العالمية الثانية؟</code>`
-                );
-                
-            } else if (text.toLowerCase().includes('شكراً') || text.toLowerCase().includes('شكرا') || 
-                      text.toLowerCase().includes('thanks') || text.toLowerCase().includes('thank you')) {
-                
-                ctx.replyWithHTML(
-                    `🙏 <b>العفو! دائماً في خدمتك</b>\n\n` +
-                    `✨ <b>تذكر أن لديك:</b>\n` +
-                    `• ${CONFIG.MAX_DAILY_QUESTIONS} سؤال يومياً\n` +
-                    `• ${getAllEducationalBooks().length} كتاب مجاني\n` +
-                    `• مساعد ذكي متاح 24/7\n\n` +
-                    `🔗 ${BOT_URL}`
-                );
-                
-            } else {
-                ctx.replyWithHTML(
-                    `🤖 <b>مرحباً! أنا بوت المنصة التعليمية الذكية</b>\n\n` +
-                    `🎯 <b>للاستفادة القصوى:</b>\n` +
-                    `/ai - المساعد الذكي DeepSeek\n` +
-                    `/quiz - اختبارات ذكية\n` +
-                    `/books - مكتبة الكتب\n` +
-                    `/storage - التخزين السحابي\n` +
-                    `/live - الفصول المباشرة\n` +
-                    `/help - جميع الأوامر\n\n` +
-                    `🔗 <b>المنصة الكاملة:</b>\n` +
-                    `${BOT_URL}\n\n` +
-                    `📚 <b>${getAllEducationalBooks().length} كتاب مجاني متاح الآن!</b>`
-                );
-            }
-        });
-        
-        // معالجة الملفات
-        telegramBot.on('document', async (ctx) => {
-            try {
-                const file = ctx.message.document;
-                const fileId = file.file_id;
-                const fileName = file.file_name || `file_${Date.now()}`;
-                const fileSize = file.file_size;
-                
-                ctx.replyChatAction('upload_document');
-                
-                ctx.replyWithHTML(
-                    `📁 <b>تم استلام الملف:</b>\n` +
-                    `📄 <b>الاسم:</b> ${fileName}\n` +
-                    `📦 <b>الحجم:</b> ${(fileSize / 1024).toFixed(2)} KB\n\n` +
-                    `⏳ <b>جاري المعالجة...</b>`
-                );
-                
-                // محاكاة الرفع (يمكنك تفعيل الرفع الحقيقي لاحقاً)
-                setTimeout(() => {
-                    ctx.replyWithHTML(
-                        `✅ <b>تمت المعالجة بنجاح!</b>\n\n` +
-                        `📄 <b>الملف:</b> ${fileName}\n` +
-                        `💾 <b>سيتم تخزينه في:</b>\n` +
-                        `• Telegram Storage Channel\n` +
-                        `• Local Server\n` +
-                        `• Firebase Database\n\n` +
-                        `🔗 <b>لتصفح الملفات:</b>\n` +
-                        `${BOT_URL}/api/files\n\n` +
-                        `📤 <b>لرفع المزيد:</b>\n` +
-                        `1. زر الموقع ${BOT_URL}\n` +
-                        `2. أو أرسل ملفات مباشرة للبوت`
-                    );
-                }, 3000);
-                
-            } catch (error) {
-                console.error('File handling error:', error);
-                ctx.reply('❌ حدث خطأ في معالجة الملف. الرجاء المحاولة لاحقاً.');
-            }
-        });
-        
-        // معالجة الصور
-        telegramBot.on('photo', async (ctx) => {
-            try {
-                const photo = ctx.message.photo[ctx.message.photo.length - 1];
-                
-                ctx.replyChatAction('upload_photo');
-                
-                ctx.replyWithHTML(
-                    `📸 <b>تم استلام الصورة</b>\n\n` +
-                    `⏳ <b>جاري حفظها في المكتبة التعليمية...</b>`
-                );
-                
-                setTimeout(() => {
-                    ctx.replyWithHTML(
-                        `✅ <b>تم حفظ الصورة!</b>\n\n` +
-                        `🖼️ <b>ستكون متاحة في:</b>\n` +
-                        `• معرض الصور التعليمية\n` +
-                        `• يمكن استخدامها في الدروس\n\n` +
-                        `🔗 <b>معرض الصور:</b>\n` +
-                        `${BOT_URL}/api/files?folder=images`
-                    );
-                }, 2000);
-                
-            } catch (error) {
-                console.error('Photo error:', error);
-                ctx.reply('❌ حدث خطأ في معالجة الصورة.');
-            }
-        });
-        
-        console.log('✅ Telegram Bot commands registered');
-        
+        console.log('✅ DeepSeek API initialized successfully');
     } catch (error) {
-        console.error('❌ Failed to initialize Telegram Bot:', error.message);
-        telegramBot = null;
+        console.error('❌ Failed to initialize DeepSeek API:', error.message);
     }
 } else {
-    console.log('⚠️ Telegram Bot Token not provided - Telegram features disabled');
+    console.log('⚠️ DeepSeek API Key not provided - AI features disabled');
 }
 
 // ==================== [ متغيرات التخزين ] ====================
@@ -496,7 +225,6 @@ const FOLDERS = {
     TEMP: 'temp'
 };
 
-// إنشاء مجلدات التخزين
 (async () => {
     try {
         await fs.mkdir(STORAGE_BASE, { recursive: true });
@@ -504,15 +232,13 @@ const FOLDERS = {
             await fs.mkdir(path.join(STORAGE_BASE, folder), { recursive: true });
         }
         console.log('✅ Storage folders created successfully');
-        
         await cleanupTempFiles();
-        
     } catch (error) {
         console.error('❌ Error creating storage folders:', error);
     }
 })();
 
-// ==================== [ دوال التخزين ] ====================
+// ==================== [ دوال التخزين في Telegram ] ====================
 async function uploadToTelegram(filePath, fileName, fileType) {
     if (!telegramBot || !telegramStorageChannel) {
         console.log('⚠️ Telegram storage not available');
@@ -527,7 +253,7 @@ async function uploadToTelegram(filePath, fileName, fileType) {
             return null;
         }
         
-        console.log(`📤 Uploading to Telegram: ${fileName}`);
+        console.log(`📤 Uploading to Telegram: ${fileName} (${(fileStats.size/1024/1024).toFixed(2)}MB)`);
         
         let caption = `📁 ${fileName}\n📦 ${(fileStats.size/1024/1024).toFixed(2)}MB\n⏰ ${new Date().toLocaleString()}`;
         
@@ -556,12 +282,6 @@ async function uploadToTelegram(filePath, fileName, fileType) {
                 { source: filePath },
                 { caption: caption }
             );
-        } else if (['.mp3', '.wav', '.ogg', '.m4a'].includes(ext)) {
-            message = await telegramBot.telegram.sendAudio(
-                telegramStorageChannel,
-                { source: filePath },
-                { caption: caption }
-            );
         } else {
             message = await telegramBot.telegram.sendDocument(
                 telegramStorageChannel,
@@ -570,13 +290,44 @@ async function uploadToTelegram(filePath, fileName, fileType) {
             );
         }
         
+        let fileUrl = null;
+        if (message.document) {
+            const fileId = message.document.file_id;
+            const fileInfo = await telegramBot.telegram.getFile(fileId);
+            fileUrl = `https://api.telegram.org/file/bot${CONFIG.TELEGRAM_BOT_TOKEN}/${fileInfo.file_path}`;
+        } else if (message.photo && message.photo.length > 0) {
+            const fileId = message.photo[message.photo.length - 1].file_id;
+            const fileInfo = await telegramBot.telegram.getFile(fileId);
+            fileUrl = `https://api.telegram.org/file/bot${CONFIG.TELEGRAM_BOT_TOKEN}/${fileInfo.file_path}`;
+        } else if (message.video) {
+            const fileId = message.video.file_id;
+            const fileInfo = await telegramBot.telegram.getFile(fileId);
+            fileUrl = `https://api.telegram.org/file/bot${CONFIG.TELEGRAM_BOT_TOKEN}/${fileInfo.file_path}`;
+        }
+        
         console.log(`✅ Uploaded to Telegram: ${fileName}`);
         
-        return {
+        const fileInfo = {
+            telegramFileId: message.document?.file_id || message.photo?.[0]?.file_id || message.video?.file_id,
             telegramMessageId: message.message_id,
+            telegramUrl: fileUrl,
+            localPath: filePath,
             fileName: fileName,
             uploadedAt: Date.now()
         };
+        
+        uploadedFiles.set(fileName, fileInfo);
+        
+        if (CONFIG.AUTO_DELETE_LOCAL_AFTER_UPLOAD) {
+            try {
+                await fs.unlink(filePath);
+                console.log(`🗑️ Deleted local file: ${fileName}`);
+            } catch (error) {
+                console.warn(`⚠️ Could not delete local file: ${error.message}`);
+            }
+        }
+        
+        return fileInfo;
         
     } catch (error) {
         console.error(`❌ Error uploading to Telegram: ${error.message}`);
@@ -584,419 +335,362 @@ async function uploadToTelegram(filePath, fileName, fileType) {
     }
 }
 
-// ==================== [ دوال المساعد الذكي ] ====================
-
-async function askDeepSeek(question, subject, grade) {
+async function uploadToBoth(fileBuffer, fileName, folder, originalName) {
+    const results = {
+        telegram: null,
+        server: null,
+        combined: {}
+    };
+    
+    const tempFileName = `temp_${Date.now()}_${fileName}`;
+    const tempPath = path.join(STORAGE_BASE, FOLDERS.TEMP, tempFileName);
+    
     try {
-        const context = subject && grade ? 
-            `هذا سؤال في مادة ${subject} للصف ${grade}.` : 
-            'هذا سؤال تعليمي عام.';
+        await fs.writeFile(tempPath, fileBuffer);
         
-        const prompt = `${context}\n\nالسؤال: ${question}\n\nأجب بطريقة تعليمية واضحة ومنظمة.`;
+        if (telegramBot && telegramStorageChannel) {
+            results.telegram = await uploadToTelegram(tempPath, originalName || fileName, folder);
+        }
         
-        const response = await deepseekClient.chat.completions.create({
-            model: "deepseek-chat",
-            messages: [
-                { 
-                    role: "system", 
-                    content: "أنت مساعد تعليمي عربي متخصص في منصة تعليمية. قدم إجابات دقيقة وواضحة ومناسبة للطلاب. استخدم اللغة العربية الفصحى." 
-                },
-                { role: "user", content: prompt }
-            ],
-            temperature: 0.7,
-            max_tokens: 2000
-        });
+        const finalPath = path.join(STORAGE_BASE, folder, fileName);
         
-        return {
-            answer: response.choices[0].message.content,
-            isEducational: true,
-            subject: subject || 'عام',
-            grade: grade || 'جميع المراحل',
-            source: 'deepseek'
+        if (CONFIG.AUTO_DELETE_LOCAL_AFTER_UPLOAD && results.telegram) {
+            results.server = {
+                localPath: finalPath,
+                serverUrl: results.telegram.telegramUrl,
+                fileName: fileName,
+                uploadedAt: Date.now()
+            };
+        } else {
+            await fs.copyFile(tempPath, finalPath);
+            const stats = await fs.stat(finalPath);
+            const serverUrl = `${BOT_URL}/api/file/${folder}/${fileName}`;
+            
+            results.server = {
+                localPath: finalPath,
+                serverUrl: serverUrl,
+                fileName: fileName,
+                size: stats.size,
+                uploadedAt: Date.now()
+            };
+        }
+        
+        results.combined = {
+            fileName: fileName,
+            originalName: originalName || fileName,
+            folder: folder,
+            telegramUrl: results.telegram?.telegramUrl || null,
+            serverUrl: results.server.serverUrl,
+            telegramFileId: results.telegram?.telegramFileId || null,
+            telegramMessageId: results.telegram?.telegramMessageId || null,
+            localPath: results.server.localPath,
+            size: results.server.size || fileBuffer.length,
+            uploadedAt: Date.now(),
+            storageMode: results.telegram ? 'TELEGRAM_AND_SERVER' : 'SERVER_ONLY'
         };
         
+        try {
+            await fs.unlink(tempPath);
+        } catch (error) {
+            console.warn(`⚠️ Could not delete temp file: ${error.message}`);
+        }
+        
+        return results.combined;
+        
     } catch (error) {
-        console.error('DeepSeek ask error:', error);
+        console.error(`❌ Error in dual upload: ${error.message}`);
+        try {
+            await fs.unlink(tempPath);
+        } catch (cleanupError) {}
         throw error;
     }
 }
 
-async function generateDeepSeekQuiz(subject, grade, questionCount, questionTypes, difficulty = 'medium') {
-    try {
-        const prompt = `أنشئ اختباراً تعليمياً باللغة العربية:
-        - المادة: ${subject}
-        - الصف: ${grade}
-        - عدد الأسئلة: ${questionCount}
-        - الصعوبة: ${difficulty}
-        
-        قدم الناتج بتنسيق JSON.`;
-        
-        const response = await deepseekClient.chat.completions.create({
-            model: "deepseek-chat",
-            messages: [
-                { 
-                    role: "system", 
-                    content: "أنت منشئ اختبارات تعليمية. أعد دائماً بتنسيق JSON." 
-                },
-                { role: "user", content: prompt }
-            ],
-            temperature: 0.7,
-            max_tokens: 3000,
-            response_format: { type: "json_object" }
-        });
-        
-        const content = response.choices[0].message.content;
-        let quizData;
-        
-        try {
-            quizData = JSON.parse(content);
-        } catch (e) {
-            quizData = { questions: generateMockQuestions(subject, questionCount) };
-        }
-        
-        return {
-            quizId: `quiz_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
-            title: `اختبار ${subject} - الصف ${grade}`,
-            subject: subject,
-            grade: grade,
-            questions: quizData.questions || generateMockQuestions(subject, questionCount),
-            totalQuestions: questionCount,
-            timeLimit: 1800,
-            createdAt: Date.now(),
-            source: 'deepseek'
-        };
-        
-    } catch (error) {
-        console.error('DeepSeek quiz error:', error);
-        return generateMockQuiz(subject, grade, questionCount, questionTypes, difficulty);
-    }
-}
-
-function generateMockAIResponse(question) {
-    const responses = [
-        `سؤال ممتاز! في المنصة الكاملة يمكنني تقديم إجابة مفصلة عن: ${question.substring(0, 50)}...`,
-        `أنا مساعد DeepSeek التعليمي. للإجابة على "${question.substring(0, 30)}..." زر ${BOT_URL}`,
-        `هذا سؤال مهم! يمكنني الإجابة عليه بالتفصيل في الموقع: ${BOT_URL}`,
-        `للحصول على إجابة دقيقة عن ${question.substring(0, 40)}... استخدم الموقع أو الأمر /ai`
-    ];
-    
-    return responses[Math.floor(Math.random() * responses.length)];
-}
-
-function generateMockQuiz(subject, grade, questionCount, questionTypes, difficulty) {
-    const questions = [];
-    
-    for (let i = 1; i <= questionCount; i++) {
-        questions.push({
-            question: `سؤال ${i}: مثال على ${subject} للصف ${grade}`,
-            type: 'mcq',
-            options: ['الخيار 1', 'الخيار 2', 'الخيار 3', 'الخيار 4'],
-            correctAnswer: Math.floor(Math.random() * 4),
-            explanation: 'شرح الإجابة الصحيحة'
-        });
-    }
-    
-    return {
-        quizId: `mock_quiz_${Date.now()}`,
-        title: `اختبار ${subject} - الصف ${grade}`,
-        subject: subject,
-        grade: grade,
-        questions: questions,
-        totalQuestions: questionCount,
-        timeLimit: 1800,
-        createdAt: Date.now(),
-        source: 'mock'
-    };
-}
-
-function generateMockQuestions(subject, count) {
-    const questions = [];
-    for (let i = 1; i <= count; i++) {
-        questions.push({
-            question: `سؤال ${i} عن ${subject}`,
-            type: 'mcq',
-            options: ['الإجابة أ', 'الإجابة ب', 'الإجابة ج', 'الإجابة د'],
-            correctAnswer: Math.floor(Math.random() * 4),
-            explanation: 'هذا شرح للفهم الصحيح'
-        });
-    }
-    return questions;
-}
-
-// ==================== [ دوال Firebase ] ====================
-async function initializeBooksDatabase() {
-    if (isBooksInitialized) return;
-    
-    try {
-        if (!isFirebaseInitialized) return;
-
-        const db = admin.database();
-        const allBooks = getAllEducationalBooks();
-        
-        for (const book of allBooks) {
-            await db.ref(`books/${book.id}`).set(book);
-        }
-        
-        isBooksInitialized = true;
-        console.log(`✅ Added ${allBooks.length} books to Firebase`);
-        
-    } catch (error) {
-        console.error('❌ Error initializing books:', error);
-    }
-}
-
-function getAllEducationalBooks() {
-    const books = [];
-    let id = 1;
-    
-    const subjects = ['الرياضيات', 'العلوم', 'اللغة العربية', 'اللغة الإنجليزية', 'الاجتماعيات', 'التربية الإسلامية'];
-    const grades = ['الأول الابتدائي', 'الثاني الابتدائي', 'الثالث الابتدائي', 'الرابع الابتدائي', 'الخامس الابتدائي', 'السادس الابتدائي',
-                   'الأول المتوسط', 'الثاني المتوسط', 'الثالث المتوسط',
-                   'الأول الثانوي', 'الثاني الثانوي', 'الثالث الثانوي'];
-    
-    for (const grade of grades) {
-        for (const subject of subjects) {
-            books.push({
-                id: `book_${id++}`,
-                title: `${subject} - ${grade}`,
-                author: 'وزارة التربية والتعليم',
-                grade: grade,
-                subject: subject,
-                description: `كتاب ${subject} للمرحلة ${grade.includes('ابتدائي') ? 'الابتدائية' : grade.includes('متوسط') ? 'المتوسطة' : 'الثانوية'}`,
-                pages: 120,
-                fileName: `${subject}_${grade}.pdf`,
-                fileSize: 5000000,
-                isFree: true,
-                language: 'العربية',
-                curriculum: 'المنهج السوداني',
-                uploadedAt: Date.now()
-            });
-        }
-    }
-    
-    // كتب الذكاء الاصطناعي
-    books.push({
-        id: `book_${id++}`,
-        title: 'مقدمة في الذكاء الاصطناعي',
-        author: 'فريق المنصة',
-        grade: 'جميع المراحل',
-        subject: 'الذكاء الاصطناعي',
-        description: 'كتاب تمهيدي عن الذكاء الاصطناعي وتطبيقاته',
-        pages: 80,
-        fileName: 'ai_intro.pdf',
-        fileSize: 3000000,
-        isFree: true,
-        language: 'العربية',
-        curriculum: 'حديث',
-        uploadedAt: Date.now()
-    });
-    
-    return books;
-}
-
-// ==================== [ دوال مساعدة ] ====================
 async function cleanupTempFiles() {
     try {
         const tempDir = path.join(STORAGE_BASE, FOLDERS.TEMP);
         const files = await fs.readdir(tempDir);
         const now = Date.now();
+        const oneHour = 60 * 60 * 1000;
         
         for (const file of files) {
             const filePath = path.join(tempDir, file);
-            try {
+            const stats = await fs.stat(filePath);
+            
+            if (now - stats.mtimeMs > oneHour) {
                 await fs.unlink(filePath);
-            } catch (error) {}
+                console.log(`🧹 Cleaned up old temp file: ${file}`);
+            }
         }
     } catch (error) {}
 }
 
-// ==================== [ Middleware ] ====================
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(express.static('public'));
-
-// ==================== [ نقاط النهاية ] ====================
-
-// إعادة توجيه رابط البوت القديم
-app.get('/bot:token', (req, res) => {
-    res.redirect('/');
+// ==================== [ تكوين Multer للرفع ] ====================
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const folder = req.params.folder || 'images';
+        cb(null, path.join(STORAGE_BASE, FOLDERS.TEMP));
+    },
+    filename: (req, file, cb) => {
+        const uniqueId = crypto.randomBytes(8).toString('hex');
+        const ext = path.extname(file.originalname);
+        const fileName = `${Date.now()}_${uniqueId}${ext}`;
+        cb(null, fileName);
+    }
 });
 
-app.get('/telegram-webhook-info', (req, res) => {
-    res.json({
-        success: true,
-        message: 'Telegram Webhook is active',
-        webhook: `${BOT_URL}/telegram-webhook`,
-        botStatus: telegramBot ? 'Active' : 'Inactive',
-        endpoints: {
-            webhook: `${BOT_URL}/telegram-webhook`,
-            health: `${BOT_URL}/health`,
-            api: `${BOT_URL}/api/test`,
-            ai: `${BOT_URL}/api/ai/ask`
-        }
-    });
-});
-
-app.get('/api/test', (req, res) => {
-    res.json({ 
-        success: true, 
-        message: '✅ Server is running!',
-        version: '4.0.0',
-        baseUrl: BOT_URL,
-        services: {
-            telegram: telegramBot ? '✅ Connected' : '❌ Disconnected',
-            deepseek: deepseekClient ? '✅ Connected' : '❌ Disconnected',
-            firebase: isFirebaseInitialized ? '✅ Connected' : '❌ Disconnected',
-            storage: '✅ Active'
-        },
-        stats: {
-            books: getAllEducationalBooks().length,
-            dailyQuestions: CONFIG.MAX_DAILY_QUESTIONS
-        }
-    });
-});
-
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        baseUrl: BOT_URL,
-        services: {
-            server: '✅ Running',
-            telegram: telegramBot ? '✅ Connected' : '❌ Disconnected',
-            deepseek: deepseekClient ? '✅ Connected' : '❌ Disconnected',
-            firebase: isFirebaseInitialized ? '✅ Connected' : '❌ Disconnected'
-        }
-    });
-});
-
-// نقاط نهاية AI
-app.post('/api/ai/ask', async (req, res) => {
-    try {
-        const { question, userId, subject, grade } = req.body;
+const upload = multer({
+    storage,
+    limits: { fileSize: 100 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = {
+            'image/jpeg': 'images',
+            'image/png': 'images',
+            'image/webp': 'images',
+            'image/gif': 'images',
+            'application/pdf': 'books',
+            'application/msword': 'books',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'books',
+            'text/plain': 'books',
+            'video/mp4': 'videos',
+            'video/webm': 'videos',
+            'video/quicktime': 'videos',
+            'audio/mpeg': 'videos'
+        };
         
-        if (!question) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'السؤال مطلوب',
-                baseUrl: BOT_URL
-            });
-        }
-        
-        let response;
-        
-        if (deepseekClient) {
-            response = await askDeepSeek(question, subject, grade);
+        if (allowedTypes[file.mimetype]) {
+            cb(null, true);
         } else {
-            response = {
-                answer: generateMockAIResponse(question),
-                isEducational: true,
-                source: 'mock'
+            cb(new Error(`Unsupported file type: ${file.mimetype}`), false);
+        }
+    }
+});
+
+// ==================== [ دوال مساعدة ] ====================
+async function storeFileMetadata(fileInfo) {
+    if (!isFirebaseInitialized) {
+        console.warn('⚠️ Firebase not initialized - skipping metadata storage');
+        return fileInfo;
+    }
+
+    try {
+        const fileId = `file_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        const metadata = {
+            id: fileId,
+            originalName: fileInfo.originalName,
+            fileName: fileInfo.fileName,
+            folder: fileInfo.folder,
+            telegramUrl: fileInfo.telegramUrl,
+            serverUrl: fileInfo.serverUrl,
+            telegramFileId: fileInfo.telegramFileId,
+            telegramMessageId: fileInfo.telegramMessageId,
+            size: fileInfo.size,
+            uploadedBy: fileInfo.uploadedBy || 'anonymous',
+            uploadedAt: fileInfo.uploadedAt,
+            isPublic: fileInfo.isPublic !== false,
+            storageMode: fileInfo.storageMode || 'SERVER_ONLY',
+            localPath: fileInfo.localPath,
+            ...(fileInfo.bookInfo || {})
+        };
+        
+        const db = admin.database();
+        await db.ref(`file_storage/${fileId}`).set(metadata);
+        
+        console.log(`✅ File metadata saved to Firebase: ${fileId}`);
+        
+        if (fileInfo.folder === 'books' && fileInfo.bookInfo) {
+            const bookId = `book_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+            const bookData = {
+                id: bookId,
+                title: fileInfo.bookInfo.title || fileInfo.originalName,
+                author: fileInfo.bookInfo.author || 'غير معروف',
+                grade: fileInfo.bookInfo.grade || 'عام',
+                subject: fileInfo.bookInfo.subject || 'عام',
+                description: fileInfo.bookInfo.description || '',
+                pages: fileInfo.bookInfo.pages || 0,
+                fileName: fileInfo.fileName,
+                fileSize: fileInfo.size,
+                downloadUrl: fileInfo.serverUrl,
+                telegramUrl: fileInfo.telegramUrl,
+                thumbnailUrl: fileInfo.thumbnailUrl,
+                uploadedBy: fileInfo.uploadedBy,
+                uploadedAt: fileInfo.uploadedAt,
+                downloads: 0,
+                views: 0,
+                isFree: true,
+                language: 'العربية',
+                curriculum: 'المنهج السوداني'
             };
+            
+            await db.ref(`books/${bookId}`).set(bookData);
+            console.log(`📚 Book saved to database: ${bookData.title}`);
         }
         
-        res.json({
-            success: true,
-            baseUrl: BOT_URL,
-            question: question,
-            answer: response.answer,
-            metadata: {
-                aiProvider: deepseekClient ? 'DeepSeek' : 'Mock',
-                timestamp: new Date().toISOString()
-            }
-        });
+        return { ...fileInfo, firebaseId: fileId };
         
     } catch (error) {
-        console.error('AI ask error:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'حدث خطأ في معالجة السؤال',
-            baseUrl: BOT_URL
-        });
+        console.error('❌ Error saving metadata to Firebase:', error.message);
+        return fileInfo;
     }
-});
+}
 
-app.post('/api/ai/generate-quiz', async (req, res) => {
+async function createThumbnail(filePath, fileName) {
     try {
-        const { subject, grade, questionCount = 10 } = req.body;
+        const thumbFileName = `thumb_${path.parse(fileName).name}.webp`;
+        const thumbPath = path.join(STORAGE_BASE, 'images', thumbFileName);
         
-        if (!subject || !grade) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'المادة والصف مطلوبان',
-                baseUrl: BOT_URL
-            });
+        await sharp(filePath)
+            .resize(200, 200, { fit: 'cover' })
+            .webp({ quality: 80 })
+            .toFile(thumbPath);
+        
+        const thumbUrl = `${BOT_URL}/api/file/images/${thumbFileName}`;
+        
+        if (telegramBot && telegramStorageChannel) {
+            await uploadToTelegram(thumbPath, thumbFileName, 'images');
         }
         
-        const quiz = await generateDeepSeekQuiz(subject, grade, questionCount, ['mcq'], 'medium');
-        
-        res.json({
-            success: true,
-            baseUrl: BOT_URL,
-            quiz: quiz,
-            instructions: 'أجب على جميع الأسئلة في 30 دقيقة'
-        });
-        
+        return thumbUrl;
     } catch (error) {
-        console.error('Quiz generation error:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'حدث خطأ في إنشاء الاختبار',
-            baseUrl: BOT_URL
-        });
+        console.warn('⚠️ Failed to create thumbnail:', error.message);
+        return null;
     }
-});
+}
 
-app.get('/api/books', async (req, res) => {
+async function extractPDFInfo(filePath) {
     try {
-        const { grade, subject, search, page = 1, limit = 20 } = req.query;
-        
-        let books = getAllEducationalBooks();
-        
-        if (grade) {
-            books = books.filter(book => book.grade.includes(grade));
+        if (path.extname(filePath).toLowerCase() !== '.pdf') {
+            return { pages: 0, hasText: false, optimized: false };
         }
         
-        if (subject) {
-            books = books.filter(book => book.subject.includes(subject));
+        const pdfBytes = await fs.readFile(filePath);
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        const pages = pdfDoc.getPageCount();
+        return { 
+            pages, 
+            hasText: pages > 0, 
+            optimized: pages <= 50,
+            fileSize: pdfBytes.length
+        };
+    } catch (error) {
+        return { pages: 0, hasText: false, optimized: false, fileSize: 0 };
+    }
+}
+
+// ==================== [ تهيئة قاعدة بيانات الكتب ] ====================
+async function initializeBooksDatabase() {
+    if (isBooksInitialized) {
+        console.log('📚 Books already initialized in this session');
+        return;
+    }
+    
+    try {
+        if (!isFirebaseInitialized) {
+            console.log('⚠️ Firebase not connected - skipping book initialization');
+            return;
         }
+
+        const db = admin.database();
+        const snapshot = await db.ref('books').once('value');
+        const existingBooks = snapshot.val() || {};
         
-        if (search) {
-            const searchLower = search.toLowerCase();
-            books = books.filter(book => 
-                book.title.toLowerCase().includes(searchLower) ||
-                book.subject.toLowerCase().includes(searchLower)
-            );
+        if (Object.keys(existingBooks).length > 0) {
+            console.log(`📚 Books already exist in database (${Object.keys(existingBooks).length} books)`);
+            isBooksInitialized = true;
+            return;
         }
+
+        console.log('📚 Initializing educational books database...');
         
-        const total = books.length;
-        const pageNum = parseInt(page);
-        const limitNum = parseInt(limit);
-        const startIndex = (pageNum - 1) * limitNum;
-        const endIndex = startIndex + limitNum;
-        const paginatedBooks = books.slice(startIndex, endIndex);
+        const allBooks = getAllEducationalBooks();
         
-        res.json({ 
-            success: true, 
-            baseUrl: BOT_URL,
-            books: paginatedBooks,
-            stats: {
-                total: total,
-                showing: paginatedBooks.length,
-                page: pageNum,
-                totalPages: Math.ceil(total / limitNum)
+        let addedCount = 0;
+        for (const book of allBooks) {
+            const bookId = book.id;
+            
+            const bookWithStorage = {
+                ...book,
+                storageMode: 'SYSTEM_GENERATED',
+                telegramUrl: null,
+                serverUrl: book.downloadUrl || `${BOT_URL}/api/file/books/${book.fileName}`,
+                uploadedAt: Date.now(),
+                isFree: true
+            };
+            
+            await db.ref(`books/${bookId}`).set(bookWithStorage);
+            addedCount++;
+            
+            if (addedCount % 10 === 0) {
+                console.log(`📚 Added ${addedCount}/${allBooks.length} books...`);
             }
-        });
+        }
+        
+        isBooksInitialized = true;
+        console.log(`✅ Successfully added ${addedCount} educational books to database`);
         
     } catch (error) {
-        console.error('Books error:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'حدث خطأ في جلب الكتب',
-            baseUrl: BOT_URL
-        });
+        console.error('❌ Error initializing books database:', error);
     }
-});
+}
+
+function getAllEducationalBooks() {
+    const allBooks = [];
+    let bookCounter = 1;
+    
+    function createBook(grade, subject, title, description = '', pages = 100) {
+        return {
+            id: `book_${grade.replace(/\s+/g, '_')}_${subject.replace(/\s+/g, '_')}_${bookCounter++}`,
+            title: title,
+            author: 'وزارة التربية والتعليم السودانية',
+            grade: grade,
+            subject: subject,
+            description: description || `${title} - المنهج السوداني للصف ${grade}`,
+            year: 2024,
+            pages: pages,
+            fileName: `${grade.replace(/\s+/g, '_')}_${subject.replace(/\s+/g, '_')}.pdf`,
+            fileSize: Math.floor(Math.random() * 5000000) + 1000000,
+            uploadedBy: 'system',
+            isFree: true,
+            language: 'العربية',
+            curriculum: 'المنهج السوداني'
+        };
+    }
+
+    const elementaryGrades = ['الأول الابتدائي', 'الثاني الابتدائي', 'الثالث الابتدائي', 'الرابع الابتدائي', 'الخامس الابتدائي', 'السادس الابتدائي'];
+    const elementarySubjects = ['الرياضيات', 'اللغة العربية', 'العلوم', 'التربية الإسلامية', 'الاجتماعيات', 'اللغة الإنجليزية'];
+
+    const intermediateGrades = ['الأول المتوسط', 'الثاني المتوسط', 'الثالث المتوسط'];
+    const intermediateSubjects = ['الرياضيات', 'العلوم', 'اللغة العربية', 'اللغة الإنجليزية', 'الاجتماعيات', 'التربية الإسلامية', 'الحاسوب'];
+
+    const secondaryGrades = ['الأول الثانوي', 'الثاني الثانوي', 'الثالث الثانوي'];
+    const secondarySubjects = ['الرياضيات', 'الفيزياء', 'الكيمياء', 'الأحياء', 'اللغة العربية', 'اللغة الإنجليزية', 'التاريخ', 'الجغرافيا', 'الفلسفة'];
+
+    for (const grade of elementaryGrades) {
+        for (const subject of elementarySubjects) {
+            allBooks.push(createBook(grade, subject, `${subject} للصف ${grade}`, `${subject} للمرحلة الابتدائية`, 80));
+        }
+    }
+
+    for (const grade of intermediateGrades) {
+        for (const subject of intermediateSubjects) {
+            allBooks.push(createBook(grade, subject, `${subject} للصف ${grade}`, `${subject} للمرحلة المتوسطة`, 120));
+        }
+    }
+
+    for (const grade of secondaryGrades) {
+        for (const subject of secondarySubjects) {
+            allBooks.push(createBook(grade, subject, `${subject} للصف ${grade}`, `${subject} للمرحلة الثانوية`, 150));
+        }
+    }
+
+    const aiBooks = [
+        createBook('جميع المراحل', 'تعليم الذكاء الاصطناعي', 'مقدمة في الذكاء الاصطناعي للطلاب', 'كتاب تعليمي مبسط عن الذكاء الاصطناعي', 60),
+        createBook('الثانوي', 'البرمجة', 'أساسيات البرمجة بلغة بايثون', 'تعلم البرمجة من الصفر', 90),
+        createBook('المتوسط', 'المهارات الرقمية', 'المهارات الرقمية للطلاب', 'تنمية المهارات الرقمية', 70)
+    ];
+    
+    return [...allBooks, ...aiBooks];
+}
 
 // ==================== [ Socket.IO للبث المباشر ] ====================
 io.on('connection', (socket) => {
@@ -1015,6 +709,7 @@ io.on('connection', (socket) => {
                 id: roomId,
                 participants: new Map(),
                 teacherId: role === 'teacher' ? userId : null,
+                isRecording: false,
                 createdAt: Date.now()
             });
         }
@@ -1029,10 +724,24 @@ io.on('connection', (socket) => {
                 userId: id,
                 userName: data.userName,
                 role: data.role
-            }))
+            })),
+            isRecording: room.isRecording
         });
         
         console.log(`🚪 ${userName} joined room ${roomId}`);
+        
+        if (isFirebaseInitialized) {
+            try {
+                const db = admin.database();
+                db.ref(`live_rooms/${roomId}/participants/${userId}`).set({
+                    userName,
+                    role,
+                    joinedAt: Date.now()
+                });
+            } catch (error) {
+                console.error('Error updating Firebase:', error);
+            }
+        }
     });
 
     socket.on('signal', (data) => {
@@ -1052,6 +761,16 @@ io.on('connection', (socket) => {
         };
         
         io.to(roomId).emit('chat-message', chatMessage);
+        
+        if (isFirebaseInitialized && roomId) {
+            try {
+                const db = admin.database();
+                const messageId = `msg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+                db.ref(`live_chats/${roomId}/${messageId}`).set(chatMessage);
+            } catch (error) {
+                console.error('Error saving chat message:', error);
+            }
+        }
     });
 
     socket.on('disconnect', () => {
@@ -1072,407 +791,982 @@ io.on('connection', (socket) => {
     });
 });
 
-// ==================== [ الصفحة الرئيسية ] ====================
+// ==================== [ نظام الاشتراكات والدفع ] ====================
+async function checkSubscription(userId) {
+    if (!isFirebaseInitialized) {
+        return { 
+            hasAccess: true, 
+            isTrial: true, 
+            remainingDays: CONFIG.FREE_TRIAL_DAYS,
+            dailyLimit: CONFIG.MAX_DAILY_QUESTIONS.trial,
+            type: 'trial',
+            status: 'active'
+        };
+    }
+
+    try {
+        const db = admin.database();
+        const userRef = await db.ref(`users/${userId}`).once('value');
+        let userData = userRef.val() || {};
+        
+        if (!userData.subscription) {
+            const trialEnd = Date.now() + (CONFIG.FREE_TRIAL_DAYS * 24 * 60 * 60 * 1000);
+            const subscriptionData = {
+                type: 'trial',
+                startDate: Date.now(),
+                endDate: trialEnd,
+                status: 'active',
+                paymentStatus: 'free_trial'
+            };
+            
+            await db.ref(`users/${userId}/subscription`).set(subscriptionData);
+            
+            userData.subscription = subscriptionData;
+            userData.createdAt = userData.createdAt || Date.now();
+            
+            await db.ref(`users/${userId}`).update({
+                createdAt: userData.createdAt,
+                lastActive: Date.now()
+            });
+            
+            console.log(`🎁 Started free trial for user: ${userId}`);
+            
+            return {
+                hasAccess: true,
+                isTrial: true,
+                remainingDays: CONFIG.FREE_TRIAL_DAYS,
+                dailyLimit: CONFIG.MAX_DAILY_QUESTIONS.trial,
+                type: 'trial',
+                status: 'active',
+                startDate: new Date(subscriptionData.startDate).toLocaleDateString('ar-SA'),
+                endDate: new Date(trialEnd).toLocaleDateString('ar-SA')
+            };
+        }
+
+        const subscription = userData.subscription;
+        const now = Date.now();
+        
+        const remainingDays = Math.max(0, Math.ceil((subscription.endDate - now) / (24 * 60 * 60 * 1000)));
+        
+        let isActive = subscription.status === 'active' && subscription.endDate > now;
+        
+        let dailyLimit = CONFIG.MAX_DAILY_QUESTIONS.free;
+        if (subscription.type === 'trial') {
+            dailyLimit = CONFIG.MAX_DAILY_QUESTIONS.trial;
+        } else if (subscription.type === 'paid' && isActive) {
+            dailyLimit = CONFIG.MAX_DAILY_QUESTIONS.paid;
+        }
+        
+        await db.ref(`users/${userId}/lastActive`).set(Date.now());
+
+        return {
+            hasAccess: isActive,
+            isTrial: subscription.type === 'trial',
+            remainingDays: remainingDays,
+            dailyLimit: dailyLimit,
+            type: subscription.type,
+            status: subscription.status,
+            paymentStatus: subscription.paymentStatus || 'pending',
+            startDate: new Date(subscription.startDate).toLocaleDateString('ar-SA'),
+            endDate: new Date(subscription.endDate).toLocaleDateString('ar-SA'),
+            paymentMethod: subscription.paymentMethod,
+            transactionId: subscription.transactionId
+        };
+
+    } catch (error) {
+        console.error('Error checking subscription:', error);
+        return { 
+            hasAccess: true, 
+            isTrial: true, 
+            remainingDays: CONFIG.FREE_TRIAL_DAYS,
+            dailyLimit: CONFIG.MAX_DAILY_QUESTIONS.trial,
+            type: 'trial',
+            status: 'active'
+        };
+    }
+}
+
+async function checkDailyUsage(userId) {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const dailyKey = `daily_usage_${userId}_${today}`;
+        
+        if (!isFirebaseInitialized) {
+            return { used: 0, limit: CONFIG.MAX_DAILY_QUESTIONS.trial, remaining: CONFIG.MAX_DAILY_QUESTIONS.trial };
+        }
+        
+        const db = admin.database();
+        const usageRef = await db.ref(`usage/${dailyKey}`).once('value');
+        const usage = usageRef.val() || { count: 0 };
+        
+        const subscription = await checkSubscription(userId);
+        const limit = subscription.dailyLimit || CONFIG.MAX_DAILY_QUESTIONS.free;
+        const remaining = Math.max(0, limit - usage.count);
+        
+        return {
+            used: usage.count,
+            limit: limit,
+            remaining: remaining,
+            canAsk: remaining > 0
+        };
+        
+    } catch (error) {
+        console.error('Error checking daily usage:', error);
+        return { used: 0, limit: 50, remaining: 50, canAsk: true };
+    }
+}
+
+async function updateDailyUsage(userId) {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const dailyKey = `daily_usage_${userId}_${today}`;
+        
+        if (isFirebaseInitialized) {
+            const db = admin.database();
+            const usageRef = db.ref(`usage/${dailyKey}`);
+            const snapshot = await usageRef.once('value');
+            const current = snapshot.val() || { count: 0, userId: userId };
+            
+            await usageRef.set({
+                count: current.count + 1,
+                userId: userId,
+                lastUsed: Date.now(),
+                date: today
+            });
+        }
+    } catch (error) {
+        console.error('Error updating daily usage:', error);
+    }
+}
+
+async function createPaymentRequest(userData) {
+    try {
+        const { userId, userName, phone, amount, paymentMethod, transactionId, screenshotUrl } = userData;
+        const paymentId = `pay_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        
+        const paymentData = {
+            id: paymentId,
+            userId,
+            userName: userName || `user_${userId.substring(0, 8)}`,
+            phone: phone || 'غير معروف',
+            amount: parseInt(amount),
+            paymentMethod,
+            transactionId,
+            screenshotUrl,
+            status: 'pending',
+            adminApproved: false,
+            adminId: null,
+            adminNote: null,
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+        };
+        
+        if (isFirebaseInitialized) {
+            const db = admin.database();
+            await db.ref(`payments/${paymentId}`).set(paymentData);
+            await db.ref(`users/${userId}/lastPayment`).set({
+                paymentId,
+                amount,
+                status: 'pending',
+                date: Date.now()
+            });
+            
+            console.log(`💰 Payment request created: ${paymentId} for user ${userId}`);
+            
+            await notifyAdminAboutPayment(paymentData);
+        }
+        
+        return { success: true, paymentId, ...paymentData };
+        
+    } catch (error) {
+        console.error('Error creating payment request:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+async function notifyAdminAboutPayment(paymentData) {
+    try {
+        if (!telegramBot || !CONFIG.TELEGRAM_ADMIN_CHAT_ID) {
+            console.log('⚠️ Telegram bot not available for admin notifications');
+            return false;
+        }
+        
+        const message = `
+💰 **طلب دفع جديد يحتاج موافقة**
+
+👤 **المستخدم:** ${paymentData.userName}
+📞 **الهاتف:** ${paymentData.phone}
+🆔 **رقم المستخدم:** ${paymentData.userId}
+
+💳 **بيانات الدفع:**
+• المبلغ: ${paymentData.amount} SDG
+• طريقة الدفع: ${paymentData.paymentMethod}
+• رقم المعاملة: ${paymentData.transactionId}
+• الوقت: ${new Date(paymentData.createdAt).toLocaleString('ar-SA')}
+
+🆔 **رقم الطلب:** ${paymentData.id}
+
+📸 **إيصال الدفع:** ${paymentData.screenshotUrl || 'لم يرفع'}
+
+✅ **للموافقة:** /approve_${paymentData.id}
+❌ **للرفض:** /reject_${paymentData.id}
+
+🔍 **لعرض التفاصيل:** /payment_${paymentData.id}
+        `;
+        
+        await telegramBot.telegram.sendMessage(CONFIG.TELEGRAM_ADMIN_CHAT_ID, message, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "✅ الموافقة", callback_data: `approve_${paymentData.id}` },
+                        { text: "❌ الرفض", callback_data: `reject_${paymentData.id}` }
+                    ],
+                    [
+                        { text: "👤 عرض الملف", callback_data: `user_${paymentData.userId}` }
+                    ]
+                ]
+            }
+        });
+        
+        console.log(`📨 Payment notification sent to admin for ${paymentData.id}`);
+        return true;
+        
+    } catch (error) {
+        console.error('Error notifying admin:', error);
+        return false;
+    }
+}
+
+async function approvePayment(paymentId, adminId, note = '') {
+    try {
+        if (!isFirebaseInitialized) {
+            return { success: false, error: 'Firebase not initialized' };
+        }
+        
+        const db = admin.database();
+        const paymentRef = await db.ref(`payments/${paymentId}`).once('value');
+        const payment = paymentRef.val();
+        
+        if (!payment) {
+            return { success: false, error: 'Payment not found' };
+        }
+        
+        if (payment.status !== 'pending') {
+            return { success: false, error: `Payment already ${payment.status}` };
+        }
+        
+        const userId = payment.userId;
+        
+        let subscriptionDays = 0;
+        let subscriptionType = 'weekly';
+        
+        if (payment.amount >= CONFIG.TEACHER_MONTHLY_FEE) {
+            subscriptionDays = 30;
+            subscriptionType = 'teacher_monthly';
+        } else if (payment.amount >= CONFIG.MONTHLY_SUBSCRIPTION) {
+            subscriptionDays = 30;
+            subscriptionType = 'monthly';
+        } else if (payment.amount >= CONFIG.WEEKLY_SUBSCRIPTION) {
+            subscriptionDays = 7;
+            subscriptionType = 'weekly';
+        } else {
+            return { success: false, error: 'المبلغ غير كافي لأي اشتراك' };
+        }
+        
+        const endDate = Date.now() + (subscriptionDays * 24 * 60 * 60 * 1000);
+        
+        await db.ref(`payments/${paymentId}`).update({
+            status: 'approved',
+            adminApproved: true,
+            adminId: adminId,
+            adminNote: note || 'تمت الموافقة',
+            approvedAt: Date.now(),
+            updatedAt: Date.now(),
+            subscriptionDays: subscriptionDays,
+            subscriptionType: subscriptionType,
+            endDate: endDate
+        });
+        
+        await db.ref(`users/${userId}/subscription`).set({
+            type: subscriptionType,
+            startDate: Date.now(),
+            endDate: endDate,
+            status: 'active',
+            paymentStatus: 'paid',
+            paymentId: paymentId,
+            paymentMethod: payment.paymentMethod,
+            transactionId: payment.transactionId,
+            amount: payment.amount,
+            adminApproved: true,
+            adminId: adminId
+        });
+        
+        await notifyUserAboutPaymentApproval(userId, paymentId, subscriptionDays);
+        
+        console.log(`✅ Payment approved: ${paymentId} for user ${userId}, ${subscriptionDays} days`);
+        
+        return {
+            success: true,
+            paymentId,
+            userId,
+            subscriptionDays,
+            subscriptionType,
+            endDate: new Date(endDate).toLocaleDateString('ar-SA'),
+            message: 'تمت الموافقة على الدفع وتفعيل الاشتراك'
+        };
+        
+    } catch (error) {
+        console.error('Error approving payment:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+async function rejectPayment(paymentId, adminId, reason = '') {
+    try {
+        if (!isFirebaseInitialized) {
+            return { success: false, error: 'Firebase not initialized' };
+        }
+        
+        const db = admin.database();
+        const paymentRef = await db.ref(`payments/${paymentId}`).once('value');
+        const payment = paymentRef.val();
+        
+        if (!payment) {
+            return { success: false, error: 'Payment not found' };
+        }
+        
+        await db.ref(`payments/${paymentId}`).update({
+            status: 'rejected',
+            adminApproved: false,
+            adminId: adminId,
+            adminNote: reason || 'مرفوض',
+            rejectedAt: Date.now(),
+            updatedAt: Date.now()
+        });
+        
+        await notifyUserAboutPaymentRejection(payment.userId, paymentId, reason);
+        
+        console.log(`❌ Payment rejected: ${paymentId}, reason: ${reason}`);
+        
+        return { success: true, paymentId, message: 'تم رفض الدفع' };
+        
+    } catch (error) {
+        console.error('Error rejecting payment:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+async function notifyUserAboutPaymentApproval(userId, paymentId, days) {
+    try {
+        if (!isFirebaseInitialized) return;
+        
+        const db = admin.database();
+        const userRef = await db.ref(`users/${userId}`).once('value');
+        const user = userRef.val();
+        
+        const message = `
+🎉 **تمت الموافقة على دفعتك!**
+
+✅ **تم تفعيل اشتراكك بنجاح**
+📅 **مدة الاشتراك:** ${days} يوم
+🆔 **رقم المعاملة:** ${paymentId}
+⏰ **وقت الموافقة:** ${new Date().toLocaleString('ar-SA')}
+
+📚 **مميزات الاشتراك:**
+• ${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال يومي
+• وصول كامل للمكتبة
+• بث مباشر غير محدود
+• دعم فني مميز
+
+شكراً لثقتك بمنصتنا التعليمية! 🚀
+        `;
+        
+        const notificationId = `notif_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        await db.ref(`notifications/${userId}/${notificationId}`).set({
+            id: notificationId,
+            type: 'payment_approved',
+            title: 'تمت الموافقة على الدفع',
+            message: message,
+            paymentId: paymentId,
+            read: false,
+            createdAt: Date.now()
+        });
+        
+        if (telegramBot && user && user.telegramId) {
+            try {
+                await telegramBot.telegram.sendMessage(user.telegramId, message, {
+                    parse_mode: 'Markdown'
+                });
+            } catch (tgError) {
+                console.log('Could not send Telegram notification:', tgError.message);
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error notifying user:', error);
+    }
+}
+
+async function notifyUserAboutPaymentRejection(userId, paymentId, reason) {
+    try {
+        if (!isFirebaseInitialized) return;
+        
+        const db = admin.database();
+        
+        const message = `
+❌ **تم رفض دفعتك**
+
+📌 **السبب:** ${reason || 'غير محدد'}
+🆔 **رقم المعاملة:** ${paymentId}
+⏰ **وقت الرفض:** ${new Date().toLocaleString('ar-SA')}
+
+⚠️ **إذا كنت تعتقد أن هذا خطأ، يرجى:**
+1. التحقق من رقم المعاملة
+2. التأكد من صورة الإيصال
+3. التواصل مع الدعم الفني
+
+للإعادة المحاولة، أرسل دفعة جديدة مع التأكد من:
+• صحة رقم الحساب
+• وضوح صورة الإيصال
+• مطابقة المبلغ
+        `;
+        
+        const notificationId = `notif_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        await db.ref(`notifications/${userId}/${notificationId}`).set({
+            id: notificationId,
+            type: 'payment_rejected',
+            title: 'تم رفض الدفع',
+            message: message,
+            paymentId: paymentId,
+            reason: reason,
+            read: false,
+            createdAt: Date.now()
+        });
+        
+    } catch (error) {
+        console.error('Error notifying user about rejection:', error);
+    }
+}
+
+// ==================== [ دوال AI ] ====================
+async function askDeepSeek(question, subject, grade) {
+    try {
+        const context = subject && grade ? 
+            `السؤال في مادة ${subject} للصف ${grade}.` : 
+            'هذا سؤال تعليمي عام.';
+        
+        const prompt = `أنت مساعد تعليمي عربي ذكي في منصة تعليمية.
+        
+        ${context}
+        
+        السؤال: ${question}
+        
+        قدم إجابة تعليمية واضحة ودقيقة.`;
+        
+        const response = await deepseekClient.chat.completions.create({
+            model: "deepseek-chat",
+            messages: [
+                { 
+                    role: "system", 
+                    content: "أنت مساعد تعليمي عربي ذكي في منصة تعليمية. هدفك مساعدة الطلاب في فهم المواد التعليمية وإجابة أسئلتهم بدقة ووضوح." 
+                },
+                { role: "user", content: prompt }
+            ],
+            temperature: 0.7,
+            max_tokens: 1500
+        });
+        
+        return {
+            answer: response.choices[0].message.content,
+            isEducational: true,
+            subject: subject || 'عام',
+            grade: grade || 'جميع المراحل',
+            source: 'deepseek'
+        };
+        
+    } catch (error) {
+        console.error('DeepSeek ask error:', error);
+        throw error;
+    }
+}
+
+// ==================== [ Middleware ] ====================
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// ==================== [ نقاط النهاية الرئيسية ] ====================
+app.get('/api/test', (req, res) => {
+    res.json({ 
+        success: true, 
+        message: '✅ Server is running!', 
+        time: new Date().toISOString(),
+        server: 'Smart Education Platform v4.0',
+        baseUrl: BOT_URL,
+        features: ['DeepSeek AI', 'Subscription System', 'Live Streaming', 'Digital Library', 'Payment System']
+    });
+});
+
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        baseUrl: BOT_URL,
+        services: {
+            server: '✅ Running',
+            telegram: telegramBot ? '✅ Connected' : '❌ Disconnected',
+            firebase: isFirebaseInitialized ? '✅ Connected' : '❌ Disconnected',
+            deepseek: deepseekClient ? '✅ Connected' : '❌ Disconnected'
+        }
+    });
+});
+
+// ==================== [ نقاط نهاية نظام الاشتراكات ] ====================
+app.get('/api/subscription/status/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const subscription = await checkSubscription(userId);
+        const usage = await checkDailyUsage(userId);
+        
+        res.json({
+            success: true,
+            userId,
+            subscription,
+            usage,
+            pricing: {
+                freeTrial: `${CONFIG.FREE_TRIAL_DAYS} يوم مجاناً`,
+                weekly: `${CONFIG.WEEKLY_SUBSCRIPTION} SDG (أسبوع)`,
+                monthly: `${CONFIG.MONTHLY_SUBSCRIPTION} SDG (شهر)`,
+                teacherMonthly: `${CONFIG.TEACHER_MONTHLY_FEE} SDG (معلم/شهر)`,
+                paymentMethods: CONFIG.PAYMENT_METHODS,
+                adminAccount: CONFIG.ADMIN_BANK_ACCOUNT,
+                adminName: CONFIG.ADMIN_NAME,
+                adminPhone: CONFIG.ADMIN_PHONE
+            }
+        });
+        
+    } catch (error) {
+        console.error('Subscription status error:', error);
+        res.status(500).json({ success: false, error: 'خطأ في التحقق من الاشتراك' });
+    }
+});
+
+app.post('/api/payment/request', async (req, res) => {
+    try {
+        const { userId, userName, phone, amount, paymentMethod, transactionId, screenshotUrl } = req.body;
+        
+        if (!userId || !amount || !paymentMethod || !transactionId) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'بيانات الدفع غير مكتملة. يلزم: userId, amount, paymentMethod, transactionId' 
+            });
+        }
+        
+        const minAmount = Math.min(
+            CONFIG.WEEKLY_SUBSCRIPTION,
+            CONFIG.MONTHLY_SUBSCRIPTION,
+            CONFIG.TEACHER_MONTHLY_FEE
+        );
+        
+        if (parseInt(amount) < minAmount) {
+            return res.status(400).json({ 
+                success: false, 
+                error: `المبلغ غير كافي. الحد الأدنى: ${minAmount} SDG` 
+            });
+        }
+        
+        if (!CONFIG.PAYMENT_METHODS.includes(paymentMethod)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: `طريقة دفع غير مدعومة. الاختيارات: ${CONFIG.PAYMENT_METHODS.join(', ')}` 
+            });
+        }
+        
+        const result = await createPaymentRequest({
+            userId, userName, phone, amount, paymentMethod, transactionId, screenshotUrl
+        });
+        
+        if (result.success) {
+            res.json({
+                success: true,
+                message: 'تم إنشاء طلب الدفع بنجاح وتم إرساله للأدمن للموافقة',
+                paymentId: result.paymentId,
+                status: 'pending',
+                note: 'سيتم تفعيل اشتراكك بعد موافقة الأدمن على الدفع'
+            });
+        } else {
+            res.status(500).json({ success: false, error: result.error });
+        }
+        
+    } catch (error) {
+        console.error('Payment request error:', error);
+        res.status(500).json({ success: false, error: 'خطأ في إنشاء طلب الدفع' });
+    }
+});
+
+app.get('/api/payment/status/:paymentId', async (req, res) => {
+    try {
+        const { paymentId } = req.params;
+        
+        if (!isFirebaseInitialized) {
+            return res.json({ 
+                success: true, 
+                paymentId,
+                status: 'unknown',
+                note: 'Firebase not connected'
+            });
+        }
+        
+        const db = admin.database();
+        const paymentRef = await db.ref(`payments/${paymentId}`).once('value');
+        const payment = paymentRef.val();
+        
+        if (!payment) {
+            return res.status(404).json({ success: false, error: 'طلب الدفع غير موجود' });
+        }
+        
+        res.json({
+            success: true,
+            payment,
+            humanStatus: payment.status === 'pending' ? 'بانتظار موافقة الأدمن' : 
+                        payment.status === 'approved' ? 'مقبول ومفعل' : 'مرفوض'
+        });
+        
+    } catch (error) {
+        console.error('Payment status error:', error);
+        res.status(500).json({ success: false, error: 'خطأ في التحقق من حالة الدفع' });
+    }
+});
+
+app.post('/api/ai/ask', async (req, res) => {
+    try {
+        const { userId, question, subject, grade } = req.body;
+        
+        if (!question) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'السؤال مطلوب' 
+            });
+        }
+        
+        // التحقق من الاشتراك
+        if (userId) {
+            const subscription = await checkSubscription(userId);
+            if (!subscription.hasAccess) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'اشتراكك منتهي. يرجى تجديد الاشتراك.',
+                    subscriptionStatus: subscription
+                });
+            }
+            
+            // التحقق من الاستخدام اليومي
+            const usage = await checkDailyUsage(userId);
+            if (!usage.canAsk) {
+                return res.status(429).json({
+                    success: false,
+                    error: `تجاوزت الحد اليومي (${usage.limit} سؤال). يتبقى ${usage.remaining} سؤال اليوم.`,
+                    usage
+                });
+            }
+            
+            // تحديث الاستخدام
+            await updateDailyUsage(userId);
+        }
+        
+        let response;
+        
+        if (deepseekClient) {
+            response = await askDeepSeek(question, subject, grade);
+        } else {
+            response = {
+                answer: "أنا مساعد DeepSeek التعليمي. حالياً أنا في وضع التجربة. يمكنني الإجابة على أسئلتك التعليمية في مختلف المجالات.",
+                isEducational: true,
+                subject: subject || 'عام',
+                grade: grade || 'جميع المراحل',
+                source: 'mock'
+            };
+        }
+        
+        res.json({
+            success: true,
+            question: question,
+            answer: response.answer,
+            metadata: {
+                subject: response.subject,
+                grade: response.grade,
+                isEducational: response.isEducational,
+                aiProvider: deepseekClient ? 'DeepSeek' : 'Mock',
+                userId: userId,
+                timestamp: new Date().toISOString()
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error in AI ask:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'حدث خطأ في معالجة السؤال' 
+        });
+    }
+});
+
+// ==================== [ نقاط نهاية الملفات والكتب ] ====================
+app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'No file uploaded' });
+        }
+        
+        const folder = req.params.folder || 'images';
+        const { originalname, path: tempPath, size } = req.file;
+        
+        const fileBuffer = await fs.readFile(tempPath);
+        const uniqueId = crypto.randomBytes(8).toString('hex');
+        const ext = path.extname(originalname);
+        const fileName = `${Date.now()}_${uniqueId}${ext}`;
+        
+        console.log(`📤 Uploading: ${originalname} (${(size/1024/1024).toFixed(2)}MB)`);
+        
+        const uploadResult = await uploadToBoth(fileBuffer, fileName, folder, originalname);
+        
+        let bookInfo = null;
+        if (folder === 'books' && ext.toLowerCase() === '.pdf') {
+            const pdfInfo = await extractPDFInfo(uploadResult.localPath);
+            bookInfo = {
+                title: req.body.title || originalname.replace(ext, ''),
+                author: req.body.author || 'غير معروف',
+                grade: req.body.grade || 'عام',
+                subject: req.body.subject || 'عام',
+                description: req.body.description || '',
+                pages: pdfInfo.pages,
+                hasText: pdfInfo.hasText,
+                optimized: pdfInfo.optimized
+            };
+        }
+        
+        const fileInfo = {
+            ...uploadResult,
+            originalName: originalname,
+            folder: folder,
+            size: size,
+            uploadedBy: req.body.uploadedBy || 'anonymous',
+            uploadedAt: Date.now(),
+            bookInfo: bookInfo
+        };
+        
+        const savedMetadata = await storeFileMetadata(fileInfo);
+        
+        try {
+            await fs.unlink(tempPath);
+        } catch (error) {
+            console.warn('Could not delete temp file:', error.message);
+        }
+        
+        res.json({
+            success: true,
+            message: 'File uploaded successfully',
+            file: {
+                id: savedMetadata.firebaseId || uploadResult.fileName,
+                originalName: originalname,
+                fileName: uploadResult.fileName,
+                size: size,
+                telegramUrl: uploadResult.telegramUrl,
+                serverUrl: uploadResult.serverUrl,
+                storageMode: uploadResult.storageMode,
+                uploadedAt: new Date(uploadResult.uploadedAt).toISOString()
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Upload error:', error);
+        
+        if (req.file && req.file.path) {
+            try {
+                await fs.unlink(req.file.path);
+            } catch (cleanupError) {
+                console.warn('Could not cleanup temp file:', cleanupError.message);
+            }
+        }
+        
+        res.status(500).json({ 
+            success: false, 
+            error: error.message
+        });
+    }
+});
+
+app.get('/api/books', async (req, res) => {
+    try {
+        const { grade, subject, search, page = 1, limit = 20 } = req.query;
+        
+        let books = [];
+        
+        if (isFirebaseInitialized) {
+            const db = admin.database();
+            const snapshot = await db.ref('books').once('value');
+            const allBooks = snapshot.val() || {};
+            
+            books = Object.entries(allBooks).map(([id, book]) => ({
+                id,
+                ...book,
+                downloadUrl: `${BOT_URL}/api/file/books/${book.fileName}`
+            }));
+        } else {
+            books = getAllEducationalBooks().map(book => ({
+                ...book,
+                downloadUrl: `${BOT_URL}/api/file/books/${book.fileName}`
+            }));
+        }
+        
+        let filteredBooks = books;
+        
+        if (grade) {
+            filteredBooks = filteredBooks.filter(book => book.grade.includes(grade));
+        }
+        
+        if (subject) {
+            filteredBooks = filteredBooks.filter(book => book.subject.includes(subject));
+        }
+        
+        if (search) {
+            const searchLower = search.toLowerCase();
+            filteredBooks = filteredBooks.filter(book => 
+                book.title.toLowerCase().includes(searchLower) ||
+                book.subject.toLowerCase().includes(searchLower)
+            );
+        }
+        
+        const total = filteredBooks.length;
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+        const startIndex = (pageNum - 1) * limitNum;
+        const endIndex = startIndex + limitNum;
+        const paginatedBooks = filteredBooks.slice(startIndex, endIndex);
+        
+        res.json({ 
+            success: true, 
+            books: paginatedBooks,
+            stats: {
+                totalBooks: total,
+                showing: paginatedBooks.length,
+                page: pageNum,
+                totalPages: Math.ceil(total / limitNum)
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching books:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch books' });
+    }
+});
+
+app.get('/api/file/:folder/:filename', async (req, res) => {
+    try {
+        const { folder, filename } = req.params;
+        const filePath = path.join(STORAGE_BASE, folder, filename);
+        
+        try {
+            await fs.access(filePath);
+        } catch (error) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'File not found on server'
+            });
+        }
+        
+        res.download(filePath, filename, (err) => {
+            if (err) {
+                console.error('Download error:', err);
+                if (!res.headersSent) {
+                    res.status(500).json({ success: false, error: 'Download failed' });
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('File serve error:', error);
+        res.status(500).json({ success: false, error: 'Failed to serve file' });
+    }
+});
+
 app.get('/', (req, res) => {
-    const booksCount = getAllEducationalBooks().length;
-    
     res.send(`
         <!DOCTYPE html>
-        <html lang="ar" dir="rtl">
+        <html>
         <head>
+            <title>Smart Education Platform</title>
             <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>منصة التعليم الذكي - Smart Education Platform</title>
             <style>
-                * {
-                    margin: 0;
-                    padding: 0;
-                    box-sizing: border-box;
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                }
-                
-                body {
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: #333;
-                    line-height: 1.6;
-                    min-height: 100vh;
-                }
-                
-                .container {
-                    max-width: 1200px;
-                    margin: 0 auto;
-                    padding: 20px;
-                }
-                
-                header {
-                    background: rgba(255, 255, 255, 0.95);
-                    padding: 20px;
-                    border-radius: 15px;
-                    margin-bottom: 30px;
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-                    text-align: center;
-                }
-                
-                h1 {
-                    color: #2d3748;
-                    margin-bottom: 10px;
-                    font-size: 2.5em;
-                }
-                
-                .tagline {
-                    color: #4a5568;
-                    font-size: 1.2em;
-                    margin-bottom: 20px;
-                }
-                
-                .status-badges {
-                    display: flex;
-                    justify-content: center;
-                    gap: 15px;
-                    flex-wrap: wrap;
-                    margin: 20px 0;
-                }
-                
-                .badge {
-                    padding: 8px 20px;
-                    border-radius: 50px;
-                    font-weight: bold;
-                    font-size: 0.9em;
-                }
-                
-                .badge.success {
-                    background: #48bb78;
-                    color: white;
-                }
-                
-                .badge.warning {
-                    background: #ed8936;
-                    color: white;
-                }
-                
-                .badge.error {
-                    background: #f56565;
-                    color: white;
-                }
-                
-                .features-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                    gap: 25px;
-                    margin: 40px 0;
-                }
-                
-                .feature-card {
-                    background: white;
-                    padding: 30px;
-                    border-radius: 15px;
-                    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-                    transition: transform 0.3s ease;
-                }
-                
-                .feature-card:hover {
-                    transform: translateY(-5px);
-                }
-                
-                .feature-card h3 {
-                    color: #2d3748;
-                    margin-bottom: 15px;
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                }
-                
-                .feature-card p {
-                    color: #4a5568;
-                    margin-bottom: 20px;
-                }
-                
-                .btn {
-                    display: inline-block;
-                    padding: 12px 30px;
-                    background: #4299e1;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 8px;
-                    font-weight: bold;
-                    transition: background 0.3s ease;
-                }
-                
-                .btn:hover {
-                    background: #3182ce;
-                }
-                
-                .ai-demo {
-                    background: white;
-                    padding: 30px;
-                    border-radius: 15px;
-                    margin: 40px 0;
-                    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-                }
-                
-                .ai-demo h2 {
-                    color: #2d3748;
-                    margin-bottom: 20px;
-                    text-align: center;
-                }
-                
-                .demo-box {
-                    background: #f7fafc;
-                    padding: 20px;
-                    border-radius: 10px;
-                    margin: 20px 0;
-                }
-                
-                .stats {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                    gap: 20px;
-                    margin: 40px 0;
-                }
-                
-                .stat-card {
-                    background: white;
-                    padding: 25px;
-                    border-radius: 15px;
-                    text-align: center;
-                    box-shadow: 0 5px 15px rgba(0,0,0,0.05);
-                }
-                
-                .stat-number {
-                    font-size: 2.5em;
-                    font-weight: bold;
-                    color: #4299e1;
-                    margin: 10px 0;
-                }
-                
-                footer {
-                    text-align: center;
-                    padding: 30px;
-                    color: white;
-                    margin-top: 50px;
-                }
-                
-                .telegram-link {
-                    background: #0088cc;
-                    color: white;
-                    padding: 12px 30px;
-                    border-radius: 8px;
-                    text-decoration: none;
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 10px;
-                    margin: 20px 0;
-                }
-                
-                @media (max-width: 768px) {
-                    .container {
-                        padding: 10px;
-                    }
-                    
-                    h1 {
-                        font-size: 2em;
-                    }
-                    
-                    .features-grid {
-                        grid-template-columns: 1fr;
-                    }
-                }
+                body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+                .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+                .status { padding: 15px; margin: 10px 0; border-radius: 5px; }
+                .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+                .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+                .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+                .endpoint { background: #f8f9fa; padding: 10px; margin: 5px 0; border-left: 4px solid #3498db; }
+                code { background: #e9ecef; padding: 2px 5px; border-radius: 3px; }
+                a { color: #3498db; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+                .pricing { background: #e8f4fc; padding: 15px; border-radius: 5px; margin: 15px 0; }
             </style>
-            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
         </head>
         <body>
             <div class="container">
-                <header>
-                    <h1>🤖 منصة التعليم الذكي</h1>
-                    <p class="tagline">نظام متكامل للتعلم الذكي مع DeepSeek AI</p>
-                    
-                    <div class="status-badges">
-                        <div class="badge ${telegramBot ? 'success' : 'error'}">
-                            <i class="fab fa-telegram"></i> Telegram Bot
-                        </div>
-                        <div class="badge ${deepseekClient ? 'success' : 'warning'}">
-                            <i class="fas fa-brain"></i> DeepSeek AI
-                        </div>
-                        <div class="badge ${isFirebaseInitialized ? 'success' : 'warning'}">
-                            <i class="fas fa-database"></i> Firebase
-                        </div>
-                        <div class="badge success">
-                            <i class="fas fa-server"></i> Server
-                        </div>
-                    </div>
-                    
-                    <p>🔗 Base URL: ${BOT_URL}</p>
-                </header>
+                <h1>🤖 Smart Education Platform v4.0</h1>
+                <p><strong>نظام التعليم الذكي مع DeepSeek AI</strong></p>
+                <p><strong>Base URL:</strong> ${BOT_URL}</p>
                 
-                <div class="stats">
-                    <div class="stat-card">
-                        <i class="fas fa-book" style="font-size: 2em; color: #48bb78;"></i>
-                        <div class="stat-number">${booksCount}</div>
-                        <p>كتاب تعليمي</p>
-                    </div>
-                    <div class="stat-card">
-                        <i class="fas fa-question-circle" style="font-size: 2em; color: #ed8936;"></i>
-                        <div class="stat-number">${CONFIG.MAX_DAILY_QUESTIONS}</div>
-                        <p>سؤال يومياً</p>
-                    </div>
-                    <div class="stat-card">
-                        <i class="fas fa-graduation-cap" style="font-size: 2em; color: #4299e1;"></i>
-                        <div class="stat-number">4</div>
-                        <p>مراحل تعليمية</p>
-                    </div>
-                    <div class="stat-card">
-                        <i class="fas fa-bolt" style="font-size: 2em; color: #9f7aea;"></i>
-                        <div class="stat-number">24/7</div>
-                        <p>متاح دائماً</p>
-                    </div>
+                <div class="status ${deepseekClient ? 'success' : 'warning'}">
+                    <strong>DeepSeek AI:</strong> ${deepseekClient ? '✅ Connected' : '⚠️ Mock Mode'}
                 </div>
                 
-                <div class="features-grid">
-                    <div class="feature-card">
-                        <h3><i class="fas fa-robot"></i> المساعد الذكي</h3>
-                        <p>أسأل DeepSeek AI عن أي موضوع تعليمي. إجابات دقيقة وفورية.</p>
-                        <a href="#ai-demo" class="btn">جرب الآن</a>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <h3><i class="fas fa-book-open"></i> المكتبة الرقمية</h3>
-                        <p>${booksCount} كتاب تعليمي مجاني لجميع المراحل الدراسية.</p>
-                        <a href="${BOT_URL}/api/books" class="btn">تصفح الكتب</a>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <h3><i class="fas fa-video"></i> الفصول المباشرة</h3>
-                        <p>بث حي مباشر مع تفاعل كامل بين المعلم والطلاب.</p>
-                        <a href="#live" class="btn">انضم الآن</a>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <h3><i class="fas fa-cloud-upload-alt"></i> التخزين السحابي</h3>
-                        <p>رفع وتخزين الملفات التعليمية في Telegram والسيرفر المحلي.</p>
-                        <a href="#upload" class="btn" style="background: #48bb78;">رفع ملف</a>
-                    </div>
+                <div class="status ${telegramBot ? 'success' : 'error'}">
+                    <strong>Telegram Bot:</strong> ${telegramBot ? '✅ Connected' : '❌ Disconnected'}
                 </div>
                 
-                <div id="ai-demo" class="ai-demo">
-                    <h2><i class="fas fa-comment-alt"></i> جرب المساعد الذكي</h2>
+                <div class="pricing">
+                    <h3>💰 خطط الاشتراك</h3>
+                    <p>🎁 <strong>تجربة مجانية:</strong> ${CONFIG.FREE_TRIAL_DAYS} يوم (${CONFIG.MAX_DAILY_QUESTIONS.trial} سؤال/يوم)</p>
+                    <p>📦 <strong>أسبوعي:</strong> ${CONFIG.WEEKLY_SUBSCRIPTION} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)</p>
+                    <p>📅 <strong>شهري:</strong> ${CONFIG.MONTHLY_SUBSCRIPTION} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)</p>
+                    <p>👨‍🏫 <strong>معلم شهري:</strong> ${CONFIG.TEACHER_MONTHLY_FEE} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)</p>
                     
-                    <div class="demo-box">
-                        <h4>📝 اسأل DeepSeek AI:</h4>
-                        <form id="ai-form" style="margin: 20px 0;">
-                            <input type="text" id="ai-question" placeholder="اكتب سؤالك هنا..." 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 16px;">
-                            <button type="submit" class="btn" style="width: 100%; margin-top: 10px;">
-                                <i class="fas fa-paper-plane"></i> إرسال السؤال
-                            </button>
-                        </form>
-                        <div id="ai-response" style="background: #edf2f7; padding: 15px; border-radius: 8px; margin-top: 20px; display: none;">
-                            <div id="response-text"></div>
-                        </div>
-                    </div>
-                    
-                    <div style="text-align: center; margin-top: 20px;">
-                        <p>أو جرب هذه الأسئلة:</p>
-                        <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
-                            <button class="btn" onclick="askQuestion('ما هو قانون نيوتن الأول؟')" style="background: #ed8936;">
-                                قانون نيوتن
-                            </button>
-                            <button class="btn" onclick="askQuestion('كيف تحدث عملية البناء الضوئي؟')" style="background: #48bb78;">
-                                البناء الضوئي
-                            </button>
-                            <button class="btn" onclick="askQuestion('ماذا تعرف عن الحرب العالمية الثانية؟')" style="background: #9f7aea;">
-                                الحرب العالمية
-                            </button>
-                        </div>
-                    </div>
+                    <p><strong>💳 طرق الدفع:</strong> ${CONFIG.PAYMENT_METHODS.join(', ')}</p>
+                    <p><strong>🏦 رقم الحساب:</strong> ${CONFIG.ADMIN_BANK_ACCOUNT}</p>
+                    <p><strong>👤 اسم صاحب الحساب:</strong> ${CONFIG.ADMIN_NAME}</p>
                 </div>
                 
-                <div style="text-align: center; margin: 40px 0;">
-                    <a href="https://t.me/${telegramBot ? 'your_bot_username' : ''}" class="telegram-link" target="_blank">
-                        <i class="fab fa-telegram"></i> انضم لبوت Telegram للوصول الكامل
-                    </a>
-                    <p style="color: #4a5568; margin-top: 10px;">
-                        في البوت: /ai للسؤال، /quiz للاختبارات، /books للمكتبة
-                    </p>
+                <h3>🔗 نقاط النهاية الرئيسية</h3>
+                
+                <div class="endpoint">
+                    <code>POST ${BOT_URL}/api/ai/ask</code> - اسأل DeepSeek AI
                 </div>
                 
-                <div style="background: white; padding: 30px; border-radius: 15px; margin: 40px 0;">
-                    <h2 style="text-align: center; margin-bottom: 20px;">🔗 روابط مهمة</h2>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
-                        <a href="${BOT_URL}/health" class="btn" style="background: #48bb78;">
-                            <i class="fas fa-heartbeat"></i> Health Check
-                        </a>
-                        <a href="${BOT_URL}/api/test" class="btn" style="background: #4299e1;">
-                            <i class="fas fa-code"></i> API Test
-                        </a>
-                        <a href="${BOT_URL}/api/books" class="btn" style="background: #ed8936;">
-                            <i class="fas fa-book"></i> جميع الكتب
-                        </a>
-                        <a href="${BOT_URL}/telegram-webhook-info" class="btn" style="background: #9f7aea;">
-                            <i class="fab fa-telegram"></i> Telegram Webhook
-                        </a>
-                    </div>
+                <div class="endpoint">
+                    <code>GET ${BOT_URL}/api/subscription/status/:userId</code> - حالة الاشتراك
                 </div>
+                
+                <div class="endpoint">
+                    <code>POST ${BOT_URL}/api/payment/request</code> - إرسال طلب دفع
+                </div>
+                
+                <div class="endpoint">
+                    <code>GET ${BOT_URL}/api/books</code> - المكتبة التعليمية
+                </div>
+                
+                <div class="endpoint">
+                    <code>POST ${BOT_URL}/api/upload/dual/:folder</code> - رفع ملفات
+                </div>
+                
+                <h3>📞 للدعم الفني</h3>
+                <p>${CONFIG.ADMIN_PHONE} - ${CONFIG.ADMIN_NAME}</p>
+                
+                <p style="margin-top: 30px; color: #666; font-size: 14px;">
+                    ⚠️ جميع المدفوعات تحتاج موافقة الأدمن قبل التفعيل. يتم إرسال إشعار للأدمن على Telegram للموافقة.
+                </p>
             </div>
-            
-            <footer>
-                <p>© 2024 منصة التعليم الذكي - Smart Education Platform v4.0</p>
-                <p>Powered by DeepSeek AI & Telegram</p>
-            </footer>
-            
-            <script>
-                document.getElementById('ai-form').addEventListener('submit', async function(e) {
-                    e.preventDefault();
-                    const question = document.getElementById('ai-question').value;
-                    if (!question.trim()) return;
-                    
-                    await askQuestion(question);
-                });
-                
-                async function askQuestion(question) {
-                    document.getElementById('ai-question').value = question;
-                    document.getElementById('ai-response').style.display = 'none';
-                    
-                    const responseDiv = document.getElementById('response-text');
-                    responseDiv.innerHTML = '<div style="text-align: center;"><i class="fas fa-spinner fa-spin"></i> جاري الحصول على الإجابة...</div>';
-                    document.getElementById('ai-response').style.display = 'block';
-                    
-                    try {
-                        const response = await fetch('${BOT_URL}/api/ai/ask', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({ question: question })
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (data.success) {
-                            responseDiv.innerHTML = \`
-                                <h4 style="color: #2d3748; margin-bottom: 10px;">🧠 إجابة DeepSeek:</h4>
-                                <div style="background: white; padding: 15px; border-radius: 8px; border-right: 4px solid #4299e1;">
-                                    \${data.answer.replace(/\\n/g, '<br>')}
-                                </div>
-                                <div style="margin-top: 15px; color: #718096; font-size: 0.9em;">
-                                    <i class="fas fa-clock"></i> \${new Date().toLocaleString('ar-SA')}
-                                </div>
-                            \`;
-                        } else {
-                            responseDiv.innerHTML = \`
-                                <div style="color: #f56565;">
-                                    <i class="fas fa-exclamation-triangle"></i> \${data.error || 'حدث خطأ'}
-                                </div>
-                            \`;
-                        }
-                    } catch (error) {
-                        responseDiv.innerHTML = \`
-                            <div style="color: #f56565;">
-                                <i class="fas fa-exclamation-triangle"></i> خطأ في الاتصال
-                            </div>
-                        \`;
-                    }
-                }
-            </script>
         </body>
         </html>
     `);
@@ -1489,34 +1783,30 @@ server.listen(port, '0.0.0.0', () => {
     🧠 DEEPSEEK AI SYSTEM:
     • Status: ${deepseekClient ? '✅ Connected' : '⚠️ Mock Mode'}
     • Model: deepseek-chat
-    • Daily Limit: ${CONFIG.MAX_DAILY_QUESTIONS} questions/user
     
-    🤖 TELEGRAM BOT:
-    • Status: ${telegramBot ? '✅ Webhook Active' : '❌ Disabled'}
-    • Webhook: ${BOT_URL}/telegram-webhook
-    • Commands: /start, /ai, /quiz, /books, /help
+    💰 SUBSCRIPTION SYSTEM:
+    • Free Trial: ${CONFIG.FREE_TRIAL_DAYS} days
+    • Weekly: ${CONFIG.WEEKLY_SUBSCRIPTION} SDG
+    • Monthly: ${CONFIG.MONTHLY_SUBSCRIPTION} SDG
+    • Teacher: ${CONFIG.TEACHER_MONTHLY_FEE} SDG
+    • Admin Approval: ${CONFIG.AUTO_APPROVE_PAYMENTS ? '❌ Auto' : '✅ Manual'}
     
-    📚 LIBRARY:
-    • Total Books: ${getAllEducationalBooks().length}
-    • Grades: Primary, Intermediate, Secondary
-    • Subjects: Math, Science, Arabic, English
+    📊 STORAGE:
+    • Telegram: ${telegramBot ? '✅ Active' : '❌ Disabled'}
+    • Firebase: ${isFirebaseInitialized ? '✅ Connected' : '❌ Disabled'}
     
-    🔗 IMPORTANT LINKS:
-    • Health Check: ${BOT_URL}/health
-    • API Test: ${BOT_URL}/api/test
-    • Books API: ${BOT_URL}/api/books
-    • AI Assistant: ${BOT_URL}/api/ai/ask
+    🎯 ENDPOINTS:
+    • AI Ask: POST ${BOT_URL}/api/ai/ask
+    • Subscription: GET ${BOT_URL}/api/subscription/status/:userId
+    • Payment: POST ${BOT_URL}/api/payment/request
+    • Books: GET ${BOT_URL}/api/books
     
-    ⚡ TIPS:
-    1. Use /ai command in Telegram bot
-    2. Visit ${BOT_URL} for full features
-    3. Check /telegram-webhook-info for bot status
-    
-    ✅ Server started successfully at ${new Date().toLocaleString()}
+    📞 ADMIN: ${CONFIG.ADMIN_PHONE}
+    🏦 ACCOUNT: ${CONFIG.ADMIN_BANK_ACCOUNT}
+    👤 NAME: ${CONFIG.ADMIN_NAME}
     `);
 });
 
-// ==================== [ معالجة الأخطاء ] ====================
 process.on('uncaughtException', (error) => {
     console.error('❌ Uncaught Exception:', error);
 });
@@ -1525,7 +1815,6 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-// تنظيف الملفات المؤقتة كل ساعة
 setInterval(() => {
     cleanupTempFiles();
 }, 60 * 60 * 1000);
