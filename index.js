@@ -3,17 +3,14 @@ const multer = require('multer');
 const fs = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
-const axios = require('axios');
 const admin = require('firebase-admin');
 const sharp = require('sharp');
 const { PDFDocument } = require('pdf-lib');
-const { WebSocketServer } = require('ws');
-const http = require('http');
 const moment = require('moment');
 const { OpenAI } = require('openai');
 const socketIO = require('socket.io');
 const { Telegraf } = require('telegraf');
-const FormData = require('form-data');
+const http = require('http');
 
 const app = express();
 const server = http.createServer(app);
@@ -43,9 +40,9 @@ let CONFIG = {
     FREE_TRIAL_DAYS: 1,
     FREE_TEACHER_MONTHS: 1,
     MAX_DAILY_QUESTIONS: 100,
-    STORAGE_MODE: "TELEGRAM_AND_SERVER", // TELEGRAM_AND_SERVER, SERVER_ONLY, TELEGRAM_ONLY
-    MAX_FILE_SIZE: 50 * 1024 * 1024, // 50MB لـ Telegram
-    AUTO_DELETE_LOCAL_AFTER_UPLOAD: false // حذف الملفات المحلية بعد رفعها لـ Telegram
+    STORAGE_MODE: "TELEGRAM_AND_SERVER",
+    MAX_FILE_SIZE: 50 * 1024 * 1024,
+    AUTO_DELETE_LOCAL_AFTER_UPLOAD: false
 };
 
 // ==================== [ تهيئة بوت Telegram ] ====================
@@ -57,12 +54,54 @@ if (CONFIG.TELEGRAM_BOT_TOKEN) {
         telegramBot = new Telegraf(CONFIG.TELEGRAM_BOT_TOKEN);
         console.log('✅ Telegram Bot initialized successfully');
         
-        // بدء البوت
-        telegramBot.launch().then(() => {
-            console.log('🤖 Telegram Bot is running...');
-        }).catch(err => {
-            console.error('❌ Failed to launch Telegram bot:', err.message);
-        });
+        // بدء البوت بشكل آمن
+        const startBot = async () => {
+            try {
+                // 1. مسح أي ويب هوك سابق أولاً
+                await telegramBot.telegram.deleteWebhook();
+                console.log('🧹 Cleared previous webhook');
+                
+                // 2. الانتظار قليلاً
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // 3. بدء البوت
+                await telegramBot.launch();
+                console.log('🤖 Telegram Bot is running...');
+                
+                // 4. إضافة معالج للإشارات للتوقف الآمن
+                process.once('SIGINT', () => telegramBot.stop('SIGINT'));
+                process.once('SIGTERM', () => telegramBot.stop('SIGTERM'));
+                
+            } catch (err) {
+                console.error('❌ Failed to start bot with polling:', err.message);
+                console.log('🔄 Trying alternative method...');
+                
+                // محاولة البدء بدون استخدام webhook
+                try {
+                    // استخدام webhook بدلاً من polling
+                    const webhookUrl = process.env.BOT_URL ? 
+                        `${process.env.BOT_URL}/bot${CONFIG.TELEGRAM_BOT_TOKEN}` : 
+                        `https://sdm-security-bot.onrender.com/bot${CONFIG.TELEGRAM_BOT_TOKEN}`;
+                    
+                    await telegramBot.telegram.setWebhook(webhookUrl);
+                    console.log('✅ Telegram bot configured with webhook at:', webhookUrl);
+                    
+                    // إضافة route للويب هوك
+                    app.post(`/bot${CONFIG.TELEGRAM_BOT_TOKEN}`, (req, res) => {
+                        telegramBot.handleUpdate(req.body, res);
+                    });
+                    
+                } catch (webhookErr) {
+                    console.error('❌ Webhook also failed:', webhookErr.message);
+                    console.log('⚠️ Bot will run in limited mode');
+                }
+            }
+        };
+        
+        // تأخير بدء البوت لضمان اكتمال تهيئة السيرفر
+        setTimeout(() => {
+            startBot();
+        }, 5000);
         
         // أمر بسيط للتحقق
         telegramBot.command('start', (ctx) => {
@@ -83,7 +122,7 @@ if (CONFIG.TELEGRAM_BOT_TOKEN) {
 
 // ==================== [ تهيئة Firebase Admin ] ====================
 let isFirebaseInitialized = false;
-let isBooksInitialized = false; // لمنع تكرار تهيئة الكتب
+let isBooksInitialized = false;
 
 if (CONFIG.FIREBASE_JSON && Object.keys(CONFIG.FIREBASE_JSON).length > 0) {
     try {
@@ -95,14 +134,13 @@ if (CONFIG.FIREBASE_JSON && Object.keys(CONFIG.FIREBASE_JSON).length > 0) {
         console.log('✅ Firebase Admin initialized successfully');
         isFirebaseInitialized = true;
         
-        // تهيئة الكتب عند بدء التشغيل (مرة واحدة فقط)
+        // تهيئة الكتب عند بدء التشغيل
         setTimeout(async () => {
             try {
                 const db = admin.database();
                 const snapshot = await db.ref('books').once('value');
                 const existingBooks = snapshot.val() || {};
                 
-                // ⚠️ التصحيح المهم: نتحقق إذا كان هناك كتب أم لا
                 if (Object.keys(existingBooks).length === 0) {
                     console.log('📚 No books found, initializing database...');
                     await initializeBooksDatabase();
@@ -137,7 +175,7 @@ if (CONFIG.OPENAI_API_KEY) {
 
 // ==================== [ متغيرات التخزين ] ====================
 const liveRooms = new Map();
-const uploadedFiles = new Map(); // تتبع الملفات المرفوعة حديثاً
+const uploadedFiles = new Map();
 
 // ==================== [ إعدادات تخزين الملفات ] ====================
 const STORAGE_BASE = './smart_storage';
@@ -148,7 +186,7 @@ const FOLDERS = {
     AVATARS: 'avatars',
     TEACHER_IDS: 'teacher_ids',
     LIVE_RECORDINGS: 'live_recordings',
-    TEMP: 'temp' // للملفات المؤقتة
+    TEMP: 'temp'
 };
 
 // إنشاء مجلدات التخزين
@@ -160,7 +198,6 @@ const FOLDERS = {
         }
         console.log('✅ Storage folders created successfully');
         
-        // تنظيف الملفات المؤقتة القديمة
         await cleanupTempFiles();
         
     } catch (error) {
@@ -170,9 +207,6 @@ const FOLDERS = {
 
 // ==================== [ دوال التخزين في Telegram ] ====================
 
-/**
- * رفع الملف إلى قناة Telegram التخزينية
- */
 async function uploadToTelegram(filePath, fileName, fileType) {
     if (!telegramBot || !telegramStorageChannel) {
         console.log('⚠️ Telegram storage not available');
@@ -182,7 +216,6 @@ async function uploadToTelegram(filePath, fileName, fileType) {
     try {
         const fileStats = await fs.stat(filePath);
         
-        // التحقق من حجم الملف (Telegram limit: 50MB للبوتات)
         if (fileStats.size > CONFIG.MAX_FILE_SIZE) {
             console.log(`⚠️ File too large for Telegram (${(fileStats.size/1024/1024).toFixed(2)}MB)`);
             return null;
@@ -190,29 +223,25 @@ async function uploadToTelegram(filePath, fileName, fileType) {
         
         console.log(`📤 Uploading to Telegram: ${fileName} (${(fileStats.size/1024/1024).toFixed(2)}MB)`);
         
-        // تحديد نوع المحتوى بناءً على الامتداد
         let caption = `📁 ${fileName}\n📦 Size: ${(fileStats.size/1024/1024).toFixed(2)}MB\n⏰ ${new Date().toLocaleString()}`;
         
         let message;
         const ext = path.extname(fileName).toLowerCase();
         
         if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext)) {
-            // صورة
             message = await telegramBot.telegram.sendPhoto(
                 telegramStorageChannel,
                 { source: filePath },
                 { caption: caption }
             );
         } else if (['.pdf', '.doc', '.docx', '.txt', '.epub'].includes(ext)) {
-            // مستند
             message = await telegramBot.telegram.sendDocument(
                 telegramStorageChannel,
                 { source: filePath, filename: fileName },
                 { caption: caption }
             );
         } else if (['.mp4', '.avi', '.mov', '.mkv', '.webm'].includes(ext)) {
-            // فيديو (مقيد بحجم أصغر)
-            if (fileStats.size > 20 * 1024 * 1024) { // 20MB limit للفيديو
+            if (fileStats.size > 20 * 1024 * 1024) {
                 console.log('⚠️ Video file too large for Telegram');
                 return null;
             }
@@ -222,14 +251,12 @@ async function uploadToTelegram(filePath, fileName, fileType) {
                 { caption: caption }
             );
         } else if (['.mp3', '.wav', '.ogg', '.m4a'].includes(ext)) {
-            // صوت
             message = await telegramBot.telegram.sendAudio(
                 telegramStorageChannel,
                 { source: filePath },
                 { caption: caption }
             );
         } else {
-            // ملف عام
             message = await telegramBot.telegram.sendDocument(
                 telegramStorageChannel,
                 { source: filePath, filename: fileName },
@@ -237,7 +264,6 @@ async function uploadToTelegram(filePath, fileName, fileType) {
             );
         }
         
-        // الحصول على رابط الملف من Telegram
         let fileUrl = null;
         if (message.document) {
             const fileId = message.document.file_id;
@@ -256,7 +282,6 @@ async function uploadToTelegram(filePath, fileName, fileType) {
         console.log(`✅ Uploaded to Telegram: ${fileName}`);
         console.log(`🔗 Telegram File URL: ${fileUrl}`);
         
-        // حفظ معلومات الملف في الذاكرة
         const fileInfo = {
             telegramFileId: message.document?.file_id || message.photo?.[0]?.file_id || message.video?.file_id,
             telegramMessageId: message.message_id,
@@ -268,7 +293,6 @@ async function uploadToTelegram(filePath, fileName, fileType) {
         
         uploadedFiles.set(fileName, fileInfo);
         
-        // حذف الملف المحلي إذا تم ضبط الإعداد
         if (CONFIG.AUTO_DELETE_LOCAL_AFTER_UPLOAD) {
             try {
                 await fs.unlink(filePath);
@@ -286,9 +310,6 @@ async function uploadToTelegram(filePath, fileName, fileType) {
     }
 }
 
-/**
- * رفع الملف إلى السيرفر المحلي
- */
 async function uploadToLocalServer(fileBuffer, fileName, folder) {
     try {
         const filePath = path.join(STORAGE_BASE, folder, fileName);
@@ -312,9 +333,6 @@ async function uploadToLocalServer(fileBuffer, fileName, folder) {
     }
 }
 
-/**
- * رفع الملف المزدوج (Telegram + السيرفر)
- */
 async function uploadToBoth(fileBuffer, fileName, folder, originalName) {
     const results = {
         telegram: null,
@@ -322,32 +340,26 @@ async function uploadToBoth(fileBuffer, fileName, folder, originalName) {
         combined: {}
     };
     
-    // حفظ محلي أولاً
     const tempFileName = `temp_${Date.now()}_${fileName}`;
     const tempPath = path.join(STORAGE_BASE, FOLDERS.TEMP, tempFileName);
     
     try {
-        // 1. حفظ في الملف المؤقت
         await fs.writeFile(tempPath, fileBuffer);
         
-        // 2. رفع إلى Telegram
         if (telegramBot && telegramStorageChannel) {
             results.telegram = await uploadToTelegram(tempPath, originalName || fileName, folder);
         }
         
-        // 3. نسخ إلى الموقع النهائي (إذا لم يتم حذفه)
         const finalPath = path.join(STORAGE_BASE, folder, fileName);
         
         if (CONFIG.AUTO_DELETE_LOCAL_AFTER_UPLOAD && results.telegram) {
-            // إذا حذفنا الملف المحلي بعد رفعه لـ Telegram
             results.server = {
                 localPath: finalPath,
-                serverUrl: results.telegram.telegramUrl, // نستخدم رابط Telegram
+                serverUrl: results.telegram.telegramUrl,
                 fileName: fileName,
                 uploadedAt: Date.now()
             };
         } else {
-            // نسخ الملف للموقع النهائي
             await fs.copyFile(tempPath, finalPath);
             const stats = await fs.stat(finalPath);
             const serverUrl = `${process.env.BOT_URL || 'http://localhost:' + port}/api/file/${folder}/${fileName}`;
@@ -361,7 +373,6 @@ async function uploadToBoth(fileBuffer, fileName, folder, originalName) {
             };
         }
         
-        // 4. إنشاء كائن موحد
         results.combined = {
             fileName: fileName,
             originalName: originalName || fileName,
@@ -376,7 +387,6 @@ async function uploadToBoth(fileBuffer, fileName, folder, originalName) {
             storageMode: results.telegram ? 'TELEGRAM_AND_SERVER' : 'SERVER_ONLY'
         };
         
-        // 5. تنظيف الملف المؤقت
         try {
             await fs.unlink(tempPath);
         } catch (error) {
@@ -388,20 +398,14 @@ async function uploadToBoth(fileBuffer, fileName, folder, originalName) {
     } catch (error) {
         console.error(`❌ Error in dual upload: ${error.message}`);
         
-        // تنظيف الملف المؤقت في حالة الخطأ
         try {
             await fs.unlink(tempPath);
-        } catch (cleanupError) {
-            // تجاهل خطأ التنظيف
-        }
+        } catch (cleanupError) {}
         
         throw error;
     }
 }
 
-/**
- * تنظيف الملفات المؤقتة القديمة
- */
 async function cleanupTempFiles() {
     try {
         const tempDir = path.join(STORAGE_BASE, FOLDERS.TEMP);
@@ -418,16 +422,14 @@ async function cleanupTempFiles() {
                 console.log(`🧹 Cleaned up old temp file: ${file}`);
             }
         }
-    } catch (error) {
-        // تجاهل الخطأ إذا المجلد غير موجود
-    }
+    } catch (error) {}
 }
 
 // ==================== [ تكوين Multer للرفع ] ====================
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const folder = req.params.folder || 'images';
-        cb(null, path.join(STORAGE_BASE, FOLDERS.TEMP)); // نستخدم TEMP أولاً
+        cb(null, path.join(STORAGE_BASE, FOLDERS.TEMP));
     },
     filename: (req, file, cb) => {
         const uniqueId = crypto.randomBytes(8).toString('hex');
@@ -439,7 +441,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage,
-    limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit للسيرفر
+    limits: { fileSize: 100 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
         const allowedTypes = {
             'image/jpeg': 'images',
@@ -467,9 +469,6 @@ const upload = multer({
 
 // ==================== [ دوال مساعدة ] ====================
 
-/**
- * تخزين ميتاداتا الملف في Firebase
- */
 async function storeFileMetadata(fileInfo) {
     if (!isFirebaseInitialized) {
         console.warn('⚠️ Firebase not initialized - skipping metadata storage');
@@ -493,7 +492,6 @@ async function storeFileMetadata(fileInfo) {
             isPublic: fileInfo.isPublic !== false,
             storageMode: fileInfo.storageMode || 'SERVER_ONLY',
             localPath: fileInfo.localPath,
-            // معلومات إضافية للكتب
             ...(fileInfo.bookInfo || {})
         };
         
@@ -502,7 +500,6 @@ async function storeFileMetadata(fileInfo) {
         
         console.log(`✅ File metadata saved to Firebase: ${fileId}`);
         
-        // إذا كان كتاباً، نخزنه في قسم الكتب أيضاً
         if (fileInfo.folder === 'books' && fileInfo.bookInfo) {
             const bookId = `book_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
             const bookData = {
@@ -539,9 +536,6 @@ async function storeFileMetadata(fileInfo) {
     }
 }
 
-/**
- * إنشاء ثمبنييل للصور
- */
 async function createThumbnail(filePath, fileName) {
     try {
         const thumbFileName = `thumb_${path.parse(fileName).name}.webp`;
@@ -554,7 +548,6 @@ async function createThumbnail(filePath, fileName) {
         
         const thumbUrl = `${process.env.BOT_URL || 'http://localhost:' + port}/api/file/images/${thumbFileName}`;
         
-        // رفع الثمبنييل لـ Telegram أيضاً
         if (telegramBot && telegramStorageChannel) {
             await uploadToTelegram(thumbPath, thumbFileName, 'images');
         }
@@ -566,9 +559,6 @@ async function createThumbnail(filePath, fileName) {
     }
 }
 
-/**
- * استخراج معلومات PDF
- */
 async function extractPDFInfo(filePath) {
     try {
         if (path.extname(filePath).toLowerCase() !== '.pdf') {
@@ -606,7 +596,6 @@ async function initializeBooksDatabase() {
         const snapshot = await db.ref('books').once('value');
         const existingBooks = snapshot.val() || {};
         
-        // ⚠️ التصحيح المهم: نتحقق إذا كان هناك كتب أم لا
         if (Object.keys(existingBooks).length > 0) {
             console.log(`📚 Books already exist in database (${Object.keys(existingBooks).length} books)`);
             isBooksInitialized = true;
@@ -621,11 +610,10 @@ async function initializeBooksDatabase() {
         for (const book of allBooks) {
             const bookId = book.id;
             
-            // نضيف معلومات التخزين
             const bookWithStorage = {
                 ...book,
                 storageMode: 'SYSTEM_GENERATED',
-                telegramUrl: null, // هذه الكتب لا توجد في Telegram
+                telegramUrl: null,
                 serverUrl: book.downloadUrl || `/api/file/books/${book.fileName}`,
                 uploadedAt: Date.now(),
                 isFree: true
@@ -671,40 +659,33 @@ function getAllEducationalBooks() {
         };
     }
 
-    // المرحلة الابتدائية
     const elementaryGrades = ['الأول الابتدائي', 'الثاني الابتدائي', 'الثالث الابتدائي', 'الرابع الابتدائي', 'الخامس الابتدائي', 'السادس الابتدائي'];
     const elementarySubjects = ['الرياضيات', 'اللغة العربية', 'العلوم', 'التربية الإسلامية', 'الاجتماعيات', 'اللغة الإنجليزية'];
 
-    // المرحلة المتوسطة
     const intermediateGrades = ['الأول المتوسط', 'الثاني المتوسط', 'الثالث المتوسط'];
     const intermediateSubjects = ['الرياضيات', 'العلوم', 'اللغة العربية', 'اللغة الإنجليزية', 'الاجتماعيات', 'التربية الإسلامية', 'الحاسوب'];
 
-    // المرحلة الثانوية
     const secondaryGrades = ['الأول الثانوي', 'الثاني الثانوي', 'الثالث الثانوي'];
     const secondarySubjects = ['الرياضيات', 'الفيزياء', 'الكيمياء', 'الأحياء', 'اللغة العربية', 'اللغة الإنجليزية', 'التاريخ', 'الجغرافيا', 'الفلسفة'];
 
-    // إضافة كتب المرحلة الابتدائية
     for (const grade of elementaryGrades) {
         for (const subject of elementarySubjects) {
             allBooks.push(createBook(grade, subject, `${subject} للصف ${grade}`, `${subject} للمرحلة الابتدائية`, 80));
         }
     }
 
-    // إضافة كتب المرحلة المتوسطة
     for (const grade of intermediateGrades) {
         for (const subject of intermediateSubjects) {
             allBooks.push(createBook(grade, subject, `${subject} للصف ${grade}`, `${subject} للمرحلة المتوسطة`, 120));
         }
     }
 
-    // إضافة كتب المرحلة الثانوية
     for (const grade of secondaryGrades) {
         for (const subject of secondarySubjects) {
             allBooks.push(createBook(grade, subject, `${subject} للصف ${grade}`, `${subject} للمرحلة الثانوية`, 150));
         }
     }
 
-    // كتب إضافية
     const aiBooks = [
         createBook('جميع المراحل', 'تعليم الذكاء الاصطناعي', 'مقدمة في الذكاء الاصطناعي للطلاب', 'كتاب تعليمي مبسط عن الذكاء الاصطناعي', 60),
         createBook('الثانوي', 'البرمجة', 'أساسيات البرمجة بلغة بايثون', 'تعلم البرمجة من الصفر', 90),
@@ -752,7 +733,6 @@ io.on('connection', (socket) => {
         
         console.log(`🚪 ${userName} joined room ${roomId}`);
         
-        // حفظ في Firebase
         if (isFirebaseInitialized) {
             try {
                 const db = admin.database();
@@ -820,7 +800,6 @@ app.use(express.urlencoded({ extended: true }));
 
 // ==================== [ نقاط النهاية الرئيسية ] ====================
 
-// 1. نقطة اختبار النظام
 app.get('/api/test', (req, res) => {
     res.json({ 
         success: true, 
@@ -847,7 +826,6 @@ app.get('/api/test', (req, res) => {
     });
 });
 
-// 2. جلب معلومات التخزين
 app.get('/api/storage/info', (req, res) => {
     res.json({
         success: true,
@@ -878,7 +856,6 @@ app.get('/api/storage/info', (req, res) => {
     });
 });
 
-// 3. رفع ملف مزدوج (Telegram + Server)
 app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
@@ -890,20 +867,16 @@ app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => 
         const uploadedBy = req.body.uploadedBy || 'anonymous';
         const isPublic = req.body.isPublic !== 'false';
         
-        // قراءة الملف المؤقت
         const fileBuffer = await fs.readFile(tempPath);
         
-        // إنشاء اسم فريد للملف النهائي
         const uniqueId = crypto.randomBytes(8).toString('hex');
         const ext = path.extname(originalname);
         const fileName = `${Date.now()}_${uniqueId}${ext}`;
         
         console.log(`📤 Starting dual upload: ${originalname} (${(size/1024/1024).toFixed(2)}MB)`);
         
-        // الرفع المزدوج
         const uploadResult = await uploadToBoth(fileBuffer, fileName, folder, originalname);
         
-        // معلومات إضافية للكتب
         let bookInfo = null;
         let thumbnailUrl = null;
         
@@ -920,7 +893,6 @@ app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => 
                 optimized: pdfInfo.optimized
             };
             
-            // إنشاء غلاف للكتاب
             if (req.body.createThumbnail === 'true') {
                 try {
                     thumbnailUrl = await createThumbnail(uploadResult.localPath, fileName);
@@ -931,7 +903,6 @@ app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => 
             }
         }
         
-        // تحضير معلومات الملف للتخزين
         const fileInfo = {
             ...uploadResult,
             originalName: originalname,
@@ -945,10 +916,8 @@ app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => 
             bookInfo: bookInfo
         };
         
-        // تخزين الميتاداتا في Firebase
         const savedMetadata = await storeFileMetadata(fileInfo);
         
-        // تنظيف الملف المؤقت
         try {
             await fs.unlink(tempPath);
         } catch (error) {
@@ -985,7 +954,6 @@ app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => 
     } catch (error) {
         console.error('❌ Upload error:', error);
         
-        // تنظيف الملف المؤقت في حالة الخطأ
         if (req.file && req.file.path) {
             try {
                 await fs.unlink(req.file.path);
@@ -1002,7 +970,6 @@ app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => 
     }
 });
 
-// 4. جلب الملفات المحفوظة
 app.get('/api/files', async (req, res) => {
     try {
         const { type, folder, limit = 50, page = 1 } = req.query;
@@ -1011,7 +978,6 @@ app.get('/api/files', async (req, res) => {
         
         let files = [];
         
-        // إذا كان Firebase يعمل، نجلب من هناك
         if (isFirebaseInitialized) {
             const db = admin.database();
             const snapshot = await db.ref('file_storage').once('value');
@@ -1022,7 +988,6 @@ app.get('/api/files', async (req, res) => {
                 ...file
             }));
         } else {
-            // نجلب من الذاكرة المحلية
             files = Array.from(uploadedFiles.values()).map(fileInfo => ({
                 id: fileInfo.fileName,
                 fileName: fileInfo.fileName,
@@ -1034,7 +999,6 @@ app.get('/api/files', async (req, res) => {
             }));
         }
         
-        // تطبيق الفلاتر
         let filteredFiles = files;
         
         if (folder) {
@@ -1047,16 +1011,13 @@ app.get('/api/files', async (req, res) => {
             filteredFiles = filteredFiles.filter(file => !file.telegramUrl);
         }
         
-        // الترتيب زمنياً (الأحدث أولاً)
         filteredFiles.sort((a, b) => b.uploadedAt - a.uploadedAt);
         
-        // التقسيم إلى صفحات
         const total = filteredFiles.length;
         const startIndex = (pageNum - 1) * limitNum;
         const endIndex = startIndex + limitNum;
         const paginatedFiles = filteredFiles.slice(startIndex, endIndex);
         
-        // إحصائيات
         const stats = {
             totalFiles: total,
             withTelegram: files.filter(f => f.telegramUrl).length,
@@ -1093,7 +1054,6 @@ app.get('/api/files', async (req, res) => {
     }
 });
 
-// 5. جلب ملف محدد
 app.get('/api/files/:fileId', async (req, res) => {
     try {
         const { fileId } = req.params;
@@ -1106,7 +1066,6 @@ app.get('/api/files/:fileId', async (req, res) => {
         }
         
         if (!file) {
-            // البحث في الملفات المحلية
             const fileInfo = uploadedFiles.get(fileId);
             if (fileInfo) {
                 file = {
@@ -1125,7 +1084,6 @@ app.get('/api/files/:fileId', async (req, res) => {
             return res.status(404).json({ success: false, error: 'File not found' });
         }
         
-        // زيادة عداد المشاهدات
         if (isFirebaseInitialized && file.id) {
             try {
                 const db = admin.database();
@@ -1153,7 +1111,6 @@ app.get('/api/files/:fileId', async (req, res) => {
     }
 });
 
-// 6. جلب الكتب
 app.get('/api/books', async (req, res) => {
     try {
         const { grade, subject, search, page = 1, limit = 20 } = req.query;
@@ -1175,7 +1132,6 @@ app.get('/api/books', async (req, res) => {
             books = getAllEducationalBooks();
         }
         
-        // تطبيق الفلاتر
         let filteredBooks = books;
         
         if (grade) {
@@ -1195,13 +1151,11 @@ app.get('/api/books', async (req, res) => {
             );
         }
         
-        // التقسيم إلى صفحات
         const total = filteredBooks.length;
         const startIndex = (pageNum - 1) * limitNum;
         const endIndex = startIndex + limitNum;
         const paginatedBooks = filteredBooks.slice(startIndex, endIndex);
         
-        // إحصائيات
         const stats = {
             totalBooks: total,
             totalPages: Math.ceil(total / limitNum),
@@ -1224,13 +1178,11 @@ app.get('/api/books', async (req, res) => {
     }
 });
 
-// 7. تحميل ملف مباشر من السيرفر
 app.get('/api/file/:folder/:filename', async (req, res) => {
     try {
         const { folder, filename } = req.params;
         const filePath = path.join(STORAGE_BASE, folder, filename);
         
-        // التحقق من وجود الملف
         try {
             await fs.access(filePath);
         } catch (error) {
@@ -1241,7 +1193,6 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
             });
         }
         
-        // إرسال الملف
         res.download(filePath, filename, (err) => {
             if (err) {
                 console.error('Download error:', err);
@@ -1250,12 +1201,10 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
                 }
             }
             
-            // تحديث عداد التحميلات في Firebase
             if (isFirebaseInitialized) {
                 try {
                     const db = admin.database();
                     
-                    // البحث عن الملف في قاعدة البيانات
                     db.ref('file_storage').orderByChild('fileName').equalTo(filename)
                         .once('value')
                         .then(snapshot => {
@@ -1269,9 +1218,7 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
                         .catch(error => {
                             console.warn('Could not update download count:', error.message);
                         });
-                } catch (error) {
-                    // تجاهل الأخطاء في تحديث العداد
-                }
+                } catch (error) {}
             }
         });
         
@@ -1281,7 +1228,6 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
     }
 });
 
-// 8. تنظيف الملفات المكررة من Firebase
 app.get('/api/cleanup/duplicates', async (req, res) => {
     try {
         if (!isFirebaseInitialized) {
@@ -1325,7 +1271,511 @@ app.get('/api/cleanup/duplicates', async (req, res) => {
     }
 });
 
-// 9. رابط الصحة
+// ==================== [ نقاط نهاية AI الذكي ] ====================
+
+// 1. إنشاء اختبار ذكي
+app.post('/api/ai/generate-quiz', async (req, res) => {
+    try {
+        const { subject, grade, questionCount = 10, questionTypes = ['mcq'] } = req.body;
+        
+        if (!subject || !grade) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'المادة والصف الدراسي مطلوبان' 
+            });
+        }
+        
+        // إذا كان OpenAI غير مفعل، نستخدم أسئلة وهمية
+        if (!openaiClient) {
+            const mockQuiz = generateMockQuiz(subject, grade, questionCount, questionTypes);
+            return res.json({
+                success: true,
+                quiz: mockQuiz,
+                instructions: 'أجب على جميع الأسئلة في الوقت المحدد',
+                timeLimit: 1800,
+                note: 'Mock quiz (OpenAI not configured)'
+            });
+        }
+        
+        // استخدام OpenAI لإنشاء اختبار حقيقي
+        const quiz = await generateAIQuiz(subject, grade, questionCount, questionTypes);
+        
+        res.json({
+            success: true,
+            quiz: quiz,
+            instructions: 'أجب على جميع الأسئلة في الوقت المحدد',
+            timeLimit: 1800
+        });
+        
+    } catch (error) {
+        console.error('Error generating quiz:', error);
+        // في حالة الخطأ، نعود للأسئلة الوهمية
+        const mockQuiz = generateMockQuiz(req.body.subject || 'عام', req.body.grade || 'عام', 10, ['mcq']);
+        res.json({
+            success: true,
+            quiz: mockQuiz,
+            instructions: 'أجب على جميع الأسئلة في الوقت المحدد',
+            timeLimit: 1800,
+            note: 'Fallback to mock quiz'
+        });
+    }
+});
+
+// 2. تصحيح الإجابات
+app.post('/api/ai/grade-quiz', async (req, res) => {
+    try {
+        const { quizId, answers, timeSpent, quizData } = req.body;
+        
+        if (!answers || !Array.isArray(answers)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'الإجابات مطلوبة' 
+            });
+        }
+        
+        const results = gradeQuiz(answers, quizData || {}, timeSpent);
+        
+        res.json({
+            success: true,
+            results: results,
+            feedback: generateFeedback(results.scorePercentage)
+        });
+        
+    } catch (error) {
+        console.error('Error grading quiz:', error);
+        res.status(500).json({ success: false, error: 'Failed to grade quiz' });
+    }
+});
+
+// 3. جلب اختبارات المستخدم
+app.get('/api/ai/user-quizzes/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        if (!isFirebaseInitialized) {
+            return res.json({ 
+                success: true, 
+                quizzes: [],
+                message: 'Firebase not connected - using mock data'
+            });
+        }
+        
+        const db = admin.database();
+        const snapshot = await db.ref(`user_quizzes/${userId}`).once('value');
+        const quizzes = snapshot.val() || {};
+        
+        res.json({
+            success: true,
+            quizzes: Object.values(quizzes),
+            stats: {
+                totalQuizzes: Object.keys(quizzes).length,
+                averageScore: calculateAverageScore(quizzes)
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching user quizzes:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch quizzes' });
+    }
+});
+
+// 4. حفظ نتائج الاختبار
+app.post('/api/ai/save-quiz-result', async (req, res) => {
+    try {
+        const { userId, quizId, results, quizData } = req.body;
+        
+        if (!userId || !quizId || !results) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'بيانات غير مكتملة' 
+            });
+        }
+        
+        if (!isFirebaseInitialized) {
+            return res.json({ 
+                success: true, 
+                message: 'Quiz result would be saved (Firebase not connected)'
+            });
+        }
+        
+        const db = admin.database();
+        const quizResult = {
+            quizId: quizId,
+            userId: userId,
+            results: results,
+            quizData: quizData,
+            completedAt: Date.now(),
+            score: results.scorePercentage,
+            subject: quizData?.subject || 'عام',
+            grade: quizData?.grade || 'عام'
+        };
+        
+        await db.ref(`user_quizzes/${userId}/${quizId}`).set(quizResult);
+        
+        // تحديث إحصائيات المستخدم
+        await updateUserStats(userId, results.scorePercentage);
+        
+        res.json({
+            success: true,
+            message: 'Quiz result saved successfully',
+            quizId: quizId
+        });
+        
+    } catch (error) {
+        console.error('Error saving quiz result:', error);
+        res.status(500).json({ success: false, error: 'Failed to save quiz result' });
+    }
+});
+
+// 5. جلب إحصائيات AI
+app.get('/api/ai/stats/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        if (!isFirebaseInitialized) {
+            return res.json({ 
+                success: true, 
+                stats: {
+                    totalQuizzes: 0,
+                    averageScore: 0,
+                    bestSubject: 'غير متوفر',
+                    totalQuestions: 0,
+                    dailyLimit: CONFIG.MAX_DAILY_QUESTIONS,
+                    remainingToday: CONFIG.MAX_DAILY_QUESTIONS
+                },
+                message: 'Mock data (Firebase not connected)'
+            });
+        }
+        
+        const db = admin.database();
+        
+        // جلب اختبارات المستخدم
+        const quizzesSnapshot = await db.ref(`user_quizzes/${userId}`).once('value');
+        const quizzes = quizzesSnapshot.val() || {};
+        
+        // جلب استخدام اليومي
+        const today = new Date().toISOString().split('T')[0];
+        const dailyKey = `ai_questions_${userId}_${today}`;
+        const dailySnapshot = await db.ref(`ai_usage/${dailyKey}`).once('value');
+        const dailyUsage = dailySnapshot.val() || { count: 0 };
+        
+        // حساب الإحصائيات
+        const stats = calculateQuizStats(quizzes);
+        
+        res.json({
+            success: true,
+            stats: {
+                ...stats,
+                dailyLimit: CONFIG.MAX_DAILY_QUESTIONS,
+                remainingToday: Math.max(0, CONFIG.MAX_DAILY_QUESTIONS - dailyUsage.count),
+                usedToday: dailyUsage.count
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching AI stats:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch stats' });
+    }
+});
+
+// ==================== [ دوال AI مساعدة ] ====================
+
+async function generateAIQuiz(subject, grade, questionCount, questionTypes) {
+    try {
+        const prompt = `أنشئ ${questionCount} سؤالاً في مادة ${subject} للصف ${grade}.
+        أنواع الأسئلة: ${questionTypes.join(', ')}.
+        يجب أن تكون الأسئلة باللغة العربية ومناسبة للمستوى التعليمي.
+        قدم الأسئلة بتنسيق JSON مع الهيكل التالي:
+        {
+            "questions": [
+                {
+                    "question": "نص السؤال",
+                    "type": "mcq",
+                    "options": ["الخيار 1", "الخيار 2", "الخيار 3", "الخيار 4"],
+                    "correctAnswer": 0
+                }
+            ]
+        }`;
+        
+        const response = await openaiClient.chat.completions.create({
+            model: "gpt-3.5-turbo",
+            messages: [
+                { role: "system", content: "أنت مساعد تعليمي عربي متخصص في إنشاء اختبارات تعليمية." },
+                { role: "user", content: prompt }
+            ],
+            temperature: 0.7,
+            max_tokens: 2000
+        });
+        
+        const quizContent = JSON.parse(response.choices[0].message.content);
+        
+        return {
+            quizId: `quiz_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+            title: `اختبار ${subject} - الصف ${grade}`,
+            subject: subject,
+            grade: grade,
+            questions: quizContent.questions,
+            totalQuestions: questionCount,
+            timeLimit: 1800,
+            createdAt: Date.now(),
+            source: 'openai'
+        };
+        
+    } catch (error) {
+        console.error('OpenAI error:', error);
+        // العودة للأسئلة الوهمية
+        return generateMockQuiz(subject, grade, questionCount, questionTypes);
+    }
+}
+
+function generateMockQuiz(subject, grade, questionCount, questionTypes) {
+    const questions = [];
+    
+    for (let i = 1; i <= questionCount; i++) {
+        let question;
+        
+        if (questionTypes.includes('mcq')) {
+            question = {
+                question: `سؤال ${i}: ما هو ناتج ${i} × ${i} في مادة ${subject}؟`,
+                type: 'mcq',
+                options: [
+                    `${i * i}`,
+                    `${i + i}`,
+                    `${i - i}`,
+                    `${i / i}`
+                ],
+                correctAnswer: 0,
+                explanation: `ناتج ${i} × ${i} = ${i * i}`
+            };
+        } else if (questionTypes.includes('true_false')) {
+            question = {
+                question: `سؤال ${i}: العبارة "${i} هو عدد زوجي" في ${subject}.`,
+                type: 'true_false',
+                options: ['صح', 'خطأ'],
+                correctAnswer: i % 2 === 0 ? 0 : 1,
+                explanation: i % 2 === 0 ? `${i} هو عدد زوجي` : `${i} هو عدد فردي`
+            };
+        } else {
+            question = {
+                question: `سؤال ${i}: اشرح مفهوم ${subject} للصف ${grade}.`,
+                type: 'essay',
+                correctAnswer: null,
+                explanation: 'هذا سؤال مقالي يتم تقييمه من قبل المعلم'
+            };
+        }
+        
+        questions.push(question);
+    }
+    
+    return {
+        quizId: `quiz_mock_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+        title: `اختبار ${subject} - الصف ${grade}`,
+        subject: subject,
+        grade: grade,
+        questions: questions,
+        totalQuestions: questionCount,
+        timeLimit: 1800,
+        createdAt: Date.now(),
+        source: 'mock'
+    };
+}
+
+function gradeQuiz(answers, quizData, timeSpent = 0) {
+    const questions = quizData.questions || [];
+    let correct = 0;
+    const detailedResults = [];
+    
+    answers.forEach((answer, index) => {
+        const question = questions[index];
+        let isCorrect = false;
+        let userAnswer = answer.answer;
+        
+        if (question && question.correctAnswer !== undefined) {
+            if (question.type === 'mcq' || question.type === 'true_false') {
+                isCorrect = parseInt(userAnswer) === parseInt(question.correctAnswer);
+            } else if (question.type === 'essay') {
+                // الأسئلة المقالية تعتبر صحيحة دائماً (يتم تقييمها يدوياً)
+                isCorrect = true;
+                userAnswer = 'مقالي - يحتاج مراجعة';
+            }
+        }
+        
+        if (isCorrect) correct++;
+        
+        detailedResults.push({
+            questionIndex: index,
+            question: question?.question || `سؤال ${index + 1}`,
+            userAnswer: userAnswer,
+            correctAnswer: question?.correctAnswer,
+            isCorrect: isCorrect,
+            explanation: question?.explanation || ''
+        });
+    });
+    
+    const totalQuestions = questions.length || answers.length;
+    const scorePercentage = totalQuestions > 0 ? Math.round((correct / totalQuestions) * 100) : 0;
+    
+    return {
+        totalQuestions: totalQuestions,
+        correctAnswers: correct,
+        wrongAnswers: totalQuestions - correct,
+        scorePercentage: scorePercentage,
+        timeSpent: timeSpent,
+        detailedResults: detailedResults,
+        grade: getGradeFromScore(scorePercentage)
+    };
+}
+
+function getGradeFromScore(percentage) {
+    if (percentage >= 90) return 'ممتاز';
+    if (percentage >= 80) return 'جيد جداً';
+    if (percentage >= 70) return 'جيد';
+    if (percentage >= 60) return 'مقبول';
+    if (percentage >= 50) return 'ضعيف';
+    return 'راسب';
+}
+
+function generateFeedback(scorePercentage) {
+    if (scorePercentage >= 90) {
+        return 'أداء رائع! احتفظ بهذا المستوى المتميز.';
+    } else if (scorePercentage >= 80) {
+        return 'أداء جيد جداً، يمكنك التحسين قليلاً.';
+    } else if (scorePercentage >= 70) {
+        return 'أداء جيد، ركز على نقاط الضعف.';
+    } else if (scorePercentage >= 60) {
+        return 'أداء مقبول، تحتاج للمزيد من الممارسة.';
+    } else if (scorePercentage >= 50) {
+        return 'أداء ضعيف، راجع الدروس الأساسية.';
+    } else {
+        return 'تحتاج لمراجعة شاملة للمادة.';
+    }
+}
+
+function calculateAverageScore(quizzes) {
+    const quizArray = Object.values(quizzes);
+    if (quizArray.length === 0) return 0;
+    
+    const totalScore = quizArray.reduce((sum, quiz) => sum + (quiz.results?.scorePercentage || 0), 0);
+    return Math.round(totalScore / quizArray.length);
+}
+
+function calculateQuizStats(quizzes) {
+    const quizArray = Object.values(quizzes);
+    
+    if (quizArray.length === 0) {
+        return {
+            totalQuizzes: 0,
+            averageScore: 0,
+            bestSubject: 'غير متوفر',
+            totalQuestions: 0,
+            bestScore: 0,
+            improvement: 0
+        };
+    }
+    
+    // حساب متوسط النقاط
+    const totalScore = quizArray.reduce((sum, quiz) => sum + (quiz.results?.scorePercentage || 0), 0);
+    const averageScore = Math.round(totalScore / quizArray.length);
+    
+    // حساب أفضل مادة
+    const subjectScores = {};
+    quizArray.forEach(quiz => {
+        const subject = quiz.quizData?.subject || 'عام';
+        const score = quiz.results?.scorePercentage || 0;
+        
+        if (!subjectScores[subject]) {
+            subjectScores[subject] = { total: 0, count: 0 };
+        }
+        
+        subjectScores[subject].total += score;
+        subjectScores[subject].count++;
+    });
+    
+    let bestSubject = 'عام';
+    let bestSubjectAvg = 0;
+    
+    Object.entries(subjectScores).forEach(([subject, data]) => {
+        const avg = data.total / data.count;
+        if (avg > bestSubjectAvg) {
+            bestSubject = subject;
+            bestSubjectAvg = avg;
+        }
+    });
+    
+    // حساب إجمالي الأسئلة
+    const totalQuestions = quizArray.reduce((sum, quiz) => {
+        return sum + (quiz.results?.totalQuestions || 0);
+    }, 0);
+    
+    // أفضل نتيجة
+    const bestScore = Math.max(...quizArray.map(quiz => quiz.results?.scorePercentage || 0));
+    
+    // حساب التحسن
+    let improvement = 0;
+    if (quizArray.length >= 2) {
+        const sortedQuizzes = quizArray.sort((a, b) => a.completedAt - b.completedAt);
+        const firstScore = sortedQuizzes[0]?.results?.scorePercentage || 0;
+        const lastScore = sortedQuizzes[sortedQuizzes.length - 1]?.results?.scorePercentage || 0;
+        improvement = lastScore - firstScore;
+    }
+    
+    return {
+        totalQuizzes: quizArray.length,
+        averageScore: averageScore,
+        bestSubject: bestSubject,
+        bestSubjectScore: Math.round(bestSubjectAvg),
+        totalQuestions: totalQuestions,
+        bestScore: bestScore,
+        improvement: improvement
+    };
+}
+
+async function updateUserStats(userId, score) {
+    if (!isFirebaseInitialized) return;
+    
+    try {
+        const db = admin.database();
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        
+        // تحديث الاستخدام اليومي
+        const dailyKey = `ai_questions_${userId}_${today}`;
+        const dailySnapshot = await db.ref(`ai_usage/${dailyKey}`).once('value');
+        const dailyUsage = dailySnapshot.val() || { count: 0, lastUsed: Date.now() };
+        
+        await db.ref(`ai_usage/${dailyKey}`).set({
+            count: dailyUsage.count + 1,
+            lastUsed: Date.now(),
+            userId: userId
+        });
+        
+        // تحديث إحصائيات المستخدم
+        const userStatsRef = db.ref(`user_stats/${userId}/ai`);
+        const statsSnapshot = await userStatsRef.once('value');
+        const stats = statsSnapshot.val() || {
+            totalQuizzes: 0,
+            totalScore: 0,
+            averageScore: 0,
+            lastQuizDate: Date.now()
+        };
+        
+        const newStats = {
+            totalQuizzes: stats.totalQuizzes + 1,
+            totalScore: stats.totalScore + score,
+            averageScore: Math.round((stats.totalScore + score) / (stats.totalQuizzes + 1)),
+            lastQuizDate: Date.now(),
+            updatedAt: Date.now()
+        };
+        
+        await userStatsRef.set(newStats);
+        
+    } catch (error) {
+        console.error('Error updating user stats:', error);
+    }
+}
+
+// ==================== [ نقاط نهاية أخرى ] ====================
+
 app.get('/health', (req, res) => {
     res.json({
         status: 'healthy',
@@ -1334,17 +1784,23 @@ app.get('/health', (req, res) => {
             server: '✅ Running',
             telegram: telegramBot ? '✅ Connected' : '❌ Disconnected',
             firebase: isFirebaseInitialized ? '✅ Connected' : '❌ Disconnected',
-            storage: '✅ Active'
+            storage: '✅ Active',
+            openai: openaiClient ? '✅ Connected' : '❌ Disconnected'
         },
         storageInfo: {
             mode: CONFIG.STORAGE_MODE,
             uploadedFiles: uploadedFiles.size,
             liveRooms: liveRooms.size
+        },
+        aiFeatures: {
+            quizGeneration: '✅ Available',
+            autoGrading: '✅ Available',
+            userStats: '✅ Available',
+            dailyLimit: CONFIG.MAX_DAILY_QUESTIONS
         }
     });
 });
 
-// 10. صفحة البداية
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -1377,6 +1833,10 @@ app.get('/', (req, res) => {
                     <strong>Firebase Database:</strong> ${isFirebaseInitialized ? '✅ Connected (Metadata only)' : '⚠️ Limited'}
                 </div>
                 
+                <div class="status ${openaiClient ? 'success' : 'warning'}">
+                    <strong>AI Assistant:</strong> ${openaiClient ? '✅ Connected' : '⚠️ Limited (Mock mode)'}
+                </div>
+                
                 <div class="status success">
                     <strong>Local Server Storage:</strong> ✅ Active
                 </div>
@@ -1387,6 +1847,14 @@ app.get('/', (req, res) => {
                     <li><strong>Telegram Channels</strong> (For backup & distribution)</li>
                     <li><strong>Local Server</strong> (For fast access)</li>
                     <li><strong>Firebase</strong> (Stores links and metadata only)</li>
+                </ul>
+                
+                <h2>🧠 AI Assistant Features</h2>
+                <ul>
+                    <li><strong>Quiz Generation:</strong> Create smart quizzes in any subject</li>
+                    <li><strong>Auto Grading:</strong> Instant grading with detailed feedback</li>
+                    <li><strong>Progress Tracking:</strong> Track learning progress</li>
+                    <li><strong>Daily Limit:</strong> ${CONFIG.MAX_DAILY_QUESTIONS} questions per day</li>
                 </ul>
                 
                 <h2>🔗 API Endpoints</h2>
@@ -1408,6 +1876,18 @@ app.get('/', (req, res) => {
                 </div>
                 
                 <div class="endpoint">
+                    <code>POST /api/ai/generate-quiz</code> - Create smart quiz
+                </div>
+                
+                <div class="endpoint">
+                    <code>POST /api/ai/grade-quiz</code> - Grade quiz answers
+                </div>
+                
+                <div class="endpoint">
+                    <code>GET /api/ai/stats/:userId</code> - Get AI statistics
+                </div>
+                
+                <div class="endpoint">
                     <code>GET /api/file/:folder/:filename</code> - Download file
                 </div>
                 
@@ -1415,7 +1895,7 @@ app.get('/', (req, res) => {
                 <ul>
                     <li>Dual Storage (Telegram + Server)</li>
                     <li>Live Classrooms</li>
-                    <li>AI Assistant</li>
+                    <li>AI Assistant with Quiz Generator</li>
                     <li>Digital Library</li>
                     <li>Payment System</li>
                 </ul>
@@ -1440,6 +1920,12 @@ server.listen(port, '0.0.0.0', () => {
     • Local Server: ✅ Active (${path.resolve(STORAGE_BASE)})
     • Firebase: ${isFirebaseInitialized ? '✅ Metadata only' : '❌ Disabled'}
     
+    🧠 AI ASSISTANT:
+    • OpenAI: ${openaiClient ? '✅ Connected' : '⚠️ Mock mode'}
+    • Quiz Generation: ✅ Available
+    • Auto Grading: ✅ Available
+    • Daily Limit: ${CONFIG.MAX_DAILY_QUESTIONS} questions
+    
     ⚠️ IMPORTANT: Files are stored in Telegram & Local Server ONLY!
     ⚠️ Firebase stores LINKS and METADATA only!
     
@@ -1449,6 +1935,7 @@ server.listen(port, '0.0.0.0', () => {
     🔗 Health Check: ${process.env.BOT_URL || 'http://localhost:' + port}/health
     🎯 API Test: ${process.env.BOT_URL || 'http://localhost:' + port}/api/test
     📁 Storage Info: ${process.env.BOT_URL || 'http://localhost:' + port}/api/storage/info
+    🧠 AI Test: ${process.env.BOT_URL || 'http://localhost:' + port}/api/ai/generate-quiz
     `);
 });
 
@@ -1461,7 +1948,6 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-// تنظيف دوري للملفات المؤقتة
 setInterval(() => {
     cleanupTempFiles();
-}, 60 * 60 * 1000); // كل ساعة
+}, 60 * 60 * 1000);
