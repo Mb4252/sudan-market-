@@ -4276,6 +4276,245 @@ document.addEventListener('DOMContentLoaded', function() {
     setupDragDrop(uploadArea);
     setupDragDrop(adminUploadArea);
 });
+    // ==================== [ الحل المؤقت لمشكلة إنشاء الاختبار ] ====================
+// هذه دالة بديلة تعمل مع البوت الحقيقي مباشرة
+window.fixGenerateQuiz = async function() {
+    console.log("🔄 استخدام الدالة المعدلة لإنشاء الاختبار...");
+    
+    try {
+        // عرض خيارات الاختبار
+        Swal.fire({
+            title: 'إنشاء اختبار ذكي',
+            html: `
+                <div style="text-align:right;">
+                    <p>اختر خيارات الاختبار:</p>
+                    <input type="number" id="question-count" class="swal2-input" 
+                           placeholder="عدد الأسئلة (1-20)" value="10" min="1" max="20">
+                    
+                    <select id="subject-select" class="swal2-input" style="margin-top:10px;">
+                        <option value="الرياضيات">الرياضيات</option>
+                        <option value="العلوم">العلوم</option>
+                        <option value="اللغة العربية">اللغة العربية</option>
+                        <option value="اللغة الإنجليزية">اللغة الإنجليزية</option>
+                        <option value="الاجتماعيات">الاجتماعيات</option>
+                    </select>
+                    
+                    <select id="grade-select" class="swal2-input" style="margin-top:10px;">
+                        <option value="الأول الابتدائي">الصف الأول الابتدائي</option>
+                        <option value="الثاني الابتدائي">الصف الثاني الابتدائي</option>
+                        <option value="الثالث الابتدائي">الصف الثالث الابتدائي</option>
+                        <option value="الرابع الابتدائي">الصف الرابع الابتدائي</option>
+                        <option value="الخامس الابتدائي">الصف الخامس الابتدائي</option>
+                        <option value="السادس الابتدائي">الصف السادس الابتدائي</option>
+                        <option value="الأول المتوسط">الصف الأول المتوسط</option>
+                        <option value="الثاني المتوسط">الصف الثاني المتوسط</option>
+                        <option value="الثالث المتوسط">الصف الثالث المتوسط</option>
+                        <option value="الأول الثانوي">الصف الأول الثانوي</option>
+                        <option value="الثاني الثانوي">الصف الثاني الثانوي</option>
+                        <option value="الثالث الثانوي">الصف الثالث الثانوي</option>
+                    </select>
+                    
+                    <select id="question-types" class="swal2-input" multiple style="height:100px; margin-top:10px;">
+                        <option value="mcq" selected>أسئلة الاختيار من متعدد</option>
+                        <option value="true_false" selected>صح/خطأ</option>
+                        <option value="essay">أسئلة مقالية</option>
+                    </select>
+                    <small>اضغط Ctrl لتحديد أكثر من نوع</small>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'إنشاء الاختبار',
+            cancelButtonText: 'إلغاء',
+            width: 600,
+            preConfirm: () => {
+                const questionCount = Swal.getPopup().querySelector('#question-count').value;
+                const subject = Swal.getPopup().querySelector('#subject-select').value;
+                const grade = Swal.getPopup().querySelector('#grade-select').value;
+                const questionTypes = Array.from(Swal.getPopup().querySelector('#question-types').selectedOptions)
+                    .map(option => option.value);
+                
+                if (!questionCount || questionCount < 1 || questionCount > 20) {
+                    Swal.showValidationMessage('الرجاء إدخال عدد أسئلة صحيح (1-20)');
+                    return false;
+                }
+                
+                if (questionTypes.length === 0) {
+                    Swal.showValidationMessage('الرجاء اختيار نوع واحد على الأقل');
+                    return false;
+                }
+                
+                return { 
+                    questionCount: parseInt(questionCount), 
+                    subject: subject,
+                    grade: grade,
+                    questionTypes: questionTypes
+                };
+            }
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    showLoading('🔄 جاري الاتصال بخادم الاختبارات الذكية...');
+                    
+                    // استدعاء البوت الحقيقي
+                    const response = await fetch('https://sdm-security-bot.onrender.com/api/ai/generate-quiz', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            subject: result.value.subject,
+                            grade: result.value.grade,
+                            questionCount: result.value.questionCount,
+                            questionTypes: result.value.questionTypes
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    hideLoading();
+                    
+                    if (data.success && data.quiz) {
+                        console.log("✅ الاختبار أنشئ بنجاح:", data.quiz);
+                        
+                        // حفظ الاختبار
+                        currentQuiz = data.quiz;
+                        
+                        // عرض الاختبار
+                        showQuiz(data.quiz);
+                        
+                        // إشعار نجاح
+                        Swal.fire({
+                            title: '✅ نجاح',
+                            text: `تم إنشاء اختبار ${data.quiz.title} بـ ${data.quiz.questions.length} سؤال`,
+                            icon: 'success',
+                            timer: 2000,
+                            showConfirmButton: false
+                        });
+                        
+                    } else {
+                        console.error("❌ البوت رجع خطأ:", data);
+                        showAlert('خطأ من الخادم', data.error || 'فشل إنشاء الاختبار', 'error');
+                    }
+                    
+                } catch (error) {
+                    hideLoading();
+                    console.error('❌ خطأ في الاتصال:', error);
+                    
+                    // إذا فشل الاتصال، استخدم اختبار وهمي
+                    showAlert('ملاحظة', 
+                        'خادم الذكاء الاصطناعي مشغول، جاري استخدام اختبار تجريبي...', 
+                        'info'
+                    );
+                    
+                    // إنشاء اختبار وهمي
+                    const mockQuiz = {
+                        quizId: `quiz_local_${Date.now()}`,
+                        title: `اختبار ${result.value.subject} - الصف ${result.value.grade}`,
+                        subject: result.value.subject,
+                        grade: result.value.grade,
+                        questions: [],
+                        totalQuestions: result.value.questionCount,
+                        timeLimit: 1800,
+                        createdAt: Date.now(),
+                        source: 'local_mock'
+                    };
+                    
+                    for (let i = 1; i <= result.value.questionCount; i++) {
+                        mockQuiz.questions.push({
+                            question: `سؤال ${i}: مثال في ${result.value.subject} للصف ${result.value.grade}`,
+                            type: 'mcq',
+                            options: ['الإجابة الأولى', 'الإجابة الثانية', 'الإجابة الثالثة', 'الإجابة الرابعة'],
+                            correctAnswer: Math.floor(Math.random() * 4),
+                            explanation: 'هذا مثال للاختبار المحلي'
+                        });
+                    }
+                    
+                    currentQuiz = mockQuiz;
+                    showQuiz(mockQuiz);
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ خطأ غير متوقع:', error);
+        showAlert('خطأ', 'حدث خطأ غير متوقع: ' + error.message, 'error');
+    }
+};
+
+// ==================== [ تحديث زر إنشاء الاختبار لاستخدام الدالة الجديدة ] ====================
+document.addEventListener('DOMContentLoaded', function() {
+    // انتظر قليلاً حتى يتم تحميل الصفحة
+    setTimeout(() => {
+        // تحديث زر إنشاء الاختبار في المساعد الذكي
+        const aiContent = document.getElementById('ai-assistant-content');
+        if (aiContent) {
+            aiContent.addEventListener('click', function(e) {
+                if (e.target.closest('.card') && e.target.closest('.card').textContent.includes('إنشاء اختبار')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.fixGenerateQuiz();
+                }
+            });
+        }
+        
+        // تحديث زر إنشاء الاختبار في الشاشة الرئيسية
+        const mainContent = document.getElementById('content-area');
+        if (mainContent) {
+            mainContent.addEventListener('click', function(e) {
+                if (e.target.closest('.card') && e.target.closest('.card').textContent.includes('المساعد الذكي')) {
+                    // الانتقال لشاشة المساعد الذكي
+                    nav('ai_assistant');
+                    setTimeout(() => {
+                        // بعد الانتقال، تحديث الزر هناك
+                        const aiScreen = document.getElementById('ai-assistant-content');
+                        if (aiScreen) {
+                            aiScreen.addEventListener('click', function(e2) {
+                                if (e2.target.closest('.card') && e2.target.closest('.card').textContent.includes('إنشاء اختبار')) {
+                                    e2.preventDefault();
+                                    e2.stopPropagation();
+                                    window.fixGenerateQuiz();
+                                }
+                            });
+                        }
+                    }, 500);
+                }
+            });
+        }
+        
+        console.log('✅ تم تحميل الإصلاح المؤقت لإنشاء الاختبار');
+    }, 1000);
+});
+
+// ==================== [ حل بديل: زر طوارئ لإنشاء الاختبار ] ====================
+function addEmergencyQuizButton() {
+    const emergencyBtn = document.createElement('button');
+    emergencyBtn.innerHTML = '🚀 إنشاء اختبار (طوارئ)';
+    emergencyBtn.style.cssText = `
+        position: fixed;
+        bottom: 80px;
+        left: 20px;
+        background: linear-gradient(90deg, #ff6b6b, #ee5a24);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 25px;
+        font-weight: bold;
+        cursor: pointer;
+        z-index: 9999;
+        box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+    `;
+    emergencyBtn.onclick = window.fixGenerateQuiz;
+    document.body.appendChild(emergencyBtn);
+    
+    console.log('✅ تم إضافة زر الطوارئ لإنشاء الاختبار');
+}
+
+// إضافة زر الطوارئ عند تحميل الصفحة
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', addEmergencyQuizButton);
+} else {
+    addEmergencyQuizButton();
+}
 </script>
 </body>
 </html>
