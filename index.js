@@ -12,7 +12,7 @@ const socketIO = require('socket.io');
 const { Telegraf } = require('telegraf');
 const http = require('http');
 const cors = require('cors');
-require('dotenv').config(); // إضافة هذا السطر
+require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
@@ -24,13 +24,13 @@ const io = socketIO(server, {
 });
 
 const port = process.env.PORT || 10000;
-const BOT_URL = process.env.BOT_URL || 'http://localhost:10000';
+const BOT_URL = process.env.BOT_URL || 'https://sdm-security-bot.onrender.com';
 
 // ==================== [ إعداد CORS ] ====================
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 // ==================== [ تهيئة المفاتيح ] ====================
@@ -45,7 +45,7 @@ let CONFIG = {
     ADMIN_ID: process.env.ADMIN_ID || '',
     ADMIN_BANK_ACCOUNT: "4426148",
     ADMIN_NAME: "محمد عبدالمعطي علي",
-    ADMIN_PHONE: "+249XXXXXXXXX",
+    ADMIN_PHONE: "+249903245198",
     // نظام الاشتراكات
     FREE_TRIAL_DAYS: 7,
     WEEKLY_SUBSCRIPTION: 7000,
@@ -60,7 +60,10 @@ let CONFIG = {
     AUTO_APPROVE_PAYMENTS: false,
     STORAGE_MODE: "TELEGRAM_AND_SERVER",
     MAX_FILE_SIZE: 50 * 1024 * 1024,
-    AUTO_DELETE_LOCAL_AFTER_UPLOAD: false
+    AUTO_DELETE_LOCAL_AFTER_UPLOAD: false,
+    // إعدادات إضافية
+    ALLOWED_ORIGINS: ['*'],
+    SESSION_TIMEOUT: 30 * 60 * 1000 // 30 دقيقة
 };
 
 // ==================== [ تهيئة بوت Telegram ] ====================
@@ -83,7 +86,7 @@ if (CONFIG.TELEGRAM_BOT_TOKEN) {
                 
                 await telegramBot.telegram.setWebhook(webhookUrl, {
                     drop_pending_updates: true,
-                    allowed_updates: ['message', 'callback_query']
+                    allowed_updates: ['message', 'callback_query', 'inline_query']
                 });
                 
                 console.log('✅ Telegram bot configured with webhook');
@@ -96,29 +99,120 @@ if (CONFIG.TELEGRAM_BOT_TOKEN) {
                 
                 // أوامر Telegram
                 telegramBot.command('start', (ctx) => {
-                    ctx.reply('🤖 **Smart Education Platform**\n\nمنصة التعليم الذكي مع DeepSeek AI\n📚 كتب تعليمية - 🧠 مساعد ذكي - 🎥 بث مباشر');
+                    const welcomeMessage = `
+🤖 **Smart Education Platform**
+
+🎯 *منصة التعليم الذكي مع DeepSeek AI*
+
+📚 *المميزات:*
+• مساعد ذكي للأسئلة التعليمية
+• مكتبة كتب تعليمية
+• بث مباشر تفاعلي
+• نظام اشتراكات متكامل
+
+📞 *للتواصل:* ${CONFIG.ADMIN_PHONE}
+🏦 *رقم الحساب:* ${CONFIG.ADMIN_BANK_ACCOUNT}
+
+⚡ *الأوامر المتاحة:*
+/start - عرض هذه الرسالة
+/subscribe - خطط الاشتراك
+/status - حالة البوت
+/help - المساعدة
+                    `;
+                    ctx.reply(welcomeMessage, { 
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "💰 خطط الاشتراك", callback_data: "show_subscription" },
+                                    { text: "📚 المكتبة", callback_data: "show_books" }
+                                ],
+                                [
+                                    { text: "🎥 البث المباشر", callback_data: "live_stream" },
+                                    { text: "🧠 اسأل AI", callback_data: "ask_ai" }
+                                ],
+                                [
+                                    { text: "📞 الدعم الفني", url: `tel:${CONFIG.ADMIN_PHONE.replace('+', '')}` }
+                                ]
+                            ]
+                        }
+                    });
                 });
                 
                 telegramBot.command('subscribe', (ctx) => {
                     const message = `
 💰 **خطط الاشتراك:**
 
-🎁 تجربة مجانية: 7 أيام (50 سؤال/يوم)
-📦 أسبوعي: 7,000 SDG (500 سؤال/يوم)
-📅 شهري: 25,000 SDG (500 سؤال/يوم)
-👨‍🏫 معلم شهري: 30,000 SDG (500 سؤال/يوم)
+🎁 *تجربة مجانية:* 7 أيام (50 سؤال/يوم)
+📦 *أسبوعي:* 7,000 SDG (500 سؤال/يوم)
+📅 *شهري:* 25,000 SDG (500 سؤال/يوم)
+👨‍🏫 *معلم شهري:* 30,000 SDG (500 سؤال/يوم)
 
 💳 **طرق الدفع:** ${CONFIG.PAYMENT_METHODS.join(', ')}
 🏦 **رقم الحساب:** ${CONFIG.ADMIN_BANK_ACCOUNT}
 👤 **اسم صاحب الحساب:** ${CONFIG.ADMIN_NAME}
-
 📞 **للتواصل:** ${CONFIG.ADMIN_PHONE}
+
+🔗 **رابط المنصة:** ${BOT_URL}
                     `;
-                    ctx.reply(message, { parse_mode: 'Markdown' });
+                    ctx.reply(message, { 
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "💳 إرسال إيصال دفع", callback_data: "send_payment" },
+                                    { text: "📋 شروط الاستخدام", callback_data: "terms" }
+                                ],
+                                [
+                                    { text: "🌐 زيارة المنصة", url: BOT_URL },
+                                    { text: "📞 الاتصال بالدعم", url: `tel:${CONFIG.ADMIN_PHONE.replace('+', '')}` }
+                                ]
+                            ]
+                        }
+                    });
                 });
                 
                 telegramBot.command('status', (ctx) => {
-                    ctx.reply(`✅ البوت يعمل بنظام webhook\n📅 ${new Date().toLocaleString()}\n🌐 ${BOT_URL}`);
+                    const statusMessage = `
+✅ **حالة النظام:**
+
+🤖 *البوت:* 🟢 يعمل
+🌐 *السيرفر:* ${BOT_URL}
+📅 *الوقت:* ${new Date().toLocaleString('ar-SA')}
+👥 *المستخدمون النشطون:* ${Array.from(liveRooms.values()).reduce((acc, room) => acc + room.participants.size, 0)}
+📚 *عدد الكتب:* ${getAllEducationalBooks().length}
+
+🔧 *الخدمات:*
+• DeepSeek AI: ${deepseekClient ? '🟢 نشط' : '🔴 غير نشط'}
+• Firebase: ${isFirebaseInitialized ? '🟢 متصل' : '🔴 غير متصل'}
+• التخزين: ${telegramBot ? '🟢 متاح' : '🔴 غير متاح'}
+                    `;
+                    ctx.reply(statusMessage, { parse_mode: 'Markdown' });
+                });
+                
+                telegramBot.command('help', (ctx) => {
+                    const helpMessage = `
+🆘 **مركز المساعدة:**
+
+📞 *الدعم الفني:* ${CONFIG.ADMIN_PHONE}
+📧 *البريد:* support@example.com
+
+🔗 **الروابط المهمة:**
+• المنصة الرئيسية: ${BOT_URL}
+• توثيق API: ${BOT_URL}/api/docs
+• حالة الخدمة: ${BOT_URL}/health
+
+⚡ **نصائح سريعة:**
+1. جرب الأمر /start لرؤية البداية
+2. /subscribe لعرض خطط الاشتراك
+3. أرسل سؤالك مباشرة للبوت للحصول على إجابة
+
+🔄 **في حالة وجود مشكلة:**
+• تأكد من اتصال الإنترنت
+• حاول إعادة تشغيل البوت
+• تواصل مع الدعم الفني
+                    `;
+                    ctx.reply(helpMessage, { parse_mode: 'Markdown' });
                 });
                 
                 // معالجة موافقات الأدمن
@@ -147,6 +241,38 @@ if (CONFIG.TELEGRAM_BOT_TOKEN) {
                             ctx.answerCbQuery('❌ فشل الرفض');
                         }
                     }
+                    else if (callbackData === 'show_subscription') {
+                        ctx.answerCbQuery('عرض خطط الاشتراك');
+                        ctx.reply(`💰 **خطط الاشتراك:**\n\n🎁 تجربة مجانية: 7 أيام\n📦 أسبوعي: 7,000 SDG\n📅 شهري: 25,000 SDG\n👨‍🏫 معلم: 30,000 SDG\n\n${BOT_URL}`, {
+                            parse_mode: 'Markdown'
+                        });
+                    }
+                    else if (callbackData === 'ask_ai') {
+                        ctx.answerCbQuery('اسأل الذكاء الاصطناعي');
+                        ctx.reply(`🧠 **مساعد DeepSeek الذكي**\n\nيمكنك استخدام المساعد الذكي من خلال:\n\n1. زيارة ${BOT_URL}\n2. استخدام زر "اسأل AI"\n3. إرسال سؤالك التعليمي مباشرة\n\nللاستفادة الكاملة، يرجى الاشتراك في إحدى الخطط.`, {
+                            parse_mode: 'Markdown'
+                        });
+                    }
+                });
+                
+                // معالجة الرسائل النصية
+                telegramBot.on('text', (ctx) => {
+                    const text = ctx.message.text;
+                    if (!text.startsWith('/')) {
+                        ctx.reply(`📝 *رسالتك:* ${text}\n\nللاستفادة من خدمات المنصة التعليمية، يرجى:\n\n1. زيارة ${BOT_URL}\n2. استخدام /subscribe لعرض خطط الاشتراك\n3. التواصل مع الدعم: ${CONFIG.ADMIN_PHONE}`, {
+                            parse_mode: 'Markdown'
+                        });
+                    }
+                });
+                
+                // معالجة الصور (لإيصالات الدفع)
+                telegramBot.on('photo', async (ctx) => {
+                    const photo = ctx.message.photo[ctx.message.photo.length - 1];
+                    const fileId = photo.file_id;
+                    
+                    ctx.reply(`📸 **تم استلام صورة**\n\nإذا كانت هذه إيصال دفع، يرجى:\n\n1. إرسال رقم المعاملة\n2. طريقة الدفع\n3. المبلغ المدفوع\n4. رقم هاتفك\n\nأو تواصل مع الدعم: ${CONFIG.ADMIN_PHONE}`, {
+                        parse_mode: 'Markdown'
+                    });
                 });
                 
             } catch (err) {
@@ -190,6 +316,21 @@ if (CONFIG.FIREBASE_JSON && Object.keys(CONFIG.FIREBASE_JSON).length > 0) {
                     console.log(`📚 Books already exist in database (${Object.keys(existingBooks).length} books)`);
                     isBooksInitialized = true;
                 }
+                
+                // إنشاء جدول المستخدمين إذا لم يكن موجودًا
+                const usersSnapshot = await db.ref('users').once('value');
+                if (!usersSnapshot.exists()) {
+                    await db.ref('users').set({});
+                    console.log('👥 Users table created');
+                }
+                
+                // إنشاء جدول المدفوعات
+                const paymentsSnapshot = await db.ref('payments').once('value');
+                if (!paymentsSnapshot.exists()) {
+                    await db.ref('payments').set({});
+                    console.log('💰 Payments table created');
+                }
+                
             } catch (error) {
                 console.error('❌ Error checking books:', error);
             }
@@ -221,6 +362,7 @@ if (CONFIG.DEEPSEEK_API_KEY) {
 // ==================== [ متغيرات التخزين ] ====================
 const liveRooms = new Map();
 const uploadedFiles = new Map();
+const userSessions = new Map();
 
 // ==================== [ إعدادات تخزين الملفات ] ====================
 const STORAGE_BASE = './smart_storage';
@@ -264,7 +406,7 @@ async function uploadToTelegram(filePath, fileName, fileType) {
         
         console.log(`📤 Uploading to Telegram: ${fileName} (${(fileStats.size/1024/1024).toFixed(2)}MB)`);
         
-        let caption = `📁 ${fileName}\n📦 ${(fileStats.size/1024/1024).toFixed(2)}MB\n⏰ ${new Date().toLocaleString()}`;
+        let caption = `📁 ${fileName}\n📦 ${(fileStats.size/1024/1024).toFixed(2)}MB\n⏰ ${new Date().toLocaleString()}\n🔗 ${BOT_URL}`;
         
         let message;
         const ext = path.extname(fileName).toLowerCase();
@@ -322,7 +464,8 @@ async function uploadToTelegram(filePath, fileName, fileType) {
             telegramUrl: fileUrl,
             localPath: filePath,
             fileName: fileName,
-            uploadedAt: Date.now()
+            uploadedAt: Date.now(),
+            downloadUrl: `${BOT_URL}/api/file/${fileType}/${fileName}`
         };
         
         uploadedFiles.set(fileName, fileInfo);
@@ -395,7 +538,8 @@ async function uploadToBoth(fileBuffer, fileName, folder, originalName) {
             localPath: results.server.localPath,
             size: results.server.size || fileBuffer.length,
             uploadedAt: Date.now(),
-            storageMode: results.telegram ? 'TELEGRAM_AND_SERVER' : 'SERVER_ONLY'
+            storageMode: results.telegram ? 'TELEGRAM_AND_SERVER' : 'SERVER_ONLY',
+            publicUrl: `${BOT_URL}/api/file/${folder}/${fileName}`
         };
         
         try {
@@ -499,6 +643,7 @@ async function storeFileMetadata(fileInfo) {
             isPublic: fileInfo.isPublic !== false,
             storageMode: fileInfo.storageMode || 'SERVER_ONLY',
             localPath: fileInfo.localPath,
+            publicUrl: fileInfo.publicUrl,
             ...(fileInfo.bookInfo || {})
         };
         
@@ -519,7 +664,7 @@ async function storeFileMetadata(fileInfo) {
                 pages: fileInfo.bookInfo.pages || 0,
                 fileName: fileInfo.fileName,
                 fileSize: fileInfo.size,
-                downloadUrl: fileInfo.serverUrl,
+                downloadUrl: fileInfo.publicUrl,
                 telegramUrl: fileInfo.telegramUrl,
                 thumbnailUrl: fileInfo.thumbnailUrl,
                 uploadedBy: fileInfo.uploadedBy,
@@ -623,7 +768,8 @@ async function initializeBooksDatabase() {
                 telegramUrl: null,
                 serverUrl: book.downloadUrl || `${BOT_URL}/api/file/books/${book.fileName}`,
                 uploadedAt: Date.now(),
-                isFree: true
+                isFree: true,
+                publicUrl: `${BOT_URL}/api/file/books/${book.fileName}`
             };
             
             await db.ref(`books/${bookId}`).set(bookWithStorage);
@@ -661,7 +807,8 @@ function getAllEducationalBooks() {
             uploadedBy: 'system',
             isFree: true,
             language: 'العربية',
-            curriculum: 'المنهج السوداني'
+            curriculum: 'المنهج السوداني',
+            downloadUrl: `${BOT_URL}/api/file/books/${grade.replace(/\s+/g, '_')}_${subject.replace(/\s+/g, '_')}.pdf`
         };
     }
 
@@ -704,6 +851,14 @@ function getAllEducationalBooks() {
 // ==================== [ Socket.IO للبث المباشر ] ====================
 io.on('connection', (socket) => {
     console.log('👤 User connected:', socket.id);
+    
+    // إنشاء جلسة للمستخدم
+    userSessions.set(socket.id, {
+        userId: null,
+        userName: null,
+        roomId: null,
+        lastActivity: Date.now()
+    });
 
     socket.on('join-room', (roomData) => {
         const { roomId, userId, userName, role } = roomData;
@@ -713,18 +868,29 @@ io.on('connection', (socket) => {
         socket.userId = userId;
         socket.userName = userName;
         
+        // تحديث الجلسة
+        const session = userSessions.get(socket.id);
+        if (session) {
+            session.userId = userId;
+            session.userName = userName;
+            session.roomId = roomId;
+            session.lastActivity = Date.now();
+        }
+        
         if (!liveRooms.has(roomId)) {
             liveRooms.set(roomId, {
                 id: roomId,
                 participants: new Map(),
                 teacherId: role === 'teacher' ? userId : null,
                 isRecording: false,
-                createdAt: Date.now()
+                createdAt: Date.now(),
+                lastActivity: Date.now()
             });
         }
         
         const room = liveRooms.get(roomId);
         room.participants.set(userId, { userName, role, socketId: socket.id });
+        room.lastActivity = Date.now();
         
         socket.to(roomId).emit('participant-joined', { userId, userName, role });
         
@@ -734,7 +900,9 @@ io.on('connection', (socket) => {
                 userName: data.userName,
                 role: data.role
             })),
-            isRecording: room.isRecording
+            isRecording: room.isRecording,
+            roomId: roomId,
+            serverUrl: BOT_URL
         });
         
         console.log(`🚪 ${userName} joined room ${roomId}`);
@@ -745,7 +913,14 @@ io.on('connection', (socket) => {
                 db.ref(`live_rooms/${roomId}/participants/${userId}`).set({
                     userName,
                     role,
-                    joinedAt: Date.now()
+                    joinedAt: Date.now(),
+                    socketId: socket.id
+                });
+                
+                // تحديث آخر نشاط
+                db.ref(`live_rooms/${roomId}`).update({
+                    lastActivity: Date.now(),
+                    participantCount: room.participants.size
                 });
             } catch (error) {
                 console.error('Error updating Firebase:', error);
@@ -756,7 +931,8 @@ io.on('connection', (socket) => {
     socket.on('signal', (data) => {
         socket.to(data.target).emit('signal', {
             from: socket.userId,
-            signal: data.signal
+            signal: data.signal,
+            serverUrl: BOT_URL
         });
     });
 
@@ -766,7 +942,8 @@ io.on('connection', (socket) => {
             from: socket.userId,
             fromName: socket.userName,
             message,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            serverUrl: BOT_URL
         };
         
         io.to(roomId).emit('chat-message', chatMessage);
@@ -791,11 +968,16 @@ io.on('connection', (socket) => {
                     liveRooms.delete(socket.roomId);
                 } else {
                     socket.to(socket.roomId).emit('participant-left', {
-                        userId: socket.userId
+                        userId: socket.userId,
+                        serverUrl: BOT_URL
                     });
                 }
             }
         }
+        
+        // حذف الجلسة
+        userSessions.delete(socket.id);
+        
         console.log('👋 User disconnected:', socket.id);
     });
 });
@@ -809,7 +991,8 @@ async function checkSubscription(userId) {
             remainingDays: CONFIG.FREE_TRIAL_DAYS,
             dailyLimit: CONFIG.MAX_DAILY_QUESTIONS.trial,
             type: 'trial',
-            status: 'active'
+            status: 'active',
+            serverUrl: BOT_URL
         };
     }
 
@@ -825,7 +1008,8 @@ async function checkSubscription(userId) {
                 startDate: Date.now(),
                 endDate: trialEnd,
                 status: 'active',
-                paymentStatus: 'free_trial'
+                paymentStatus: 'free_trial',
+                serverUrl: BOT_URL
             };
             
             await db.ref(`users/${userId}/subscription`).set(subscriptionData);
@@ -835,7 +1019,8 @@ async function checkSubscription(userId) {
             
             await db.ref(`users/${userId}`).update({
                 createdAt: userData.createdAt,
-                lastActive: Date.now()
+                lastActive: Date.now(),
+                serverUrl: BOT_URL
             });
             
             console.log(`🎁 Started free trial for user: ${userId}`);
@@ -848,7 +1033,8 @@ async function checkSubscription(userId) {
                 type: 'trial',
                 status: 'active',
                 startDate: new Date(subscriptionData.startDate).toLocaleDateString('ar-SA'),
-                endDate: new Date(trialEnd).toLocaleDateString('ar-SA')
+                endDate: new Date(trialEnd).toLocaleDateString('ar-SA'),
+                serverUrl: BOT_URL
             };
         }
 
@@ -879,7 +1065,8 @@ async function checkSubscription(userId) {
             startDate: new Date(subscription.startDate).toLocaleDateString('ar-SA'),
             endDate: new Date(subscription.endDate).toLocaleDateString('ar-SA'),
             paymentMethod: subscription.paymentMethod,
-            transactionId: subscription.transactionId
+            transactionId: subscription.transactionId,
+            serverUrl: BOT_URL
         };
 
     } catch (error) {
@@ -890,7 +1077,8 @@ async function checkSubscription(userId) {
             remainingDays: CONFIG.FREE_TRIAL_DAYS,
             dailyLimit: CONFIG.MAX_DAILY_QUESTIONS.trial,
             type: 'trial',
-            status: 'active'
+            status: 'active',
+            serverUrl: BOT_URL
         };
     }
 }
@@ -901,7 +1089,7 @@ async function checkDailyUsage(userId) {
         const dailyKey = `daily_usage_${userId}_${today}`;
         
         if (!isFirebaseInitialized) {
-            return { used: 0, limit: CONFIG.MAX_DAILY_QUESTIONS.trial, remaining: CONFIG.MAX_DAILY_QUESTIONS.trial };
+            return { used: 0, limit: CONFIG.MAX_DAILY_QUESTIONS.trial, remaining: CONFIG.MAX_DAILY_QUESTIONS.trial, serverUrl: BOT_URL };
         }
         
         const db = admin.database();
@@ -916,12 +1104,13 @@ async function checkDailyUsage(userId) {
             used: usage.count,
             limit: limit,
             remaining: remaining,
-            canAsk: remaining > 0
+            canAsk: remaining > 0,
+            serverUrl: BOT_URL
         };
         
     } catch (error) {
         console.error('Error checking daily usage:', error);
-        return { used: 0, limit: 50, remaining: 50, canAsk: true };
+        return { used: 0, limit: 50, remaining: 50, canAsk: true, serverUrl: BOT_URL };
     }
 }
 
@@ -940,7 +1129,8 @@ async function updateDailyUsage(userId) {
                 count: current.count + 1,
                 userId: userId,
                 lastUsed: Date.now(),
-                date: today
+                date: today,
+                serverUrl: BOT_URL
             });
         }
     } catch (error) {
@@ -967,7 +1157,8 @@ async function createPaymentRequest(userData) {
             adminId: null,
             adminNote: null,
             createdAt: Date.now(),
-            updatedAt: Date.now()
+            updatedAt: Date.now(),
+            serverUrl: BOT_URL
         };
         
         if (isFirebaseInitialized) {
@@ -977,7 +1168,8 @@ async function createPaymentRequest(userData) {
                 paymentId,
                 amount,
                 status: 'pending',
-                date: Date.now()
+                date: Date.now(),
+                serverUrl: BOT_URL
             });
             
             console.log(`💰 Payment request created: ${paymentId} for user ${userId}`);
@@ -1012,6 +1204,7 @@ async function notifyAdminAboutPayment(paymentData) {
 • طريقة الدفع: ${paymentData.paymentMethod}
 • رقم المعاملة: ${paymentData.transactionId}
 • الوقت: ${new Date(paymentData.createdAt).toLocaleString('ar-SA')}
+• الرابط: ${BOT_URL}
 
 🆔 **رقم الطلب:** ${paymentData.id}
 
@@ -1032,7 +1225,8 @@ async function notifyAdminAboutPayment(paymentData) {
                         { text: "❌ الرفض", callback_data: `reject_${paymentData.id}` }
                     ],
                     [
-                        { text: "👤 عرض الملف", callback_data: `user_${paymentData.userId}` }
+                        { text: "👤 عرض الملف", callback_data: `user_${paymentData.userId}` },
+                        { text: "🌐 زيارة المنصة", url: BOT_URL }
                     ]
                 ]
             }
@@ -1094,7 +1288,8 @@ async function approvePayment(paymentId, adminId, note = '') {
             updatedAt: Date.now(),
             subscriptionDays: subscriptionDays,
             subscriptionType: subscriptionType,
-            endDate: endDate
+            endDate: endDate,
+            serverUrl: BOT_URL
         });
         
         await db.ref(`users/${userId}/subscription`).set({
@@ -1108,7 +1303,8 @@ async function approvePayment(paymentId, adminId, note = '') {
             transactionId: payment.transactionId,
             amount: payment.amount,
             adminApproved: true,
-            adminId: adminId
+            adminId: adminId,
+            serverUrl: BOT_URL
         });
         
         await notifyUserAboutPaymentApproval(userId, paymentId, subscriptionDays);
@@ -1122,7 +1318,8 @@ async function approvePayment(paymentId, adminId, note = '') {
             subscriptionDays,
             subscriptionType,
             endDate: new Date(endDate).toLocaleDateString('ar-SA'),
-            message: 'تمت الموافقة على الدفع وتفعيل الاشتراك'
+            message: 'تمت الموافقة على الدفع وتفعيل الاشتراك',
+            serverUrl: BOT_URL
         };
         
     } catch (error) {
@@ -1151,14 +1348,15 @@ async function rejectPayment(paymentId, adminId, reason = '') {
             adminId: adminId,
             adminNote: reason || 'مرفوض',
             rejectedAt: Date.now(),
-            updatedAt: Date.now()
+            updatedAt: Date.now(),
+            serverUrl: BOT_URL
         });
         
         await notifyUserAboutPaymentRejection(payment.userId, paymentId, reason);
         
         console.log(`❌ Payment rejected: ${paymentId}, reason: ${reason}`);
         
-        return { success: true, paymentId, message: 'تم رفض الدفع' };
+        return { success: true, paymentId, message: 'تم رفض الدفع', serverUrl: BOT_URL };
         
     } catch (error) {
         console.error('Error rejecting payment:', error);
@@ -1181,6 +1379,7 @@ async function notifyUserAboutPaymentApproval(userId, paymentId, days) {
 📅 **مدة الاشتراك:** ${days} يوم
 🆔 **رقم المعاملة:** ${paymentId}
 ⏰ **وقت الموافقة:** ${new Date().toLocaleString('ar-SA')}
+🔗 **المنصة:** ${BOT_URL}
 
 📚 **مميزات الاشتراك:**
 • ${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال يومي
@@ -1199,7 +1398,8 @@ async function notifyUserAboutPaymentApproval(userId, paymentId, days) {
             message: message,
             paymentId: paymentId,
             read: false,
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            serverUrl: BOT_URL
         });
         
         if (telegramBot && user && user.telegramId) {
@@ -1229,6 +1429,7 @@ async function notifyUserAboutPaymentRejection(userId, paymentId, reason) {
 📌 **السبب:** ${reason || 'غير محدد'}
 🆔 **رقم المعاملة:** ${paymentId}
 ⏰ **وقت الرفض:** ${new Date().toLocaleString('ar-SA')}
+🔗 **المنصة:** ${BOT_URL}
 
 ⚠️ **إذا كنت تعتقد أن هذا خطأ، يرجى:**
 1. التحقق من رقم المعاملة
@@ -1250,7 +1451,8 @@ async function notifyUserAboutPaymentRejection(userId, paymentId, reason) {
             paymentId: paymentId,
             reason: reason,
             read: false,
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            serverUrl: BOT_URL
         });
         
     } catch (error) {
@@ -1291,7 +1493,8 @@ async function askDeepSeek(question, subject, grade) {
             isEducational: true,
             subject: subject || 'عام',
             grade: grade || 'جميع المراحل',
-            source: 'deepseek'
+            source: 'deepseek',
+            serverUrl: BOT_URL
         };
         
     } catch (error) {
@@ -1305,6 +1508,12 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
+// Middleware للتحقق من التواجد
+app.use((req, res, next) => {
+    console.log(`${req.method} ${req.url} - ${new Date().toISOString()}`);
+    next();
+});
+
 // ==================== [ نقاط النهاية الرئيسية ] ====================
 app.get('/api/test', (req, res) => {
     res.json({ 
@@ -1313,20 +1522,39 @@ app.get('/api/test', (req, res) => {
         time: new Date().toISOString(),
         server: 'Smart Education Platform v4.0',
         baseUrl: BOT_URL,
-        features: ['DeepSeek AI', 'Subscription System', 'Live Streaming', 'Digital Library', 'Payment System']
+        features: ['DeepSeek AI', 'Subscription System', 'Live Streaming', 'Digital Library', 'Payment System'],
+        status: 'active',
+        version: '4.0.0'
     });
 });
 
 app.get('/health', (req, res) => {
+    const activeUsers = Array.from(liveRooms.values()).reduce((acc, room) => acc + room.participants.size, 0);
+    const activeRooms = liveRooms.size;
+    const storageUsage = Array.from(uploadedFiles.values()).reduce((acc, file) => acc + (file.size || 0), 0);
+    
     res.json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
         baseUrl: BOT_URL,
+        server: {
+            uptime: process.uptime(),
+            memory: process.memoryUsage(),
+            platform: process.platform,
+            node: process.version
+        },
         services: {
             server: '✅ Running',
             telegram: telegramBot ? '✅ Connected' : '❌ Disconnected',
             firebase: isFirebaseInitialized ? '✅ Connected' : '❌ Disconnected',
             deepseek: deepseekClient ? '✅ Connected' : '❌ Disconnected'
+        },
+        stats: {
+            activeUsers: activeUsers,
+            activeRooms: activeRooms,
+            uploadedFiles: uploadedFiles.size,
+            storageUsage: `${(storageUsage / 1024 / 1024).toFixed(2)} MB`,
+            userSessions: userSessions.size
         }
     });
 });
@@ -1352,12 +1580,18 @@ app.get('/api/subscription/status/:userId', async (req, res) => {
                 adminAccount: CONFIG.ADMIN_BANK_ACCOUNT,
                 adminName: CONFIG.ADMIN_NAME,
                 adminPhone: CONFIG.ADMIN_PHONE
-            }
+            },
+            serverUrl: BOT_URL,
+            apiVersion: '1.0'
         });
         
     } catch (error) {
         console.error('Subscription status error:', error);
-        res.status(500).json({ success: false, error: 'خطأ في التحقق من الاشتراك' });
+        res.status(500).json({ 
+            success: false, 
+            error: 'خطأ في التحقق من الاشتراك',
+            serverUrl: BOT_URL 
+        });
     }
 });
 
@@ -1368,7 +1602,8 @@ app.post('/api/payment/request', async (req, res) => {
         if (!userId || !amount || !paymentMethod || !transactionId) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'بيانات الدفع غير مكتملة. يلزم: userId, amount, paymentMethod, transactionId' 
+                error: 'بيانات الدفع غير مكتملة. يلزم: userId, amount, paymentMethod, transactionId',
+                serverUrl: BOT_URL 
             });
         }
         
@@ -1381,14 +1616,16 @@ app.post('/api/payment/request', async (req, res) => {
         if (parseInt(amount) < minAmount) {
             return res.status(400).json({ 
                 success: false, 
-                error: `المبلغ غير كافي. الحد الأدنى: ${minAmount} SDG` 
+                error: `المبلغ غير كافي. الحد الأدنى: ${minAmount} SDG`,
+                serverUrl: BOT_URL 
             });
         }
         
         if (!CONFIG.PAYMENT_METHODS.includes(paymentMethod)) {
             return res.status(400).json({ 
                 success: false, 
-                error: `طريقة دفع غير مدعومة. الاختيارات: ${CONFIG.PAYMENT_METHODS.join(', ')}` 
+                error: `طريقة دفع غير مدعومة. الاختيارات: ${CONFIG.PAYMENT_METHODS.join(', ')}`,
+                serverUrl: BOT_URL 
             });
         }
         
@@ -1402,15 +1639,24 @@ app.post('/api/payment/request', async (req, res) => {
                 message: 'تم إنشاء طلب الدفع بنجاح وتم إرساله للأدمن للموافقة',
                 paymentId: result.paymentId,
                 status: 'pending',
-                note: 'سيتم تفعيل اشتراكك بعد موافقة الأدمن على الدفع'
+                note: 'سيتم تفعيل اشتراكك بعد موافقة الأدمن على الدفع',
+                serverUrl: BOT_URL
             });
         } else {
-            res.status(500).json({ success: false, error: result.error });
+            res.status(500).json({ 
+                success: false, 
+                error: result.error,
+                serverUrl: BOT_URL 
+            });
         }
         
     } catch (error) {
         console.error('Payment request error:', error);
-        res.status(500).json({ success: false, error: 'خطأ في إنشاء طلب الدفع' });
+        res.status(500).json({ 
+            success: false, 
+            error: 'خطأ في إنشاء طلب الدفع',
+            serverUrl: BOT_URL 
+        });
     }
 });
 
@@ -1423,7 +1669,8 @@ app.get('/api/payment/status/:paymentId', async (req, res) => {
                 success: true, 
                 paymentId,
                 status: 'unknown',
-                note: 'Firebase not connected'
+                note: 'Firebase not connected',
+                serverUrl: BOT_URL
             });
         }
         
@@ -1432,19 +1679,28 @@ app.get('/api/payment/status/:paymentId', async (req, res) => {
         const payment = paymentRef.val();
         
         if (!payment) {
-            return res.status(404).json({ success: false, error: 'طلب الدفع غير موجود' });
+            return res.status(404).json({ 
+                success: false, 
+                error: 'طلب الدفع غير موجود',
+                serverUrl: BOT_URL 
+            });
         }
         
         res.json({
             success: true,
             payment,
             humanStatus: payment.status === 'pending' ? 'بانتظار موافقة الأدمن' : 
-                        payment.status === 'approved' ? 'مقبول ومفعل' : 'مرفوض'
+                        payment.status === 'approved' ? 'مقبول ومفعل' : 'مرفوض',
+            serverUrl: BOT_URL
         });
         
     } catch (error) {
         console.error('Payment status error:', error);
-        res.status(500).json({ success: false, error: 'خطأ في التحقق من حالة الدفع' });
+        res.status(500).json({ 
+            success: false, 
+            error: 'خطأ في التحقق من حالة الدفع',
+            serverUrl: BOT_URL 
+        });
     }
 });
 
@@ -1455,7 +1711,8 @@ app.post('/api/ai/ask', async (req, res) => {
         if (!question) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'السؤال مطلوب' 
+                error: 'السؤال مطلوب',
+                serverUrl: BOT_URL 
             });
         }
         
@@ -1466,7 +1723,8 @@ app.post('/api/ai/ask', async (req, res) => {
                 return res.status(403).json({
                     success: false,
                     error: 'اشتراكك منتهي. يرجى تجديد الاشتراك.',
-                    subscriptionStatus: subscription
+                    subscriptionStatus: subscription,
+                    serverUrl: BOT_URL
                 });
             }
             
@@ -1476,7 +1734,8 @@ app.post('/api/ai/ask', async (req, res) => {
                 return res.status(429).json({
                     success: false,
                     error: `تجاوزت الحد اليومي (${usage.limit} سؤال). يتبقى ${usage.remaining} سؤال اليوم.`,
-                    usage
+                    usage,
+                    serverUrl: BOT_URL
                 });
             }
             
@@ -1490,11 +1749,12 @@ app.post('/api/ai/ask', async (req, res) => {
             response = await askDeepSeek(question, subject, grade);
         } else {
             response = {
-                answer: "أنا مساعد DeepSeek التعليمي. حالياً أنا في وضع التجربة. يمكنني الإجابة على أسئلتك التعليمية في مختلف المجالات.",
+                answer: `أنا مساعد DeepSeek التعليمي. حالياً أنا في وضع التجربة. يمكنني الإجابة على أسئلتك التعليمية في مختلف المجالات.\n\n🔗 ${BOT_URL}`,
                 isEducational: true,
                 subject: subject || 'عام',
                 grade: grade || 'جميع المراحل',
-                source: 'mock'
+                source: 'mock',
+                serverUrl: BOT_URL
             };
         }
         
@@ -1508,7 +1768,8 @@ app.post('/api/ai/ask', async (req, res) => {
                 isEducational: response.isEducational,
                 aiProvider: deepseekClient ? 'DeepSeek' : 'Mock',
                 userId: userId,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                serverUrl: BOT_URL
             }
         });
         
@@ -1516,7 +1777,8 @@ app.post('/api/ai/ask', async (req, res) => {
         console.error('Error in AI ask:', error);
         res.status(500).json({ 
             success: false, 
-            error: 'حدث خطأ في معالجة السؤال' 
+            error: 'حدث خطأ في معالجة السؤال',
+            serverUrl: BOT_URL 
         });
     }
 });
@@ -1525,7 +1787,11 @@ app.post('/api/ai/ask', async (req, res) => {
 app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
-            return res.status(400).json({ success: false, error: 'No file uploaded' });
+            return res.status(400).json({ 
+                success: false, 
+                error: 'No file uploaded',
+                serverUrl: BOT_URL 
+            });
         }
         
         const folder = req.params.folder || 'images';
@@ -1583,8 +1849,10 @@ app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => 
                 size: size,
                 telegramUrl: uploadResult.telegramUrl,
                 serverUrl: uploadResult.serverUrl,
+                publicUrl: uploadResult.publicUrl,
                 storageMode: uploadResult.storageMode,
-                uploadedAt: new Date(uploadResult.uploadedAt).toISOString()
+                uploadedAt: new Date(uploadResult.uploadedAt).toISOString(),
+                serverUrl: BOT_URL
             }
         });
         
@@ -1601,7 +1869,8 @@ app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => 
         
         res.status(500).json({ 
             success: false, 
-            error: error.message
+            error: error.message,
+            serverUrl: BOT_URL
         });
     }
 });
@@ -1620,12 +1889,14 @@ app.get('/api/books', async (req, res) => {
             books = Object.entries(allBooks).map(([id, book]) => ({
                 id,
                 ...book,
-                downloadUrl: `${BOT_URL}/api/file/books/${book.fileName}`
+                downloadUrl: `${BOT_URL}/api/file/books/${book.fileName}`,
+                publicUrl: `${BOT_URL}/api/file/books/${book.fileName}`
             }));
         } else {
             books = getAllEducationalBooks().map(book => ({
                 ...book,
-                downloadUrl: `${BOT_URL}/api/file/books/${book.fileName}`
+                downloadUrl: `${BOT_URL}/api/file/books/${book.fileName}`,
+                publicUrl: `${BOT_URL}/api/file/books/${book.fileName}`
             }));
         }
         
@@ -1661,13 +1932,18 @@ app.get('/api/books', async (req, res) => {
                 totalBooks: total,
                 showing: paginatedBooks.length,
                 page: pageNum,
-                totalPages: Math.ceil(total / limitNum)
+                totalPages: Math.ceil(total / limitNum),
+                serverUrl: BOT_URL
             }
         });
         
     } catch (error) {
         console.error('Error fetching books:', error);
-        res.status(500).json({ success: false, error: 'Failed to fetch books' });
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to fetch books',
+            serverUrl: BOT_URL 
+        });
     }
 });
 
@@ -1681,7 +1957,8 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
         } catch (error) {
             return res.status(404).json({ 
                 success: false, 
-                error: 'File not found on server'
+                error: 'File not found on server',
+                serverUrl: BOT_URL
             });
         }
         
@@ -1689,14 +1966,22 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
             if (err) {
                 console.error('Download error:', err);
                 if (!res.headersSent) {
-                    res.status(500).json({ success: false, error: 'Download failed' });
+                    res.status(500).json({ 
+                        success: false, 
+                        error: 'Download failed',
+                        serverUrl: BOT_URL 
+                    });
                 }
             }
         });
         
     } catch (error) {
         console.error('File serve error:', error);
-        res.status(500).json({ success: false, error: 'Failed to serve file' });
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to serve file',
+            serverUrl: BOT_URL 
+        });
     }
 });
 
@@ -1711,108 +1996,466 @@ app.get('/api/live/rooms', (req, res) => {
         teacherId: room.teacherId,
         isRecording: room.isRecording,
         createdAt: new Date(room.createdAt).toISOString(),
-        active: room.participants.size > 0
+        lastActivity: new Date(room.lastActivity).toISOString(),
+        active: room.participants.size > 0,
+        participantCount: room.participants.size,
+        serverUrl: BOT_URL
     }));
     
-    res.json({ success: true, rooms });
+    res.json({ 
+        success: true, 
+        rooms,
+        stats: {
+            totalRooms: rooms.length,
+            activeRooms: rooms.filter(r => r.active).length,
+            totalParticipants: rooms.reduce((acc, room) => acc + room.participantCount, 0),
+            serverUrl: BOT_URL
+        }
+    });
+});
+
+app.get('/api/stats', (req, res) => {
+    const stats = {
+        server: {
+            uptime: process.uptime(),
+            memory: process.memoryUsage(),
+            platform: process.platform,
+            node: process.version
+        },
+        services: {
+            telegram: !!telegramBot,
+            firebase: isFirebaseInitialized,
+            deepseek: !!deepseekClient,
+            booksInitialized: isBooksInitialized
+        },
+        live: {
+            activeRooms: liveRooms.size,
+            totalParticipants: Array.from(liveRooms.values()).reduce((acc, room) => acc + room.participants.size, 0),
+            userSessions: userSessions.size
+        },
+        storage: {
+            uploadedFiles: uploadedFiles.size,
+            folders: Object.values(FOLDERS)
+        },
+        config: {
+            freeTrialDays: CONFIG.FREE_TRIAL_DAYS,
+            subscriptionTypes: ['weekly', 'monthly', 'teacher_monthly'],
+            paymentMethods: CONFIG.PAYMENT_METHODS,
+            maxFileSize: `${CONFIG.MAX_FILE_SIZE / 1024 / 1024} MB`
+        },
+        urls: {
+            server: BOT_URL,
+            telegramWebhook: telegramBot ? `${BOT_URL}/bot${CONFIG.TELEGRAM_BOT_TOKEN}` : null,
+            apiDocs: `${BOT_URL}/api/docs`
+        }
+    };
+    
+    res.json({ success: true, stats });
 });
 
 // ==================== [ نقطة نهاية root للوصول ] ====================
 app.get('/', (req, res) => {
+    const stats = {
+        activeRooms: liveRooms.size,
+        totalParticipants: Array.from(liveRooms.values()).reduce((acc, room) => acc + room.participants.size, 0),
+        uploadedFiles: uploadedFiles.size,
+        booksCount: getAllEducationalBooks().length
+    };
+    
     res.send(`
         <!DOCTYPE html>
-        <html>
+        <html lang="ar" dir="rtl">
         <head>
-            <title>Smart Education Platform</title>
             <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Smart Education Platform - منصة التعليم الذكي</title>
             <style>
-                body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
-                .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-                h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
-                .status { padding: 15px; margin: 10px 0; border-radius: 5px; }
-                .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-                .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
-                .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-                .endpoint { background: #f8f9fa; padding: 10px; margin: 5px 0; border-left: 4px solid #3498db; }
-                code { background: #e9ecef; padding: 2px 5px; border-radius: 3px; }
-                a { color: #3498db; text-decoration: none; }
-                a:hover { text-decoration: underline; }
-                .pricing { background: #e8f4fc; padding: 15px; border-radius: 5px; margin: 15px 0; }
-                .btn { display: inline-block; background: #3498db; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; margin: 5px; }
-                .btn:hover { background: #2980b9; }
+                :root {
+                    --primary: #4361ee;
+                    --secondary: #3a0ca3;
+                    --accent: #7209b7;
+                    --success: #4cc9f0;
+                    --light: #f8f9fa;
+                    --dark: #212529;
+                    --gradient: linear-gradient(135deg, #4361ee 0%, #3a0ca3 50%, #7209b7 100%);
+                }
+                
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                }
+                
+                body {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    min-height: 100vh;
+                    padding: 20px;
+                }
+                
+                .container {
+                    max-width: 1200px;
+                    margin: 0 auto;
+                    background: rgba(255, 255, 255, 0.1);
+                    backdrop-filter: blur(10px);
+                    border-radius: 20px;
+                    padding: 40px;
+                    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                }
+                
+                header {
+                    text-align: center;
+                    margin-bottom: 40px;
+                    padding-bottom: 20px;
+                    border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+                }
+                
+                h1 {
+                    font-size: 3rem;
+                    margin-bottom: 10px;
+                    background: var(--gradient);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    background-clip: text;
+                }
+                
+                .subtitle {
+                    font-size: 1.2rem;
+                    opacity: 0.9;
+                    margin-bottom: 30px;
+                }
+                
+                .url-display {
+                    background: rgba(0, 0, 0, 0.3);
+                    padding: 15px;
+                    border-radius: 10px;
+                    margin: 20px 0;
+                    word-break: break-all;
+                    font-family: monospace;
+                    border-left: 4px solid var(--success);
+                }
+                
+                .status-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                    gap: 20px;
+                    margin: 30px 0;
+                }
+                
+                .status-card {
+                    background: rgba(255, 255, 255, 0.1);
+                    padding: 25px;
+                    border-radius: 15px;
+                    text-align: center;
+                    transition: transform 0.3s;
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                }
+                
+                .status-card:hover {
+                    transform: translateY(-5px);
+                    background: rgba(255, 255, 255, 0.15);
+                }
+                
+                .status-card i {
+                    font-size: 2.5rem;
+                    margin-bottom: 15px;
+                }
+                
+                .status-card h3 {
+                    margin-bottom: 10px;
+                    color: var(--success);
+                }
+                
+                .status-badge {
+                    display: inline-block;
+                    padding: 5px 15px;
+                    border-radius: 20px;
+                    font-size: 0.9rem;
+                    margin-top: 10px;
+                }
+                
+                .status-online {
+                    background: rgba(76, 201, 240, 0.2);
+                    color: var(--success);
+                    border: 1px solid var(--success);
+                }
+                
+                .status-offline {
+                    background: rgba(220, 53, 69, 0.2);
+                    color: #dc3545;
+                    border: 1px solid #dc3545;
+                }
+                
+                .features {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    gap: 20px;
+                    margin: 40px 0;
+                }
+                
+                .feature-item {
+                    background: rgba(255, 255, 255, 0.05);
+                    padding: 20px;
+                    border-radius: 10px;
+                    text-align: center;
+                }
+                
+                .btn-container {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 15px;
+                    justify-content: center;
+                    margin: 40px 0;
+                }
+                
+                .btn {
+                    padding: 12px 30px;
+                    border-radius: 50px;
+                    text-decoration: none;
+                    font-weight: bold;
+                    transition: all 0.3s;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 10px;
+                }
+                
+                .btn-primary {
+                    background: var(--primary);
+                    color: white;
+                    border: 2px solid var(--primary);
+                }
+                
+                .btn-primary:hover {
+                    background: transparent;
+                    color: var(--primary);
+                }
+                
+                .btn-secondary {
+                    background: transparent;
+                    color: white;
+                    border: 2px solid white;
+                }
+                
+                .btn-secondary:hover {
+                    background: white;
+                    color: var(--dark);
+                }
+                
+                .pricing-section {
+                    background: rgba(0, 0, 0, 0.2);
+                    padding: 30px;
+                    border-radius: 15px;
+                    margin: 40px 0;
+                }
+                
+                .pricing-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                    gap: 20px;
+                    margin-top: 20px;
+                }
+                
+                .pricing-card {
+                    background: rgba(255, 255, 255, 0.1);
+                    padding: 25px;
+                    border-radius: 15px;
+                    text-align: center;
+                }
+                
+                .pricing-card.highlight {
+                    background: var(--gradient);
+                    transform: scale(1.05);
+                }
+                
+                footer {
+                    text-align: center;
+                    margin-top: 50px;
+                    padding-top: 20px;
+                    border-top: 1px solid rgba(255, 255, 255, 0.2);
+                    opacity: 0.8;
+                }
+                
+                .contact-info {
+                    background: rgba(0, 0, 0, 0.2);
+                    padding: 20px;
+                    border-radius: 10px;
+                    margin: 20px 0;
+                }
+                
+                @media (max-width: 768px) {
+                    .container {
+                        padding: 20px;
+                    }
+                    
+                    h1 {
+                        font-size: 2rem;
+                    }
+                    
+                    .btn {
+                        width: 100%;
+                        justify-content: center;
+                    }
+                }
             </style>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
         </head>
         <body>
             <div class="container">
-                <h1>🤖 Smart Education Platform v4.0</h1>
-                <p><strong>نظام التعليم الذكي مع DeepSeek AI</strong></p>
-                <p><strong>Base URL:</strong> ${BOT_URL}</p>
-                <p><strong>Status:</strong> <span style="color: green;">✅ Online</span></p>
-                
-                <div class="status ${deepseekClient ? 'success' : 'warning'}">
-                    <strong>DeepSeek AI:</strong> ${deepseekClient ? '✅ Connected' : '⚠️ Mock Mode'}
-                </div>
-                
-                <div class="status ${telegramBot ? 'success' : 'error'}">
-                    <strong>Telegram Bot:</strong> ${telegramBot ? '✅ Connected' : '❌ Disconnected'}
-                </div>
-                
-                <div class="status ${isFirebaseInitialized ? 'success' : 'error'}">
-                    <strong>Firebase Database:</strong> ${isFirebaseInitialized ? '✅ Connected' : '❌ Disconnected'}
-                </div>
-                
-                <div class="pricing">
-                    <h3>💰 خطط الاشتراك</h3>
-                    <p>🎁 <strong>تجربة مجانية:</strong> ${CONFIG.FREE_TRIAL_DAYS} يوم (${CONFIG.MAX_DAILY_QUESTIONS.trial} سؤال/يوم)</p>
-                    <p>📦 <strong>أسبوعي:</strong> ${CONFIG.WEEKLY_SUBSCRIPTION} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)</p>
-                    <p>📅 <strong>شهري:</strong> ${CONFIG.MONTHLY_SUBSCRIPTION} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)</p>
-                    <p>👨‍🏫 <strong>معلم شهري:</strong> ${CONFIG.TEACHER_MONTHLY_FEE} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)</p>
+                <header>
+                    <h1><i class="fas fa-robot"></i> Smart Education Platform</h1>
+                    <p class="subtitle">منصة التعليم الذكي مع DeepSeek AI - نظام متكامل للتعليم الإلكتروني</p>
                     
+                    <div class="url-display">
+                        <i class="fas fa-link"></i> <strong>Server URL:</strong> ${BOT_URL}
+                    </div>
+                </header>
+                
+                <div class="status-grid">
+                    <div class="status-card">
+                        <i class="fas fa-server"></i>
+                        <h3>حالة السيرفر</h3>
+                        <p>🟢 يعمل بنظام 24/7</p>
+                        <span class="status-badge status-online">Online</span>
+                    </div>
+                    
+                    <div class="status-card">
+                        <i class="fas fa-brain"></i>
+                        <h3>DeepSeek AI</h3>
+                        <p>${deepseekClient ? '🟢 متصل' : '🔴 وضع التجربة'}</p>
+                        <span class="status-badge ${deepseekClient ? 'status-online' : 'status-offline'}">
+                            ${deepseekClient ? 'Connected' : 'Mock Mode'}
+                        </span>
+                    </div>
+                    
+                    <div class="status-card">
+                        <i class="fab fa-telegram"></i>
+                        <h3>Telegram Bot</h3>
+                        <p>${telegramBot ? '🟢 نشط' : '🔴 غير متصل'}</p>
+                        <span class="status-badge ${telegramBot ? 'status-online' : 'status-offline'}">
+                            ${telegramBot ? 'Active' : 'Disabled'}
+                        </span>
+                    </div>
+                    
+                    <div class="status-card">
+                        <i class="fas fa-database"></i>
+                        <h3>Firebase Database</h3>
+                        <p>${isFirebaseInitialized ? '🟢 متصل' : '🔴 غير متصل'}</p>
+                        <span class="status-badge ${isFirebaseInitialized ? 'status-online' : 'status-offline'}">
+                            ${isFirebaseInitialized ? 'Connected' : 'Disabled'}
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="features">
+                    <div class="feature-item">
+                        <i class="fas fa-book-reader"></i>
+                        <h4>مكتبة الكتب</h4>
+                        <p>${getAllEducationalBooks().length}+ كتاب تعليمي</p>
+                    </div>
+                    
+                    <div class="feature-item">
+                        <i class="fas fa-comments"></i>
+                        <h4>مساعد ذكي</h4>
+                        <p>DeepSeek AI للأسئلة التعليمية</p>
+                    </div>
+                    
+                    <div class="feature-item">
+                        <i class="fas fa-video"></i>
+                        <h4>بث مباشر</h4>
+                        <p>${liveRooms.size} غرفة نشطة</p>
+                    </div>
+                    
+                    <div class="feature-item">
+                        <i class="fas fa-credit-card"></i>
+                        <h4>نظام دفع</h4>
+                        <p>${CONFIG.PAYMENT_METHODS.length} طرق دفع</p>
+                    </div>
+                </div>
+                
+                <div class="btn-container">
+                    <a href="/health" class="btn btn-primary">
+                        <i class="fas fa-heart-pulse"></i> Health Check
+                    </a>
+                    <a href="/api/test" class="btn btn-secondary">
+                        <i class="fas fa-vial"></i> API Test
+                    </a>
+                    <a href="/api/books" class="btn btn-primary">
+                        <i class="fas fa-book"></i> المكتبة
+                    </a>
+                    <a href="/api/live/rooms" class="btn btn-secondary">
+                        <i class="fas fa-video"></i> الغرف النشطة
+                    </a>
+                    <a href="/api/stats" class="btn btn-primary">
+                        <i class="fas fa-chart-bar"></i> الإحصائيات
+                    </a>
+                </div>
+                
+                <div class="pricing-section">
+                    <h2 style="text-align: center; margin-bottom: 20px;">
+                        <i class="fas fa-tags"></i> خطط الاشتراك
+                    </h2>
+                    
+                    <div class="pricing-grid">
+                        <div class="pricing-card">
+                            <h3>🎁 تجربة مجانية</h3>
+                            <p>${CONFIG.FREE_TRIAL_DAYS} أيام</p>
+                            <p><strong>${CONFIG.MAX_DAILY_QUESTIONS.trial} سؤال/يوم</strong></p>
+                            <p>مجاناً</p>
+                        </div>
+                        
+                        <div class="pricing-card">
+                            <h3>📦 أسبوعي</h3>
+                            <p>7 أيام</p>
+                            <p><strong>${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم</strong></p>
+                            <p>${CONFIG.WEEKLY_SUBSCRIPTION} SDG</p>
+                        </div>
+                        
+                        <div class="pricing-card highlight">
+                            <h3>📅 شهري</h3>
+                            <p>30 يوم</p>
+                            <p><strong>${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم</strong></p>
+                            <p>${CONFIG.MONTHLY_SUBSCRIPTION} SDG</p>
+                            <p style="font-size: 0.9em; opacity: 0.8;">الأكثر شعبية</p>
+                        </div>
+                        
+                        <div class="pricing-card">
+                            <h3>👨‍🏫 معلم شهري</h3>
+                            <p>30 يوم</p>
+                            <p><strong>${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم</strong></p>
+                            <p>${CONFIG.TEACHER_MONTHLY_FEE} SDG</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="contact-info">
+                    <h3 style="margin-bottom: 15px;">
+                        <i class="fas fa-headset"></i> معلومات الدفع والدعم
+                    </h3>
                     <p><strong>💳 طرق الدفع:</strong> ${CONFIG.PAYMENT_METHODS.join(', ')}</p>
                     <p><strong>🏦 رقم الحساب:</strong> ${CONFIG.ADMIN_BANK_ACCOUNT}</p>
                     <p><strong>👤 اسم صاحب الحساب:</strong> ${CONFIG.ADMIN_NAME}</p>
-                    <p><strong>📞 للتواصل:</strong> ${CONFIG.ADMIN_PHONE}</p>
+                    <p><strong>📞 الدعم الفني:</strong> ${CONFIG.ADMIN_PHONE}</p>
                 </div>
                 
-                <div style="margin: 20px 0;">
-                    <a href="/health" class="btn">🔍 Health Check</a>
-                    <a href="/api/test" class="btn">🧪 API Test</a>
-                    <a href="/api/books" class="btn">📚 الكتب</a>
-                    <a href="/api/live/rooms" class="btn">🎥 الغرف النشطة</a>
+                <h3 style="margin: 30px 0 20px 0;">
+                    <i class="fas fa-code"></i> نقاط نهاية API
+                </h3>
+                <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px; font-family: monospace;">
+                    <p>POST ${BOT_URL}/api/ai/ask - اسأل DeepSeek AI</p>
+                    <p>GET ${BOT_URL}/api/subscription/status/:userId - حالة الاشتراك</p>
+                    <p>POST ${BOT_URL}/api/payment/request - إرسال طلب دفع</p>
+                    <p>GET ${BOT_URL}/api/books - المكتبة التعليمية</p>
+                    <p>GET ${BOT_URL}/api/live/rooms - الغرف النشطة</p>
                 </div>
                 
-                <h3>🔗 نقاط النهاية الرئيسية</h3>
-                
-                <div class="endpoint">
-                    <code>POST ${BOT_URL}/api/ai/ask</code> - اسأل DeepSeek AI
-                </div>
-                
-                <div class="endpoint">
-                    <code>GET ${BOT_URL}/api/subscription/status/:userId</code> - حالة الاشتراك
-                </div>
-                
-                <div class="endpoint">
-                    <code>POST ${BOT_URL}/api/payment/request</code> - إرسال طلب دفع
-                </div>
-                
-                <div class="endpoint">
-                    <code>GET ${BOT_URL}/api/books</code> - المكتبة التعليمية
-                </div>
-                
-                <div class="endpoint">
-                    <code>POST ${BOT_URL}/api/upload/dual/:folder</code> - رفع ملفات
-                </div>
-                
-                <div class="endpoint">
-                    <code>GET ${BOT_URL}/api/file/:folder/:filename</code> - تحميل الملفات
-                </div>
-                
-                <h3>📞 للدعم الفني</h3>
-                <p>${CONFIG.ADMIN_PHONE} - ${CONFIG.ADMIN_NAME}</p>
-                
-                <p style="margin-top: 30px; color: #666; font-size: 14px;">
-                    ⚠️ جميع المدفوعات تحتاج موافقة الأدمن قبل التفعيل. يتم إرسال إشعار للأدمن على Telegram للموافقة.
-                </p>
+                <footer>
+                    <p>© 2024 Smart Education Platform v4.0 - جميع الحقوق محفوظة</p>
+                    <p style="margin-top: 10px; font-size: 0.9em;">
+                        <i class="fas fa-globe"></i> ${BOT_URL} | 
+                        <i class="fas fa-clock"></i> ${new Date().toLocaleString('ar-SA')}
+                    </p>
+                </footer>
             </div>
         </body>
         </html>
@@ -1824,9 +2467,24 @@ app.use((req, res) => {
     res.status(404).json({
         success: false,
         error: 'Route not found',
+        serverUrl: BOT_URL,
         availableEndpoints: {
-            GET: ['/', '/health', '/api/test', '/api/books', '/api/subscription/status/:userId', '/api/payment/status/:paymentId', '/api/file/:folder/:filename', '/api/live/rooms'],
-            POST: ['/api/ai/ask', '/api/payment/request', '/api/upload/dual/:folder']
+            GET: [
+                '/',
+                '/health',
+                '/api/test',
+                '/api/books',
+                '/api/subscription/status/:userId',
+                '/api/payment/status/:paymentId',
+                '/api/file/:folder/:filename',
+                '/api/live/rooms',
+                '/api/stats'
+            ],
+            POST: [
+                '/api/ai/ask',
+                '/api/payment/request',
+                '/api/upload/dual/:folder'
+            ]
         }
     });
 });
@@ -1842,6 +2500,7 @@ server.listen(port, '0.0.0.0', () => {
     🧠 DEEPSEEK AI SYSTEM:
     • Status: ${deepseekClient ? '✅ Connected' : '⚠️ Mock Mode'}
     • Model: deepseek-chat
+    • Base URL: https://api.deepseek.com/v1
     
     💰 SUBSCRIPTION SYSTEM:
     • Free Trial: ${CONFIG.FREE_TRIAL_DAYS} days
@@ -1849,23 +2508,49 @@ server.listen(port, '0.0.0.0', () => {
     • Monthly: ${CONFIG.MONTHLY_SUBSCRIPTION} SDG
     • Teacher: ${CONFIG.TEACHER_MONTHLY_FEE} SDG
     • Admin Approval: ${CONFIG.AUTO_APPROVE_PAYMENTS ? '❌ Auto' : '✅ Manual'}
+    • Payment Methods: ${CONFIG.PAYMENT_METHODS.join(', ')}
     
     📊 STORAGE:
     • Telegram: ${telegramBot ? '✅ Active' : '❌ Disabled'}
     • Firebase: ${isFirebaseInitialized ? '✅ Connected' : '❌ Disabled'}
+    • Local Storage: ${STORAGE_BASE}
     
-    🎯 ENDPOINTS:
+    🎯 MAIN ENDPOINTS:
     • Home: GET ${BOT_URL}/
+    • Health: GET ${BOT_URL}/health
+    • API Test: GET ${BOT_URL}/api/test
     • AI Ask: POST ${BOT_URL}/api/ai/ask
     • Subscription: GET ${BOT_URL}/api/subscription/status/:userId
     • Payment: POST ${BOT_URL}/api/payment/request
     • Books: GET ${BOT_URL}/api/books
+    • Live Rooms: GET ${BOT_URL}/api/live/rooms
     
-    📞 ADMIN: ${CONFIG.ADMIN_PHONE}
-    🏦 ACCOUNT: ${CONFIG.ADMIN_BANK_ACCOUNT}
-    👤 NAME: ${CONFIG.ADMIN_NAME}
+    🤖 TELEGRAM BOT:
+    • Token: ${CONFIG.TELEGRAM_BOT_TOKEN ? '✅ Provided' : '❌ Missing'}
+    • Webhook: ${BOT_URL}/bot${CONFIG.TELEGRAM_BOT_TOKEN}
+    • Commands: /start, /subscribe, /status, /help
+    
+    📞 ADMIN CONTACT:
+    • Phone: ${CONFIG.ADMIN_PHONE}
+    • Account: ${CONFIG.ADMIN_BANK_ACCOUNT}
+    • Name: ${CONFIG.ADMIN_NAME}
+    
+    ⚡ SYSTEM READY! All services initialized successfully.
     `);
 });
+
+// تنظيف الجلسات القديمة كل 5 دقائق
+setInterval(() => {
+    const now = Date.now();
+    const timeout = CONFIG.SESSION_TIMEOUT;
+    
+    for (const [socketId, session] of userSessions.entries()) {
+        if (now - session.lastActivity > timeout) {
+            userSessions.delete(socketId);
+            console.log(`🧹 Cleaned up expired session: ${socketId}`);
+        }
+    }
+}, 5 * 60 * 1000);
 
 process.on('uncaughtException', (error) => {
     console.error('❌ Uncaught Exception:', error);
