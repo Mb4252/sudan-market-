@@ -22,6 +22,7 @@ const io = socketIO(server, {
 });
 
 const port = process.env.PORT || 10000;
+const BOT_URL = process.env.BOT_URL || 'https://sdm-security-bot.onrender.com';
 
 // ==================== [ تهيئة المفاتيح ] ====================
 let CONFIG = {
@@ -54,63 +55,64 @@ if (CONFIG.TELEGRAM_BOT_TOKEN) {
         telegramBot = new Telegraf(CONFIG.TELEGRAM_BOT_TOKEN);
         console.log('✅ Telegram Bot initialized successfully');
         
-        // بدء البوت بشكل آمن
-        const startBot = async () => {
+        // تأخير بدء البوت
+        setTimeout(async () => {
             try {
-                // 1. مسح أي ويب هوك سابق أولاً
-                await telegramBot.telegram.deleteWebhook();
-                console.log('🧹 Cleared previous webhook');
+                console.log('🔄 Setting up Telegram bot with webhook...');
+                
+                // 1. مسح أي ويب هوك سابق
+                await telegramBot.telegram.deleteWebhook({ drop_pending_updates: true });
+                console.log('🧹 Cleared previous webhook with pending updates');
                 
                 // 2. الانتظار قليلاً
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                await new Promise(resolve => setTimeout(resolve, 3000));
                 
-                // 3. بدء البوت
-                await telegramBot.launch();
-                console.log('🤖 Telegram Bot is running...');
+                // 3. إعداد ويب هوك جديد
+                const webhookUrl = `${BOT_URL}/bot${CONFIG.TELEGRAM_BOT_TOKEN}`;
                 
-                // 4. إضافة معالج للإشارات للتوقف الآمن
-                process.once('SIGINT', () => telegramBot.stop('SIGINT'));
-                process.once('SIGTERM', () => telegramBot.stop('SIGTERM'));
+                console.log(`🔗 Setting webhook to: ${webhookUrl}`);
+                
+                await telegramBot.telegram.setWebhook(webhookUrl, {
+                    drop_pending_updates: true,
+                    allowed_updates: ['message', 'callback_query']
+                });
+                
+                console.log('✅ Telegram bot configured with webhook');
+                
+                // 4. إضافة route لمعالجة webhook
+                app.post(`/bot${CONFIG.TELEGRAM_BOT_TOKEN}`, (req, res) => {
+                    telegramBot.handleUpdate(req.body, res);
+                });
+                
+                console.log('🤖 Telegram Bot Webhook is ready!');
+                
+                // 5. إضافة أمر start للتحقق
+                telegramBot.command('start', (ctx) => {
+                    ctx.reply('🤖 **Smart Education Storage Bot**\n\n' +
+                             'أنا بوت التخزين للنظام التعليمي الذكي.\n' +
+                             '📁 الملفات: كتب، صور، فيديوهات\n' +
+                             '🔗 النظام يعمل مع webhook على: ' + webhookUrl);
+                });
+                
+                telegramBot.command('status', (ctx) => {
+                    ctx.reply('✅ البوت يعمل بنظام webhook\n' +
+                             '📅 التاريخ: ' + new Date().toLocaleString() + '\n' +
+                             '🌐 الخادم: ' + BOT_URL);
+                });
+                
+                telegramBot.on('text', (ctx) => {
+                    ctx.reply('📝 للتحقق من البوت:\n' +
+                             '/start - معلومات البوت\n' +
+                             '/status - حالة البوت\n\n' +
+                             '🚀 المنصة: ' + BOT_URL);
+                });
                 
             } catch (err) {
-                console.error('❌ Failed to start bot with polling:', err.message);
-                console.log('🔄 Trying alternative method...');
-                
-                // محاولة البدء بدون استخدام webhook
-                try {
-                    // استخدام webhook بدلاً من polling
-                    const webhookUrl = process.env.BOT_URL ? 
-                        `${process.env.BOT_URL}/bot${CONFIG.TELEGRAM_BOT_TOKEN}` : 
-                        `https://sdm-security-bot.onrender.com/bot${CONFIG.TELEGRAM_BOT_TOKEN}`;
-                    
-                    await telegramBot.telegram.setWebhook(webhookUrl);
-                    console.log('✅ Telegram bot configured with webhook at:', webhookUrl);
-                    
-                    // إضافة route للويب هوك
-                    app.post(`/bot${CONFIG.TELEGRAM_BOT_TOKEN}`, (req, res) => {
-                        telegramBot.handleUpdate(req.body, res);
-                    });
-                    
-                } catch (webhookErr) {
-                    console.error('❌ Webhook also failed:', webhookErr.message);
-                    console.log('⚠️ Bot will run in limited mode');
-                }
+                console.error('❌ Error setting up Telegram webhook:', err.message);
+                console.log('⚠️ Bot will work in limited mode (no Telegram storage)');
+                telegramBot = null;
             }
-        };
-        
-        // تأخير بدء البوت لضمان اكتمال تهيئة السيرفر
-        setTimeout(() => {
-            startBot();
-        }, 5000);
-        
-        // أمر بسيط للتحقق
-        telegramBot.command('start', (ctx) => {
-            ctx.reply('🤖 **Smart Education Storage Bot**\n\n' +
-                     'أنا بوت التخزين للنظام التعليمي الذكي.\n' +
-                     'جميع الملفات تخزن هنا وفي السيرفر.\n' +
-                     '📁 الملفات: كتب، صور، فيديوهات\n' +
-                     '🔗 الروابط فقط تخزن في Firebase');
-        });
+        }, 8000);
         
     } catch (error) {
         console.error('❌ Failed to initialize Telegram Bot:', error.message);
@@ -316,7 +318,7 @@ async function uploadToLocalServer(fileBuffer, fileName, folder) {
         await fs.writeFile(filePath, fileBuffer);
         
         const stats = await fs.stat(filePath);
-        const serverUrl = `${process.env.BOT_URL || 'http://localhost:' + port}/api/file/${folder}/${fileName}`;
+        const serverUrl = `${BOT_URL}/api/file/${folder}/${fileName}`;
         
         console.log(`📁 Saved locally: ${filePath} (${(stats.size/1024/1024).toFixed(2)}MB)`);
         
@@ -362,7 +364,7 @@ async function uploadToBoth(fileBuffer, fileName, folder, originalName) {
         } else {
             await fs.copyFile(tempPath, finalPath);
             const stats = await fs.stat(finalPath);
-            const serverUrl = `${process.env.BOT_URL || 'http://localhost:' + port}/api/file/${folder}/${fileName}`;
+            const serverUrl = `${BOT_URL}/api/file/${folder}/${fileName}`;
             
             results.server = {
                 localPath: finalPath,
@@ -546,7 +548,7 @@ async function createThumbnail(filePath, fileName) {
             .webp({ quality: 80 })
             .toFile(thumbPath);
         
-        const thumbUrl = `${process.env.BOT_URL || 'http://localhost:' + port}/api/file/images/${thumbFileName}`;
+        const thumbUrl = `${BOT_URL}/api/file/images/${thumbFileName}`;
         
         if (telegramBot && telegramStorageChannel) {
             await uploadToTelegram(thumbPath, thumbFileName, 'images');
@@ -614,7 +616,7 @@ async function initializeBooksDatabase() {
                 ...book,
                 storageMode: 'SYSTEM_GENERATED',
                 telegramUrl: null,
-                serverUrl: book.downloadUrl || `/api/file/books/${book.fileName}`,
+                serverUrl: book.downloadUrl || `${BOT_URL}/api/file/books/${book.fileName}`,
                 uploadedAt: Date.now(),
                 isFree: true
             };
@@ -807,6 +809,7 @@ app.get('/api/test', (req, res) => {
         time: new Date().toISOString(),
         server: 'Smart Education Platform',
         version: '3.0.0',
+        baseUrl: BOT_URL,
         storage: {
             mode: CONFIG.STORAGE_MODE,
             telegram: telegramBot ? 'Connected' : 'Not Connected',
@@ -822,6 +825,13 @@ app.get('/api/test', (req, res) => {
         stats: {
             uploadedFiles: uploadedFiles.size,
             liveRooms: liveRooms.size
+        },
+        endpoints: {
+            health: `${BOT_URL}/health`,
+            storageInfo: `${BOT_URL}/api/storage/info`,
+            aiQuiz: `${BOT_URL}/api/ai/generate-quiz`,
+            books: `${BOT_URL}/api/books`,
+            upload: `${BOT_URL}/api/upload/dual/:folder`
         }
     });
 });
@@ -829,6 +839,7 @@ app.get('/api/test', (req, res) => {
 app.get('/api/storage/info', (req, res) => {
     res.json({
         success: true,
+        baseUrl: BOT_URL,
         storage: {
             primary: 'Telegram & Local Server',
             telegram: {
@@ -852,7 +863,11 @@ app.get('/api/storage/info', (req, res) => {
             localPath: info.localPath,
             size: info.size ? `${(info.size/1024/1024).toFixed(2)}MB` : 'Unknown'
         })),
-        note: '⚠️ Actual files are stored in Telegram and Local Server. Firebase stores only links.'
+        note: '⚠️ Actual files are stored in Telegram and Local Server. Firebase stores only links.',
+        endpoints: {
+            download: `${BOT_URL}/api/file/:folder/:filename`,
+            upload: `${BOT_URL}/api/upload/dual/:folder`
+        }
     });
 });
 
@@ -927,6 +942,7 @@ app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => 
         res.json({
             success: true,
             message: 'File uploaded successfully to both Telegram and Server',
+            baseUrl: BOT_URL,
             file: {
                 id: savedMetadata.firebaseId || uploadResult.fileName,
                 originalName: originalname,
@@ -941,7 +957,8 @@ app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => 
                 downloadLinks: {
                     telegram: uploadResult.telegramUrl,
                     direct: uploadResult.serverUrl,
-                    firebaseId: savedMetadata.firebaseId
+                    firebaseId: savedMetadata.firebaseId,
+                    directUrl: `${BOT_URL}/api/file/${folder}/${uploadResult.fileName}`
                 }
             },
             storage: {
@@ -965,7 +982,8 @@ app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => 
         res.status(500).json({ 
             success: false, 
             error: error.message,
-            note: 'File may be too large for Telegram (max 50MB)' 
+            note: 'File may be too large for Telegram (max 50MB)',
+            baseUrl: BOT_URL
         });
     }
 });
@@ -985,7 +1003,8 @@ app.get('/api/files', async (req, res) => {
             
             files = Object.entries(allFiles).map(([id, file]) => ({
                 id,
-                ...file
+                ...file,
+                directUrl: `${BOT_URL}/api/file/${file.folder}/${file.fileName}`
             }));
         } else {
             files = Array.from(uploadedFiles.values()).map(fileInfo => ({
@@ -993,6 +1012,7 @@ app.get('/api/files', async (req, res) => {
                 fileName: fileInfo.fileName,
                 telegramUrl: fileInfo.telegramUrl,
                 serverUrl: fileInfo.serverUrl || fileInfo.localPath,
+                directUrl: `${BOT_URL}/api/file/${fileInfo.folder || 'images'}/${fileInfo.fileName}`,
                 size: fileInfo.size,
                 uploadedAt: fileInfo.uploadedAt,
                 storageMode: fileInfo.telegramUrl ? 'TELEGRAM_AND_SERVER' : 'SERVER_ONLY'
@@ -1035,6 +1055,7 @@ app.get('/api/files', async (req, res) => {
         
         res.json({
             success: true,
+            baseUrl: BOT_URL,
             files: paginatedFiles,
             stats: {
                 ...stats,
@@ -1045,12 +1066,13 @@ app.get('/api/files', async (req, res) => {
                 totalPages: Math.ceil(total / limitNum),
                 itemsPerPage: limitNum,
                 totalItems: total
-            }
+            },
+            downloadBase: `${BOT_URL}/api/file`
         });
         
     } catch (error) {
         console.error('Error fetching files:', error);
-        res.status(500).json({ success: false, error: 'Failed to fetch files' });
+        res.status(500).json({ success: false, error: 'Failed to fetch files', baseUrl: BOT_URL });
     }
 });
 
@@ -1063,6 +1085,9 @@ app.get('/api/files/:fileId', async (req, res) => {
             const db = admin.database();
             const snapshot = await db.ref(`file_storage/${fileId}`).once('value');
             file = snapshot.val();
+            if (file) {
+                file.directUrl = `${BOT_URL}/api/file/${file.folder}/${file.fileName}`;
+            }
         }
         
         if (!file) {
@@ -1073,6 +1098,7 @@ app.get('/api/files/:fileId', async (req, res) => {
                     fileName: fileInfo.fileName,
                     telegramUrl: fileInfo.telegramUrl,
                     serverUrl: fileInfo.serverUrl || fileInfo.localPath,
+                    directUrl: `${BOT_URL}/api/file/${fileInfo.folder || 'images'}/${fileInfo.fileName}`,
                     size: fileInfo.size,
                     uploadedAt: fileInfo.uploadedAt,
                     storageMode: fileInfo.telegramUrl ? 'TELEGRAM_AND_SERVER' : 'SERVER_ONLY'
@@ -1081,7 +1107,7 @@ app.get('/api/files/:fileId', async (req, res) => {
         }
         
         if (!file) {
-            return res.status(404).json({ success: false, error: 'File not found' });
+            return res.status(404).json({ success: false, error: 'File not found', baseUrl: BOT_URL });
         }
         
         if (isFirebaseInitialized && file.id) {
@@ -1100,14 +1126,15 @@ app.get('/api/files/:fileId', async (req, res) => {
             file,
             downloadOptions: {
                 telegram: file.telegramUrl,
-                direct: file.serverUrl,
-                local: file.localPath
-            }
+                direct: file.directUrl,
+                server: file.serverUrl
+            },
+            baseUrl: BOT_URL
         });
         
     } catch (error) {
         console.error('Error fetching file:', error);
-        res.status(500).json({ success: false, error: 'Failed to fetch file' });
+        res.status(500).json({ success: false, error: 'Failed to fetch file', baseUrl: BOT_URL });
     }
 });
 
@@ -1126,10 +1153,14 @@ app.get('/api/books', async (req, res) => {
             
             books = Object.entries(allBooks).map(([id, book]) => ({
                 id,
-                ...book
+                ...book,
+                downloadUrl: `${BOT_URL}/api/file/books/${book.fileName}`
             }));
         } else {
-            books = getAllEducationalBooks();
+            books = getAllEducationalBooks().map(book => ({
+                ...book,
+                downloadUrl: `${BOT_URL}/api/file/books/${book.fileName}`
+            }));
         }
         
         let filteredBooks = books;
@@ -1167,14 +1198,16 @@ app.get('/api/books', async (req, res) => {
         
         res.json({ 
             success: true, 
+            baseUrl: BOT_URL,
             books: paginatedBooks,
             stats,
-            message: `Found ${total} books`
+            message: `Found ${total} books`,
+            downloadBase: `${BOT_URL}/api/file/books`
         });
         
     } catch (error) {
         console.error('Error fetching books:', error);
-        res.status(500).json({ success: false, error: 'Failed to fetch books' });
+        res.status(500).json({ success: false, error: 'Failed to fetch books', baseUrl: BOT_URL });
     }
 });
 
@@ -1189,6 +1222,7 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
             return res.status(404).json({ 
                 success: false, 
                 error: 'File not found on server',
+                baseUrl: BOT_URL,
                 note: 'File may be stored only in Telegram or has been deleted locally'
             });
         }
@@ -1197,7 +1231,7 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
             if (err) {
                 console.error('Download error:', err);
                 if (!res.headersSent) {
-                    res.status(500).json({ success: false, error: 'Download failed' });
+                    res.status(500).json({ success: false, error: 'Download failed', baseUrl: BOT_URL });
                 }
             }
             
@@ -1224,14 +1258,14 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
         
     } catch (error) {
         console.error('File serve error:', error);
-        res.status(500).json({ success: false, error: 'Failed to serve file' });
+        res.status(500).json({ success: false, error: 'Failed to serve file', baseUrl: BOT_URL });
     }
 });
 
 app.get('/api/cleanup/duplicates', async (req, res) => {
     try {
         if (!isFirebaseInitialized) {
-            return res.json({ success: false, error: 'Firebase not connected' });
+            return res.json({ success: false, error: 'Firebase not connected', baseUrl: BOT_URL });
         }
 
         const db = admin.database();
@@ -1263,11 +1297,12 @@ app.get('/api/cleanup/duplicates', async (req, res) => {
             message: `Found ${duplicates.length} duplicate books`,
             deleted: duplicates,
             remaining: Object.keys(uniqueBooks).length,
-            note: 'Books cleaned up successfully'
+            note: 'Books cleaned up successfully',
+            baseUrl: BOT_URL
         });
         
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ success: false, error: error.message, baseUrl: BOT_URL });
     }
 });
 
@@ -1281,7 +1316,8 @@ app.post('/api/ai/generate-quiz', async (req, res) => {
         if (!subject || !grade) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'المادة والصف الدراسي مطلوبان' 
+                error: 'المادة والصف الدراسي مطلوبان',
+                baseUrl: BOT_URL
             });
         }
         
@@ -1290,6 +1326,7 @@ app.post('/api/ai/generate-quiz', async (req, res) => {
             const mockQuiz = generateMockQuiz(subject, grade, questionCount, questionTypes);
             return res.json({
                 success: true,
+                baseUrl: BOT_URL,
                 quiz: mockQuiz,
                 instructions: 'أجب على جميع الأسئلة في الوقت المحدد',
                 timeLimit: 1800,
@@ -1302,6 +1339,7 @@ app.post('/api/ai/generate-quiz', async (req, res) => {
         
         res.json({
             success: true,
+            baseUrl: BOT_URL,
             quiz: quiz,
             instructions: 'أجب على جميع الأسئلة في الوقت المحدد',
             timeLimit: 1800
@@ -1313,6 +1351,7 @@ app.post('/api/ai/generate-quiz', async (req, res) => {
         const mockQuiz = generateMockQuiz(req.body.subject || 'عام', req.body.grade || 'عام', 10, ['mcq']);
         res.json({
             success: true,
+            baseUrl: BOT_URL,
             quiz: mockQuiz,
             instructions: 'أجب على جميع الأسئلة في الوقت المحدد',
             timeLimit: 1800,
@@ -1329,7 +1368,8 @@ app.post('/api/ai/grade-quiz', async (req, res) => {
         if (!answers || !Array.isArray(answers)) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'الإجابات مطلوبة' 
+                error: 'الإجابات مطلوبة',
+                baseUrl: BOT_URL
             });
         }
         
@@ -1337,13 +1377,14 @@ app.post('/api/ai/grade-quiz', async (req, res) => {
         
         res.json({
             success: true,
+            baseUrl: BOT_URL,
             results: results,
             feedback: generateFeedback(results.scorePercentage)
         });
         
     } catch (error) {
         console.error('Error grading quiz:', error);
-        res.status(500).json({ success: false, error: 'Failed to grade quiz' });
+        res.status(500).json({ success: false, error: 'Failed to grade quiz', baseUrl: BOT_URL });
     }
 });
 
@@ -1355,6 +1396,7 @@ app.get('/api/ai/user-quizzes/:userId', async (req, res) => {
         if (!isFirebaseInitialized) {
             return res.json({ 
                 success: true, 
+                baseUrl: BOT_URL,
                 quizzes: [],
                 message: 'Firebase not connected - using mock data'
             });
@@ -1366,6 +1408,7 @@ app.get('/api/ai/user-quizzes/:userId', async (req, res) => {
         
         res.json({
             success: true,
+            baseUrl: BOT_URL,
             quizzes: Object.values(quizzes),
             stats: {
                 totalQuizzes: Object.keys(quizzes).length,
@@ -1375,7 +1418,7 @@ app.get('/api/ai/user-quizzes/:userId', async (req, res) => {
         
     } catch (error) {
         console.error('Error fetching user quizzes:', error);
-        res.status(500).json({ success: false, error: 'Failed to fetch quizzes' });
+        res.status(500).json({ success: false, error: 'Failed to fetch quizzes', baseUrl: BOT_URL });
     }
 });
 
@@ -1387,13 +1430,15 @@ app.post('/api/ai/save-quiz-result', async (req, res) => {
         if (!userId || !quizId || !results) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'بيانات غير مكتملة' 
+                error: 'بيانات غير مكتملة',
+                baseUrl: BOT_URL
             });
         }
         
         if (!isFirebaseInitialized) {
             return res.json({ 
                 success: true, 
+                baseUrl: BOT_URL,
                 message: 'Quiz result would be saved (Firebase not connected)'
             });
         }
@@ -1417,13 +1462,14 @@ app.post('/api/ai/save-quiz-result', async (req, res) => {
         
         res.json({
             success: true,
+            baseUrl: BOT_URL,
             message: 'Quiz result saved successfully',
             quizId: quizId
         });
         
     } catch (error) {
         console.error('Error saving quiz result:', error);
-        res.status(500).json({ success: false, error: 'Failed to save quiz result' });
+        res.status(500).json({ success: false, error: 'Failed to save quiz result', baseUrl: BOT_URL });
     }
 });
 
@@ -1435,6 +1481,7 @@ app.get('/api/ai/stats/:userId', async (req, res) => {
         if (!isFirebaseInitialized) {
             return res.json({ 
                 success: true, 
+                baseUrl: BOT_URL,
                 stats: {
                     totalQuizzes: 0,
                     averageScore: 0,
@@ -1464,6 +1511,7 @@ app.get('/api/ai/stats/:userId', async (req, res) => {
         
         res.json({
             success: true,
+            baseUrl: BOT_URL,
             stats: {
                 ...stats,
                 dailyLimit: CONFIG.MAX_DAILY_QUESTIONS,
@@ -1474,7 +1522,7 @@ app.get('/api/ai/stats/:userId', async (req, res) => {
         
     } catch (error) {
         console.error('Error fetching AI stats:', error);
-        res.status(500).json({ success: false, error: 'Failed to fetch stats' });
+        res.status(500).json({ success: false, error: 'Failed to fetch stats', baseUrl: BOT_URL });
     }
 });
 
@@ -1774,12 +1822,11 @@ async function updateUserStats(userId, score) {
     }
 }
 
-// ==================== [ نقاط نهاية أخرى ] ====================
-
 app.get('/health', (req, res) => {
     res.json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
+        baseUrl: BOT_URL,
         services: {
             server: '✅ Running',
             telegram: telegramBot ? '✅ Connected' : '❌ Disconnected',
@@ -1797,6 +1844,13 @@ app.get('/health', (req, res) => {
             autoGrading: '✅ Available',
             userStats: '✅ Available',
             dailyLimit: CONFIG.MAX_DAILY_QUESTIONS
+        },
+        endpoints: {
+            test: `${BOT_URL}/api/test`,
+            storageInfo: `${BOT_URL}/api/storage/info`,
+            aiQuiz: `${BOT_URL}/api/ai/generate-quiz`,
+            books: `${BOT_URL}/api/books`,
+            files: `${BOT_URL}/api/files`
         }
     });
 });
@@ -1818,12 +1872,15 @@ app.get('/', (req, res) => {
                 .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
                 .endpoint { background: #f8f9fa; padding: 10px; margin: 5px 0; border-left: 4px solid #3498db; }
                 code { background: #e9ecef; padding: 2px 5px; border-radius: 3px; }
+                a { color: #3498db; text-decoration: none; }
+                a:hover { text-decoration: underline; }
             </style>
         </head>
         <body>
             <div class="container">
                 <h1>🤖 Smart Education Platform</h1>
                 <p><strong>Version 3.0.0</strong> - Dual Storage System</p>
+                <p><strong>Base URL:</strong> ${BOT_URL}</p>
                 
                 <div class="status ${telegramBot ? 'success' : 'error'}">
                     <strong>Telegram Storage:</strong> ${telegramBot ? '✅ Connected' : '❌ Disconnected'}
@@ -1857,38 +1914,44 @@ app.get('/', (req, res) => {
                     <li><strong>Daily Limit:</strong> ${CONFIG.MAX_DAILY_QUESTIONS} questions per day</li>
                 </ul>
                 
-                <h2>🔗 API Endpoints</h2>
+                <h2>🔗 Live API Endpoints</h2>
                 
                 <div class="endpoint">
-                    <code>GET /api/test</code> - System status
+                    <a href="${BOT_URL}/api/test" target="_blank">
+                        <code>GET ${BOT_URL}/api/test</code>
+                    </a> - System status
                 </div>
                 
                 <div class="endpoint">
-                    <code>GET /api/storage/info</code> - Storage information
+                    <a href="${BOT_URL}/api/storage/info" target="_blank">
+                        <code>GET ${BOT_URL}/api/storage/info</code>
+                    </a> - Storage information
                 </div>
                 
                 <div class="endpoint">
-                    <code>POST /api/upload/dual/:folder</code> - Upload to Telegram & Server
+                    <a href="${BOT_URL}/api/books" target="_blank">
+                        <code>GET ${BOT_URL}/api/books</code>
+                    </a> - Get all books
                 </div>
                 
                 <div class="endpoint">
-                    <code>GET /api/books</code> - Get all books
+                    <code>POST ${BOT_URL}/api/upload/dual/:folder</code> - Upload to Telegram & Server
                 </div>
                 
                 <div class="endpoint">
-                    <code>POST /api/ai/generate-quiz</code> - Create smart quiz
+                    <code>POST ${BOT_URL}/api/ai/generate-quiz</code> - Create smart quiz
                 </div>
                 
                 <div class="endpoint">
-                    <code>POST /api/ai/grade-quiz</code> - Grade quiz answers
+                    <code>POST ${BOT_URL}/api/ai/grade-quiz</code> - Grade quiz answers
                 </div>
                 
                 <div class="endpoint">
-                    <code>GET /api/ai/stats/:userId</code> - Get AI statistics
+                    <code>GET ${BOT_URL}/api/ai/stats/:userId</code> - Get AI statistics
                 </div>
                 
                 <div class="endpoint">
-                    <code>GET /api/file/:folder/:filename</code> - Download file
+                    <code>GET ${BOT_URL}/api/file/:folder/:filename</code> - Download file
                 </div>
                 
                 <h2>📚 Features</h2>
@@ -1896,11 +1959,18 @@ app.get('/', (req, res) => {
                     <li>Dual Storage (Telegram + Server)</li>
                     <li>Live Classrooms</li>
                     <li>AI Assistant with Quiz Generator</li>
-                    <li>Digital Library</li>
+                    <li>Digital Library (88 books)</li>
                     <li>Payment System</li>
                 </ul>
                 
                 <p><strong>Note:</strong> Actual files are NOT stored in Firebase. Firebase stores only links and metadata.</p>
+                
+                <h2>📊 Quick Tests</h2>
+                <p>
+                    <a href="${BOT_URL}/health" target="_blank" style="display:inline-block; background:#3498db; color:white; padding:10px 20px; border-radius:5px; margin:5px;">Health Check</a>
+                    <a href="${BOT_URL}/api/test" target="_blank" style="display:inline-block; background:#2ecc71; color:white; padding:10px 20px; border-radius:5px; margin:5px;">API Test</a>
+                    <a href="${BOT_URL}/api/books" target="_blank" style="display:inline-block; background:#9b59b6; color:white; padding:10px 20px; border-radius:5px; margin:5px;">View Books</a>
+                </p>
             </div>
         </body>
         </html>
@@ -1913,7 +1983,7 @@ server.listen(port, '0.0.0.0', () => {
     🚀 Smart Education Platform Server v3.0
     🔗 Running on port: ${port}
     📡 Local: http://localhost:${port}
-    🌐 Public: ${process.env.BOT_URL || 'Set BOT_URL in environment'}
+    🌐 Public: ${BOT_URL}
     
     📊 STORAGE SYSTEM:
     • Telegram: ${telegramBot ? '✅ Active' : '❌ Disabled'}
@@ -1930,12 +2000,13 @@ server.listen(port, '0.0.0.0', () => {
     ⚠️ Firebase stores LINKS and METADATA only!
     
     📚 Total Books: ${getAllEducationalBooks().length}
-    🤖 Telegram Bot: ${telegramBot ? 'Running' : 'Not configured'}
+    🤖 Telegram Bot: ${telegramBot ? 'Running (Webhook)' : 'Not configured'}
     
-    🔗 Health Check: ${process.env.BOT_URL || 'http://localhost:' + port}/health
-    🎯 API Test: ${process.env.BOT_URL || 'http://localhost:' + port}/api/test
-    📁 Storage Info: ${process.env.BOT_URL || 'http://localhost:' + port}/api/storage/info
-    🧠 AI Test: ${process.env.BOT_URL || 'http://localhost:' + port}/api/ai/generate-quiz
+    🔗 Health Check: ${BOT_URL}/health
+    🎯 API Test: ${BOT_URL}/api/test
+    📁 Storage Info: ${BOT_URL}/api/storage/info
+    🧠 AI Test: ${BOT_URL}/api/ai/generate-quiz
+    📚 Books API: ${BOT_URL}/api/books
     `);
 });
 
