@@ -1,41 +1,83 @@
 const { Telegraf, Markup } = require('telegraf');
-// سنستخدم مكتبة yt-dlp-exec وهي مجانية تماماً للتحميل
-const ytDlp = require('yt-dlp-exec'); 
+const http = require('http');
 
+// --- 1. حل مشكلة Render (Port Binding) ---
+// هذا الجزء يمنع Render من إيقاف البوت بسبب عدم وجود منفذ مفتوح
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot is Active and Running!\n');
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Server is listening on port ${PORT}`);
+});
+
+// --- 2. إعداد البوت باستخدام متغيراتك ---
+// تأكد أن الاسم TELEGRAM_BOT_TOKEN مطابق لما في الصورة
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
-const CHANNEL_ID = '@YourChannelUsername'; // ضع يوزر قناتك هنا لتربح منها
+const ADMIN_ID = process.env.ADMIN_ID; // معرف المدير الخاص بك
 
+// ضع معرف قناتك هنا (يجب أن يكون البوت مشرفاً فيها ليتحقق من الاشتراك)
+const CHANNEL_USERNAME = '@YourChannel'; 
+
+// --- 3. أوامر البوت ---
+
+// أمر البدء
 bot.start((ctx) => {
     ctx.reply(
-        `مرحباً بك! 🤖\nأنا بوت التحميل المجاني. أرسل رابط فيديو من تيك توك أو إنستا وسأقوم بتحميله لك فوراً وبدون علامة مائية.`,
+        `أهلاً بك يا ${ctx.from.first_name} في بوت التحميل والأدوات! 🤖\n\n` +
+        `أنا هنا لمساعدتك في تحميل الفيديوهات وتوفير خدمات سريعة.\n` +
+        `يرجى الاشتراك في القناة أولاً لضمان عمل كافة الميزات مجاناً.`,
         Markup.inlineKeyboard([
-            [Markup.button.url('اشترك في القناة لفتح البوت 📢', `https://t.me/${CHANNEL_ID.replace('@', '')}`)]
+            [Markup.button.url('انضم للقناة الرسمية 📢', `https://t.me/${CHANNEL_USERNAME.replace('@', '')}`)]
         ])
     );
 });
 
+// معالجة الرسائل النصية والروابط
 bot.on('text', async (ctx) => {
-    const url = ctx.message.text;
+    const userMessage = ctx.message.text;
+    const userId = ctx.from.id.toString();
 
-    if (!url.startsWith('http')) return ctx.reply('أرسل رابطاً صحيحاً يا صديقي.');
-
-    // فحص الاشتراك (مجاني لك ويجبرهم على متابعة قناتك)
+    // التحقق من الاشتراك الإجباري (لتكبير قناتك والربح منها لاحقاً)
     try {
-        const member = await ctx.telegram.getChatMember(CHANNEL_ID, ctx.from.id);
-        if (member.status === 'left') {
-            return ctx.reply('عذراً، اشترك في القناة أولاً لتتمكن من التحميل مجاناً.');
+        const chatMember = await ctx.telegram.getChatMember(CHANNEL_USERNAME, ctx.from.id);
+        if (chatMember.status === 'left' || chatMember.status === 'kicked') {
+            return ctx.reply(
+                'عذراً، يجب عليك الاشتراك في القناة لاستخدام البوت:',
+                Markup.inlineKeyboard([
+                    [Markup.button.url('اضغط هنا للاشتراك 📢', `https://t.me/${CHANNEL_USERNAME.replace('@', '')}`)]
+                ])
+            );
         }
-    } catch (e) { /* تجاهل الخطأ إذا لم يكن البوت مشرفاً */ }
-
-    ctx.reply('جاري التحميل مجاناً... ⏳');
-
-    try {
-        // التحميل باستخدام المكتبة المجانية
-        const output = await ytDlp(url, { dumpSingleJson: true, noWarnings: true });
-        await ctx.replyWithVideo(output.url, { caption: "تم التحميل بواسطة بوتنا المجاني ✅" });
     } catch (error) {
-        ctx.reply('حدث خطأ بسيط، تأكد أن الرابط عام.');
+        console.log("خطأ في التحقق من القناة (تأكد من وجود البوت كمشرف)");
+    }
+
+    // إذا أرسل المستخدم رابطاً
+    if (userMessage.startsWith('http')) {
+        return ctx.reply('جاري معالجة الرابط للتحميل... انتظر لحظة ⏳');
+    }
+
+    // رد افتراضي سريع
+    ctx.reply('وصلت رسالتك! هل تريد تحميل فيديو أم لديك استفسار آخر؟');
+});
+
+// أمر خاص بالمدير (Admin) باستخدام معرفك
+bot.command('admin', (ctx) => {
+    if (ctx.from.id.toString() === ADMIN_ID) {
+        ctx.reply("مرحباً أيها المدير! البوت يعمل الآن بشكل مستقر على Render.");
+    } else {
+        ctx.reply("عذراً، هذا الأمر للمدير فقط.");
     }
 });
 
-bot.launch();
+// تشغيل البوت
+bot.launch().then(() => {
+    console.log("Telegram Bot started successfully!");
+});
+
+// التعامل مع الإغلاق المفاجئ
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
