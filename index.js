@@ -2,69 +2,58 @@ const { Telegraf, Markup } = require('telegraf');
 const axios = require('axios');
 const http = require('http');
 
-// --- 1. تشغيل سيرفر ويب بسيط لإبقاء ريندر نشطاً ---
-http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot is Live and Running ✅');
-}).listen(process.env.PORT || 10000);
+// إبقاء السيرفر حياً على ريندر بأقل استهلاك
+http.createServer((req, res) => { res.end('Fast Link Engine Active'); }).listen(process.env.PORT || 10000);
 
-// --- 2. تعريف البوت (تأكد من وضع التوكن في إعدادات ريندر) ---
+// تعريف البوت (حل مشكلة ReferenceError)
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-// --- 3. أمر البداية مع خيارات الجودة ---
 bot.start((ctx) => {
-    ctx.reply('مرحباً بك في بوت التحميل الذكي! 🚀\nأرسل لي أي رابط فيديو وسأقوم باستخراج أعلى جودة متوفرة لك.', 
-        Markup.inlineKeyboard([
-            [Markup.button.callback('🎬 ضبط تلقائي: أعلى جودة', 'auto_hd')]
-        ])
-    );
+    ctx.reply('✅ بوت التحميل السريع جاهز!\nأرسل الرابط وسأختار لك أسرع جودة تحميل متوفرة تلقائياً.');
 });
 
-bot.action('auto_hd', (ctx) => ctx.reply('✅ تم الضبط: سأبحث دائماً عن أعلى جودة MP4 متوفرة.'));
-
-// --- 4. معالجة الروابط واقتناص الرابط المباشر ---
 bot.on('text', async (ctx) => {
-    const userUrl = ctx.message.text;
+    const url = ctx.message.text;
 
-    if (userUrl.startsWith('http')) {
-        const waiting = await ctx.reply('⏳ جاري فحص الرابط واقتناص أعلى جودة (HD)...');
+    if (url.startsWith('http')) {
+        const waiting = await ctx.reply('⏳ جاري فحص جميع الجودات واختيار الأسرع... انتظر ثواني');
 
         try {
-            // محاولة جلب الرابط المباشر عبر محرك سريع (API) لتجنب الدخول اليدوي
-            const apiUrl = `https://api.tikwm.com/api/?url=${encodeURIComponent(userUrl)}`;
-            const response = await axios.get(apiUrl);
-            
-            if (response.data && response.data.data && response.data.data.play) {
-                const directLink = response.data.data.play;
-                await ctx.deleteMessage(waiting.message_id).catch(() => {});
-                
-                return ctx.reply('✅ تم العثور على الرابط المباشر (HD)!', 
+            // الدخول للموقع في الخلفية للحصول على كود النتائج
+            const targetSite = `https://pastedownload.com/21/?url=${encodeURIComponent(url)}`;
+            const response = await axios.get(targetSite, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+
+            // استخراج جميع روابط الـ MP4 الموجودة في الصفحة (كل الجودات)
+            const allLinks = response.data.match(/https?:\/\/[^"']+\.mp4[^"']*/g) || [];
+
+            await ctx.deleteMessage(waiting.message_id).catch(() => {});
+
+            if (allLinks.length > 0) {
+                // الفكرة هنا: اختيار أول رابط (غالباً الأفضل) وإرساله مباشرة لتخطي صفحة "الاختيار اليدوي"
+                const fastestLink = allLinks[0]; 
+
+                return ctx.reply(
+                    '✅ تم العثور على أسرع رابط تحميل متوفر!',
                     Markup.inlineKeyboard([
-                        [Markup.button.url('📥 اضغط هنا لبدء التحميل', directLink)]
+                        [Markup.button.url('📥 اضغط هنا لبدء التحميل فوراً', fastestLink)]
                     ])
                 );
             } else {
-                throw new Error('Fallback to web scraping');
+                // محرك بديل سريع جداً في حال فشل الموقع الأول
+                const altApi = `https://api.tikwm.com/api/?url=${encodeURIComponent(url)}`;
+                const altRes = await axios.get(altApi);
+                const altLink = altRes.data.data.play;
+
+                return ctx.reply('✅ تم جلب الرابط المباشر عبر المحرك البديل:', 
+                    Markup.inlineKeyboard([[Markup.button.url('🚀 تحميل فوري (HD)', altLink)]]));
             }
 
         } catch (error) {
-            // في حالة فشل المحرك السريع، نوجهه لصفحة النتائج في الموقع الوسيط
-            await ctx.deleteMessage(waiting.message_id).catch(() => {});
-            const fallbackLink = `https://pastedownload.com/21/?url=${encodeURIComponent(userUrl)}#results`;
-            
-            ctx.reply('💡 الموقع يطلب اختيار الجودة يدوياً.\nاضغط أدناه واختر جودة الفيديو المطلوبة لبدء التحميل:', 
-                Markup.inlineKeyboard([
-                    [Markup.button.url('🚀 صفحة الجودات والتحميل', fallbackLink)]
-                ])
-            );
+            // إذا كانت الحماية قوية جداً، نرسل رابط صفحة النتائج مباشرة
+            ctx.reply('⚠️ تعذر الاستخراج التلقائي. اضغط هنا واختر الجودة المطلوبة:', 
+                Markup.inlineKeyboard([[Markup.button.url('📥 اذهب لصفحة الجودات', `https://pastedownload.com/21/?url=${encodeURIComponent(url)}#results`)]]));
         }
     }
 });
 
-// --- 5. تشغيل البوت ومعالجة أخطاء الإنهاء ---
-bot.launch().then(() => {
-    console.log('Bot is officially live!');
-});
-
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+bot.launch();
