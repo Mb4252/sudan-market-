@@ -79,7 +79,7 @@ if (CONFIG.TELEGRAM_BOT_TOKEN && CONFIG.TELEGRAM_BOT_TOKEN.length > 10) {
                 await new Promise(resolve => setTimeout(resolve, 3000));
                 
                 const webhookUrl = `${BOT_URL}/bot${CONFIG.TELEGRAM_BOT_TOKEN}`;
-                console.log(`🔗 Setting webhook to: ${webhookUrl.substring(0, 50)}...`);
+                console.log(`🔗 Setting webhook to: ${webhookUrl.substring(0, 40)}...`);
                 
                 await telegramBot.telegram.setWebhook(webhookUrl, {
                     drop_pending_updates: true,
@@ -88,11 +88,13 @@ if (CONFIG.TELEGRAM_BOT_TOKEN && CONFIG.TELEGRAM_BOT_TOKEN.length > 10) {
                 
                 console.log('✅ Telegram bot configured with webhook');
                 
-                app.post(`/bot${CONFIG.TELEGRAM_BOT_TOKEN}`, (req, res) => {
+                // إخفاء التوكن من السجلات في route handler
+                const webhookPath = `/bot${CONFIG.TELEGRAM_BOT_TOKEN}`;
+                app.post(webhookPath, (req, res) => {
                     telegramBot.handleUpdate(req.body, res);
                 });
                 
-                console.log('🤖 Telegram Bot Webhook is ready!');
+                console.log(`🤖 Telegram Bot Webhook is ready at ${webhookPath.substring(0, 15)}...`);
                 
                 // أوامر Telegram
                 telegramBot.command('start', (ctx) => {
@@ -273,7 +275,7 @@ if (CONFIG.TELEGRAM_BOT_TOKEN && CONFIG.TELEGRAM_BOT_TOKEN.length > 10) {
                 });
                 
             } catch (err) {
-                console.error('❌ Error setting up Telegram webhook:', err.message);
+                console.error('❌ Error setting up Telegram webhook');
                 telegramBot = null;
             }
         }, 8000);
@@ -329,12 +331,12 @@ if (CONFIG.FIREBASE_JSON && Object.keys(CONFIG.FIREBASE_JSON).length > 0) {
                 }
                 
             } catch (error) {
-                console.error('❌ Error checking books:', error.message);
+                console.error('❌ Error checking books');
             }
         }, 3000);
         
     } catch (error) {
-        console.error('❌ Failed to initialize Firebase Admin:', error.message);
+        console.error('❌ Failed to initialize Firebase Admin');
     }
 } else {
     console.log('⚠️ Firebase Admin JSON not provided');
@@ -382,198 +384,25 @@ const FOLDERS = {
         console.log('✅ Storage folders created successfully');
         await cleanupTempFiles();
     } catch (error) {
-        console.error('❌ Error creating storage folders:', error.message);
+        console.error('❌ Error creating storage folders');
     }
 })();
 
-// ==================== [ دوال التخزين في Telegram ] ====================
-async function uploadToTelegram(filePath, fileName, fileType) {
-    if (!telegramBot || !telegramStorageChannel) {
-        console.log('⚠️ Telegram storage not available');
-        return null;
-    }
-
-    try {
-        const fileStats = await fs.stat(filePath);
-        
-        if (fileStats.size > CONFIG.MAX_FILE_SIZE) {
-            console.log(`⚠️ File too large for Telegram (${(fileStats.size/1024/1024).toFixed(2)}MB)`);
-            return null;
-        }
-        
-        console.log(`📤 Uploading to Telegram: ${fileName} (${(fileStats.size/1024/1024).toFixed(2)}MB)`);
-        
-        let caption = `📁 ${fileName}\n📦 ${(fileStats.size/1024/1024).toFixed(2)}MB\n⏰ ${new Date().toLocaleString()}\n🔗 ${BOT_URL}`;
-        
-        let message;
-        const ext = path.extname(fileName).toLowerCase();
-        
-        if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext)) {
-            message = await telegramBot.telegram.sendPhoto(
-                telegramStorageChannel,
-                { source: filePath },
-                { caption: caption }
-            );
-        } else if (['.pdf', '.doc', '.docx', '.txt', '.epub'].includes(ext)) {
-            message = await telegramBot.telegram.sendDocument(
-                telegramStorageChannel,
-                { source: filePath, filename: fileName },
-                { caption: caption }
-            );
-        } else if (['.mp4', '.avi', '.mov', '.mkv', '.webm'].includes(ext)) {
-            if (fileStats.size > 20 * 1024 * 1024) {
-                console.log('⚠️ Video file too large for Telegram');
-                return null;
-            }
-            message = await telegramBot.telegram.sendVideo(
-                telegramStorageChannel,
-                { source: filePath },
-                { caption: caption }
-            );
-        } else {
-            message = await telegramBot.telegram.sendDocument(
-                telegramStorageChannel,
-                { source: filePath, filename: fileName },
-                { caption: caption }
-            );
-        }
-        
-        let fileUrl = null;
-        if (message.document) {
-            const fileId = message.document.file_id;
-            const fileInfo = await telegramBot.telegram.getFile(fileId);
-            fileUrl = `https://api.telegram.org/file/bot${CONFIG.TELEGRAM_BOT_TOKEN}/${fileInfo.file_path}`;
-        } else if (message.photo && message.photo.length > 0) {
-            const fileId = message.photo[message.photo.length - 1].file_id;
-            const fileInfo = await telegramBot.telegram.getFile(fileId);
-            fileUrl = `https://api.telegram.org/file/bot${CONFIG.TELEGRAM_BOT_TOKEN}/${fileInfo.file_path}`;
-        } else if (message.video) {
-            const fileId = message.video.file_id;
-            const fileInfo = await telegramBot.telegram.getFile(fileId);
-            fileUrl = `https://api.telegram.org/file/bot${CONFIG.TELEGRAM_BOT_TOKEN}/${fileInfo.file_path}`;
-        }
-        
-        console.log(`✅ Uploaded to Telegram: ${fileName}`);
-        
-        const fileInfo = {
-            telegramFileId: message.document?.file_id || message.photo?.[0]?.file_id || message.video?.file_id,
-            telegramMessageId: message.message_id,
-            telegramUrl: fileUrl,
-            localPath: filePath,
-            fileName: fileName,
-            uploadedAt: Date.now(),
-            downloadUrl: `${BOT_URL}/api/file/${fileType}/${fileName}`
-        };
-        
-        uploadedFiles.set(fileName, fileInfo);
-        
-        if (CONFIG.AUTO_DELETE_LOCAL_AFTER_UPLOAD) {
-            try {
-                await fs.unlink(filePath);
-                console.log(`🗑️ Deleted local file: ${fileName}`);
-            } catch (error) {
-                console.warn(`⚠️ Could not delete local file: ${error.message}`);
-            }
-        }
-        
-        return fileInfo;
-        
-    } catch (error) {
-        console.error(`❌ Error uploading to Telegram: ${error.message}`);
-        return null;
-    }
-}
-
-async function uploadToBoth(fileBuffer, fileName, folder, originalName) {
-    const results = {
-        telegram: null,
-        server: null,
-        combined: {}
-    };
+// ==================== [ Middleware للتسجيل الآمن ] ====================
+app.use((req, res, next) => {
+    const timestamp = new Date().toISOString();
+    const method = req.method;
+    let url = req.url;
     
-    const tempFileName = `temp_${Date.now()}_${fileName}`;
-    const tempPath = path.join(STORAGE_BASE, FOLDERS.TEMP, tempFileName);
-    
-    try {
-        await fs.writeFile(tempPath, fileBuffer);
-        
-        if (telegramBot && telegramStorageChannel) {
-            results.telegram = await uploadToTelegram(tempPath, originalName || fileName, folder);
-        }
-        
-        const finalPath = path.join(STORAGE_BASE, folder, fileName);
-        
-        if (CONFIG.AUTO_DELETE_LOCAL_AFTER_UPLOAD && results.telegram) {
-            results.server = {
-                localPath: finalPath,
-                serverUrl: results.telegram.telegramUrl,
-                fileName: fileName,
-                uploadedAt: Date.now()
-            };
-        } else {
-            await fs.copyFile(tempPath, finalPath);
-            const stats = await fs.stat(finalPath);
-            const serverUrl = `${BOT_URL}/api/file/${folder}/${fileName}`;
-            
-            results.server = {
-                localPath: finalPath,
-                serverUrl: serverUrl,
-                fileName: fileName,
-                size: stats.size,
-                uploadedAt: Date.now()
-            };
-        }
-        
-        results.combined = {
-            fileName: fileName,
-            originalName: originalName || fileName,
-            folder: folder,
-            telegramUrl: results.telegram?.telegramUrl || null,
-            serverUrl: results.server.serverUrl,
-            telegramFileId: results.telegram?.telegramFileId || null,
-            telegramMessageId: results.telegram?.telegramMessageId || null,
-            localPath: results.server.localPath,
-            size: results.server.size || fileBuffer.length,
-            uploadedAt: Date.now(),
-            storageMode: results.telegram ? 'TELEGRAM_AND_SERVER' : 'SERVER_ONLY',
-            publicUrl: `${BOT_URL}/api/file/${folder}/${fileName}`
-        };
-        
-        try {
-            await fs.unlink(tempPath);
-        } catch (error) {
-            console.warn(`⚠️ Could not delete temp file: ${error.message}`);
-        }
-        
-        return results.combined;
-        
-    } catch (error) {
-        console.error(`❌ Error in dual upload: ${error.message}`);
-        try {
-            await fs.unlink(tempPath);
-        } catch (cleanupError) {}
-        throw error;
+    // إخفاء التوكن من السجلات إذا كان في URL
+    if (url.includes('/bot') && CONFIG.TELEGRAM_BOT_TOKEN) {
+        const botPath = `/bot${CONFIG.TELEGRAM_BOT_TOKEN}`;
+        url = url.replace(CONFIG.TELEGRAM_BOT_TOKEN, '***TOKEN***');
     }
-}
-
-async function cleanupTempFiles() {
-    try {
-        const tempDir = path.join(STORAGE_BASE, FOLDERS.TEMP);
-        const files = await fs.readdir(tempDir);
-        const now = Date.now();
-        const oneHour = 60 * 60 * 1000;
-        
-        for (const file of files) {
-            const filePath = path.join(tempDir, file);
-            const stats = await fs.stat(filePath);
-            
-            if (now - stats.mtimeMs > oneHour) {
-                await fs.unlink(filePath);
-                console.log(`🧹 Cleaned up old temp file: ${file}`);
-            }
-        }
-    } catch (error) {}
-}
+    
+    console.log(`${method} ${url} - ${timestamp}`);
+    next();
+});
 
 // ==================== [ تكوين Multer للرفع ] ====================
 const storage = multer.diskStorage({
@@ -680,7 +509,7 @@ async function storeFileMetadata(fileInfo) {
         return { ...fileInfo, firebaseId: fileId };
         
     } catch (error) {
-        console.error('❌ Error saving metadata to Firebase:', error.message);
+        console.error('❌ Error saving metadata to Firebase');
         return fileInfo;
     }
 }
@@ -703,7 +532,7 @@ async function createThumbnail(filePath, fileName) {
         
         return thumbUrl;
     } catch (error) {
-        console.warn('⚠️ Failed to create thumbnail:', error.message);
+        console.warn('⚠️ Failed to create thumbnail');
         return null;
     }
 }
@@ -726,6 +555,195 @@ async function extractPDFInfo(filePath) {
     } catch (error) {
         return { pages: 0, hasText: false, optimized: false, fileSize: 0 };
     }
+}
+
+// ==================== [ دوال التخزين في Telegram ] ====================
+async function uploadToTelegram(filePath, fileName, fileType) {
+    if (!telegramBot || !telegramStorageChannel) {
+        console.log('⚠️ Telegram storage not available');
+        return null;
+    }
+
+    try {
+        const fileStats = await fs.stat(filePath);
+        
+        if (fileStats.size > CONFIG.MAX_FILE_SIZE) {
+            console.log(`⚠️ File too large for Telegram (${(fileStats.size/1024/1024).toFixed(2)}MB)`);
+            return null;
+        }
+        
+        console.log(`📤 Uploading to Telegram: ${fileName} (${(fileStats.size/1024/1024).toFixed(2)}MB)`);
+        
+        let caption = `📁 ${fileName}\n📦 ${(fileStats.size/1024/1024).toFixed(2)}MB\n⏰ ${new Date().toLocaleString()}\n🔗 ${BOT_URL}`;
+        
+        let message;
+        const ext = path.extname(fileName).toLowerCase();
+        
+        if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext)) {
+            message = await telegramBot.telegram.sendPhoto(
+                telegramStorageChannel,
+                { source: filePath },
+                { caption: caption }
+            );
+        } else if (['.pdf', '.doc', '.docx', '.txt', '.epub'].includes(ext)) {
+            message = await telegramBot.telegram.sendDocument(
+                telegramStorageChannel,
+                { source: filePath, filename: fileName },
+                { caption: caption }
+            );
+        } else if (['.mp4', '.avi', '.mov', '.mkv', '.webm'].includes(ext)) {
+            if (fileStats.size > 20 * 1024 * 1024) {
+                console.log('⚠️ Video file too large for Telegram');
+                return null;
+            }
+            message = await telegramBot.telegram.sendVideo(
+                telegramStorageChannel,
+                { source: filePath },
+                { caption: caption }
+            );
+        } else {
+            message = await telegramBot.telegram.sendDocument(
+                telegramStorageChannel,
+                { source: filePath, filename: fileName },
+                { caption: caption }
+            );
+        }
+        
+        let fileUrl = null;
+        if (message.document) {
+            const fileId = message.document.file_id;
+            const fileInfo = await telegramBot.telegram.getFile(fileId);
+            fileUrl = `https://api.telegram.org/file/bot${CONFIG.TELEGRAM_BOT_TOKEN}/${fileInfo.file_path}`;
+        } else if (message.photo && message.photo.length > 0) {
+            const fileId = message.photo[message.photo.length - 1].file_id;
+            const fileInfo = await telegramBot.telegram.getFile(fileId);
+            fileUrl = `https://api.telegram.org/file/bot${CONFIG.TELEGRAM_BOT_TOKEN}/${fileInfo.file_path}`;
+        } else if (message.video) {
+            const fileId = message.video.file_id;
+            const fileInfo = await telegramBot.telegram.getFile(fileId);
+            fileUrl = `https://api.telegram.org/file/bot${CONFIG.TELEGRAM_BOT_TOKEN}/${fileInfo.file_path}`;
+        }
+        
+        console.log(`✅ Uploaded to Telegram: ${fileName}`);
+        
+        const fileInfo = {
+            telegramFileId: message.document?.file_id || message.photo?.[0]?.file_id || message.video?.file_id,
+            telegramMessageId: message.message_id,
+            telegramUrl: fileUrl,
+            localPath: filePath,
+            fileName: fileName,
+            uploadedAt: Date.now(),
+            downloadUrl: `${BOT_URL}/api/file/${fileType}/${fileName}`
+        };
+        
+        uploadedFiles.set(fileName, fileInfo);
+        
+        if (CONFIG.AUTO_DELETE_LOCAL_AFTER_UPLOAD) {
+            try {
+                await fs.unlink(filePath);
+                console.log(`🗑️ Deleted local file: ${fileName}`);
+            } catch (error) {
+                console.warn(`⚠️ Could not delete local file`);
+            }
+        }
+        
+        return fileInfo;
+        
+    } catch (error) {
+        console.error(`❌ Error uploading to Telegram`);
+        return null;
+    }
+}
+
+async function uploadToBoth(fileBuffer, fileName, folder, originalName) {
+    const results = {
+        telegram: null,
+        server: null,
+        combined: {}
+    };
+    
+    const tempFileName = `temp_${Date.now()}_${fileName}`;
+    const tempPath = path.join(STORAGE_BASE, FOLDERS.TEMP, tempFileName);
+    
+    try {
+        await fs.writeFile(tempPath, fileBuffer);
+        
+        if (telegramBot && telegramStorageChannel) {
+            results.telegram = await uploadToTelegram(tempPath, originalName || fileName, folder);
+        }
+        
+        const finalPath = path.join(STORAGE_BASE, folder, fileName);
+        
+        if (CONFIG.AUTO_DELETE_LOCAL_AFTER_UPLOAD && results.telegram) {
+            results.server = {
+                localPath: finalPath,
+                serverUrl: results.telegram.telegramUrl,
+                fileName: fileName,
+                uploadedAt: Date.now()
+            };
+        } else {
+            await fs.copyFile(tempPath, finalPath);
+            const stats = await fs.stat(finalPath);
+            const serverUrl = `${BOT_URL}/api/file/${folder}/${fileName}`;
+            
+            results.server = {
+                localPath: finalPath,
+                serverUrl: serverUrl,
+                fileName: fileName,
+                size: stats.size,
+                uploadedAt: Date.now()
+            };
+        }
+        
+        results.combined = {
+            fileName: fileName,
+            originalName: originalName || fileName,
+            folder: folder,
+            telegramUrl: results.telegram?.telegramUrl || null,
+            serverUrl: results.server.serverUrl,
+            telegramFileId: results.telegram?.telegramFileId || null,
+            telegramMessageId: results.telegram?.telegramMessageId || null,
+            localPath: results.server.localPath,
+            size: results.server.size || fileBuffer.length,
+            uploadedAt: Date.now(),
+            storageMode: results.telegram ? 'TELEGRAM_AND_SERVER' : 'SERVER_ONLY',
+            publicUrl: `${BOT_URL}/api/file/${folder}/${fileName}`
+        };
+        
+        try {
+            await fs.unlink(tempPath);
+        } catch (error) {
+            console.warn(`⚠️ Could not delete temp file`);
+        }
+        
+        return results.combined;
+        
+    } catch (error) {
+        console.error(`❌ Error in dual upload`);
+        try {
+            await fs.unlink(tempPath);
+        } catch (cleanupError) {}
+        throw error;
+    }
+}
+
+async function cleanupTempFiles() {
+    try {
+        const tempDir = path.join(STORAGE_BASE, FOLDERS.TEMP);
+        const files = await fs.readdir(tempDir);
+        const now = Date.now();
+        const oneHour = 60 * 60 * 1000;
+        
+        for (const file of files) {
+            const filePath = path.join(tempDir, file);
+            const stats = await fs.stat(filePath);
+            
+            if (now - stats.mtimeMs > oneHour) {
+                await fs.unlink(filePath);
+                console.log(`🧹 Cleaned up old temp file: ${file}`);
+            }
+        }
+    } catch (error) {}
 }
 
 // ==================== [ تهيئة قاعدة بيانات الكتب ] ====================
@@ -781,7 +799,7 @@ async function initializeBooksDatabase() {
         console.log(`✅ Successfully added ${addedCount} educational books to database`);
         
     } catch (error) {
-        console.error('❌ Error initializing books database:', error.message);
+        console.error('❌ Error initializing books database');
     }
 }
 
@@ -920,7 +938,7 @@ io.on('connection', (socket) => {
                     participantCount: room.participants.size
                 });
             } catch (error) {
-                console.error('Error updating Firebase:', error.message);
+                console.error('Error updating Firebase');
             }
         }
     });
@@ -951,7 +969,7 @@ io.on('connection', (socket) => {
                 const messageId = `msg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
                 db.ref(`live_chats/${roomId}/${messageId}`).set(chatMessage);
             } catch (error) {
-                console.error('Error saving chat message:', error.message);
+                console.error('Error saving chat message');
             }
         }
     });
@@ -1067,7 +1085,7 @@ async function checkSubscription(userId) {
         };
 
     } catch (error) {
-        console.error('Error checking subscription:', error.message);
+        console.error('Error checking subscription');
         return { 
             hasAccess: true, 
             isTrial: true, 
@@ -1106,7 +1124,7 @@ async function checkDailyUsage(userId) {
         };
         
     } catch (error) {
-        console.error('Error checking daily usage:', error.message);
+        console.error('Error checking daily usage');
         return { used: 0, limit: 50, remaining: 50, canAsk: true, serverUrl: BOT_URL };
     }
 }
@@ -1131,7 +1149,7 @@ async function updateDailyUsage(userId) {
             });
         }
     } catch (error) {
-        console.error('Error updating daily usage:', error.message);
+        console.error('Error updating daily usage');
     }
 }
 
@@ -1177,7 +1195,7 @@ async function createPaymentRequest(userData) {
         return { success: true, paymentId, ...paymentData };
         
     } catch (error) {
-        console.error('Error creating payment request:', error.message);
+        console.error('Error creating payment request');
         return { success: false, error: error.message };
     }
 }
@@ -1233,7 +1251,7 @@ async function notifyAdminAboutPayment(paymentData) {
         return true;
         
     } catch (error) {
-        console.error('Error notifying admin:', error.message);
+        console.error('Error notifying admin');
         return false;
     }
 }
@@ -1320,7 +1338,7 @@ async function approvePayment(paymentId, adminId, note = '') {
         };
         
     } catch (error) {
-        console.error('Error approving payment:', error.message);
+        console.error('Error approving payment');
         return { success: false, error: error.message };
     }
 }
@@ -1356,7 +1374,7 @@ async function rejectPayment(paymentId, adminId, reason = '') {
         return { success: true, paymentId, message: 'تم رفض الدفع', serverUrl: BOT_URL };
         
     } catch (error) {
-        console.error('Error rejecting payment:', error.message);
+        console.error('Error rejecting payment');
         return { success: false, error: error.message };
     }
 }
@@ -1405,12 +1423,12 @@ async function notifyUserAboutPaymentApproval(userId, paymentId, days) {
                     parse_mode: 'Markdown'
                 });
             } catch (tgError) {
-                console.log('Could not send Telegram notification:', tgError.message);
+                console.log('Could not send Telegram notification');
             }
         }
         
     } catch (error) {
-        console.error('Error notifying user:', error.message);
+        console.error('Error notifying user');
     }
 }
 
@@ -1453,7 +1471,7 @@ async function notifyUserAboutPaymentRejection(userId, paymentId, reason) {
         });
         
     } catch (error) {
-        console.error('Error notifying user about rejection:', error.message);
+        console.error('Error notifying user about rejection');
     }
 }
 
@@ -1495,21 +1513,10 @@ async function askDeepSeek(question, subject, grade) {
         };
         
     } catch (error) {
-        console.error('DeepSeek ask error:', error.message);
+        console.error('DeepSeek ask error');
         throw error;
     }
 }
-
-// ==================== [ Middleware ] ====================
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(cors());
-
-// Middleware للتحقق من التواجد
-app.use((req, res, next) => {
-    console.log(`${req.method} ${req.url} - ${new Date().toISOString()}`);
-    next();
-});
 
 // ==================== [ نقاط النهاية الرئيسية ] ====================
 app.get('/api/test', (req, res) => {
@@ -1583,7 +1590,7 @@ app.get('/api/subscription/status/:userId', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Subscription status error:', error.message);
+        console.error('Subscription status error');
         res.status(500).json({ 
             success: false, 
             error: 'خطأ في التحقق من الاشتراك',
@@ -1648,7 +1655,7 @@ app.post('/api/payment/request', async (req, res) => {
         }
         
     } catch (error) {
-        console.error('Payment request error:', error.message);
+        console.error('Payment request error');
         res.status(500).json({ 
             success: false, 
             error: 'خطأ في إنشاء طلب الدفع',
@@ -1692,7 +1699,7 @@ app.get('/api/payment/status/:paymentId', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Payment status error:', error.message);
+        console.error('Payment status error');
         res.status(500).json({ 
             success: false, 
             error: 'خطأ في التحقق من حالة الدفع',
@@ -1771,7 +1778,7 @@ app.post('/api/ai/ask', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Error in AI ask:', error.message);
+        console.error('Error in AI ask');
         res.status(500).json({ 
             success: false, 
             error: 'حدث خطأ في معالجة السؤال',
@@ -1833,7 +1840,7 @@ app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => 
         try {
             await fs.unlink(tempPath);
         } catch (error) {
-            console.warn('Could not delete temp file:', error.message);
+            console.warn('Could not delete temp file');
         }
         
         res.json({
@@ -1854,13 +1861,13 @@ app.post('/api/upload/dual/:folder', upload.single('file'), async (req, res) => 
         });
         
     } catch (error) {
-        console.error('❌ Upload error:', error.message);
+        console.error('❌ Upload error');
         
         if (req.file && req.file.path) {
             try {
                 await fs.unlink(req.file.path);
             } catch (cleanupError) {
-                console.warn('Could not cleanup temp file:', cleanupError.message);
+                console.warn('Could not cleanup temp file');
             }
         }
         
@@ -1935,7 +1942,7 @@ app.get('/api/books', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Error fetching books:', error.message);
+        console.error('Error fetching books');
         res.status(500).json({ 
             success: false, 
             error: 'Failed to fetch books',
@@ -1961,7 +1968,7 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
         
         res.download(filePath, filename, (err) => {
             if (err) {
-                console.error('Download error:', err.message);
+                console.error('Download error');
                 if (!res.headersSent) {
                     res.status(500).json({ 
                         success: false, 
@@ -1973,7 +1980,7 @@ app.get('/api/file/:folder/:filename', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('File serve error:', error.message);
+        console.error('File serve error');
         res.status(500).json({ 
             success: false, 
             error: 'Failed to serve file',
@@ -2042,7 +2049,6 @@ app.get('/api/stats', (req, res) => {
         },
         urls: {
             server: BOT_URL,
-            telegramWebhook: telegramBot ? `${BOT_URL}/bot${CONFIG.TELEGRAM_BOT_TOKEN}` : null,
             apiDocs: `${BOT_URL}`
         }
     };
@@ -2427,12 +2433,10 @@ app.get('/', (req, res) => {
                 
                 <div class="contact-info">
                     <h3 style="margin-bottom: 15px;">
-                        <i class="fas fa-headset"></i> معلومات الدفع والدعم
+                        <i class="fas fa-headset"></i> معلومات الدعم
                     </h3>
-                    <p><strong>💳 طرق الدفع:</strong> ${CONFIG.PAYMENT_METHODS.join(', ')}</p>
-                    <p><strong>🏦 رقم الحساب:</strong> ${CONFIG.ADMIN_BANK_ACCOUNT}</p>
-                    <p><strong>👤 اسم صاحب الحساب:</strong> ${CONFIG.ADMIN_NAME}</p>
                     <p><strong>📞 الدعم الفني:</strong> ${CONFIG.ADMIN_PHONE}</p>
+                    <p><strong>🌐 الموقع:</strong> ${BOT_URL}</p>
                 </div>
                 
                 <h3 style="margin: 30px 0 20px 0;">
@@ -2441,7 +2445,6 @@ app.get('/', (req, res) => {
                 <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px; font-family: monospace;">
                     <p>POST ${BOT_URL}/api/ai/ask - اسأل DeepSeek AI</p>
                     <p>GET ${BOT_URL}/api/subscription/status/:userId - حالة الاشتراك</p>
-                    <p>POST ${BOT_URL}/api/payment/request - إرسال طلب دفع</p>
                     <p>GET ${BOT_URL}/api/books - المكتبة التعليمية</p>
                     <p>GET ${BOT_URL}/api/live/rooms - الغرف النشطة</p>
                 </div>
@@ -2461,6 +2464,12 @@ app.get('/', (req, res) => {
 
 // ==================== [ نقطة نهاية 404 ] ====================
 app.use((req, res) => {
+    let url = req.url;
+    // إخفاء التوكن من رسالة الخطأ
+    if (url.includes('/bot') && CONFIG.TELEGRAM_BOT_TOKEN) {
+        url = url.replace(CONFIG.TELEGRAM_BOT_TOKEN, '***TOKEN***');
+    }
+    
     res.status(404).json({
         success: false,
         error: 'Route not found',
@@ -2503,7 +2512,6 @@ server.listen(port, '0.0.0.0', () => {
     • Weekly: ${CONFIG.WEEKLY_SUBSCRIPTION} SDG
     • Monthly: ${CONFIG.MONTHLY_SUBSCRIPTION} SDG
     • Teacher: ${CONFIG.TEACHER_MONTHLY_FEE} SDG
-    • Admin Approval: ${CONFIG.AUTO_APPROVE_PAYMENTS ? '❌ Auto' : '✅ Manual'}
     
     📊 STORAGE:
     • Telegram: ${telegramBot ? '✅ Active' : '❌ Disabled'}
@@ -2520,7 +2528,6 @@ server.listen(port, '0.0.0.0', () => {
     
     📞 ADMIN CONTACT:
     • Phone: ${CONFIG.ADMIN_PHONE}
-    • Account: ${CONFIG.ADMIN_BANK_ACCOUNT}
     
     ⚡ SYSTEM READY! All services initialized successfully.
     `);
@@ -2540,11 +2547,11 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 process.on('uncaughtException', (error) => {
-    console.error('❌ Uncaught Exception:', error.message);
+    console.error('❌ Uncaught Exception');
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    console.error('❌ Unhandled Rejection');
 });
 
 setInterval(() => {
