@@ -1,103 +1,86 @@
 const { Telegraf, Markup } = require('telegraf');
 const axios = require('axios');
 const http = require('http');
-const PDFDocument = require('pdfkit');
-const fs = require('fs');
+const Tesseract = require('tesseract.js');
 
-// إبقاء السيرفر حياً لضمان عدم توقف البوت على Render
-http.createServer((req, res) => { res.end('All-in-One Pro Bot is Live!'); }).listen(process.env.PORT || 10000);
+// إبقاء السيرفر حياً 24 ساعة على Render
+http.createServer((req, res) => { res.end('Student Bot Pro is Active'); }).listen(process.env.PORT || 10000);
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-// مصفوفة الأذكار المدمجة (تعمل فوراً لجذب المستخدمين)
-const azkar = [
-    "سبحان الله وبحمده، عدد خلقه، ورضا نفسه، وزنة عرشه، ومداد كلماته. ✨",
-    "اللهم بك أصبحنا وبك أمسينا وبك نحيا وبك نموت وإليك النشور. ☀️",
-    "لا إله إلا الله وحده لا شريك له، له الملك وله الحمد وهو على كل شيء قدير. 🕋",
-    "اللهم ما أصبح بي من نعمة أو بأحد من خلقك فمنك وحدك لا شريك لك، فلك الحمد ولك الشكر. 🙏"
-];
-
-// مخزن مؤقت لصور المستخدمين (لعمل الـ PDF)
-let userImages = {};
+// مصفوفة الأذكار والرسائل التشجيعية
+const azkar = ["سبحان الله وبحمده ✨", "اللهم بك أصبحنا ☀️", "لا إله إلا الله وحده لا شريك له 🕋"];
+const praises = ["بطل! استمر في المذاكرة 💪", "ممتاز، إجابة ذكية من طالب ذكي! 🌟", "رائع! أنت تقترب من النجاح الباهر 🚀"];
 
 bot.start((ctx) => {
-    ctx.reply(`أهلاً بك في بوت المساعد الشامل! 🛠️\nاختر الخدمة التي تحتاجها:`, 
+    ctx.reply(`أهلاً بك في بوت الطالب الشامل! 🎓\n\n- أرسل نصاً طويلاً أو صورة كتاب لإنشاء اختبار.\n- أرسل نصاً قصيراً لزخرفته.\n- أرسل رابطاً لاختصاره.`, 
         Markup.inlineKeyboard([
-            [Markup.button.callback('📿 أذكار اليوم', 'tool_azkar'), Markup.button.callback('✨ زخرفة نصوص', 'tool_style')],
-            [Markup.button.callback('🖼️ تحويل لـ PDF', 'tool_pdf'), Markup.button.callback('🔗 اختصار روابط', 'tool_short')]
+            [Markup.button.callback('📝 إنشاء اختبار', 'tool_quiz'), Markup.button.callback('📿 أذكار', 'tool_azkar')],
+            [Markup.button.callback('🔗 اختصار رابط', 'tool_short'), Markup.button.callback('✨ زخرفة', 'tool_style')]
         ])
     );
 });
 
-// --- الأذكار والزخرفة والروابط ---
-bot.action('tool_azkar', (ctx) => {
-    const zekr = azkar[Math.floor(Math.random() * azkar.length)];
-    ctx.reply(zekr);
-});
+// --- الأذكار والخدمات السريعة ---
+bot.action('tool_azkar', (ctx) => ctx.reply(azkar[Math.floor(Math.random() * azkar.length)]));
+bot.action('tool_style', (ctx) => ctx.reply('أرسل النص الآن لزخرفته..'));
+bot.action('tool_short', (ctx) => ctx.reply('أرسل الرابط الطويل الآن..'));
 
+// --- معالجة الصور والنصوص للاختبارات ---
 bot.on('text', async (ctx) => {
-    const text = ctx.message.text;
-
-    if (text === 'تم' || text === 'Done') {
-        return handlePdfCreation(ctx);
-    }
-
-    if (text.startsWith('http')) {
+    const input = ctx.message.text;
+    if (input.startsWith('http')) {
         try {
-            const res = await axios.get(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(text)}`);
-            ctx.reply(`✅ رابطك المختصر جاهز:\n${res.data}`);
-        } catch (e) { ctx.reply('❌ فشل اختصار الرابط.'); }
+            const res = await axios.get(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(input)}`);
+            ctx.reply(`✅ الرابط المختصر:\n${res.data}`);
+        } catch (e) { ctx.reply('❌ خطأ في الرابط.'); }
+    } else if (input.length > 50) {
+        await createInteractiveQuiz(ctx, input);
     } else {
-        ctx.reply(`🔹 النص المزخرف:\n\n⊱── { ${text} } ──⊰`);
+        ctx.reply(`🔹 المزخرف: ⊱── { ${input} } ──⊰`);
     }
-});
-
-// --- معالجة الصور وتحويلها لـ PDF ---
-bot.action('tool_pdf', (ctx) => {
-    userImages[ctx.from.id] = [];
-    ctx.reply('📸 أرسل الصور التي تريد دمجها الآن.. وعند الانتهاء أرسل كلمة "تم".');
 });
 
 bot.on('photo', async (ctx) => {
-    if (!userImages[ctx.from.id]) userImages[ctx.from.id] = [];
-    
-    // حفظ رابط الصورة (بدلاً من تحميل الملف كاملاً لتوفير الذاكرة)
     const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
     const link = await ctx.telegram.getFileLink(fileId);
-    userImages[ctx.from.id].push(link.href);
-    
-    ctx.reply(`✅ تم استلام الصورة رقم (${userImages[ctx.from.id].length}).. أرسل غيرها أو "تم".`);
+    const wait = await ctx.reply('🔍 جاري قراءة الصورة وتجهيز الامتحان..');
+
+    try {
+        const result = await Tesseract.recognize(link.href, 'ara+eng');
+        await ctx.deleteMessage(wait.message_id).catch(() => {});
+        await createInteractiveQuiz(ctx, result.data.text);
+    } catch (e) { ctx.reply('❌ فشلت قراءة الصورة.'); }
 });
 
-async function handlePdfCreation(ctx) {
-    const userId = ctx.from.id;
-    if (!userImages[userId] || userImages[userId].length === 0) {
-        return ctx.reply('⚠️ لم ترسل أي صور لدمجها!');
-    }
-
-    const waitMsg = await ctx.reply('⏳ جاري إنشاء ملف الـ PDF.. انتظر قليلاً.');
-    const doc = new PDFDocument();
-    const filePath = `./${userId}.pdf`;
-    const stream = fs.createWriteStream(filePath);
-
-    doc.pipe(stream);
-
-    for (const imgUrl of userImages[userId]) {
-        try {
-            const response = await axios.get(imgUrl, { responseType: 'arraybuffer' });
-            doc.image(response.data, { fit: [500, 700], align: 'center', valign: 'center' });
-            doc.addPage();
-        } catch (e) { console.log('خطأ في صورة'); }
-    }
+// --- نظام الاختبار التفاعلي مع التشجيع الفوري ---
+async function createInteractiveQuiz(ctx, fullText) {
+    const sentences = fullText.split(/[.!?]/).filter(s => s.trim().length > 35);
     
-    doc.end();
+    if (sentences.length < 2) return ctx.reply('⚠️ النص قصير جداً للامتحان.');
 
-    stream.on('finish', async () => {
-        await ctx.replyWithDocument({ source: filePath, filename: 'Photos.pdf' });
-        fs.unlinkSync(filePath); // حذف الملف بعد الإرسال لتوفير مساحة السيرفر
-        userImages[userId] = [];
-        ctx.deleteMessage(waitMsg.message_id).catch(() => {});
-    });
+    await ctx.reply('📝 إليك اختبارك التفاعلي مع تصحيح فوري:');
+
+    for (let i = 0; i < Math.min(sentences.length, 4); i++) {
+        let words = sentences[i].trim().split(' ');
+        if (words.length > 7) {
+            let targetIdx = Math.floor(words.length / 2);
+            let correct = words[targetIdx].replace(/[,.;]/g, "");
+            let w1 = words[0].replace(/[,.;]/g, ""), w2 = words[words.length-1].replace(/[,.;]/g, "");
+
+            let qText = sentences[i].replace(words[targetIdx], " (........) ");
+
+            await ctx.replyWithQuiz(
+                `سؤال ${i+1}: أكمل الفراغ:\n"${qText}"`,
+                [correct, w1, w2],
+                {
+                    correct_option_id: 0,
+                    explanation: praises[Math.floor(Math.random() * praises.length)] // رسالة تشجيعية تظهر عند الخطأ أو بعد الإجابة
+                }
+            );
+        }
+    }
 }
 
-bot.launch({ dropPendingUpdates: true }); // حل مشكلة Conflict
+// حل مشكلة التكرار والتعليق في ريندر
+bot.launch({ dropPendingUpdates: true });
