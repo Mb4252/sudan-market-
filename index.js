@@ -4,15 +4,18 @@ const http = require('http');
 const Tesseract = require('tesseract.js');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
-const { createCanvas, loadImage } = require('canvas');
+const path = require('path');
 
 // سيرفر لإبقاء البوت حياً على Render
-http.createServer((req, res) => { res.end('All-in-One Bot is Fully Operational'); }).listen(process.env.PORT || 10000);
+http.createServer((req, res) => { 
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('All-in-One Bot is Fully Operational'); 
+}).listen(process.env.PORT || 10000);
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
 // ====================
-// 🗄️ نظام التخزين في Telegram
+// 🗄️ نظام التخزين في Telegram (مُحسّن)
 // ====================
 
 class TelegramStorage {
@@ -20,6 +23,8 @@ class TelegramStorage {
         this.channelId = process.env.STORAGE_CHANNEL_ID || '-100';
         this.adminId = process.env.ADMIN_ID || '';
         this.cache = new Map();
+        this.userIndex = new Map(); // فهرسة بيانات المستخدمين
+        this.dataLifetime = 30 * 24 * 60 * 60 * 1000; // 30 يوم
     }
 
     // تخزين البيانات في قناة Telegram
@@ -31,7 +36,7 @@ class TelegramStorage {
             // تحويل البيانات إلى JSON
             const jsonData = JSON.stringify({
                 id: dataId,
-                userId: userId,
+                userId: userId.toString(),
                 type: dataType,
                 timestamp: timestamp,
                 data: data
@@ -43,16 +48,32 @@ class TelegramStorage {
                 `📦 ${dataType.toUpperCase()}_${timestamp}\n\n${jsonData}`
             );
 
-            // حفظ المرجع في الذاكرة المؤقتة
+            // تحديث الفهرس
+            if (!this.userIndex.has(userId)) {
+                this.userIndex.set(userId, []);
+            }
+            this.userIndex.get(userId).push({
+                dataId,
+                type: dataType,
+                timestamp,
+                messageId: message.message_id
+            });
+
+            // حفظ في الذاكرة المؤقتة
             this.cache.set(dataId, {
                 messageId: message.message_id,
-                data: data
+                data: data,
+                timestamp: timestamp
             });
+
+            // تنظيف الذاكرة المؤقتة القديمة
+            this.cleanupCache();
 
             return {
                 success: true,
                 dataId: dataId,
-                messageId: message.message_id
+                messageId: message.message_id,
+                timestamp: timestamp
             };
 
         } catch (error) {
@@ -62,34 +83,49 @@ class TelegramStorage {
     }
 
     // استرجاع البيانات من Telegram
-    async retrieveData(userId, dataType, limit = 10) {
+    async retrieveData(userId, dataType, limit = 10, offset = 0) {
         try {
-            // محاولة الاسترجاع من الذاكرة المؤقتة أولاً
-            const cachedResults = [];
-            this.cache.forEach((value, key) => {
-                if (key.startsWith(`${userId}_${dataType}`)) {
-                    cachedResults.push({
-                        dataId: key,
-                        ...value
+            const userData = this.userIndex.get(userId) || [];
+            const filteredData = userData.filter(item => 
+                item.type === dataType && 
+                (Date.now() - item.timestamp) < this.dataLifetime
+            );
+            
+            // ترتيب تنازلي حسب التاريخ
+            filteredData.sort((a, b) => b.timestamp - a.timestamp);
+            
+            const paginatedData = filteredData.slice(offset, offset + limit);
+            const results = [];
+            
+            for (const item of paginatedData) {
+                // محاولة الاسترجاع من الذاكرة المؤقتة أولاً
+                if (this.cache.has(item.dataId)) {
+                    const cached = this.cache.get(item.dataId);
+                    results.push({
+                        dataId: item.dataId,
+                        messageId: item.messageId,
+                        data: cached.data,
+                        timestamp: item.timestamp,
+                        source: 'cache'
+                    });
+                } else {
+                    // الاسترجاع من الرسالة (محاكاة)
+                    results.push({
+                        dataId: item.dataId,
+                        messageId: item.messageId,
+                        data: null,
+                        timestamp: item.timestamp,
+                        source: 'telegram',
+                        note: 'يحتاج استرجاع فعلي من الرسالة'
                     });
                 }
-            });
-
-            if (cachedResults.length > 0) {
-                return {
-                    success: true,
-                    data: cachedResults.slice(0, limit),
-                    source: 'cache'
-                };
             }
 
-            // في الإنتاج الحقيقي، هنا يجب البحث في الرسائل المحفوظة
-            // هذا مثال مبسط
             return {
                 success: true,
-                data: [],
-                source: 'telegram',
-                note: 'في الإنتاج الحقيقي، سيتم البحث في قناة التخزين'
+                data: results,
+                total: filteredData.length,
+                hasMore: filteredData.length > offset + limit
             };
 
         } catch (error) {
@@ -103,11 +139,33 @@ class TelegramStorage {
         const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
         
         this.cache.forEach((value, key) => {
-            const timestamp = parseInt(key.split('_').pop());
-            if (timestamp < cutoffTime) {
+            if (value.timestamp < cutoffTime) {
                 this.cache.delete(key);
             }
         });
+        
+        // تنظيف الفهرس
+        this.userIndex.forEach((items, userId) => {
+            const filtered = items.filter(item => item.timestamp >= cutoffTime);
+            if (filtered.length === 0) {
+                this.userIndex.delete(userId);
+            } else {
+                this.userIndex.set(userId, filtered);
+            }
+        });
+    }
+
+    // تنظيف الذاكرة المؤقتة
+    cleanupCache() {
+        const maxCacheSize = 1000; // أقصى عدد للعناصر في الكاش
+        if (this.cache.size > maxCacheSize) {
+            const entries = Array.from(this.cache.entries());
+            entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+            
+            // حذف أقدم العناصر
+            const toDelete = entries.slice(0, entries.length - maxCacheSize);
+            toDelete.forEach(([key]) => this.cache.delete(key));
+        }
     }
 }
 
@@ -118,248 +176,878 @@ const storage = new TelegramStorage();
 // 🧠 نظام الذكاء الاصطناعي المحسن
 // ====================
 
-class AIExamGenerator {
+class SmartTextAnalyzer {
     constructor() {
-        this.questionPatterns = {
-            definition: /(تعريف|مفهوم|ما هو|ما المقصود ب)(.+)/gi,
-            explanation: /(اشرح|وضح|بين|كيف)(.+)/gi,
-            comparison: /(ما الفرق بين|قارن بين|ما العلاقة بين)(.+)/gi,
-            causeEffect: /(ما سبب|ما نتيجة|لماذا|كيف يؤدي)(.+)/gi
+        this.stopWords = new Set(['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'من', 'في', 'على', 'إلى', 'أن', 'هذا', 'هذه', 'ذلك', 'تلك', 'كان', 'يكون']);
+        this.conceptPatterns = {
+            definition: /(يعرف|تعريف|مفهوم|هو|يشير إلى|يعني)/gi,
+            process: /(مراحل|خطوات|مرحلة|خطوة|أولاً|ثانياً|ثالثاً)/gi,
+            comparison: /(مقارنة|فرق|اختلاف|تشابه)/gi,
+            cause: /(سبب|نتيجة|بسبب|يؤدي إلى|ينتج عن)/gi
         };
     }
 
     // تحليل النص المتقدم
     async analyzeText(text, userId) {
-        try {
-            const analysis = {
-                metadata: {
-                    length: text.length,
-                    wordCount: text.split(/\s+/).length,
-                    sentenceCount: (text.match(/[.!?]+/g) || []).length,
-                    language: this.detectLanguage(text)
-                },
-                content: {
-                    keywords: this.extractKeywords(text),
-                    entities: this.extractEntities(text),
-                    concepts: this.extractConcepts(text),
-                    questions: this.detectPotentialQuestions(text),
-                    summary: this.generateSummary(text)
-                },
-                difficulty: {
-                    level: this.assessDifficulty(text),
-                    score: this.calculateComplexityScore(text),
-                    recommendations: []
-                },
-                educational: {
-                    topics: this.identifyTopics(text),
-                    learningObjectives: this.generateLearningObjectives(text),
-                    assessmentPoints: this.identifyAssessmentPoints(text)
-                }
-            };
+        const analysis = {
+            metadata: {
+                length: text.length,
+                wordCount: this.countWords(text),
+                sentenceCount: this.countSentences(text),
+                paragraphCount: this.countParagraphs(text),
+                language: this.detectLanguage(text),
+                readingTime: this.calculateReadingTime(text)
+            },
+            content: {
+                keywords: this.extractKeywords(text),
+                entities: this.extractEntities(text),
+                concepts: this.extractConcepts(text),
+                topics: this.identifyTopics(text),
+                summary: this.generateSummary(text),
+                tone: this.analyzeTone(text),
+                complexity: this.analyzeComplexity(text)
+            },
+            structure: {
+                hasIntroduction: this.hasIntroduction(text),
+                hasConclusion: this.hasConclusion(text),
+                sections: this.identifySections(text),
+                logicalFlow: this.analyzeLogicalFlow(text)
+            },
+            educational: {
+                difficulty: this.assessDifficulty(text),
+                learningObjectives: this.generateLearningObjectives(text),
+                assessmentPoints: this.identifyAssessmentPoints(text),
+                prerequisites: this.identifyPrerequisites(text)
+            },
+            timestamp: Date.now()
+        };
 
-            // تحسين بناءً على أداء المستخدم السابق
-            const userHistory = await storage.retrieveData(userId, 'exam_history');
-            if (userHistory.success && userHistory.data.length > 0) {
-                analysis.difficulty.recommendations = this.getPersonalizedRecommendations(userHistory.data);
-            }
-
-            // حفظ تحليل النص
-            await storage.storeData(userId, 'text_analysis', analysis);
-
-            return analysis;
-
-        } catch (error) {
-            console.error('Error in text analysis:', error);
-            throw error;
-        }
+        // تحسين بناءً على تاريخ المستخدم
+        analysis.recommendations = await this.getPersonalizedRecommendations(userId, analysis);
+        
+        return analysis;
     }
 
     // استخراج الكلمات المفتاحية المتقدمة
     extractKeywords(text) {
         const words = text.toLowerCase().split(/\W+/);
-        const stopWords = new Set(['the', 'and', 'من', 'في', 'على', 'إلى', 'أن', 'هذا', 'هذه']);
-        
         const wordFreq = {};
+        
         words.forEach(word => {
-            if (word.length > 3 && !stopWords.has(word)) {
+            if (word.length > 2 && !this.stopWords.has(word)) {
                 wordFreq[word] = (wordFreq[word] || 0) + 1;
             }
         });
 
         // تطبيق TF-IDF مبسط
+        const totalWords = words.length;
         const sortedKeywords = Object.entries(wordFreq)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 20)
+            .sort((a, b) => {
+                // حساب أهمية الكلمة
+                const scoreA = this.calculateKeywordScore(a[0], a[1], totalWords, text);
+                const scoreB = this.calculateKeywordScore(b[0], b[1], totalWords, text);
+                return scoreB - scoreA;
+            })
+            .slice(0, 15)
             .map(([word, freq]) => ({
                 word,
                 frequency: freq,
-                importance: this.calculateWordImportance(word, text)
+                importance: this.calculateKeywordScore(word, freq, totalWords, text),
+                type: this.classifyWordType(word)
             }));
 
         return sortedKeywords;
     }
 
-    // استخراج الكيانات (أسماء، أماكن، تواريخ)
+    // استخراج الكيانات
     extractEntities(text) {
         const entities = {
             people: [],
             places: [],
+            organizations: [],
             dates: [],
-            numbers: []
+            numbers: [],
+            terms: []
         };
 
-        // اكتشاف الأسماء (نمط مبسط للعربية)
-        const namePattern = /\b(?:السيد|الدكتور|الأستاذ|المهندس)?\s*[أ-ي]+\s+[أ-ي]+\b/g;
-        entities.people = text.match(namePattern) || [];
-
-        // اكتشاف الأماكن
-        const placePattern = /\b(?:مدينة|قرية|منطقة|بلد)\s+[أ-ي]+\b/gi;
-        entities.places = text.match(placePattern) || [];
+        // اكتشاف الأسماء (نمط محسن للعربية والإنجليزية)
+        const namePattern = /\b(?:السيد|الدكتور|الأستاذ|المهندس|Mr\.|Mrs\.|Dr\.|Prof\.)?\s*[أ-يA-Z][أ-يa-z]+\s+[أ-يA-Z][أ-يa-z]+(?:\s+[أ-يA-Z][أ-يa-z]+)?\b/g;
+        entities.people = [...new Set(text.match(namePattern) || [])];
 
         // اكتشاف التواريخ
-        const datePattern = /\b\d{1,2}\/\d{1,2}\/\d{4}\b|\b\d{4}-\d{2}-\d{2}\b/g;
-        entities.dates = text.match(datePattern) || [];
+        const datePattern = /\b\d{1,2}\/\d{1,2}\/\d{4}\b|\b\d{4}-\d{2}-\d{2}\b|\b(?:يناير|فبراير|مارس|إبريل|مايو|يونيو|يوليو|أغسطس|سبتمبر|أكتوبر|نوفمبر|ديسمبر)\s+\d{1,2},?\s+\d{4}\b/gi;
+        entities.dates = [...new Set(text.match(datePattern) || [])];
 
-        // اكتشاف الأرقام المهمة
-        const numberPattern = /\b\d+(?:\.\d+)?\b/g;
-        entities.numbers = text.match(numberPattern) || [];
+        // اكتشاف المصطلحات المهمة
+        const termPattern = /"[^"]+"|'[^']+'|\b(?:مبدأ|نظرية|قانون|نظام|آلية|استراتيجية|تكتيك)\s+[أ-ي]+\b/gi;
+        entities.terms = [...new Set(text.match(termPattern) || [])];
 
         return entities;
     }
 
-    // توليد أسئلة ذكية
-    generateSmartQuestions(analysis, difficulty = 'medium', count = 10) {
-        const questions = [];
-        const questionTypes = this.getQuestionTypesByDifficulty(difficulty);
-
-        // أسئلة التعريف
-        if (questionTypes.includes('definition')) {
-            analysis.content.keywords.slice(0, 5).forEach(keyword => {
-                questions.push(this.createDefinitionQuestion(keyword.word, analysis));
+    // استخراج المفاهيم
+    extractConcepts(text) {
+        const concepts = [];
+        const sentences = text.split(/[.!?]+/);
+        
+        sentences.forEach(sentence => {
+            Object.entries(this.conceptPatterns).forEach(([type, pattern]) => {
+                if (pattern.test(sentence)) {
+                    concepts.push({
+                        sentence: sentence.trim(),
+                        type: type,
+                        keywords: this.extractKeywords(sentence).slice(0, 3)
+                    });
+                }
             });
-        }
+        });
 
-        // أسئلة الشرح
-        if (questionTypes.includes('explanation')) {
-            analysis.content.concepts.slice(0, 3).forEach(concept => {
-                questions.push(this.createExplanationQuestion(concept, analysis));
-            });
-        }
-
-        // أسئلة المقارنة
-        if (questionTypes.includes('comparison') && analysis.content.keywords.length >= 2) {
-            for (let i = 0; i < Math.min(2, analysis.content.keywords.length - 1); i++) {
-                questions.push(this.createComparisonQuestion(
-                    analysis.content.keywords[i].word,
-                    analysis.content.keywords[i + 1].word,
-                    analysis
-                ));
-            }
-        }
-
-        // أسئلة السبب والنتيجة
-        if (questionTypes.includes('cause_effect')) {
-            analysis.content.concepts.slice(0, 2).forEach(concept => {
-                questions.push(this.createCauseEffectQuestion(concept, analysis));
-            });
-        }
-
-        // أسئلة الاختيار من متعدد المتقدمة
-        if (questionTypes.includes('mcq_advanced')) {
-            analysis.content.keywords.slice(0, 5).forEach(keyword => {
-                questions.push(this.createAdvancedMCQ(keyword.word, analysis));
-            });
-        }
-
-        // تقييم وفرز الأسئلة حسب الجودة
-        const evaluatedQuestions = questions.map(q => ({
-            ...q,
-            quality: this.evaluateQuestionQuality(q, analysis)
-        }));
-
-        // ترتيب حسب الجودة واختيار الأفضل
-        return evaluatedQuestions
-            .sort((a, b) => b.quality - a.quality)
-            .slice(0, count);
+        return concepts.slice(0, 10);
     }
 
-    // إنشاء سؤال اختيار من متعدد متقدم
-    createAdvancedMCQ(keyword, analysis) {
-        const distractors = this.generateSmartDistractors(keyword, analysis);
+    // تحديد الموضوعات
+    identifyTopics(text) {
+        const topics = [];
+        const keywords = this.extractKeywords(text);
         
-        return {
-            type: 'mcq_advanced',
-            text: `ما هو التعريف الدقيق لمصطلح "${keyword}"؟`,
-            options: [
-                this.generateCorrectDefinition(keyword, analysis),
-                ...distractors
+        // تجميع الكلمات المفتاحية المتشابهة
+        const topicClusters = this.clusterKeywords(keywords.map(k => k.word));
+        
+        topicClusters.forEach(cluster => {
+            if (cluster.length >= 2) {
+                topics.push({
+                    name: cluster[0],
+                    relatedTerms: cluster.slice(1),
+                    importance: this.calculateTopicImportance(cluster, text)
+                });
+            }
+        });
+
+        return topics.sort((a, b) => b.importance - a.importance).slice(0, 5);
+    }
+
+    // توليد ملخص ذكي
+    generateSummary(text, maxLength = 200) {
+        const sentences = text.split(/[.!?]+/);
+        const importantSentences = sentences.filter(sentence => {
+            const words = sentence.toLowerCase().split(/\W+/);
+            const importantWords = words.filter(word => 
+                word.length > 4 && !this.stopWords.has(word)
+            );
+            return importantWords.length >= 3;
+        });
+
+        if (importantSentences.length === 0) return text.substring(0, maxLength) + '...';
+        
+        // اختيار الجمل الأكثر أهمية
+        const summary = importantSentences
+            .slice(0, 3)
+            .map(s => s.trim() + '.')
+            .join(' ');
+
+        return summary.length > maxLength ? summary.substring(0, maxLength) + '...' : summary;
+    }
+
+    // تحديد مستوى الصعوبة
+    assessDifficulty(text) {
+        const score = this.calculateComplexityScore(text);
+        
+        if (score >= 8) return { level: 'خبير', score, description: 'نص معقد يحتوي على مصطلحات متخصصة وتركيب لغوي متقدم' };
+        if (score >= 6) return { level: 'متقدم', score, description: 'نص متوسط التعقيد مع بعض المصطلحات المتخصصة' };
+        if (score >= 4) return { level: 'متوسط', score, description: 'نص واضح مع مصطلحات أساسية' };
+        return { level: 'مبتدئ', score, description: 'نص بسيط وواضح' };
+    }
+
+    // توليد أهداف تعليمية
+    generateLearningObjectives(text) {
+        const objectives = [];
+        const keywords = this.extractKeywords(text).slice(0, 5);
+        
+        keywords.forEach(keyword => {
+            objectives.push({
+                objective: `فهم مفهوم ${keyword.word}`,
+                level: 'معرفة',
+                assessment: 'أسئلة تعريفية'
+            });
+            
+            objectives.push({
+                objective: `تطبيق مفهوم ${keyword.word} في سياقات مختلفة`,
+                level: 'تطبيق',
+                assessment: 'أسئلة تطبيقية'
+            });
+        });
+
+        return objectives.slice(0, 5);
+    }
+
+    // الحصول على توصيات مخصصة
+    async getPersonalizedRecommendations(userId, analysis) {
+        const recommendations = [];
+        
+        if (analysis.metadata.wordCount > 1000) {
+            recommendations.push("النص طويل، يمكن تقسيمه إلى أجزاء للدراسة الفعالة");
+        }
+        
+        if (analysis.content.complexity > 7) {
+            recommendations.push("مستوى الصعوبة عالي، ينصح بالتركيز على المصطلحات الأساسية أولاً");
+        }
+        
+        if (analysis.content.keywords.length < 5) {
+            recommendations.push("النص يحتوي على مصطلحات محدودة، يمكن إضافة مصادر إضافية للتعمق");
+        }
+
+        return recommendations;
+    }
+
+    // ====== الدوال المساعدة ======
+    
+    countWords(text) {
+        return text.split(/\s+/).filter(word => word.length > 0).length;
+    }
+
+    countSentences(text) {
+        return (text.match(/[.!?]+/g) || []).length;
+    }
+
+    countParagraphs(text) {
+        return text.split(/\n\s*\n/).filter(p => p.trim().length > 0).length;
+    }
+
+    detectLanguage(text) {
+        const arabicChars = (text.match(/[\u0600-\u06FF]/g) || []).length;
+        const englishChars = (text.match(/[a-zA-Z]/g) || []).length;
+        return arabicChars > englishChars ? 'arabic' : 'english';
+    }
+
+    calculateReadingTime(text) {
+        const wordsPerMinute = 200;
+        const wordCount = this.countWords(text);
+        return Math.ceil(wordCount / wordsPerMinute);
+    }
+
+    calculateKeywordScore(word, frequency, totalWords, text) {
+        const frequencyScore = (frequency / totalWords) * 100;
+        const positionScore = this.calculatePositionScore(word, text);
+        const lengthScore = Math.min(word.length / 10, 1);
+        
+        return (frequencyScore * 0.5) + (positionScore * 0.3) + (lengthScore * 0.2);
+    }
+
+    calculatePositionScore(word, text) {
+        const sentences = text.split(/[.!?]+/);
+        let score = 0;
+        
+        sentences.slice(0, 3).forEach(sentence => {
+            if (sentence.toLowerCase().includes(word.toLowerCase())) {
+                score += 0.3;
+            }
+        });
+        
+        sentences.slice(-2).forEach(sentence => {
+            if (sentence.toLowerCase().includes(word.toLowerCase())) {
+                score += 0.2;
+            }
+        });
+        
+        return Math.min(score, 1);
+    }
+
+    classifyWordType(word) {
+        if (word.length > 7) return 'مصطلح متخصص';
+        if (word.length > 4) return 'مفهوم أساسي';
+        return 'كلمة مساعدة';
+    }
+
+    clusterKeywords(keywords) {
+        const clusters = [];
+        
+        keywords.forEach(keyword => {
+            let added = false;
+            
+            for (let cluster of clusters) {
+                if (this.areKeywordsSimilar(keyword, cluster[0])) {
+                    cluster.push(keyword);
+                    added = true;
+                    break;
+                }
+            }
+            
+            if (!added) {
+                clusters.push([keyword]);
+            }
+        });
+        
+        return clusters;
+    }
+
+    areKeywordsSimilar(word1, word2) {
+        const minLength = Math.min(word1.length, word2.length);
+        const maxLength = Math.max(word1.length, word2.length);
+        
+        if (maxLength - minLength > 3) return false;
+        
+        // حساب تشابه بسيط
+        let matches = 0;
+        for (let i = 0; i < minLength; i++) {
+            if (word1[i] === word2[i]) matches++;
+        }
+        
+        return matches / maxLength >= 0.7;
+    }
+
+    calculateTopicImportance(cluster, text) {
+        let importance = 0;
+        cluster.forEach(word => {
+            const matches = (text.match(new RegExp(word, 'gi')) || []).length;
+            importance += matches * word.length;
+        });
+        return importance;
+    }
+
+    analyzeTone(text) {
+        const positiveWords = ['ممتاز', 'جيد', 'رائع', 'إيجابي', 'ناجح'];
+        const negativeWords = ['سيء', 'ضعيف', 'مشكلة', 'سلبي', 'فشل'];
+        
+        let positiveCount = 0;
+        let negativeCount = 0;
+        
+        positiveWords.forEach(word => {
+            positiveCount += (text.match(new RegExp(word, 'gi')) || []).length;
+        });
+        
+        negativeWords.forEach(word => {
+            negativeCount += (text.match(new RegExp(word, 'gi')) || []).length;
+        });
+        
+        if (positiveCount > negativeCount * 2) return 'إيجابي';
+        if (negativeCount > positiveCount * 2) return 'سلبي';
+        return 'محايد';
+    }
+
+    analyzeComplexity(text) {
+        const avgWordLength = text.split(/\s+/).reduce((sum, word) => sum + word.length, 0) / this.countWords(text);
+        const avgSentenceLength = this.countWords(text) / this.countSentences(text);
+        const uniqueWordRatio = new Set(text.toLowerCase().split(/\W+/)).size / this.countWords(text);
+        
+        return Math.min(10, (avgWordLength * 0.3) + (avgSentenceLength * 0.4) + (uniqueWordRatio * 100 * 0.3));
+    }
+
+    hasIntroduction(text) {
+        const firstParagraph = text.split(/\n\s*\n/)[0] || '';
+        const introWords = ['مقدمة', 'تمهيد', 'بداية', 'في البداية', 'أولاً'];
+        return introWords.some(word => firstParagraph.includes(word));
+    }
+
+    hasConclusion(text) {
+        const lastParagraph = text.split(/\n\s*\n/).pop() || '';
+        const conclusionWords = ['خاتمة', 'ختاماً', 'في النهاية', 'باختصار', 'خلاصة'];
+        return conclusionWords.some(word => lastParagraph.includes(word));
+    }
+
+    identifySections(text) {
+        const sections = [];
+        const lines = text.split('\n');
+        let currentSection = '';
+        
+        lines.forEach(line => {
+            if (line.match(/^#+\s+/)) {
+                if (currentSection) {
+                    sections.push(currentSection.trim());
+                }
+                currentSection = line;
+            } else if (currentSection) {
+                currentSection += '\n' + line;
+            }
+        });
+        
+        if (currentSection) {
+            sections.push(currentSection.trim());
+        }
+        
+        return sections;
+    }
+
+    analyzeLogicalFlow(text) {
+        const transitionWords = ['أولاً', 'ثانياً', 'ثالثاً', 'بعد ذلك', 'من ناحية أخرى', 'علاوة على ذلك'];
+        let flowScore = 0;
+        
+        transitionWords.forEach(word => {
+            flowScore += (text.match(new RegExp(word, 'gi')) || []).length;
+        });
+        
+        return flowScore > 3 ? 'جيد' : flowScore > 1 ? 'متوسط' : 'ضعيف';
+    }
+
+    calculateComplexityScore(text) {
+        const factors = {
+            wordLength: Math.min(this.countWords(text) / 100, 2),
+            sentenceComplexity: Math.min(this.countWords(text) / this.countSentences(text) / 20, 2),
+            keywordDensity: Math.min(this.extractKeywords(text).length / 5, 2),
+            specialChars: Math.min((text.match(/[^\w\s]/g) || []).length / 50, 2)
+        };
+        
+        const total = Object.values(factors).reduce((sum, val) => sum + val, 0);
+        return Math.min(10, total * 2.5);
+    }
+
+    identifyAssessmentPoints(text) {
+        const points = [];
+        const sentences = text.split(/[.!?]+/);
+        
+        sentences.forEach((sentence, index) => {
+            if (sentence.includes('؟') || sentence.includes('ماذا') || sentence.includes('كيف') || sentence.includes('لماذا')) {
+                points.push({
+                    sentence: sentence.trim(),
+                    type: 'استفهام',
+                    position: index
+                });
+            }
+            
+            if (sentence.includes(':') || sentence.includes('-')) {
+                points.push({
+                    sentence: sentence.trim(),
+                    type: 'قائمة',
+                    position: index
+                });
+            }
+        });
+        
+        return points.slice(0, 10);
+    }
+
+    identifyPrerequisites(text) {
+        const prerequisites = [];
+        const prerequisiteWords = ['يجب', 'لازم', 'ضروري', 'مطلوب', 'شرط'];
+        
+        prerequisiteWords.forEach(word => {
+            const regex = new RegExp(`${word}[^.!?]*[.!?]`, 'gi');
+            const matches = text.match(regex) || [];
+            matches.forEach(match => {
+                prerequisites.push(match.trim());
+            });
+        });
+        
+        return prerequisites.slice(0, 5);
+    }
+}
+
+// ====================
+// 🎯 مولد الامتحانات الذكي
+// ====================
+
+class IntelligentExamGenerator {
+    constructor() {
+        this.analyzer = new SmartTextAnalyzer();
+        this.questionTemplates = {
+            definition: [
+                "ما هو تعريف {term}؟",
+                "عرف مفهوم {term}.",
+                "ماذا نقصد بـ {term}؟"
             ],
-            correctIndex: 0,
-            explanation: this.generateExplanation(keyword, analysis),
-            difficulty: 'hard',
-            tags: [keyword, 'تعريف', 'مصطلح'],
-            cognitiveLevel: 'analysis'
+            explanation: [
+                "اشرح {concept} بتفصيل.",
+                "كيف يعمل {concept}؟",
+                "ما هي آلية {concept}؟"
+            ],
+            comparison: [
+                "قارن بين {term1} و {term2}.",
+                "ما الفرق بين {term1} و {term2}؟",
+                "اذكر أوجه التشابه والاختلاف بين {term1} و {term2}."
+            ],
+            causeEffect: [
+                "ما أسباب {phenomenon}؟",
+                "ما نتائج {action}؟",
+                "كيف يؤدي {cause} إلى {effect}؟"
+            ],
+            application: [
+                "كيف تطبق {concept} في {context}؟",
+                "اذكر مثالاً على {concept}.",
+                "ما التطبيقات العملية لـ {concept}؟"
+            ],
+            analysis: [
+                "حلل {situation}.",
+                "ما عناصر {system}؟",
+                "كيف ترتبط {element1} بـ {element2}؟"
+            ],
+            evaluation: [
+                "قيم {argument}.",
+                "ما إيجابيات وسلبيات {option}؟",
+                "أيهما أفضل {option1} أم {option2} ولماذا؟"
+            ]
         };
     }
 
-    // توليد مشتتات ذكية
-    generateSmartDistractors(correctAnswer, analysis) {
-        const distractors = [];
+    // توليد امتحان ذكي
+    async generateExam(text, userId, options = {}) {
+        const {
+            difficulty = 'medium',
+            count = 10,
+            types = 'all',
+            timeLimit = null
+        } = options;
+
+        // تحليل النص
+        const analysis = await this.analyzer.analyzeText(text, userId);
         
-        // مشتت 1: تعريف خاطئ ولكن مقارب
-        distractors.push(this.generatePlausibleWrongDefinition(correctAnswer));
+        // تحديد أنواع الأسئلة بناءً على الصعوبة
+        const questionTypes = this.selectQuestionTypes(difficulty, types);
         
-        // مشتت 2: تعريف لمصطلح مشابه
-        const similarKeywords = analysis.content.keywords
-            .filter(k => k.word !== correctAnswer && k.word.length > 3)
-            .slice(0, 2)
-            .map(k => k.word);
+        // توليد الأسئلة
+        const questions = this.generateQuestions(analysis, questionTypes, count);
         
-        similarKeywords.forEach(keyword => {
-            distractors.push(this.generateCorrectDefinition(keyword, analysis));
+        // تقييم الأسئلة وترتيبها
+        const evaluatedQuestions = questions.map(q => ({
+            ...q,
+            quality: this.evaluateQuestionQuality(q, analysis),
+            estimatedTime: this.estimateQuestionTime(q)
+        })).sort((a, b) => b.quality - a.quality);
+
+        // حساب الوقت الكلي المقترح
+        const totalTime = evaluatedQuestions.reduce((sum, q) => sum + q.estimatedTime, 0);
+
+        return {
+            examId: `${userId}_${Date.now()}`,
+            metadata: {
+                sourceLength: text.length,
+                wordCount: analysis.metadata.wordCount,
+                difficulty: difficulty,
+                questionCount: evaluatedQuestions.length,
+                estimatedTime: totalTime,
+                generatedAt: Date.now()
+            },
+            analysis: analysis,
+            questions: evaluatedQuestions.slice(0, count),
+            instructions: this.generateInstructions(difficulty, totalTime)
+        };
+    }
+
+    // توليد الأسئلة
+    generateQuestions(analysis, questionTypes, count) {
+        const questions = [];
+        const usedConcepts = new Set();
+        
+        questionTypes.forEach(type => {
+            const templateCount = Math.ceil(count / questionTypes.length);
+            const templates = this.questionTemplates[type] || [];
+            
+            for (let i = 0; i < templateCount && questions.length < count; i++) {
+                const question = this.createQuestion(type, analysis, usedConcepts);
+                if (question) {
+                    questions.push(question);
+                }
+            }
         });
 
-        // مشتت 3: تعريف عام جداً
-        distractors.push(`مصطلح يستخدم في ${analysis.educational.topics[0] || 'هذا المجال'}`);
+        // إذا لم يتم توليد عدد كافٍ من الأسئلة، أضف المزيد من الأنواع المختلفة
+        while (questions.length < count) {
+            const randomType = questionTypes[Math.floor(Math.random() * questionTypes.length)];
+            const question = this.createQuestion(randomType, analysis, usedConcepts);
+            if (question) questions.push(question);
+        }
 
+        return questions.slice(0, count);
+    }
+
+    // إنشاء سؤال فردي
+    createQuestion(type, analysis, usedConcepts) {
+        const keywords = analysis.content.keywords;
+        const entities = analysis.content.entities;
+        const concepts = analysis.content.concepts;
+        
+        if (keywords.length === 0) return null;
+
+        let question = null;
+        
+        switch(type) {
+            case 'definition':
+                const term = this.selectUnusedKeyword(keywords, usedConcepts);
+                if (term) {
+                    question = {
+                        type: 'definition',
+                        text: this.getRandomTemplate('definition').replace('{term}', term.word),
+                        correctAnswer: this.generateDefinition(term.word, analysis),
+                        options: this.generateDistractors(term.word, analysis, 'definition'),
+                        explanation: `تعريف ${term.word} هو ${this.generateDefinition(term.word, analysis)}`,
+                        difficulty: this.calculateQuestionDifficulty(term, analysis),
+                        tags: ['تعريف', term.word]
+                    };
+                    usedConcepts.add(term.word);
+                }
+                break;
+                
+            case 'explanation':
+                const concept = concepts[Math.floor(Math.random() * concepts.length)];
+                if (concept) {
+                    question = {
+                        type: 'explanation',
+                        text: this.getRandomTemplate('explanation').replace('{concept}', concept.sentence.split(' ')[0]),
+                        correctAnswer: this.generateExplanation(concept, analysis),
+                        options: null, // أسئلة الشرح لا تحتاج خيارات
+                        explanation: `شرح ${concept.sentence}`,
+                        difficulty: 'medium',
+                        tags: ['شرح', concept.type]
+                    };
+                }
+                break;
+                
+            case 'comparison':
+                if (keywords.length >= 2) {
+                    const term1 = keywords[Math.floor(Math.random() * keywords.length)];
+                    const term2 = keywords[Math.floor(Math.random() * keywords.length)];
+                    if (term1 !== term2) {
+                        question = {
+                            type: 'comparison',
+                            text: this.getRandomTemplate('comparison')
+                                .replace('{term1}', term1.word)
+                                .replace('{term2}', term2.word),
+                            correctAnswer: this.generateComparison(term1.word, term2.word, analysis),
+                            options: this.generateDistractors(`${term1.word} vs ${term2.word}`, analysis, 'comparison'),
+                            explanation: `مقارنة بين ${term1.word} و ${term2.word}`,
+                            difficulty: 'hard',
+                            tags: ['مقارنة', term1.word, term2.word]
+                        };
+                    }
+                }
+                break;
+                
+            case 'causeEffect':
+                const keyword = keywords[Math.floor(Math.random() * keywords.length)];
+                question = {
+                    type: 'causeEffect',
+                    text: this.getRandomTemplate('causeEffect').replace('{phenomenon}', keyword.word),
+                    correctAnswer: this.generateCauseEffect(keyword.word, analysis),
+                    options: this.generateDistractors(keyword.word, analysis, 'causeEffect'),
+                    explanation: `أسباب ونتائج ${keyword.word}`,
+                    difficulty: 'medium',
+                    tags: ['سبب ونتيجة', keyword.word]
+                };
+                break;
+        }
+
+        return question;
+    }
+
+    // توليد إجابة صحيحة للتعريف
+    generateDefinition(term, analysis) {
+        const definitions = [
+            `مصطلح ${term} يشير إلى ${this.getTermDescription(term)}`,
+            `يُعرف ${term} بأنه ${this.getTermFunction(term)}`,
+            `${term} هو ${this.getTermContext(term, analysis)}`
+        ];
+        return definitions[Math.floor(Math.random() * definitions.length)];
+    }
+
+    // توليد مشتتات ذكية
+    generateDistractors(correctAnswer, analysis, type) {
+        const distractors = [];
+        const keywords = analysis.content.keywords.map(k => k.word);
+        
+        // مشتت 1: إجابة عكسية
+        distractors.push(this.generateOppositeAnswer(correctAnswer, type));
+        
+        // مشتت 2: إجابة لمصطلح مشابه
+        const similarTerm = this.findSimilarTerm(correctAnswer, keywords);
+        if (similarTerm) {
+            distractors.push(this.generateDefinition(similarTerm, analysis));
+        }
+        
+        // مشتت 3: إجابة عامة جداً
+        distractors.push(this.generateVagueAnswer(correctAnswer, type));
+        
+        // مشتت 4: إجابة صحيحة لكن لمصطلح آخر
+        if (keywords.length > 3) {
+            const otherTerm = keywords.filter(k => k !== correctAnswer && k !== similarTerm)[0];
+            if (otherTerm) {
+                distractors.push(this.generateDefinition(otherTerm, analysis));
+            }
+        }
+        
+        // خلط المشتتات
         return this.shuffleArray(distractors).slice(0, 3);
     }
 
-    // توليد شرح مفصل
-    generateExplanation(keyword, analysis) {
-        const explanations = [
-            `مصطلح "${keyword}" يشير إلى ${this.getConceptDescription(keyword)}`,
-            `يستخدم "${keyword}" في سياق ${analysis.educational.topics[0] || 'المجال'} لوصف ${this.getFunctionDescription(keyword)}`,
-            `الأهمية: ${this.getImportanceDescription(keyword)}`,
-            `العلاقة: ${this.getRelationshipDescription(keyword, analysis)}`
-        ];
-
-        return explanations.join('\n\n');
+    // توليد شرح
+    generateExplanation(concept, analysis) {
+        return `شرح ${concept.sentence} يتضمن ${concept.keywords.map(k => k.word).join('، ')}.`;
     }
 
-    // تقييم جودة السؤال
-    evaluateQuestionQuality(question, analysis) {
-        let score = 5; // درجة أساسية
+    // توليد مقارنة
+    generateComparison(term1, term2, analysis) {
+        return `${term1} و ${term2} يختلفان في ${this.getRandomAspect()} ويتشابهان في ${this.getRandomAspect()}.`;
+    }
 
-        // تقييم الوضوح
-        if (question.text.length > 20 && question.text.length < 150) score += 2;
+    // توليد سبب ونتيجة
+    generateCauseEffect(term, analysis) {
+        return `من أسباب ${term}: ${this.getRandomCause()}. ومن نتائجه: ${this.getRandomEffect()}.`;
+    }
+
+    // ====== الدوال المساعدة ======
+    
+    selectQuestionTypes(difficulty, requestedTypes) {
+        const typeMap = {
+            easy: ['definition'],
+            medium: ['definition', 'explanation', 'causeEffect'],
+            hard: ['definition', 'explanation', 'comparison', 'application'],
+            expert: ['comparison', 'analysis', 'evaluation', 'application']
+        };
         
-        // تقييم الخيارات
-        if (question.options && question.options.length >= 4) {
-            const uniqueOptions = new Set(question.options.map(o => o.substring(0, 50)));
+        let types = typeMap[difficulty] || typeMap.medium;
+        
+        if (requestedTypes !== 'all') {
+            if (Array.isArray(requestedTypes)) {
+                types = types.filter(type => requestedTypes.includes(type));
+            } else if (typeof requestedTypes === 'string') {
+                types = types.filter(type => type === requestedTypes);
+            }
+        }
+        
+        return types.length > 0 ? types : typeMap.medium;
+    }
+
+    selectUnusedKeyword(keywords, usedConcepts) {
+        const available = keywords.filter(k => !usedConcepts.has(k.word));
+        return available.length > 0 ? available[0] : keywords[0];
+    }
+
+    getRandomTemplate(type) {
+        const templates = this.questionTemplates[type];
+        return templates[Math.floor(Math.random() * templates.length)];
+    }
+
+    calculateQuestionDifficulty(term, analysis) {
+        const importance = term.importance || 5;
+        if (importance > 8) return 'hard';
+        if (importance > 5) return 'medium';
+        return 'easy';
+    }
+
+    evaluateQuestionQuality(question, analysis) {
+        let score = 5;
+        
+        // تقييم الوضوح
+        if (question.text.length > 10 && question.text.length < 150) score += 2;
+        
+        // تقييم الصلة بالنص
+        if (this.isQuestionRelevant(question, analysis)) score += 3;
+        
+        // تقييم الخيارات (إن وجدت)
+        if (question.options) {
+            const uniqueOptions = new Set(question.options.map(o => o.substring(0, 30)));
             if (uniqueOptions.size === question.options.length) score += 2;
         }
-
-        // تقييم الصلة بالموضوع
-        if (this.isRelevantToAnalysis(question, analysis)) score += 3;
-
+        
         // تقييم مستوى التفكير
-        if (question.cognitiveLevel === 'analysis' || question.cognitiveLevel === 'evaluation') score += 2;
-
+        if (question.type === 'analysis' || question.type === 'evaluation') score += 1;
+        
         return Math.min(10, score);
     }
 
-    // مساعدات متنوعة
+    estimateQuestionTime(question) {
+        const baseTimes = {
+            definition: 45,
+            explanation: 90,
+            comparison: 120,
+            causeEffect: 75,
+            application: 100,
+            analysis: 150,
+            evaluation: 180
+        };
+        
+        return baseTimes[question.type] || 60;
+    }
+
+    generateInstructions(difficulty, totalTime) {
+        const timeStr = Math.ceil(totalTime / 60);
+        
+        return {
+            general: `امتحان ${difficulty} - الوقت المقترح: ${timeStr} دقيقة`,
+            tips: [
+                "اقرأ كل سؤال بعناية قبل الإجابة",
+                "راجع إجاباتك قبل الانتهاء",
+                "استخدم الوقت بحكمة",
+                "إذا لم تعرف الإجابة، انتقل للسؤال التالي ثم عد لاحقاً"
+            ],
+            grading: "سيتم احتساب النسبة المئوية بناءً على الإجابات الصحيحة"
+        };
+    }
+
+    isQuestionRelevant(question, analysis) {
+        const questionText = question.text.toLowerCase();
+        const keywords = analysis.content.keywords.map(k => k.word.toLowerCase());
+        
+        return keywords.some(keyword => questionText.includes(keyword));
+    }
+
+    getTermDescription(term) {
+        const descriptions = [
+            "مفهوم أساسي في هذا المجال",
+            "أحد العناصر الرئيسية المذكورة",
+            "عملية أو آلية مهمة",
+            "نظرية أو مبدأ أساسي"
+        ];
+        return descriptions[Math.floor(Math.random() * descriptions.length)];
+    }
+
+    getTermFunction(term) {
+        const functions = [
+            "تحقيق الهدف المطلوب",
+            "تنفيذ عملية معينة",
+            "تحسين الأداء",
+            "زيادة الفعالية"
+        ];
+        return functions[Math.floor(Math.random() * functions.length)];
+    }
+
+    getTermContext(term, analysis) {
+        const topics = analysis.content.topics.map(t => t.name);
+        if (topics.length > 0) {
+            return `أحد مفاهيم ${topics[0]}`;
+        }
+        return "أحد المفاهيم المذكورة في النص";
+    }
+
+    generateOppositeAnswer(term, type) {
+        const opposites = {
+            definition: `تعريف خاطئ لـ ${term}`,
+            comparison: `لا يوجد فرق بينهما`,
+            causeEffect: `لا توجد علاقة سببية`
+        };
+        return opposites[type] || `إجابة غير صحيحة`;
+    }
+
+    findSimilarTerm(term, keywords) {
+        return keywords.find(k => 
+            k !== term && 
+            k.length >= term.length - 2 && 
+            k.length <= term.length + 2 &&
+            k[0] === term[0]
+        );
+    }
+
+    generateVagueAnswer(term, type) {
+        const vague = {
+            definition: "مصطلح مهم",
+            comparison: "كلاهما مهم",
+            causeEffect: "هناك عدة عوامل"
+        };
+        return vague[type] || "إجابة عامة";
+    }
+
+    getRandomAspect() {
+        const aspects = ["الوظيفة", "الهدف", "المكونات", "النتائج", "التكلفة", "الفعالية"];
+        return aspects[Math.floor(Math.random() * aspects.length)];
+    }
+
+    getRandomCause() {
+        const causes = ["عوامل متعددة", "ظروف معينة", "قرارات سابقة", "تغيرات في البيئة"];
+        return causes[Math.floor(Math.random() * causes.length)];
+    }
+
+    getRandomEffect() {
+        const effects = ["تحسين الأداء", "زيادة الكفاءة", "تغيير النتائج", "تحقيق الأهداف"];
+        return effects[Math.floor(Math.random() * effects.length)];
+    }
+
     shuffleArray(array) {
         for (let i = array.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -367,352 +1055,477 @@ class AIExamGenerator {
         }
         return array;
     }
-
-    calculateWordImportance(word, text) {
-        // حساب مبسط لأهمية الكلمة
-        const totalWords = text.split(/\s+/).length;
-        const wordFrequency = (text.match(new RegExp(word, 'gi')) || []).length;
-        const frequencyScore = (wordFrequency / totalWords) * 100;
-        
-        // كلمات أطول تكون عادة أكثر أهمية
-        const lengthScore = Math.min(word.length / 10, 1);
-        
-        return (frequencyScore * 0.7) + (lengthScore * 0.3);
-    }
-
-    getQuestionTypesByDifficulty(difficulty) {
-        const types = {
-            easy: ['definition', 'mcq_basic', 'true_false'],
-            medium: ['definition', 'explanation', 'mcq_advanced', 'fill_blank'],
-            hard: ['comparison', 'cause_effect', 'essay', 'analysis'],
-            expert: ['synthesis', 'evaluation', 'critical_thinking', 'research']
-        };
-        return types[difficulty] || types.medium;
-    }
-
-    // دالات وهمية للتوضيح (يجب تطويرها)
-    detectLanguage(text) { return 'arabic'; }
-    extractConcepts(text) { return []; }
-    detectPotentialQuestions(text) { return []; }
-    generateSummary(text) { return ''; }
-    assessDifficulty(text) { return 'medium'; }
-    calculateComplexityScore(text) { return 5; }
-    identifyTopics(text) { return []; }
-    generateLearningObjectives(text) { return []; }
-    identifyAssessmentPoints(text) { return []; }
-    getPersonalizedRecommendations(history) { return []; }
-    getConceptDescription(keyword) { return '...'; }
-    getFunctionDescription(keyword) { return '...'; }
-    getImportanceDescription(keyword) { return '...'; }
-    getRelationshipDescription(keyword, analysis) { return '...'; }
-    isRelevantToAnalysis(question, analysis) { return true; }
-    generateCorrectDefinition(keyword, analysis) { return `تعريف ${keyword}`; }
-    generatePlausibleWrongDefinition(keyword) { return `تعريف خاطئ لـ${keyword}`; }
-    createDefinitionQuestion(keyword, analysis) { return {}; }
-    createExplanationQuestion(concept, analysis) { return {}; }
-    createComparisonQuestion(word1, word2, analysis) { return {}; }
-    createCauseEffectQuestion(concept, analysis) { return {}; }
 }
 
 // ====================
-// 🤖 البوت الرئيسي المحسن
+// 🤖 نظام إدارة المستخدمين
 // ====================
 
-// إنشاء مثيل من مولد الامتحانات
-const aiGenerator = new AIExamGenerator();
-
-// مصفوفات البيانات المحسنة
-const azkar = [
-    "سبحان الله وبحمده سبحان الله العظيم 🌟",
-    "اللهم بك أصبحنا وبك أمسينا وبك نحيا وبك نموت وإليك النشور ☀️",
-    "لا إله إلا الله وحده لا شريك له، له الملك وله الحمد وهو على كل شيء قدير 🕋",
-    "حسبي الله ونعم الوكيل في كل أموري 🤲",
-    "اللهم إني أعوذ بك من الهم والحزن والعجز والكسل والبخل والجبن وضلع الدين وغلبة الرجال 🛡️"
-];
-
-const praises = [
-    "مذهل! إجابة دقيقة جداً 🎯",
-    "أحسنت! تفكيرك منطقي ومنظم 💡",
-    "رائع! هذه إجابة شاملة ومتكاملة 🌟",
-    "إبداع! لقد فكرت خارج الصندوق 🚀",
-    "دقة عالية! ملاحظاتك في محلها 💎"
-];
-
-// جلسات المستخدمين المحسنة
-const userSessions = new Map();
-
-class UserSession {
-    constructor(userId) {
-        this.userId = userId;
-        this.currentExam = null;
-        this.preferences = {
-            difficulty: 'medium',
-            questionCount: 10,
-            timeLimit: null,
-            showHints: true,
-            language: 'ar'
-        };
-        this.stats = {
-            totalExams: 0,
-            averageScore: 0,
-            strengths: [],
-            weaknesses: [],
-            lastActive: Date.now()
-        };
-        this.cache = {
-            recentTexts: [],
-            recentImages: [],
-            recentResults: []
-        };
+class UserSessionManager {
+    constructor() {
+        this.sessions = new Map();
+        this.statistics = new Map();
     }
 
-    async startNewExam(text, sourceType = 'text') {
-        const examId = `${this.userId}_${Date.now()}`;
-        
-        this.currentExam = {
-            id: examId,
-            source: text.substring(0, 200) + '...',
-            sourceType: sourceType,
-            startTime: Date.now(),
-            questions: [],
-            userAnswers: [],
-            status: 'generating',
-            metadata: {}
-        };
-
-        // تحليل النص باستخدام الذكاء الاصطناعي
-        const analysis = await aiGenerator.analyzeText(text, this.userId);
-        
-        // توليد الأسئلة
-        const questions = aiGenerator.generateSmartQuestions(
-            analysis,
-            this.preferences.difficulty,
-            this.preferences.questionCount
-        );
-
-        this.currentExam.questions = questions;
-        this.currentExam.metadata.analysis = analysis;
-        this.currentExam.status = 'active';
-
-        // حفظ بيانات الامتحان في التخزين
-        await storage.storeData(this.userId, 'exam_data', {
-            examId: examId,
-            analysis: analysis,
-            questions: questions.map(q => ({
-                text: q.text,
-                type: q.type,
-                difficulty: q.difficulty
-            }))
-        });
-
-        return this.currentExam;
-    }
-
-    submitAnswer(questionIndex, answer) {
-        if (!this.currentExam || this.currentExam.status !== 'active') {
-            throw new Error('No active exam');
+    getOrCreateSession(userId) {
+        if (!this.sessions.has(userId)) {
+            this.sessions.set(userId, {
+                userId,
+                currentExam: null,
+                preferences: {
+                    difficulty: 'medium',
+                    questionCount: 10,
+                    timeLimit: null,
+                    showHints: true,
+                    language: 'ar',
+                    questionTypes: 'all',
+                    autoSave: true
+                },
+                stats: {
+                    totalExams: 0,
+                    averageScore: 0,
+                    totalQuestions: 0,
+                    correctAnswers: 0,
+                    totalTime: 0,
+                    strengths: [],
+                    weaknesses: [],
+                    lastActive: Date.now(),
+                    streak: 0,
+                    level: 1,
+                    xp: 0
+                },
+                history: {
+                    recentExams: [],
+                    recentTopics: [],
+                    performanceTrend: []
+                },
+                cache: {
+                    recentTexts: [],
+                    recentAnalyses: [],
+                    pendingActions: []
+                }
+            });
         }
+        
+        return this.sessions.get(userId);
+    }
 
-        const question = this.currentExam.questions[questionIndex];
+    updateStats(userId, examResult) {
+        const session = this.getOrCreateSession(userId);
+        const stats = session.stats;
+        
+        // تحديث الإحصائيات الأساسية
+        stats.totalExams++;
+        stats.totalQuestions += examResult.totalQuestions;
+        stats.correctAnswers += examResult.correctAnswers;
+        stats.totalTime += examResult.timeSpent;
+        
+        // تحديث المتوسط
+        stats.averageScore = (
+            (stats.averageScore * (stats.totalExams - 1)) + examResult.score
+        ) / stats.totalExams;
+        
+        // تحديث التتابع (streak)
+        if (examResult.score >= 70) {
+            stats.streak++;
+            stats.xp += Math.floor(examResult.score / 10) * stats.streak;
+        } else {
+            stats.streak = 0;
+        }
+        
+        // تحديث المستوى
+        stats.level = Math.floor(stats.xp / 100) + 1;
+        
+        // تحديث نقاط القوة والضعف
+        this.updateStrengthsWeaknesses(session, examResult);
+        
+        // تحديث تاريخ النشاط
+        stats.lastActive = Date.now();
+        
+        // تحديث التوجه
+        session.history.performanceTrend.push({
+            date: Date.now(),
+            score: examResult.score,
+            type: examResult.examType || 'smart'
+        });
+        
+        // حفظ التوجه (أخر 10 نتائج)
+        if (session.history.performanceTrend.length > 10) {
+            session.history.performanceTrend.shift();
+        }
+        
+        return stats;
+    }
+
+    updateStrengthsWeaknesses(session, examResult) {
+        const stats = session.stats;
+        
+        // تحليل الأداء حسب نوع السؤال
+        if (examResult.performance && examResult.performance.byQuestionType) {
+            Object.entries(examResult.performance.byQuestionType).forEach(([type, data]) => {
+                const accuracy = data.total > 0 ? (data.correct / data.total) * 100 : 0;
+                
+                if (accuracy >= 80) {
+                    // قوة
+                    if (!stats.strengths.includes(type)) {
+                        stats.strengths.push(type);
+                    }
+                    // إزالة من نقاط الضعف إذا كانت موجودة
+                    const weaknessIndex = stats.weaknesses.indexOf(type);
+                    if (weaknessIndex > -1) {
+                        stats.weaknesses.splice(weaknessIndex, 1);
+                    }
+                } else if (accuracy <= 50) {
+                    // ضعف
+                    if (!stats.weaknesses.includes(type)) {
+                        stats.weaknesses.push(type);
+                    }
+                }
+            });
+        }
+        
+        // الحفاظ على أقصى عدد من العناصر
+        stats.strengths = stats.strengths.slice(0, 5);
+        stats.weaknesses = stats.weaknesses.slice(0, 5);
+    }
+
+    getRecommendations(userId) {
+        const session = this.getOrCreateSession(userId);
+        const stats = session.stats;
+        const recommendations = [];
+        
+        // توصيات بناءً على نقاط الضعف
+        if (stats.weaknesses.length > 0) {
+            recommendations.push({
+                type: 'improvement',
+                message: `ركز على تحسين مهاراتك في: ${stats.weaknesses.join('، ')}`,
+                priority: 'high'
+            });
+        }
+        
+        // توصيات بناءً على التقدم
+        if (stats.streak >= 3) {
+            recommendations.push({
+                type: 'encouragement',
+                message: `أحسنت! لديك ${stats.streak} امتحانات ناجحة متتالية`,
+                priority: 'medium'
+            });
+        }
+        
+        if (stats.averageScore < 60) {
+            recommendations.push({
+                type: 'suggestion',
+                message: 'جرب امتحانات بمستوى صعوبة أقل لبناء الثقة',
+                priority: 'high'
+            });
+        }
+        
+        if (stats.totalExams < 3) {
+            recommendations.push({
+                type: 'guidance',
+                message: 'استمر في حل المزيد من الامتحانات لرؤية تحليل أداء دقيق',
+                priority: 'medium'
+            });
+        }
+        
+        // توصية لزيادة المستوى
+        const xpNeeded = stats.level * 100 - stats.xp;
+        if (xpNeeded <= 50) {
+            recommendations.push({
+                type: 'level',
+                message: `أنت على بعد ${xpNeeded} نقطة من المستوى ${stats.level + 1}`,
+                priority: 'low'
+            });
+        }
+        
+        return recommendations.sort((a, b) => {
+            const priorityOrder = { high: 0, medium: 1, low: 2 };
+            return priorityOrder[a.priority] - priorityOrder[b.priority];
+        });
+    }
+
+    getProgressReport(userId) {
+        const session = this.getOrCreateSession(userId);
+        const stats = session.stats;
+        
+        const progress = {
+            level: stats.level,
+            xp: stats.xp,
+            xpToNextLevel: stats.level * 100 - stats.xp,
+            progressPercentage: Math.min(100, (stats.xp % 100)),
+            streak: stats.streak,
+            totalExams: stats.totalExams,
+            averageScore: Math.round(stats.averageScore * 10) / 10,
+            accuracy: stats.totalQuestions > 0 ? 
+                Math.round((stats.correctAnswers / stats.totalQuestions) * 1000) / 10 : 0,
+            totalTime: this.formatTime(stats.totalTime),
+            strengths: stats.strengths,
+            weaknesses: stats.weaknesses,
+            recommendations: this.getRecommendations(userId)
+        };
+        
+        return progress;
+    }
+
+    formatTime(ms) {
+        const minutes = Math.floor(ms / 60000);
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        
+        if (hours > 0) {
+            return `${hours} ساعة و ${remainingMinutes} دقيقة`;
+        }
+        return `${minutes} دقيقة`;
+    }
+
+    cleanupInactiveSessions(maxAge = 24 * 60 * 60 * 1000) {
+        const cutoffTime = Date.now() - maxAge;
+        
+        this.sessions.forEach((session, userId) => {
+            if (session.stats.lastActive < cutoffTime) {
+                // حفظ الإحصائيات النهائية قبل الحذف
+                this.saveSessionStatistics(userId, session);
+                this.sessions.delete(userId);
+            }
+        });
+    }
+
+    saveSessionStatistics(userId, session) {
+        // يمكن حفظ الإحصائيات في قاعدة بيانات أو نظام تخزين
+        console.log(`Saving statistics for user ${userId}:`, session.stats);
+    }
+}
+
+// ====================
+// 🤖 البوت الرئيسي
+// ====================
+
+const textAnalyzer = new SmartTextAnalyzer();
+const examGenerator = new IntelligentExamGenerator();
+const userManager = new UserSessionManager();
+
+// جلسات الامتحانات النشطة
+const activeExams = new Map();
+
+class ActiveExam {
+    constructor(userId, examData) {
+        this.userId = userId;
+        this.examId = examData.examId;
+        this.questions = examData.questions;
+        this.metadata = examData.metadata;
+        this.startTime = Date.now();
+        this.userAnswers = [];
+        this.currentQuestion = 0;
+        this.status = 'active';
+        this.score = null;
+        this.timeSpent = 0;
+    }
+
+    submitAnswer(answer, questionIndex = null) {
+        const qIndex = questionIndex !== null ? questionIndex : this.currentQuestion;
+        
+        if (qIndex >= this.questions.length) {
+            throw new Error('Question index out of bounds');
+        }
+        
+        const question = this.questions[qIndex];
         const isCorrect = this.checkAnswer(question, answer);
-
-        this.currentExam.userAnswers[questionIndex] = {
+        
+        this.userAnswers[qIndex] = {
             question: question.text,
             userAnswer: answer,
-            isCorrect: isCorrect,
-            timeSpent: Date.now() - this.currentExam.startTime,
+            isCorrect,
+            timeSpent: Date.now() - this.startTime,
             timestamp: Date.now()
         };
-
+        
+        if (questionIndex === null) {
+            this.currentQuestion++;
+        }
+        
         return {
             isCorrect,
-            correctAnswer: question.correctAnswer || question.options?.[question.correctIndex],
-            explanation: question.explanation
+            correctAnswer: question.correctAnswer,
+            explanation: question.explanation,
+            nextQuestion: this.currentQuestion < this.questions.length ? 
+                this.questions[this.currentQuestion] : null
         };
     }
 
     checkAnswer(question, userAnswer) {
-        // منطق التحقق من الإجابة
-        if (question.type === 'mcq_advanced' || question.type === 'mcq_basic') {
-            return userAnswer === question.correctIndex;
-        } else if (question.type === 'true_false') {
-            return userAnswer === question.correctAnswer;
-        } else {
-            // للمقارنة مع الإجابات النصية
-            return this.similarityCheck(userAnswer, question.correctAnswer);
+        if (question.type === 'mcq' || question.type === 'definition' || 
+            question.type === 'comparison' || question.type === 'causeEffect') {
+            
+            if (question.options) {
+                // اختيار من متعدد
+                const correctOption = question.correctAnswer;
+                return userAnswer === correctOption;
+            } else {
+                // إجابة نصية - تحقق من التشابه
+                return this.checkTextSimilarity(userAnswer, question.correctAnswer);
+            }
         }
+        
+        // للأسئلة النصية الأخرى
+        return this.checkTextSimilarity(userAnswer, question.correctAnswer);
     }
 
-    similarityCheck(answer1, answer2) {
-        // تحقق مبسط من التشابه
-        const normalize = (str) => str.toLowerCase().replace(/\s+/g, ' ').trim();
+    checkTextSimilarity(answer1, answer2) {
+        const normalize = (str) => {
+            return str.toLowerCase()
+                .replace(/[^\w\u0600-\u06FF\s]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+        };
+        
         const norm1 = normalize(answer1);
         const norm2 = normalize(answer2);
         
-        return norm1 === norm2 || norm1.includes(norm2) || norm2.includes(norm1);
+        if (norm1 === norm2) return true;
+        
+        // تحقق من احتواء إحدى الإجابات للأخرى
+        if (norm1.includes(norm2) || norm2.includes(norm1)) {
+            return norm1.length > 0 && norm2.length > 0;
+        }
+        
+        // حساب تشابه بسيط
+        const words1 = norm1.split(' ');
+        const words2 = norm2.split(' ');
+        const commonWords = words1.filter(word => words2.includes(word));
+        
+        return commonWords.length >= Math.min(words1.length, words2.length) / 2;
     }
 
-    async finishExam() {
-        if (!this.currentExam || this.currentExam.status !== 'active') {
-            throw new Error('No active exam');
-        }
-
-        // حساب النتيجة
-        const score = this.calculateScore();
+    finish() {
+        this.status = 'completed';
+        this.timeSpent = Date.now() - this.startTime;
+        this.score = this.calculateScore();
         
-        // تحليل الأداء
-        const performanceAnalysis = this.analyzePerformance();
-
-        const result = {
-            examId: this.currentExam.id,
-            score: score,
-            totalQuestions: this.currentExam.questions.length,
-            correctAnswers: this.currentExam.userAnswers.filter(a => a.isCorrect).length,
-            timeSpent: Date.now() - this.currentExam.startTime,
-            performance: performanceAnalysis,
-            details: this.currentExam.userAnswers,
-            timestamp: Date.now()
-        };
-
-        // تحديث الإحصائيات
-        this.updateStats(result);
-
-        // حفظ النتيجة في التخزين
-        await storage.storeData(this.userId, 'exam_result', result);
-
-        // مسح الامتحان الحالي
-        this.currentExam.status = 'completed';
-        const completedExam = this.currentExam;
-        this.currentExam = null;
-
-        return {
-            result: result,
-            exam: completedExam
-        };
+        return this.generateResult();
     }
 
     calculateScore() {
-        const correctCount = this.currentExam.userAnswers.filter(a => a.isCorrect).length;
-        const total = this.currentExam.questions.length;
-        return Math.round((correctCount / total) * 100);
+        const correctCount = this.userAnswers.filter(a => a && a.isCorrect).length;
+        return Math.round((correctCount / this.questions.length) * 100);
+    }
+
+    generateResult() {
+        const result = {
+            examId: this.examId,
+            score: this.score,
+            totalQuestions: this.questions.length,
+            correctAnswers: this.userAnswers.filter(a => a && a.isCorrect).length,
+            timeSpent: this.timeSpent,
+            performance: this.analyzePerformance(),
+            details: this.userAnswers,
+            timestamp: Date.now(),
+            metadata: this.metadata
+        };
+        
+        return result;
     }
 
     analyzePerformance() {
-        const analysis = {
+        const performance = {
             byQuestionType: {},
             byDifficulty: {},
             timeAnalysis: {},
             recommendations: []
         };
-
+        
         // تحليل حسب نوع السؤال
-        this.currentExam.questions.forEach((q, index) => {
-            const userAnswer = this.currentExam.userAnswers[index];
-            if (!userAnswer) return;
-
+        this.questions.forEach((q, index) => {
+            const answer = this.userAnswers[index];
+            if (!answer) return;
+            
             const type = q.type;
-            if (!analysis.byQuestionType[type]) {
-                analysis.byQuestionType[type] = { total: 0, correct: 0 };
+            if (!performance.byQuestionType[type]) {
+                performance.byQuestionType[type] = { total: 0, correct: 0 };
             }
-            analysis.byQuestionType[type].total++;
-            if (userAnswer.isCorrect) analysis.byQuestionType[type].correct++;
+            performance.byQuestionType[type].total++;
+            if (answer.isCorrect) performance.byQuestionType[type].correct++;
+            
+            // حسب الصعوبة
+            const difficulty = q.difficulty || 'medium';
+            if (!performance.byDifficulty[difficulty]) {
+                performance.byDifficulty[difficulty] = { total: 0, correct: 0 };
+            }
+            performance.byDifficulty[difficulty].total++;
+            if (answer.isCorrect) performance.byDifficulty[difficulty].correct++;
         });
-
-        // تحليل حسب الوقت
-        const times = this.currentExam.userAnswers.map(a => a.timeSpent);
-        analysis.timeAnalysis = {
+        
+        // تحليل الوقت
+        const times = this.userAnswers.map(a => a ? a.timeSpent : 0);
+        performance.timeAnalysis = {
             average: times.reduce((a, b) => a + b, 0) / times.length,
             min: Math.min(...times),
-            max: Math.max(...times)
+            max: Math.max(...times),
+            total: this.timeSpent
         };
-
+        
         // توليد توصيات
-        analysis.recommendations = this.generateRecommendations(analysis);
-
-        return analysis;
+        performance.recommendations = this.generateRecommendations(performance);
+        
+        return performance;
     }
 
-    generateRecommendations(analysis) {
-        const recs = [];
+    generateRecommendations(performance) {
+        const recommendations = [];
         
-        // تحليل نقاط القوة والضعف
-        Object.entries(analysis.byQuestionType).forEach(([type, data]) => {
+        // تحليل نقاط الضعف
+        Object.entries(performance.byQuestionType).forEach(([type, data]) => {
             const accuracy = (data.correct / data.total) * 100;
             if (accuracy < 60) {
-                recs.push(`تحتاج تحسين في أسئلة النوع: ${type} (دقة: ${accuracy.toFixed(1)}%)`);
-            } else if (accuracy > 85) {
-                recs.push(`ممتاز في أسئلة النوع: ${type} (دقة: ${accuracy.toFixed(1)}%)`);
+                recommendations.push(`تحتاج تحسين في أسئلة النوع: ${type} (دقة: ${accuracy.toFixed(1)}%)`);
             }
         });
-
-        // توصيات الوقت
-        if (analysis.timeAnalysis.average > 60000) { // أكثر من دقيقة للسؤال
-            recs.push('تحتاج إلى تحسين سرعة الإجابة');
-        }
-
-        return recs;
-    }
-
-    updateStats(result) {
-        this.stats.totalExams++;
         
-        // تحديث متوسط النقاط
-        this.stats.averageScore = 
-            ((this.stats.averageScore * (this.stats.totalExams - 1)) + result.score) / this.stats.totalExams;
-
-        // تحديث نقاط القوة والضعف
-        result.performance.recommendations.forEach(rec => {
-            if (rec.includes('ممتاز')) {
-                const strength = rec.split('في أسئلة النوع: ')[1];
-                if (strength && !this.stats.strengths.includes(strength)) {
-                    this.stats.strengths.push(strength);
-                }
-            } else if (rec.includes('تحتاج تحسين')) {
-                const weakness = rec.split('في أسئلة النوع: ')[1];
-                if (weakness && !this.stats.weaknesses.includes(weakness)) {
-                    this.stats.weaknesses.push(weakness);
-                }
+        // تحليل الوقت
+        const avgTime = performance.timeAnalysis.average;
+        if (avgTime > 120000) { // أكثر من دقيقتين للسؤال
+            recommendations.push('تحتاج إلى تحسين سرعة الإجابة');
+        }
+        
+        // تحليل الصعوبة
+        Object.entries(performance.byDifficulty).forEach(([difficulty, data]) => {
+            const accuracy = (data.correct / data.total) * 100;
+            if (difficulty === 'hard' && accuracy < 40) {
+                recommendations.push('جرب مستوى صعوبة أقل لبناء الأساسيات');
             }
         });
-
-        this.stats.lastActive = Date.now();
+        
+        return recommendations.slice(0, 3);
     }
 }
 
 // ====================
-// 🎯 معالجات الأوامر الرئيسية
+// 🎯 معالجات الأوامر
 // ====================
 
-// القائمة الرئيسية المحسنة
+// القائمة الرئيسية
 bot.start(async (ctx) => {
     const userId = ctx.from.id;
+    const user = userManager.getOrCreateSession(userId);
     
-    // إنشاء جلسة جديدة للمستخدم
-    if (!userSessions.has(userId)) {
-        userSessions.set(userId, new UserSession(userId));
-    }
+    const welcomeMessage = `🎓 *مرحباً ${ctx.from.first_name}!* 🤖
 
-    const session = userSessions.get(userId);
-    
-    const welcomeMessage = `أهلاً بك ${ctx.from.first_name}! 🎓✨
+*البوت الذكي للامتحانات والتعلم الذاتي*
 
-🤖 **البوت الذكي للامتحانات - النسخة المتقدمة**
+✨ *المميزات المتاحة:*
+• 🧠 تحليل نصوص ذكي متقدم
+• 📝 توليد امتحانات مخصصة
+• 📊 تحليل أداء مفصل
+• 💾 تخزين نتائجك
+• 📈 تتبع تقدمك التعليمي
 
-*مميزات جديدة:*
-• 🧠 ذكاء اصطناعي محسن للتحليل
-• 📊 تخزين كامل في Telegram
-• 🎯 أسئلة ذكية ومتدرجة الصعوبة
-• 📈 تحليل أداء مفصل
-• 💾 حفظ النتائج بشكل دائم
-
-اختر الخدمة التي تريدها:`;
+🎯 *اختر المهمة التي تريدها:*`;
 
     await ctx.reply(welcomeMessage, 
         Markup.inlineKeyboard([
-            [Markup.button.callback('🧠 امتحان ذكي متقدم', 'smart_exam'), Markup.button.callback('📸 تحليل صورة', 'analyze_image')],
-            [Markup.button.callback('📚 امتحان سريع', 'quick_quiz'), Markup.button.callback('📖 تحليل كتاب', 'book_analyzer')],
-            [Markup.button.callback('📊 نتائجي السابقة', 'my_results'), Markup.button.callback('📈 إحصائياتي', 'my_stats')],
-            [Markup.button.callback('⚙️ الإعدادات', 'settings'), Markup.button.callback('ℹ️ المساعدة', 'help')]
+            [Markup.button.callback('🧠 امتحان ذكي', 'smart_exam')],
+            [Markup.button.callback('📸 تحليل صورة', 'analyze_image')],
+            [Markup.button.callback('📊 نتائجي', 'my_results'), Markup.button.callback('📈 إحصائياتي', 'my_stats')],
+            [Markup.button.callback('⚙️ الإعدادات', 'settings'), Markup.button.callback('❓ المساعدة', 'help')]
         ])
     );
 });
@@ -721,108 +1534,100 @@ bot.start(async (ctx) => {
 bot.action('smart_exam', async (ctx) => {
     await ctx.answerCbQuery();
     
-    const session = getOrCreateSession(ctx.from.id);
+    const userId = ctx.from.id;
+    const user = userManager.getOrCreateSession(userId);
     
-    await ctx.reply(`🧠 **الامتحان الذكي المتقدم**\n\n` +
-                   `📝 أرسل لي:\n` +
-                   `• نصاً طويلاً (أكثر من 200 حرف)\n` +
-                   `• صورة تحتوي على نص\n` +
-                   `• ملف نصي (.txt)\n\n` +
-                   `✨ سأقوم بـ:\n` +
-                   `1. تحليل النص باستخدام الذكاء الاصطناعي\n` +
-                   `2. تحديد المفاهيم الرئيسية\n` +
-                   `3. إنشاء أسئلة ذكية تتناسب مع مستواك\n` +
-                   `4. حفظ النتائج في سجلك الشخصي\n\n` +
-                   `⚙️ الإعدادات الحالية:\n` +
-                   `• الصعوبة: ${getDifficultyName(session.preferences.difficulty)}\n` +
-                   `• عدد الأسئلة: ${session.preferences.questionCount}\n` +
-                   `• اللغة: ${session.preferences.language === 'ar' ? 'العربية' : 'الإنجليزية'}`);
+    const examOptions = `
+🧠 *الامتحان الذكي*
+
+أرسل لي:
+• 📝 نصاً دراسياً
+• 📸 صورة تحتوي على نص
+• 📄 ملف نصي
+
+⚙️ *الإعدادات الحالية:*
+• 📊 الصعوبة: ${user.preferences.difficulty}
+• 🔢 عدد الأسئلة: ${user.preferences.questionCount}
+• 🌐 اللغة: ${user.preferences.language === 'ar' ? 'العربية' : 'الإنجليزية'}
+
+💡 *نصائح:*
+• النص الأفضل يحتوي على 200-5000 كلمة
+• يمكنك إرسال فصول كاملة من الكتب
+• الصور يجب أن تكون واضحة وذات إضاءة جيدة
+`;
+
+    await ctx.reply(examOptions);
 });
 
-// معالجة النصوص الطويلة
+// معالجة النصوص
 bot.on('text', async (ctx) => {
     const text = ctx.message.text.trim();
     const userId = ctx.from.id;
-    const session = getOrCreateSession(userId);
-
+    
     // الأوامر الخاصة
-    if (text === 'تصحيح') {
-        return await finishCurrentExam(ctx, session);
+    const commands = {
+        'تصحيح': finishExam,
+        'توقف': cancelExam,
+        'مساعدة': showHelp,
+        'نتائجي': showResults,
+        'إحصائياتي': showStats,
+        'الإعدادات': showSettings,
+        'تقدمي': showProgress
+    };
+    
+    if (commands[text]) {
+        return await commands[text](ctx, userId);
     }
     
-    if (text === 'توقف') {
-        return await cancelCurrentExam(ctx, session);
-    }
-    
-    if (text === 'مساعدة' || text === 'help') {
-        return await showHelp(ctx);
-    }
-    
-    if (text === 'نتائجي') {
-        return await showMyResults(ctx, session);
-    }
-    
-    if (text === 'إحصائياتي') {
-        return await showMyStats(ctx, session);
-    }
-
-    // إذا كان النص قصيراً جداً
+    // إذا كان النص قصيراً
     if (text.length < 50) {
         return ctx.reply('📝 النص قصير جداً. أرسل نصاً أطول (أكثر من 50 حرفاً) لإنشاء امتحان ذكي منه.');
     }
-
-    // بدء امتحان ذكي
-    await startSmartExam(ctx, session, text);
+    
+    // بدء عملية إنشاء الامتحان
+    await startExamCreation(ctx, userId, text);
 });
 
-// معالجة الصور (OCR محسن)
+// معالجة الصور (OCR)
 bot.on('photo', async (ctx) => {
     const userId = ctx.from.id;
-    const session = getOrCreateSession(userId);
-    
-    const waitMsg = await ctx.reply('🔍 جاري تحليل الصورة باستخدام الذكاء الاصطناعي...');
+    const waitMsg = await ctx.reply('🔍 جاري تحليل الصورة واستخراج النص...');
     
     try {
         const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
         const fileLink = await ctx.telegram.getFileLink(fileId);
         
-        // استخدام Tesseract مع إعدادات محسنة للعربية
+        // استخدام Tesseract للتعرف على النص
         const { data: { text } } = await Tesseract.recognize(
             fileLink.href,
             'ara+eng',
             {
                 logger: m => console.log(m),
-                tessedit_pageseg_mode: '6', // نمط التعرف على الصفحة
+                tessedit_pageseg_mode: '6',
                 preserve_interword_spaces: '1',
-                user_defined_dpi: '300'
+                user_defined_dpi: '300',
+                tessedit_char_whitelist: '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZاأبتثجحخدذرزسشصضطظعغفقكلمنهويىءآأؤإئ.,;:!?()[]{}"\''
             }
         );
         
         await ctx.deleteMessage(waitMsg.message_id);
         
         if (!text || text.trim().length < 30) {
-            return ctx.reply('❌ لم أستطع استخراج نص كافٍ من الصورة.\n' +
-                           'تأكد من:\n' +
-                           '• وضوح النص في الصورة\n' +
-                           '• إضاءة كافية\n' +
-                           '• اتجاه الكتابة صحيح\n' +
-                           '• حجم خط مناسب');
+            return ctx.reply('❌ لم أستطع استخراج نص كافٍ من الصورة.\nتأكد من:\n• وضوح النص\n• إضاءة كافية\n• اتجاه الكتابة الصحيح');
         }
         
-        // تنظيف النص المستخرج
-        const cleanedText = cleanOCRText(text);
+        // تنظيف النص
+        const cleanedText = cleanExtractedText(text);
         
-        await ctx.reply(`✅ تم استخراج ${cleanedText.length} حرفاً من الصورة.\n` +
-                       `📊 جودة الاستخراج: ${assessOCRQuality(cleanedText)}/10\n\n` +
-                       `💡 *نصيحة:* تأكد من دقة النص المستخرج قبل المتابعة.`);
+        await ctx.reply(`✅ تم استخراج ${cleanedText.length} حرفاً.\n💡 النص المستخرج:\n\n${cleanedText.substring(0, 300)}...`);
         
-        // بدء الامتحان بالنص المستخرج
-        await startSmartExam(ctx, session, cleanedText, true);
+        // بدء إنشاء الامتحان
+        await startExamCreation(ctx, userId, cleanedText, true);
         
     } catch (error) {
         await ctx.deleteMessage(waitMsg.message_id);
         console.error('OCR Error:', error);
-        await ctx.reply('❌ حدث خطأ في تحليل الصورة. حاول مرة أخرى أو أرسل نصاً مباشرة.');
+        await ctx.reply('❌ حدث خطأ في تحليل الصورة. حاول مرة أخرى أو أرسل النص مباشرة.');
     }
 });
 
@@ -832,30 +1637,30 @@ bot.on('document', async (ctx) => {
     const mimeType = document.mime_type;
     const fileName = document.file_name || '';
     
-    // دعم ملفات نصية فقط حالياً
+    // دعم الملفات النصية
     if (mimeType === 'text/plain' || fileName.endsWith('.txt')) {
-        const waitMsg = await ctx.reply('📄 جاري قراءة الملف النصي...');
+        const waitMsg = await ctx.reply('📄 جاري قراءة الملف...');
         
         try {
             const fileLink = await ctx.telegram.getFileLink(document.file_id);
-            const response = await axios.get(fileLink.href);
+            const response = await axios.get(fileLink.href, { responseType: 'text' });
             const text = response.data;
             
             await ctx.deleteMessage(waitMsg.message_id);
             
             if (text.length < 100) {
-                return ctx.reply('❌ الملف النصي قصير جداً. أرسل ملفاً يحتوي على نص أكثر');
+                return ctx.reply('❌ الملف النصي قصير جداً. أرسل ملفاً يحتوي على نص أكثر.');
             }
             
-            const session = getOrCreateSession(ctx.from.id);
-            await startSmartExam(ctx, session, text, false, 'ملف نصي');
+            await ctx.reply(`✅ تم قراءة ${text.length} حرفاً من الملف.`);
+            await startExamCreation(ctx, ctx.from.id, text, false, 'ملف نصي');
             
         } catch (error) {
             await ctx.deleteMessage(waitMsg.message_id);
-            await ctx.reply('❌ حدث خطأ في قراءة الملف النصي');
+            await ctx.reply('❌ حدث خطأ في قراءة الملف النصي.');
         }
     } else {
-        await ctx.reply('⚠️ أدعم فقط الملفات النصية (.txt) حالياً');
+        await ctx.reply('⚠️ أدعم فقط الملفات النصية (.txt) حالياً.');
     }
 });
 
@@ -863,279 +1668,263 @@ bot.on('document', async (ctx) => {
 // 🛠️ الوظائف المساعدة
 // ====================
 
-function getOrCreateSession(userId) {
-    if (!userSessions.has(userId)) {
-        userSessions.set(userId, new UserSession(userId));
-    }
-    return userSessions.get(userId);
-}
-
-async function startSmartExam(ctx, session, text, fromImage = false, sourceType = 'نص') {
-    const waitMsg = await ctx.reply('🧠 جاري التحليل الذكي للنص وإنشاء امتحان مخصص...\n\n' +
-                                   '⏳ قد يستغرق هذا بضع لحظات');
+async function startExamCreation(ctx, userId, text, fromImage = false, sourceType = 'نص') {
+    const waitMsg = await ctx.reply('🧠 جاري تحليل النص وإنشاء امتحان مخصص...\n⏳ قد يستغرق بضع لحظات');
     
     try {
-        const exam = await session.startNewExam(text, fromImage ? 'صورة' : sourceType);
+        const user = userManager.getOrCreateSession(userId);
+        
+        // تحليل النص
+        const analysis = await textAnalyzer.analyzeText(text, userId);
+        
+        // حفظ التحليل
+        await storage.storeData(userId, 'text_analysis', {
+            textPreview: text.substring(0, 200) + '...',
+            analysis: analysis,
+            source: sourceType,
+            timestamp: Date.now()
+        });
+        
+        // توليد الامتحان
+        const examData = await examGenerator.generateExam(text, userId, {
+            difficulty: user.preferences.difficulty,
+            count: user.preferences.questionCount,
+            types: user.preferences.questionTypes
+        });
         
         await ctx.deleteMessage(waitMsg.message_id);
         
         // عرض ملخص التحليل
-        const analysis = exam.metadata.analysis;
-        const summary = await generateAnalysisSummary(analysis);
+        await showAnalysisSummary(ctx, analysis);
         
-        await ctx.reply(summary);
+        // إنشاء امتحان نشط
+        const activeExam = new ActiveExam(userId, examData);
+        activeExams.set(`${userId}_${activeExam.examId}`, activeExam);
         
-        // إرسال الأسئلة
-        await sendQuestions(ctx, exam.questions, session);
+        // بدء الامتحان
+        await startExam(ctx, userId, activeExam);
         
     } catch (error) {
         await ctx.deleteMessage(waitMsg.message_id);
-        console.error('Exam generation error:', error);
+        console.error('Exam creation error:', error);
         await ctx.reply('❌ حدث خطأ في إنشاء الامتحان. حاول مرة أخرى.');
     }
 }
 
-async function sendQuestions(ctx, questions, session) {
-    const batchSize = 3; // إرسال 3 أسئلة في كل مرة
+async function showAnalysisSummary(ctx, analysis) {
+    const summary = `
+📊 *ملخص التحليل الذكي*
+
+📝 *المعلومات الأساسية:*
+• عدد الكلمات: ${analysis.metadata.wordCount}
+• عدد الجمل: ${analysis.metadata.sentenceCount}
+• وقت القراءة: ${analysis.metadata.readingTime} دقيقة
+• اللغة: ${analysis.metadata.language === 'arabic' ? 'العربية' : 'الإنجليزية'}
+
+🔑 *الكلمات المفتاحية الرئيسية:*
+${analysis.content.keywords.slice(0, 5).map((kw, i) => `${i+1}. ${kw.word} (${kw.importance.toFixed(1)}/10)`).join('\n')}
+
+📚 *الموضوعات الرئيسية:*
+${analysis.content.topics.slice(0, 3).map((t, i) => `${i+1}. ${t.name}`).join('\n')}
+
+🎯 *مستوى الصعوبة:*
+• ${analysis.educational.difficulty.level}
+• ${analysis.educational.difficulty.description}
+
+💡 *نصيحة:*
+${analysis.recommendations && analysis.recommendations.length > 0 ? analysis.recommendations[0] : 'استعد للامتحان!'}
+`;
     
-    for (let i = 0; i < questions.length; i += batchSize) {
-        const batch = questions.slice(i, i + batchSize);
-        
-        for (let j = 0; j < batch.length; j++) {
-            const question = batch[j];
-            const questionNum = i + j + 1;
-            
-            await sendQuestionWithOptions(ctx, question, questionNum, session);
-            
-            // تأخير بين الأسئلة
-            if (j < batch.length - 1) {
-                await sleep(1500);
-            }
-        }
-        
-        // تأخير بين الدفعات
-        if (i + batchSize < questions.length) {
-            await ctx.reply('⏸️ انتقل للأسئلة التالية...');
-            await sleep(2000);
-        }
-    }
-    
-    // إضافة أزرار التحكم النهائية
-    await ctx.reply('🎯 **انتهت جميع الأسئلة**\n\n' +
-                   'اختر الإجراء التالي:',
-        Markup.inlineKeyboard([
-            [Markup.button.callback('📊 تصحيح النتائج', 'correct_exam'), Markup.button.callback('💾 حفظ النتائج', 'save_results')],
-            [Markup.button.callback('🔄 امتحان جديد', 'new_exam'), Markup.button.callback('📤 تصدير النتائج', 'export_results')]
-        ])
-    );
+    await ctx.reply(summary);
 }
 
-async function sendQuestionWithOptions(ctx, question, number, session) {
-    let message = `**السؤال ${number}: ${getQuestionTypeName(question.type)}**\n\n`;
-    message += `${question.text}\n`;
+async function startExam(ctx, userId, activeExam) {
+    const exam = activeExam;
+    
+    // إرسال تعليمات البدء
+    await ctx.reply(`
+🎯 *بدء الامتحان*
+
+${exam.metadata.instructions.general}
+
+${exam.metadata.instructions.tips.map(tip => `• ${tip}`).join('\n')}
+
+السؤال 1 من ${exam.questions.length}
+    `);
+    
+    // إرسال السؤال الأول
+    await sendQuestion(ctx, exam, 0);
+}
+
+async function sendQuestion(ctx, exam, questionIndex) {
+    const question = exam.questions[questionIndex];
+    const questionNumber = questionIndex + 1;
+    
+    let message = `*السؤال ${questionNumber}:* ${question.text}\n\n`;
     
     if (question.options && question.options.length > 0) {
         question.options.forEach((option, index) => {
             const letter = String.fromCharCode(65 + index);
-            message += `\n${letter}) ${option}`;
+            message += `${letter}) ${option}\n`;
         });
-    }
-    
-    // إضافة تلميحات إذا كانت مفعلة في الإعدادات
-    if (session.preferences.showHints && question.hint) {
-        message += `\n\n💡 *تلميح:* ${question.hint}`;
-    }
-    
-    // إضافة الوقت المقترح
-    const timeSuggestions = {
-        easy: '30-60 ثانية',
-        medium: '1-2 دقيقة',
-        hard: '2-3 دقائق',
-        expert: '3-5 دقائق'
-    };
-    
-    message += `\n\n⏱️ *الوقت المقترح:* ${timeSuggestions[question.difficulty] || '1-2 دقيقة'}`;
-    
-    // إضافة أزرار للاختيار من متعدد
-    if (question.type.includes('mcq')) {
+        
+        // إضافة أزرار الاختيار
         const buttons = question.options.map((option, index) => {
             const letter = String.fromCharCode(65 + index);
-            return [Markup.button.callback(`${letter}`, `answer_${number}_${index}`)];
+            return [Markup.button.callback(`اختر ${letter}`, `answer_${exam.examId}_${questionIndex}_${index}`)];
         });
         
         await ctx.reply(message, Markup.inlineKeyboard(buttons));
     } else {
-        await ctx.reply(message + '\n\n✍️ *أرسل إجابتك في رسالة نصية*');
+        message += "✍️ *أرسل إجابتك في رسالة نصية*";
+        await ctx.reply(message);
     }
 }
 
-// معالجة الإجابات التفاعلية
-bot.action(/answer_(\d+)_(\d+)/, async (ctx) => {
+// معالجة إجابات الاختيار من متعدد
+bot.action(/answer_(.+)_(\d+)_(\d+)/, async (ctx) => {
+    const [, examId, questionIndexStr, answerIndexStr] = ctx.match;
+    const questionIndex = parseInt(questionIndexStr);
+    const answerIndex = parseInt(answerIndexStr);
     const userId = ctx.from.id;
-    const session = userSessions.get(userId);
+    const examKey = `${userId}_${examId}`;
     
-    if (!session || !session.currentExam || session.currentExam.status !== 'active') {
-        return ctx.answerCbQuery('❌ لا يوجد امتحان نشط!', { show_alert: true });
+    if (!activeExams.has(examKey)) {
+        return ctx.answerCbQuery('❌ هذا الامتحان لم يعد نشطاً.', { show_alert: true });
     }
     
-    const questionNum = parseInt(ctx.match[1]) - 1;
-    const answerIndex = parseInt(ctx.match[2]);
+    const exam = activeExams.get(examKey);
+    const question = exam.questions[questionIndex];
     
-    try {
-        const result = session.submitAnswer(questionNum, answerIndex);
-        
-        const response = result.isCorrect 
-            ? `✅ ${getRandomPraise()}`
-            : `❌ ليس صحيحاً. ${result.explanation ? `\n📚 ${result.explanation}` : ''}`;
-        
-        await ctx.answerCbQuery(response, { show_alert: true });
-        
-        // تحديث التقدم
-        await updateProgressMessage(ctx, session, questionNum + 1);
-        
-    } catch (error) {
-        await ctx.answerCbQuery('❌ حدث خطأ في معالجة الإجابة', { show_alert: true });
+    if (!question.options) {
+        return ctx.answerCbQuery('❌ هذا السؤال ليس من نوع الاختيار من متعدد.', { show_alert: true });
+    }
+    
+    const answerText = question.options[answerIndex];
+    const result = exam.submitAnswer(answerText, questionIndex);
+    
+    let response;
+    if (result.isCorrect) {
+        response = `✅ ${getRandomPraise()}`;
+    } else {
+        response = `❌ إجابة غير صحيحة.\n`;
+        if (question.explanation) {
+            response += `\n💡 ${question.explanation}`;
+        }
+    }
+    
+    await ctx.answerCbQuery(response, { show_alert: true });
+    
+    // التحقق إذا كان هناك المزيد من الأسئلة
+    if (result.nextQuestion) {
+        await sendQuestion(ctx, exam, exam.currentQuestion);
+    } else {
+        // انتهاء الامتحان
+        await finishExamAutomatically(ctx, userId, exam);
     }
 });
 
 // معالجة الإجابات النصية
 bot.on('message', async (ctx) => {
-    // تجنب معالجة رسائل الأوامر مرة أخرى
-    if (ctx.message.text && ['تصحيح', 'توقف', 'مساعدة', 'نتائجي', 'إحصائياتي'].includes(ctx.message.text)) {
+    if (!ctx.message.text) return;
+    
+    const userId = ctx.from.id;
+    const text = ctx.message.text.trim();
+    
+    // تجنب معالجة الأوامر مرة أخرى
+    if (['تصحيح', 'توقف', 'مساعدة', 'نتائجي', 'إحصائياتي', 'الإعدادات', 'تقدمي'].includes(text)) {
         return;
     }
     
-    // إذا كانت رسالة نصية عادية وكان هناك امتحان نشط
-    const userId = ctx.from.id;
-    const session = userSessions.get(userId);
+    // البحث عن امتحان نشط للمستخدم
+    let activeExam = null;
+    let examKey = null;
     
-    if (session && session.currentExam && session.currentExam.status === 'active' && ctx.message.text) {
-        // افترض أنها إجابة على السؤال الحالي
-        const currentQuestionIndex = session.currentExam.userAnswers.length;
-        
-        if (currentQuestionIndex < session.currentExam.questions.length) {
-            const result = session.submitAnswer(currentQuestionIndex, ctx.message.text);
-            
-            const response = result.isCorrect 
-                ? `✅ ${getRandomPraise()}`
-                : `❌ ليس صحيحاً تماماً.\nالإجابة الدقيقة: ${result.correctAnswer}\n${result.explanation ? `\n📚 ${result.explanation}` : ''}`;
-            
-            await ctx.reply(response);
-            
-            // تحديث التقدم
-            await updateProgressMessage(ctx, session, currentQuestionIndex + 1);
+    for (const [key, exam] of activeExams.entries()) {
+        if (key.startsWith(userId.toString()) && exam.status === 'active') {
+            activeExam = exam;
+            examKey = key;
+            break;
         }
+    }
+    
+    if (!activeExam) return;
+    
+    const questionIndex = activeExam.currentQuestion;
+    const result = activeExam.submitAnswer(text, questionIndex);
+    
+    if (result.isCorrect) {
+        await ctx.reply(`✅ ${getRandomPraise()}`);
+    } else {
+        await ctx.reply(`❌ إجابة غير صحيحة.\nالإجابة الصحيحة: ${result.correctAnswer}`);
+    }
+    
+    // التحقق إذا كان هناك المزيد من الأسئلة
+    if (result.nextQuestion) {
+        await sendQuestion(ctx, activeExam, activeExam.currentQuestion);
+    } else {
+        // انتهاء الامتحان
+        await finishExamAutomatically(ctx, userId, activeExam);
+        activeExams.delete(examKey);
     }
 });
 
-async function updateProgressMessage(ctx, session, currentQuestion) {
-    const totalQuestions = session.currentExam.questions.length;
-    const progress = Math.round((currentQuestion / totalQuestions) * 100);
+async function finishExamAutomatically(ctx, userId, exam) {
+    const result = exam.finish();
     
-    // إنشاء شريط التقدم
-    const progressBar = createProgressBar(progress, 20);
+    // تحديث إحصائيات المستخدم
+    userManager.updateStats(userId, result);
     
-    const progressMsg = `📊 **تقدم الامتحان**\n\n` +
-                       `${progressBar} ${progress}%\n\n` +
-                       `✅ ${currentQuestion}/${totalQuestions} أسئلة\n` +
-                       `⏱️ ${Math.round((Date.now() - session.currentExam.startTime) / 60000)} دقيقة`;
+    // حفظ النتيجة
+    await storage.storeData(userId, 'exam_result', result);
     
-    // إرسال تحديث التقدم كل 3 أسئلة
-    if (currentQuestion % 3 === 0 || currentQuestion === totalQuestions) {
-        await ctx.reply(progressMsg);
-    }
+    // عرض النتائج
+    await showExamResults(ctx, result);
 }
 
-async function finishCurrentExam(ctx, session) {
-    if (!session.currentExam || session.currentExam.status !== 'active') {
-        return ctx.reply('❌ لا يوجد امتحان نشط لتصحيحه');
-    }
-    
-    const waitMsg = await ctx.reply('📊 جاري تصحيح الإجابات وتحليل النتائج...');
-    
-    try {
-        const result = await session.finishExam();
-        
-        await ctx.deleteMessage(waitMsg.message_id);
-        
-        // عرض النتائج التفصيلية
-        await showDetailedResults(ctx, result);
-        
-    } catch (error) {
-        await ctx.deleteMessage(waitMsg.message_id);
-        await ctx.reply('❌ حدث خطأ في تصحيح الامتحان');
-    }
-}
+async function showExamResults(ctx, result) {
+    const report = `
+📊 *نتيجة الامتحان*
 
-async function showDetailedResults(ctx, result) {
-    const { result: examResult, exam } = result;
+🎯 *الدرجة:* ${result.score}%
+✅ *الإجابات الصحيحة:* ${result.correctAnswers}/${result.totalQuestions}
+⏱️ *الوقت المستغرق:* ${Math.round(result.timeSpent / 60000)} دقيقة
+📅 *التاريخ:* ${new Date(result.timestamp).toLocaleString('ar-EG')}
+
+🏆 *التقييم:* ${getAssessment(result.score)}
+
+🔍 *تحليل الأداء:*
+${Object.entries(result.performance.byQuestionType || {}).map(([type, data]) => {
+    const accuracy = data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0;
+    return `• ${type}: ${data.correct}/${data.total} (${accuracy}%)`;
+}).join('\n')}
+
+💡 *توصيات:*
+${result.performance.recommendations && result.performance.recommendations.length > 0 
+    ? result.performance.recommendations.map((rec, i) => `${i+1}. ${rec}`).join('\n')
+    : 'أحسنت! أداء ممتاز.'}
+`;
     
-    // التقرير الرئيسي
-    const mainReport = `📈 **تقرير الامتحان التفصيلي**\n\n` +
-                      `🎯 **النتيجة:** ${examResult.score}%\n` +
-                      `✅ **الإجابات الصحيحة:** ${examResult.correctAnswers}/${examResult.totalQuestions}\n` +
-                      `⏱️ **الوقت المستغرق:** ${Math.round(examResult.timeSpent / 60000)} دقيقة\n` +
-                      `📅 **التاريخ:** ${new Date(examResult.timestamp).toLocaleString('ar-EG')}\n\n` +
-                      `🏆 **التقييم:** ${getAssessment(examResult.score)}\n\n` +
-                      `📊 **تحليل الأداء:**`;
-    
-    await ctx.reply(mainReport);
-    
-    // تحليل حسب نوع السؤال
-    let typeAnalysis = `🔍 **التحليل حسب نوع السؤال:**\n\n`;
-    Object.entries(examResult.performance.byQuestionType).forEach(([type, data]) => {
-        const accuracy = data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0;
-        typeAnalysis += `• ${getQuestionTypeName(type)}: ${data.correct}/${data.total} (${accuracy}%)\n`;
-    });
-    
-    await ctx.reply(typeAnalysis);
-    
-    // التوصيات
-    if (examResult.performance.recommendations.length > 0) {
-        let recommendations = `💡 **توصيات للتحسين:**\n\n`;
-        examResult.performance.recommendations.forEach((rec, index) => {
-            recommendations += `${index + 1}. ${rec}\n`;
-        });
-        
-        await ctx.reply(recommendations);
-    }
-    
-    // الإجابات الصحيحة
-    let correctAnswers = `📋 **الإجابات الصحيحة:**\n\n`;
-    exam.questions.forEach((q, index) => {
-        const userAnswer = examResult.details[index];
-        correctAnswers += `${index + 1}. ${q.text}\n`;
-        correctAnswers += `   ✅ ${q.correctAnswer || q.options?.[q.correctIndex]}\n`;
-        if (userAnswer) {
-            correctAnswers += `   ${userAnswer.isCorrect ? '✔️' : '❌'} إجابتك: ${userAnswer.userAnswer}\n`;
-        }
-        correctAnswers += '\n';
-    });
-    
-    // تقسيم الرسالة إذا كانت طويلة
-    const chunks = splitMessage(correctAnswers, 4000);
-    for (const chunk of chunks) {
-        await ctx.reply(chunk);
-    }
+    await ctx.reply(report);
     
     // خيارات متابعة
-    await ctx.reply('🎯 **اختر الإجراء التالي:**',
+    await ctx.reply('🎯 *اختر الإجراء التالي:*',
         Markup.inlineKeyboard([
-            [Markup.button.callback('💾 حفظ في سجلي', 'save_to_profile'), Markup.button.callback('📤 مشاركة النتائج', 'share_results')],
-            [Markup.button.callback('🔄 امتحان جديد', 'new_exam_after_result'), Markup.button.callback('📊 المزيد من التحليل', 'more_analysis')]
+            [Markup.button.callback('💾 حفظ النتائج', 'save_results'), Markup.button.callback('🔄 امتحان جديد', 'new_exam')],
+            [Markup.button.callback('📊 تحليل مفصل', 'detailed_analysis'), Markup.button.callback('📤 مشاركة', 'share_results')]
         ])
     );
 }
 
 // ====================
-// 📊 وظائف العرض والتخزين
+// 📊 وظائف العرض
 // ====================
 
-async function showMyResults(ctx, session) {
-    const waitMsg = await ctx.reply('🔍 جاري استرجاع نتائجك السابقة...');
+async function showResults(ctx, userId) {
+    const waitMsg = await ctx.reply('🔍 جاري استرجاع نتائجك...');
     
     try {
-        const results = await storage.retrieveData(session.userId, 'exam_result', 10);
+        const results = await storage.retrieveData(userId, 'exam_result', 5);
         
         await ctx.deleteMessage(waitMsg.message_id);
         
@@ -1143,304 +1932,226 @@ async function showMyResults(ctx, session) {
             return ctx.reply('📭 لا توجد نتائج سابقة مسجلة لك.\nابدأ بأول امتحان الآن!');
         }
         
-        let historyMessage = `📚 **سجل امتحاناتك**\n\n`;
+        let historyMessage = `📚 *سجل امتحاناتك*\n\n`;
         
         results.data.forEach((result, index) => {
             const data = result.data;
             const date = new Date(data.timestamp).toLocaleDateString('ar-EG');
-            const time = new Date(data.timestamp).toLocaleTimeString('ar-EG');
+            const time = new Date(data.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
             
-            historyMessage += `**${index + 1}. الامتحان ${result.dataId.split('_').pop().slice(-6)}**\n`;
+            historyMessage += `*${index + 1}. الامتحان ${data.examId ? data.examId.slice(-6) : ''}*\n`;
             historyMessage += `   📅 ${date} - ⏰ ${time}\n`;
             historyMessage += `   🎯 ${data.score}% (${data.correctAnswers}/${data.totalQuestions})\n`;
             historyMessage += `   ⏱️ ${Math.round(data.timeSpent / 60000)} دقيقة\n`;
             historyMessage += `   🏆 ${getAssessment(data.score)}\n\n`;
         });
         
-        // إضافة الإحصائيات
-        const stats = session.stats;
-        historyMessage += `📊 **إحصائيات عامة:**\n`;
-        historyMessage += `   • إجمالي الامتحانات: ${stats.totalExams}\n`;
-        historyMessage += `   • المتوسط العام: ${stats.averageScore.toFixed(1)}%\n`;
-        historyMessage += `   • آخر نشاط: ${new Date(stats.lastActive).toLocaleString('ar-EG')}\n`;
-        
-        if (stats.strengths.length > 0) {
-            historyMessage += `   • نقاط القوة: ${stats.strengths.join(', ')}\n`;
-        }
-        
-        if (stats.weaknesses.length > 0) {
-            historyMessage += `   • نقاط الضعف: ${stats.weaknesses.join(', ')}\n`;
-        }
-        
         await ctx.reply(historyMessage);
-        
-        // عرض رسم بياني مبسط للإنجاز
-        const achievements = generateAchievementsChart(results.data);
-        if (achievements) {
-            await ctx.reply(achievements);
-        }
         
     } catch (error) {
         await ctx.deleteMessage(waitMsg.message_id);
-        console.error('Error retrieving results:', error);
-        await ctx.reply('❌ حدث خطأ في استرجاع النتائج');
+        await ctx.reply('❌ حدث خطأ في استرجاع النتائج.');
     }
 }
 
-async function showMyStats(ctx, session) {
-    const stats = session.stats;
+async function showStats(ctx, userId) {
+    const user = userManager.getOrCreateSession(userId);
+    const progress = userManager.getProgressReport(userId);
     
-    let statsMessage = `📈 **إحصائياتك الشخصية**\n\n`;
-    
-    statsMessage += `👤 **المعلومات العامة:**\n`;
-    statsMessage += `   • إجمالي الامتحانات: ${stats.totalExams}\n`;
-    statsMessage += `   • المتوسط العام: ${stats.averageScore.toFixed(1)}%\n`;
-    statsMessage += `   • آخر نشاط: ${timeAgo(stats.lastActive)}\n\n`;
-    
-    if (stats.strengths.length > 0) {
-        statsMessage += `💪 **نقاط قوتك:**\n`;
-        stats.strengths.forEach((strength, index) => {
-            statsMessage += `   ${index + 1}. ${strength}\n`;
-        });
-        statsMessage += `\n`;
-    }
-    
-    if (stats.weaknesses.length > 0) {
-        statsMessage += `🔧 **مجالات التحسين:**\n`;
-        stats.weaknesses.forEach((weakness, index) => {
-            statsMessage += `   ${index + 1}. ${weakness}\n`;
-        });
-        statsMessage += `\n`;
-    }
-    
-    // تقدم التعلم
-    statsMessage += `🚀 **تقدم التعلم:**\n`;
-    const progressLevel = Math.min(Math.floor(stats.totalExams / 5), 10);
-    statsMessage += `   • مستوى التقدم: ${progressLevel}/10\n`;
-    statsMessage += `   • ${getProgressMessage(progressLevel)}\n`;
-    
-    // الأهداف المقترحة
-    statsMessage += `\n🎯 **الأهداف المقترحة:**\n`;
-    const suggestedGoals = suggestGoals(stats);
-    suggestedGoals.forEach((goal, index) => {
-        statsMessage += `   ${index + 1}. ${goal}\n`;
-    });
+    const statsMessage = `
+📈 *إحصائياتك الشخصية*
+
+👤 *المعلومات العامة:*
+• 🎓 المستوى: ${progress.level}
+• ⭐ النقاط: ${progress.xp} XP
+• 📊 الامتحانات: ${progress.totalExams}
+• 🎯 المتوسط: ${progress.averageScore}%
+• 🎯 الدقة: ${progress.accuracy}%
+• ⚡ التتابع: ${progress.streak}
+• ⏱️ الوقت الكلي: ${progress.totalTime}
+
+💪 *نقاط قوتك:*
+${progress.strengths.length > 0 
+    ? progress.strengths.map((s, i) => `${i+1}. ${s}`).join('\n')
+    : 'لم يتم تحديد نقاط قوة بعد'}
+
+🔧 *مجالات التحسين:*
+${progress.weaknesses.length > 0 
+    ? progress.weaknesses.map((w, i) => `${i+1}. ${w}`).join('\n')
+    : 'لا توجد مجالات تحسين حالياً'}
+
+💡 *توصيات:*
+${progress.recommendations.map((rec, i) => `${i+1}. ${rec.message}`).join('\n')}
+`;
     
     await ctx.reply(statsMessage);
-    
-    // إضافة زر لتفاصيل أكثر
-    await ctx.reply('📊 **لمزيد من التفاصيل:**',
-        Markup.inlineKeyboard([
-            [Markup.button.callback('📈 رسم بياني للتقدم', 'progress_chart'), Markup.button.callback('🏆 إنجازاتي', 'my_achievements')],
-            [Markup.button.callback('🎯 وضع أهداف جديدة', 'set_goals'), Markup.button.callback('🔄 تحديث الإحصائيات', 'refresh_stats')]
-        ])
-    );
 }
 
 // ====================
-// 🎨 وظائف مساعدة إضافية
+// 🎨 وظائف مساعدة
 // ====================
 
-function getDifficultyName(level) {
-    const names = {
-        easy: '🔰 مبتدئ',
-        medium: '⭐ متوسط',
-        hard: '🔥 متقدم',
-        expert: '👨‍🏫 خبير',
-        auto: '🎯 تلقائي'
-    };
-    return names[level] || '⭐ متوسط';
-}
-
-function getQuestionTypeName(type) {
-    const names = {
-        'mcq_basic': 'اختيار من متعدد (مبتدئ)',
-        'mcq_advanced': 'اختيار من متعدد (متقدم)',
-        'true_false': 'صح أم خطأ',
-        'fill_blank': 'ملء الفراغ',
-        'definition': 'تعريف',
-        'explanation': 'شرح',
-        'comparison': 'مقارنة',
-        'essay': 'مقال',
-        'analysis': 'تحليل',
-        'critical_thinking': 'تفكير نقدي'
-    };
-    return names[type] || type;
-}
-
-function getRandomPraise() {
-    const praises = [
-        "إجابة ممتازة! 👏",
-        "دقة عالية في التفكير! 💎",
-        "أحسنت! هذا صحيح تماماً 🎯",
-        "إجابة ذكية ومبتكرة! 🧠",
-        "رائع! لقد فهمت الفكرة تماماً 🌟",
-        "إجابة شاملة ومتكاملة! 📚",
-        "برافو! هذه الإجابة تستحق التقدير 🏆",
-        "إجابة مدروسة بعناية! 💡",
-        "ممتاز! لقد تجاوزت التوقعات 🚀",
-        "إجابة دقيقة ومفصلة! ✅"
-    ];
-    return praises[Math.floor(Math.random() * praises.length)];
-}
-
-function getAssessment(score) {
-    if (score >= 95) return "متميز 🏆 (مستوى خبير)";
-    if (score >= 85) return "ممتاز ⭐⭐⭐⭐ (مستوى متقدم)";
-    if (score >= 75) return "جيد جداً ⭐⭐⭐ (مستوى فوق المتوسط)";
-    if (score >= 65) return "جيد ⭐⭐ (مستوى متوسط)";
-    if (score >= 50) return "مقبول ⭐ (يحتاج تحسين)";
-    return "ضعيف ⚠️ (يحتاج مراجعة شاملة)";
-}
-
-function cleanOCRText(text) {
-    // تنظيف النص المستخرج من OCR
+function cleanExtractedText(text) {
     return text
         .replace(/\s+/g, ' ')
         .replace(/[|]/g, 'I')
         .replace(/[l]/g, 'I')
         .replace(/([a-z])([A-Z])/g, '$1 $2')
-        .replace(/[^\u0600-\u06FF\u0750-\u077Fa-zA-Z0-9\s.,!?،؛:()-]/g, '')
+        .replace(/[^\u0600-\u06FF\u0750-\u077Fa-zA-Z0-9\s.,!?،؛:()\-]/g, '')
+        .replace(/\n\s*\n/g, '\n\n')
         .trim();
 }
 
-function assessOCRQuality(text) {
-    // تقييم جودة النص المستخرج
-    const lines = text.split('\n');
-    const avgLineLength = lines.reduce((sum, line) => sum + line.length, 0) / lines.length;
-    const wordCount = text.split(/\s+/).length;
-    
-    let score = 5;
-    
-    if (avgLineLength > 20 && avgLineLength < 80) score += 2;
-    if (wordCount > 50) score += 2;
-    
-    // نسبة الحروف العربية
-    const arabicChars = (text.match(/[\u0600-\u06FF]/g) || []).length;
-    const arabicRatio = arabicChars / text.length;
-    if (arabicRatio > 0.7) score += 1;
-    
-    return Math.min(10, score);
+function getRandomPraise() {
+    const praises = [
+        "أحسنت! 👏",
+        "إجابة صحيحة! ✅",
+        "ممتاز! 🌟",
+        "دقة عالية! 🎯",
+        "برافو! 🏆",
+        "ذهبي! 🥇",
+        "إجابة ذكية! 🧠",
+        "مذهل! ✨",
+        "رائع! 💎",
+        "تفوق! 🚀"
+    ];
+    return praises[Math.floor(Math.random() * praises.length)];
 }
 
-function createProgressBar(progress, length = 20) {
-    const filled = Math.round((progress / 100) * length);
-    const empty = length - filled;
-    
-    const filledChar = '█';
-    const emptyChar = '░';
-    
-    return filledChar.repeat(filled) + emptyChar.repeat(empty);
+function getAssessment(score) {
+    if (score >= 95) return "متميز 🏆";
+    if (score >= 85) return "ممتاز ⭐⭐⭐⭐";
+    if (score >= 75) return "جيد جداً ⭐⭐⭐";
+    if (score >= 65) return "جيد ⭐⭐";
+    if (score >= 50) return "مقبول ⭐";
+    return "يحتاج تحسين ⚠️";
 }
 
-function splitMessage(text, maxLength) {
-    const chunks = [];
-    let currentChunk = '';
+async function finishExam(ctx, userId) {
+    // البحث عن امتحان نشط
+    let activeExam = null;
+    let examKey = null;
     
-    const lines = text.split('\n');
-    
-    for (const line of lines) {
-        if (currentChunk.length + line.length + 1 <= maxLength) {
-            currentChunk += line + '\n';
-        } else {
-            if (currentChunk) chunks.push(currentChunk);
-            currentChunk = line + '\n';
+    for (const [key, exam] of activeExams.entries()) {
+        if (key.startsWith(userId.toString()) && exam.status === 'active') {
+            activeExam = exam;
+            examKey = key;
+            break;
         }
     }
     
-    if (currentChunk) chunks.push(currentChunk);
-    
-    return chunks;
-}
-
-function timeAgo(timestamp) {
-    const now = Date.now();
-    const diff = now - timestamp;
-    
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-    
-    if (minutes < 1) return 'الآن';
-    if (minutes < 60) return `منذ ${minutes} دقيقة`;
-    if (hours < 24) return `منذ ${hours} ساعة`;
-    if (days < 7) return `منذ ${days} يوم`;
-    
-    return new Date(timestamp).toLocaleDateString('ar-EG');
-}
-
-function getProgressMessage(level) {
-    const messages = [
-        "مبتدئ - واصل التعلم!",
-        "متعلم نشط - استمر في التقدم",
-        "متوسط المستوى - أنت على الطريق الصحيح",
-        "فوق المتوسط - أداء جيد",
-        "متقدم - مهارات ممتازة",
-        "خبير - مستوى رائع",
-        "متميز - إنجاز استثنائي"
-    ];
-    
-    return messages[Math.min(level, messages.length - 1)];
-}
-
-function suggestGoals(stats) {
-    const goals = [];
-    
-    if (stats.totalExams < 5) {
-        goals.push("أكمل 5 امتحانات لترى تقدمك بوضوح");
+    if (!activeExam) {
+        return ctx.reply('❌ لا يوجد امتحان نشط لتصحيحه.');
     }
     
-    if (stats.averageScore < 70) {
-        goals.push("احرز متوسط 70% في الامتحانات القادمة");
-    }
+    const result = activeExam.finish();
+    activeExams.delete(examKey);
     
-    if (stats.weaknesses.length > 0) {
-        goals.push(`ركز على تحسين: ${stats.weaknesses[0]}`);
-    }
+    // تحديث الإحصائيات
+    userManager.updateStats(userId, result);
     
-    if (stats.totalExams >= 10 && stats.averageScore >= 80) {
-        goals.push("جرب مستوى الصعوبة المتقدم");
-    }
+    // حفظ النتيجة
+    await storage.storeData(userId, 'exam_result', result);
     
-    goals.push("شارك نتائجك مع أصدقائك للمنافسة");
-    
-    return goals.slice(0, 3);
+    // عرض النتائج
+    await showExamResults(ctx, result);
 }
 
-async function generateAnalysisSummary(analysis) {
-    let summary = `📊 **ملخص التحليل الذكي**\n\n`;
+async function cancelExam(ctx, userId) {
+    // البحث عن امتحان نشط
+    let examKey = null;
     
-    summary += `📝 **المعلومات الأساسية:**\n`;
-    summary += `• عدد الكلمات: ${analysis.metadata.wordCount}\n`;
-    summary += `• عدد الجمل: ${analysis.metadata.sentenceCount}\n`;
-    summary += `• اللغة: ${analysis.metadata.language === 'arabic' ? 'العربية' : 'الإنجليزية'}\n\n`;
+    for (const [key, exam] of activeExams.entries()) {
+        if (key.startsWith(userId.toString()) && exam.status === 'active') {
+            examKey = key;
+            break;
+        }
+    }
     
-    summary += `🔑 **الكلمات المفتاحية الرئيسية:**\n`;
-    analysis.content.keywords.slice(0, 5).forEach((kw, index) => {
-        summary += `${index + 1}. ${kw.word} (أهمية: ${kw.importance.toFixed(1)}/10)\n`;
-    });
-    
-    summary += `\n🎯 **المفاهيم المكتشفة:**\n`;
-    if (analysis.content.concepts && analysis.content.concepts.length > 0) {
-        analysis.content.concepts.slice(0, 3).forEach((concept, index) => {
-            summary += `${index + 1}. ${concept}\n`;
-        });
+    if (examKey) {
+        activeExams.delete(examKey);
+        await ctx.reply('❌ تم إلغاء الامتحان الحالي.');
     } else {
-        summary += `تم اكتشاف ${analysis.content.keywords.length} مصطلحاً مهماً\n`;
+        await ctx.reply('❌ لا يوجد امتحان نشط لإلغائه.');
     }
+}
+
+async function showHelp(ctx) {
+    const helpMessage = `
+❓ *دليل استخدام البوت*
+
+🎯 *الأوامر الرئيسية:*
+• *ابدأ* - عرض القائمة الرئيسية
+• *مساعدة* - عرض هذه الرسالة
+• *نتائجي* - عرض النتائج السابقة
+• *إحصائياتي* - عرض إحصائياتك
+• *تصحيح* - إنهاء الامتحان الحالي وعرض النتائج
+• *توقف* - إلغاء الامتحان الحالي
+
+📝 *كيفية الاستخدام:*
+1. أرسل نصاً طويلاً (أكثر من 50 كلمة)
+2. انتظر قليلاً حتى يتم التحليل
+3. ابدأ في الإجابة على الأسئلة
+4. استخدم *تصحيح* عند الانتهاء
+
+📸 *تحليل الصور:*
+• يمكنك إرسال صور تحتوي على نص
+• يجب أن تكون الصورة واضحة وجيدة الإضاءة
+• يدعم النصوص العربية والإنجليزية
+
+⚙️ *الإعدادات المتقدمة:*
+• يمكن تغيير مستوى الصعوبة
+• تحديد عدد الأسئلة
+• اختيار أنواع الأسئلة
+
+📞 *الدعم:*
+للأسئلة أو المشاكل، تواصل مع المطور.
+`;
     
-    summary += `\n📈 **مستوى الصعوبة:**\n`;
-    summary += `• التقييم: ${analysis.difficulty.level}\n`;
-    summary += `• الدرجة: ${analysis.difficulty.score}/10\n`;
+    await ctx.reply(helpMessage);
+}
+
+async function showSettings(ctx, userId) {
+    const user = userManager.getOrCreateSession(userId);
     
-    if (analysis.difficulty.recommendations.length > 0) {
-        summary += `\n💡 **توصيات مخصصة:**\n`;
-        analysis.difficulty.recommendations.forEach((rec, index) => {
-            summary += `${index + 1}. ${rec}\n`;
-        });
-    }
+    const settingsMessage = `
+⚙️ *الإعدادات الحالية*
+
+📊 *مستوى الصعوبة:* ${user.preferences.difficulty}
+🔢 *عدد الأسئلة:* ${user.preferences.questionCount}
+🌐 *اللغة:* ${user.preferences.language === 'ar' ? 'العربية' : 'الإنجليزية'}
+💡 *عرض التلميحات:* ${user.preferences.showHints ? 'نعم' : 'لا'}
+💾 *الحفظ التلقائي:* ${user.preferences.autoSave ? 'نعم' : 'لا'}
+🎯 *أنواع الأسئلة:* ${user.preferences.questionTypes === 'all' ? 'جميع الأنواع' : user.preferences.questionTypes}
+
+🔧 *لتغيير الإعدادات:* أرسل التحديث المطلوب مثل:
+"صعوبة: صعب"
+"أسئلة: 15"
+"لغة: en"
+    `;
     
-    return summary;
+    await ctx.reply(settingsMessage);
+}
+
+async function showProgress(ctx, userId) {
+    const progress = userManager.getProgressReport(userId);
+    
+    const progressMessage = `
+🚀 *تقدمك التعليمي*
+
+🎓 *المستوى الحالي:* ${progress.level}
+⭐ *النقاط:* ${progress.xp} XP
+📈 *التقدم للمستوى التالي:* ${progress.progressPercentage}%
+⚡ *التتابع الناجح:* ${progress.streak} امتحانات
+
+🏆 *الإنجازات القريبة:*
+• المستوى ${progress.level + 1}: ${progress.xpToNextLevel} نقطة متبقية
+${progress.streak >= 2 ? `• ${5 - progress.streak} امتحانات للوصول إلى 5 متتالية` : ''}
+
+💪 *استمر في التعلم!*
+    `;
+    
+    await ctx.reply(progressMessage);
 }
 
 // ====================
@@ -1449,36 +2160,38 @@ async function generateAnalysisSummary(analysis) {
 
 bot.launch({
     dropPendingUpdates: true,
-    allowedUpdates: ['message', 'callback_query']
+    allowedUpdates: ['message', 'callback_query', 'inline_query']
 })
 .then(() => {
     console.log('🤖 البوت الذكي للامتحانات يعمل الآن...');
-    console.log('📁 التخزين: يتم حفظ جميع البيانات في Telegram');
-    console.log('🧠 الذكاء: نظام ذكي متقدم للتحليل وتوليد الأسئلة');
-    console.log('👥 المستخدمون النشطون:', userSessions.size);
+    console.log('📁 التخزين: نظام تخزين متقدم في Telegram');
+    console.log('🧠 الذكاء: نظام تحليل وتوليد أسئلة ذكي');
+    console.log('👥 المستخدمون:', userManager.sessions.size);
+    
+    // تنظيف الجلسات غير النشطة كل ساعة
+    setInterval(() => {
+        userManager.cleanupInactiveSessions();
+        storage.cleanupOldData();
+    }, 60 * 60 * 1000);
+    
+    // تنظيف الامتحانات النشطة القديمة
+    setInterval(() => {
+        const cutoffTime = Date.now() - (2 * 60 * 60 * 1000); // ساعتين
+        activeExams.forEach((exam, key) => {
+            if (exam.status === 'active' && exam.startTime < cutoffTime) {
+                activeExams.delete(key);
+            }
+        });
+    }, 30 * 60 * 1000);
 })
 .catch((error) => {
     console.error('❌ خطأ في تشغيل البوت:', error);
 });
 
-// تنظيف الجلسات القديمة كل ساعة
-setInterval(() => {
-    const cutoffTime = Date.now() - (24 * 60 * 60 * 1000); // 24 ساعة
-    userSessions.forEach((session, userId) => {
-        if (session.stats.lastActive < cutoffTime) {
-            userSessions.delete(userId);
-        }
-    });
-}, 60 * 60 * 1000);
-
-// معالجة إغلاق البوت
+// معالجة إيقاف البوت
 process.once('SIGINT', () => {
     console.log('🛑 إيقاف البوت...');
     bot.stop('SIGINT');
-    
-    // حفظ الجلسات قبل الإغلاق
-    console.log('💾 حفظ الجلسات الحالية...');
-    // يمكن إضافة منطق لحفظ الجلسات هنا
     process.exit(0);
 });
 
@@ -1487,3 +2200,26 @@ process.once('SIGTERM', () => {
     bot.stop('SIGTERM');
     process.exit(0);
 });
+
+// ====================
+// 📚 بيانات إضافية
+// ====================
+
+// درجات الصعوبة العربية
+const difficultyNames = {
+    easy: '🔰 مبتدئ',
+    medium: '⭐ متوسط',
+    hard: '🔥 متقدم',
+    expert: '👨‍🏫 خبير'
+};
+
+// أسماء أنواع الأسئلة العربية
+const questionTypeNames = {
+    definition: 'تعريف',
+    explanation: 'شرح',
+    comparison: 'مقارنة',
+    causeEffect: 'سبب ونتيجة',
+    application: 'تطبيق',
+    analysis: 'تحليل',
+    evaluation: 'تقييم'
+};
