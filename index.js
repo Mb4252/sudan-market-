@@ -1,12 +1,11 @@
 const { Telegraf, session, Markup } = require('telegraf');
 const express = require('express');
-const axios = require('axios');
 const { OpenAI } = require('openai');
 
 // --- الإعدادات ---
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'ضع_توكن_البوت_هنا';
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || 'ضع_مفتاح_API_هنا';
-const BOT_URL = process.env.BOT_URL || 'https://sdm-security-bot.onrender.com';
+const BOT_URL = process.env.BOT_URL || 'https://your-app-name.onrender.com';
 
 const app = express();
 const bot = new Telegraf(BOT_TOKEN);
@@ -15,108 +14,69 @@ const openai = new OpenAI({
     baseURL: 'https://api.deepseek.com/v1'
 });
 
-// تفعيل الجلسات (ضروري جداً لحفظ تقدم الطالب في الأجزاء)
 bot.use(session());
 
-// مصفوفة لتخزين النصوص مؤقتاً (يفضل استخدام قاعدة بيانات في الإنتاج)
-const userContext = new Map();
-
-// --- دالة تقسيم النص إلى أجزاء ---
-function splitText(text, chunkSize = 2000) {
-    const chunks = [];
-    for (let i = 0; i < text.length; i += chunkSize) {
-        chunks.push(text.slice(i, i + chunkSize));
-    }
-    return chunks;
-}
+// مصفوفة الأزرار الرئيسية لسهولة الوصول
+const mainKeyboard = Markup.keyboard([
+    ['🧠 اسأل AI', '📚 المكتبة التعليمية'],
+    ['📝 اختبارات ✍️', '📞 الدعم']
+]).resize();
 
 // --- أمر البدء ---
 bot.start((ctx) => {
-    ctx.session = { currentPart: 0, totalParts: 0 };
-    ctx.reply('📚 أهلاً بك في المساعد التعليمي الذكي.\n\n⚠️ ملاحظة: تليجرام يسمح للبوت بتحميل ملفات حتى 20MB فقط.\nإذا كان ملفك أكبر، يرجى إرساله كأجزاء صغيرة أو نسخ النص وإرساله هنا.');
+    ctx.reply(`أهلاً بك يا ${ctx.from.first_name} في بوت المساعد الذكي الشامل! 🤖\n\nيمكنك الآن:\n1️⃣ سؤالي عن أي شيء (أدب، علوم، برمجة، دين...).\n2️⃣ إرسال ملفات PDF لشرحها.\n3️⃣ طلب إنشاء اختبارات.\n\nأنا جاهز، ماذا يدور في ذهنك؟`, mainKeyboard);
 });
 
-// --- استقبال الملفات ---
-bot.on('document', async (ctx) => {
-    const doc = ctx.message.document;
-    
-    if (doc.file_size > 20 * 1024 * 1024) {
-        return ctx.reply(`❌ الملف كبير جداً (${(doc.file_size / 1048576).toFixed(1)}MB).\nقوانين تليجرام تمنع البوتات من تحميل ملفات أكبر من 20MB.\n\n✅ الحل: قم بتقسيم ملف الـ PDF باستخدام موقع iLovePDF وارسل كل جزء على حدة.`);
-    }
+// --- معالجة النصوص العامة (هنا يصبح مثل ChatGPT) ---
+bot.on('text', async (ctx) => {
+    const userText = ctx.message.text;
 
-    try {
-        await ctx.reply('⏳ جاري تحميل ومعالجة الكتاب... (هذه الميزة تتطلب مكتبة pdf-parse)');
-        // هنا يتم وضع منطق استخراج النص من الـ PDF
-        // سأقوم بمحاكاة العملية لتوضيح منطق "الأجزاء" الذي طلبته
-        
-        const mockText = "هذا نص تجريبي طويل جداً يمثل محتوى الكتاب التعليمي الذي أرسلته..."; 
-        const parts = splitText(mockText);
-        
-        ctx.session.parts = parts;
-        ctx.session.currentPart = 0;
-        ctx.session.totalParts = parts.length;
+    // تجاهل الأوامر التي تتعامل معها الأزرار
+    const buttons = ['🧠 اسأل AI', '📚 المكتبة التعليمية', '📝 اختبارات ✍️', '📞 الدعم'];
+    if (buttons.includes(userText)) return;
 
-        await explainPart(ctx);
-    } catch (error) {
-        ctx.reply('حدث خطأ أثناء قراءة الملف.');
-    }
-});
-
-// --- دالة الشرح الذكي ---
-async function explainPart(ctx) {
-    const partIndex = ctx.session.currentPart;
-    const parts = ctx.session.parts;
-
-    if (!parts || partIndex >= parts.length) {
-        return ctx.reply('✅ انتهينا من شرح الكتاب بالكامل!');
-    }
-
-    await ctx.reply(`📖 جاري شرح الجزء (${partIndex + 1} من ${parts.length})...`);
+    await ctx.sendChatAction('typing');
 
     try {
         const response = await openai.chat.completions.create({
             model: "deepseek-chat",
             messages: [
-                { role: "system", content: "أنت معلم خبير. اشرح النص التالي بأسلوب مبسط للطالب مع ذكر أهم النقاط." },
-                { role: "user", content: parts[partIndex] }
+                { 
+                    role: "system", 
+                    content: "أنت مساعد ذكي شامل ومثقف جداً. تجيب على جميع الأسئلة بدقة ووضوح، سواء كانت تعليمية، عامة، تقنية، أو ترفيهية. استخدم الرموز التعبيرية لجعل الإجابة ممتعة." 
+                },
+                { role: "user", content: userText }
             ]
         });
 
-        const explanation = response.choices[0].message.content;
-        
-        // إرسال الشرح مع زر "الجزء التالي"
-        const keyboard = [];
-        if (partIndex + 1 < parts.length) {
-            keyboard.push([Markup.button.callback('➡️ شرح الجزء التالي', 'next_part')]);
-        }
+        const aiReply = response.choices[0].message.content;
+        await ctx.reply(aiReply, { parse_mode: 'Markdown' });
 
-        await ctx.reply(explanation, Markup.inlineKeyboard(keyboard));
-        
     } catch (error) {
-        ctx.reply('❌ فشل الاتصال بالذكاء الاصطناعي.');
+        console.error(error);
+        ctx.reply('عذراً، واجهت مشكلة في الاتصال بعقلي الاصطناعي. حاول مرة أخرى لاحقاً.');
     }
-}
-
-// --- معالجة الضغط على زر "الجزء التالي" ---
-bot.action('next_part', async (ctx) => {
-    await ctx.answerCbQuery();
-    ctx.session.currentPart++;
-    await explainPart(ctx);
 });
 
-// --- أوامر الأزرار السفلية ---
-bot.hears('📖 شرح لي الكتاب', async (ctx) => {
-    if (!ctx.session.parts) return ctx.reply('❌ يرجى إرسال الكتاب أولاً.');
-    ctx.session.currentPart = 0;
-    await explainPart(ctx);
+// --- استقبال الملفات (PDF) ---
+bot.on('document', async (ctx) => {
+    const doc = ctx.message.document;
+    if (doc.file_size > 20 * 1024 * 1024) {
+        return ctx.reply('❌ الملف كبير جداً. أرسل ملفات أصغر من 20 ميجابايت.');
+    }
+    ctx.reply('⏳ استلمت الملف، سأقوم بتحليله لك (هنا يتم ربط منطق استخراج النص من الـ PDF)');
 });
 
-bot.hears('📝 اختبارات ✍️', async (ctx) => {
-    if (!ctx.session.parts) return ctx.reply('❌ يرجى إرسال الكتاب أولاً ليتم إنشاء اختبار منه.');
-    ctx.reply('🛠️ ميزة إنشاء الاختبارات قيد التطوير بناءً على محتوى الكتاب.');
+// --- أوامر الأزرار ---
+bot.hears('🧠 اسأل AI', (ctx) => {
+    ctx.reply('تفضل، أنا أسمعك! اكتب أي سؤال يخطر على بالك وسأجيبك فوراً.');
 });
 
-// تشغيل السيرفر والبوت
+bot.hears('📞 الدعم', (ctx) => {
+    ctx.reply('للتواصل مع المطور: @YourUsername');
+});
+
+// --- تشغيل السيرفر ---
 app.use(express.json());
 app.post(`/bot${BOT_TOKEN}`, (req, res) => {
     bot.handleUpdate(req.body, res);
@@ -126,7 +86,7 @@ app.post(`/bot${BOT_TOKEN}`, (req, res) => {
 const start = async () => {
     await bot.telegram.setWebhook(`${BOT_URL}/bot${BOT_TOKEN}`);
     app.listen(process.env.PORT || 10000, () => {
-        console.log('🚀 Server & Bot are Ready!');
+        console.log('🚀 البوت الشامل جاهز للعمل!');
     });
 };
 
