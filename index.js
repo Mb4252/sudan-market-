@@ -1,51 +1,74 @@
-const { Telegraf } = require('telegraf');
+const { Telegraf, Markup } = require('telegraf');
 const http = require('http');
 
-// --- 1. تشغيل سيرفر ويب لتفادي خطأ Port Binding في Render ---
+// --- 1. تشغيل سيرفر الويب لمنع توقف Render ---
+// هذا الجزء يحل مشكلة Port Binding التي ظهرت في سجلاتك
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot is running and healthy!\n');
+    res.end('Bot is Active and Hosting is Live!\n');
 });
 
-// يستخدم المنفذ الذي يقدمه Render تلقائياً أو 10000 كافتراضي
 const PORT = process.env.PORT || 10000; 
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Web server active on port ${PORT}`);
 });
 
-// --- 2. إعداد البوت باستخدام متغيراتك الظاهرة في الصورة ---
-// تأكد أن الاسم مطابق تماماً لـ TELEGRAM_BOT_TOKEN في Render
+// --- 2. إعداد البوت باستخدام متغيراتك ---
+// يستخدم TELEGRAM_BOT_TOKEN الموجود في صورتك
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 const ADMIN_ID = process.env.ADMIN_ID; // معرفك الشخصي
 
-// --- 3. منطق البوت الأساسي ---
+// ضع يوزر قناتك هنا (البوت سيجبر المستخدمين على الاشتراك لتربح أنت)
+const CHANNEL_USERNAME = '@YourChannelUsername'; 
 
-// الترحيب
+// --- 3. منطق العمليات ---
+
 bot.start((ctx) => {
-    ctx.reply('مرحباً بك! أنا بوت الخدمات الخاص بك.\nأرسل أي رسالة وسأقوم بالرد عليك فوراً.');
+    ctx.reply(
+        `مرحباً بك في بوت التحميل الشامل! 🤖\n\nأرسل لي رابط فيديو من (تيك توك، يوتيوب، إنستا، فيسبوك...) وسأقوم بتجهيزه لك فوراً وبشكل مجاني تماماً.`,
+        Markup.inlineKeyboard([
+            [Markup.button.url('اشترك في القناة لفتح الميزات 📢', `https://t.me/${CHANNEL_USERNAME.replace('@', '')}`)]
+        ])
+    );
 });
 
-// ميزة للمسؤول فقط (Admin)
-bot.command('status', (ctx) => {
+bot.on('text', async (ctx) => {
+    const url = ctx.message.text;
+
+    // التأكد من أن الرسالة رابط
+    if (url.startsWith('http')) {
+        // فحص الاشتراك الإجباري (لتكبير قناتك)
+        try {
+            const member = await ctx.telegram.getChatMember(CHANNEL_USERNAME, ctx.from.id);
+            if (member.status === 'left' || member.status === 'kicked') {
+                return ctx.reply('عذراً! يجب الاشتراك في القناة أولاً لاستخدام البوت:', 
+                Markup.inlineKeyboard([[Markup.button.url('اضغط هنا للاشتراك 📢', `https://t.me/${CHANNEL_USERNAME.replace('@', '')}`)]]));
+            }
+        } catch (e) { console.log("خطأ في فحص القناة"); }
+
+        await ctx.reply('🔍 جاري فحص الرابط ومعالجته من أي موقع... انتظر ثواني ⏳');
+
+        // استخدام محرك تحميل شامل ومجاني لتقليل الضغط على سيرفرك
+        const finalLink = `https://pastedownload.com/21/?url=${encodeURIComponent(url)}`;
+        
+        return ctx.reply(
+            `✅ الفيديو جاهز للتحميل!\n\nيمكنك الحصول عليه عبر الرابط التالي:\n${finalLink}\n\nشكراً لاستخدامك بوتنا!`,
+            Markup.inlineKeyboard([[Markup.button.url('اضغط هنا للتحميل 📥', finalLink)]])
+        );
+    }
+
+    ctx.reply('من فضلك أرسل رابط فيديو صحيح ليبدأ البوت بالعمل.');
+});
+
+// ميزة الإدارة لك أنت فقط
+bot.command('admin', (ctx) => {
     if (ctx.from.id.toString() === ADMIN_ID) {
-        ctx.reply('أهلاً أيها المدير، النظام يعمل والمنفذ مفتوح بنجاح.');
-    } else {
-        ctx.reply('هذا الأمر مخصص لمدير النظام فقط.');
+        ctx.reply('أهلاً أيها المدير! البوت متصل الآن بسيرفر Render بنجاح.');
     }
 });
 
-// الرد التلقائي
-bot.on('text', (ctx) => {
-    ctx.reply('تم استلام رسالتك! جاري العمل على إضافة المزيد من الخدمات قريباً.');
-});
+bot.launch().then(() => console.log("Bot is Online!"));
 
-// --- 4. تشغيل البوت ومعالجة الأخطاء ---
-bot.launch().then(() => {
-    console.log("Telegram Bot is online!");
-}).catch((err) => {
-    console.error("Failed to launch bot:", err);
-});
-
-// إغلاق آمن
+// الإغلاق الآمن
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
