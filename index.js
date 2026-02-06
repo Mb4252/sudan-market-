@@ -32,18 +32,18 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-app.use(express.json());  // ◀◀◀ هنا في البداية مهم جداً
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ==================== [ Middleware للتسجيل الآمن ] ====================
 app.use((req, res, next) => {
-    const timestamp = new Date().toISOString();
+    const timestamp = new Date().toLocaleTimeString();
     const method = req.method;
     let url = req.url;
     
     // إخفاء التوكن من السجلات
-    if (url.includes('/bot') && CONFIG && CONFIG.TELEGRAM_BOT_TOKEN) {
-        url = url.replace(CONFIG.TELEGRAM_BOT_TOKEN, '***TOKEN***');
+    if (url.includes('/bot') && telegramBot) {
+        url = '/bot***TOKEN***';
     }
     
     console.log(`${method} ${url} - ${timestamp}`);
@@ -62,7 +62,7 @@ let CONFIG = {
     ADMIN_ID: process.env.ADMIN_ID || '',
     ADMIN_BANK_ACCOUNT: process.env.ADMIN_BANK_ACCOUNT || "4426148",
     ADMIN_NAME: process.env.ADMIN_NAME || "محمد عبدالمعطي علي",
-    ADMIN_PHONE: process.env.ADMIN_PHONE || "+249XXXXXXXXX",
+    ADMIN_PHONE: process.env.ADMIN_PHONE || "+249999999999", // تأكد من وجود +
     // نظام الاشتراكات
     FREE_TRIAL_DAYS: parseInt(process.env.FREE_TRIAL_DAYS) || 7,
     WEEKLY_SUBSCRIPTION: parseInt(process.env.WEEKLY_SUBSCRIPTION) || 7000,
@@ -80,7 +80,7 @@ let CONFIG = {
     AUTO_DELETE_LOCAL_AFTER_UPLOAD: process.env.AUTO_DELETE_LOCAL_AFTER_UPLOAD === 'true'
 };
 
-// ==================== [ تهيئة بوت Telegram - الإصدار المبسط ] ====================
+// ==================== [ تهيئة بوت Telegram ] ====================
 let telegramBot = null;
 
 if (CONFIG.TELEGRAM_BOT_TOKEN && CONFIG.TELEGRAM_BOT_TOKEN.length > 10) {
@@ -88,65 +88,58 @@ if (CONFIG.TELEGRAM_BOT_TOKEN && CONFIG.TELEGRAM_BOT_TOKEN.length > 10) {
         telegramBot = new Telegraf(CONFIG.TELEGRAM_BOT_TOKEN);
         console.log('✅ Telegram Bot instance created');
         
-        // ==================== [ تعريف Webhook Route أولاً - مهم جداً ] ====================
-        app.post(`/bot${CONFIG.TELEGRAM_BOT_TOKEN}`, (req, res) => {
+        // ==================== [ تعريف Webhook Route ] ====================
+        const webhookPath = `/bot${CONFIG.TELEGRAM_BOT_TOKEN}`;
+        app.post(webhookPath, (req, res) => {
+            console.log('📨 Received Telegram webhook request');
+            
+            if (!telegramBot) {
+                console.log('⚠️ Bot not initialized yet');
+                return res.sendStatus(200);
+            }
+            
+            if (!req.body) {
+                console.log('⚠️ Empty request body');
+                return res.sendStatus(200);
+            }
+            
             try {
-                console.log('📨 Received Telegram update');
-                
-                // التحقق من وجود بيانات
-                if (!req.body) {
-                    console.log('⚠️ Empty request body');
-                    return res.sendStatus(200);
-                }
-                
-                // معالجة الرسالة
                 telegramBot.handleUpdate(req.body, res);
-                console.log('✅ Telegram update handled');
-                
+                console.log('✅ Telegram update handled successfully');
             } catch (error) {
                 console.error('❌ Error handling Telegram update:', error.message);
-                res.sendStatus(200); // أرسل 200 حتى لا يكرر Telegram
+                res.sendStatus(200);
             }
         });
         
-        console.log(`✅ Telegram webhook route registered: /bot${CONFIG.TELEGRAM_BOT_TOKEN.substring(0, 10)}...`);
+        console.log(`✅ Telegram webhook route registered`);
         
-        // ==================== [ إعداد البوت بعد وقت قصير ] ====================
+        // ==================== [ تأخير إعداد Webhook لمدة 2 ثانية ] ====================
         setTimeout(async () => {
             try {
-                console.log('🔄 Setting up Telegram bot...');
+                console.log('🔄 Setting up Telegram webhook...');
                 
-                // حذف webhook القديم إن وجد
-                try {
-                    await telegramBot.telegram.deleteWebhook({ drop_pending_updates: true });
-                    console.log('🗑️ Old webhook deleted');
-                } catch (error) {
-                    console.log('ℹ️ No old webhook to delete');
-                }
-                
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                
-                // إعداد webhook جديد
-                const webhookUrl = `${BOT_URL}/bot${CONFIG.TELEGRAM_BOT_TOKEN}`;
-                console.log(`🔗 Setting webhook to: ${BOT_URL}/bot***TOKEN***`);
+                // إعداد webhook
+                const webhookUrl = `${BOT_URL}${webhookPath}`;
+                console.log(`🔗 Webhook URL: ${BOT_URL}/bot***TOKEN***`);
                 
                 await telegramBot.telegram.setWebhook(webhookUrl, {
                     drop_pending_updates: true,
-                    allowed_updates: ['message', 'callback_query', 'inline_query']
+                    allowed_updates: ['message', 'callback_query']
                 });
                 
                 console.log('✅ Telegram webhook set successfully');
                 
-                // تعريف أوامر البوت
+                // إعداد الأوامر
                 setupTelegramCommands();
                 
                 console.log('🤖 Telegram Bot is ready!');
                 
             } catch (error) {
-                console.error('❌ Error setting up Telegram:', error.message);
-                // يمكنك إضافة fallback هنا إذا أردت
+                console.error('❌ Error setting up Telegram webhook:', error.message);
+                console.log('⚠️ Bot will still work, but webhook setup failed');
             }
-        }, 3000); // 3 ثواني فقط بدلاً من 8
+        }, 2000);
         
     } catch (error) {
         console.error('❌ Failed to create Telegram Bot:', error.message);
@@ -156,9 +149,207 @@ if (CONFIG.TELEGRAM_BOT_TOKEN && CONFIG.TELEGRAM_BOT_TOKEN.length > 10) {
     console.log('⚠️ Telegram Bot Token not provided or invalid');
 }
 
+// ==================== [ إعداد أوامر Telegram ] ====================
+function setupTelegramCommands() {
+    if (!telegramBot) return;
+    
+    telegramBot.command('start', (ctx) => {
+        console.log(`User ${ctx.from.id} used /start`);
+        
+        // إصلاح رقم الهاتف - إزالة + للرابط فقط
+        const phoneForLink = CONFIG.ADMIN_PHONE.replace('+', '');
+        
+        const welcomeMessage = `
+🤖 **Smart Education Platform**
+
+🎯 *منصة التعليم الذكي مع DeepSeek AI*
+
+📚 *المميزات:*
+• مساعد ذكي للأسئلة التعليمية
+• مكتبة كتب تعليمية
+• بث مباشر تفاعلي
+• نظام اشتراكات متكامل
+
+📞 *للتواصل:* ${CONFIG.ADMIN_PHONE}
+🏦 *رقم الحساب:* ${CONFIG.ADMIN_BANK_ACCOUNT}
+
+⚡ *الأوامر المتاحة:*
+/start - عرض هذه الرسالة
+/subscribe - خطط الاشتراك
+/status - حالة البوت
+/help - المساعدة
+        `;
+        
+        ctx.reply(welcomeMessage, { 
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "💰 خطط الاشتراك", callback_data: "show_subscription" },
+                        { text: "📚 المكتبة", callback_data: "show_books" }
+                    ],
+                    [
+                        { text: "🎥 البث المباشر", callback_data: "live_stream" },
+                        { text: "🧠 اسأل AI", callback_data: "ask_ai" }
+                    ],
+                    [
+                        { 
+                            text: "📞 الدعم الفني", 
+                            url: `https://t.me/+${phoneForLink}` // استخدام رابط Telegram بدلاً من tel:
+                        }
+                    ]
+                ]
+            }
+        });
+    });
+    
+    telegramBot.command('subscribe', (ctx) => {
+        console.log(`User ${ctx.from.id} used /subscribe`);
+        
+        const message = `
+💰 **خطط الاشتراك:**
+
+🎁 *تجربة مجانية:* ${CONFIG.FREE_TRIAL_DAYS} يوم (${CONFIG.MAX_DAILY_QUESTIONS.trial} سؤال/يوم)
+📦 *أسبوعي:* ${CONFIG.WEEKLY_SUBSCRIPTION} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)
+📅 *شهري:* ${CONFIG.MONTHLY_SUBSCRIPTION} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)
+👨‍🏫 *معلم شهري:* ${CONFIG.TEACHER_MONTHLY_FEE} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)
+
+💳 **طرق الدفع:** ${CONFIG.PAYMENT_METHODS.join(', ')}
+🏦 **رقم الحساب:** ${CONFIG.ADMIN_BANK_ACCOUNT}
+👤 **اسم صاحب الحساب:** ${CONFIG.ADMIN_NAME}
+📞 **للتواصل:** ${CONFIG.ADMIN_PHONE}
+
+🔗 **رابط المنصة:** ${BOT_URL}
+        `;
+        
+        ctx.reply(message, { 
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "💳 إرسال إيصال دفع", callback_data: "send_payment" }
+                    ],
+                    [
+                        { text: "🌐 زيارة المنصة", url: BOT_URL }
+                    ]
+                ]
+            }
+        });
+    });
+    
+    telegramBot.command('status', (ctx) => {
+        console.log(`User ${ctx.from.id} used /status`);
+        
+        const statusMessage = `
+✅ **حالة النظام:**
+
+🤖 *البوت:* 🟢 يعمل
+🌐 *السيرفر:* ${BOT_URL}
+📅 *الوقت:* ${new Date().toLocaleString('ar-SA')}
+
+🔗 **رابط المنصة:** ${BOT_URL}
+📞 **الدعم:** ${CONFIG.ADMIN_PHONE}
+        `;
+        
+        ctx.reply(statusMessage, { parse_mode: 'Markdown' });
+    });
+    
+    telegramBot.command('help', (ctx) => {
+        console.log(`User ${ctx.from.id} used /help`);
+        
+        const helpMessage = `
+🆘 **مركز المساعدة:**
+
+📞 *الدعم الفني:* ${CONFIG.ADMIN_PHONE}
+
+🔗 **الروابط المهمة:**
+• المنصة الرئيسية: ${BOT_URL}
+• حالة الخدمة: ${BOT_URL}/health
+
+⚡ **نصائح سريعة:**
+1. جرب الأمر /start لرؤية البداية
+2. /subscribe لعرض خطط الاشتراك
+3. أرسل سؤالك مباشرة للبوت للحصول على إجابة
+
+🔄 **في حالة وجود مشكلة:**
+• تأكد من اتصال الإنترنت
+• حاول إعادة تشغيل البوت
+• تواصل مع الدعم الفني
+        `;
+        
+        ctx.reply(helpMessage, { parse_mode: 'Markdown' });
+    });
+    
+    // معالجة callback queries
+    telegramBot.on('callback_query', async (ctx) => {
+        const callbackData = ctx.callbackQuery.data;
+        console.log(`Callback query: ${callbackData} from ${ctx.from.id}`);
+        
+        if (callbackData === 'show_subscription') {
+            await ctx.answerCbQuery('عرض خطط الاشتراك');
+            ctx.reply(`💰 **خطط الاشتراك:**\n\n🎁 تجربة مجانية: ${CONFIG.FREE_TRIAL_DAYS} أيام\n📦 أسبوعي: ${CONFIG.WEEKLY_SUBSCRIPTION} SDG\n📅 شهري: ${CONFIG.MONTHLY_SUBSCRIPTION} SDG\n👨‍🏫 معلم: ${CONFIG.TEACHER_MONTHLY_FEE} SDG\n\n${BOT_URL}`, {
+                parse_mode: 'Markdown'
+            });
+        }
+        else if (callbackData === 'ask_ai') {
+            await ctx.answerCbQuery('اسأل الذكاء الاصطناعي');
+            ctx.reply(`🧠 **مساعد DeepSeek الذكي**\n\nيمكنك استخدام المساعد الذكي من خلال:\n\n1. زيارة ${BOT_URL}\n2. استخدام زر "اسأل AI"\n3. إرسال سؤالك التعليمي مباشرة\n\nللاستفادة الكاملة، يرجى الاشتراك في إحدى الخطط.`, {
+                parse_mode: 'Markdown'
+            });
+        }
+        else if (callbackData === 'live_stream') {
+            await ctx.answerCbQuery('البث المباشر');
+            ctx.reply(`🎥 **نظام البث المباشر**\n\nيمكنك استخدام نظام البث المباشر من خلال:\n\n1. زيارة ${BOT_URL}\n2. إنشاء غرفة بث جديدة\n3. دعوة الطلاب للانضمام\n\nللاستفادة الكاملة، يرجى الاشتراك في إحدى الخطط.`, {
+                parse_mode: 'Markdown'
+            });
+        }
+        else if (callbackData === 'show_books') {
+            await ctx.answerCbQuery('المكتبة التعليمية');
+            ctx.reply(`📚 **المكتبة التعليمية**\n\nيمكنك الوصول إلى المكتبة التعليمية من خلال:\n\n1. زيارة ${BOT_URL}\n2. الانتقال إلى قسم المكتبة\n3. تصفح الكتب حسب المرحلة والمادة\n\n🔗 ${BOT_URL}/api/books`, {
+                parse_mode: 'Markdown'
+            });
+        }
+        else if (callbackData === 'send_payment') {
+            await ctx.answerCbQuery('إرسال إيصال الدفع');
+            ctx.reply(`💳 **إرسال إيصال الدفع**\n\nلإرسال إيصال الدفع:\n\n1. أرسل صورة الإيصال\n2. اكتب رقم المعاملة\n3. اكتب المبلغ\n4. اكتب طريقة الدفع\n\n📞 للاستفسار: ${CONFIG.ADMIN_PHONE}`, {
+                parse_mode: 'Markdown'
+            });
+        }
+    });
+    
+    // معالجة الرسائل النصية العادية
+    telegramBot.on('text', (ctx) => {
+        const text = ctx.message.text;
+        console.log(`Text message from ${ctx.from.id}: ${text.substring(0, 50)}...`);
+        
+        if (!text.startsWith('/')) {
+            ctx.reply(`📝 *رسالتك:* ${text.substring(0, 100)}\n\nللاستفادة من خدمات المنصة التعليمية، يرجى:\n\n1. زيارة ${BOT_URL}\n2. استخدام /subscribe لعرض خطط الاشتراك\n3. التواصل مع الدعم: ${CONFIG.ADMIN_PHONE}`, {
+                parse_mode: 'Markdown'
+            });
+        }
+    });
+    
+    // معالجة الصور
+    telegramBot.on('photo', (ctx) => {
+        console.log(`Photo received from ${ctx.from.id}`);
+        ctx.reply(`📸 **تم استلام صورة**\n\nإذا كانت هذه إيصال دفع، يرجى:\n\n1. إرسال رقم المعاملة\n2. طريقة الدفع\n3. المبلغ المدفوع\n4. رقم هاتفك\n\nأو تواصل مع الدعم: ${CONFIG.ADMIN_PHONE}`, {
+            parse_mode: 'Markdown'
+        });
+    });
+    
+    // معالجة الأخطاء
+    telegramBot.catch((err, ctx) => {
+        console.error(`❌ Telegram Bot error for ${ctx.updateType}:`, err.message);
+        try {
+            ctx.reply(`❌ حدث خطأ: ${err.message}\n\nيرجى المحاولة مرة أخرى أو التواصل مع الدعم.`);
+        } catch (e) {
+            console.error('Failed to send error message:', e.message);
+        }
+    });
+}
+
 // ==================== [ تهيئة Firebase Admin ] ====================
 let isFirebaseInitialized = false;
-let isBooksInitialized = false;
 
 if (CONFIG.FIREBASE_JSON && Object.keys(CONFIG.FIREBASE_JSON).length > 0) {
     try {
@@ -169,38 +360,6 @@ if (CONFIG.FIREBASE_JSON && Object.keys(CONFIG.FIREBASE_JSON).length > 0) {
         });
         console.log('✅ Firebase Admin initialized successfully');
         isFirebaseInitialized = true;
-        
-        setTimeout(async () => {
-            try {
-                const db = admin.database();
-                const snapshot = await db.ref('books').once('value');
-                const existingBooks = snapshot.val() || {};
-                
-                if (Object.keys(existingBooks).length === 0) {
-                    console.log('📚 No books found, initializing database...');
-                    await initializeBooksDatabase();
-                } else {
-                    console.log(`📚 Books already exist in database (${Object.keys(existingBooks).length} books)`);
-                    isBooksInitialized = true;
-                }
-                
-                // إنشاء جداول إذا لم تكن موجودة
-                const usersSnapshot = await db.ref('users').once('value');
-                if (!usersSnapshot.exists()) {
-                    await db.ref('users').set({});
-                    console.log('👥 Users table created');
-                }
-                
-                const paymentsSnapshot = await db.ref('payments').once('value');
-                if (!paymentsSnapshot.exists()) {
-                    await db.ref('payments').set({});
-                    console.log('💰 Payments table created');
-                }
-                
-            } catch (error) {
-                console.error('❌ Error checking books:', error.message);
-            }
-        }, 2000);
         
     } catch (error) {
         console.error('❌ Failed to initialize Firebase Admin:', error.message);
@@ -225,169 +384,6 @@ if (CONFIG.DEEPSEEK_API_KEY && CONFIG.DEEPSEEK_API_KEY.length > 10) {
     console.log('⚠️ DeepSeek API Key not provided - AI features disabled');
 }
 
-// ==================== [ إعداد أوامر Telegram ] ====================
-function setupTelegramCommands() {
-    if (!telegramBot) return;
-    
-    telegramBot.command('start', (ctx) => {
-        const welcomeMessage = `
-🤖 **Smart Education Platform**
-
-🎯 *منصة التعليم الذكي مع DeepSeek AI*
-
-📚 *المميزات:*
-• مساعد ذكي للأسئلة التعليمية
-• مكتبة كتب تعليمية
-• بث مباشر تفاعلي
-• نظام اشتراكات متكامل
-
-📞 *للتواصل:* ${CONFIG.ADMIN_PHONE}
-🏦 *رقم الحساب:* ${CONFIG.ADMIN_BANK_ACCOUNT}
-
-⚡ *الأوامر المتاحة:*
-/start - عرض هذه الرسالة
-/subscribe - خطط الاشتراك
-/status - حالة البوت
-/help - المساعدة
-        `;
-        ctx.reply(welcomeMessage, { 
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: "💰 خطط الاشتراك", callback_data: "show_subscription" },
-                        { text: "📚 المكتبة", callback_data: "show_books" }
-                    ],
-                    [
-                        { text: "🎥 البث المباشر", callback_data: "live_stream" },
-                        { text: "🧠 اسأل AI", callback_data: "ask_ai" }
-                    ],
-                    [
-                        { text: "📞 الدعم الفني", url: `tel:${CONFIG.ADMIN_PHONE.replace('+', '')}` }
-                    ]
-                ]
-            }
-        });
-    });
-    
-    telegramBot.command('subscribe', (ctx) => {
-        const message = `
-💰 **خطط الاشتراك:**
-
-🎁 *تجربة مجانية:* ${CONFIG.FREE_TRIAL_DAYS} يوم (${CONFIG.MAX_DAILY_QUESTIONS.trial} سؤال/يوم)
-📦 *أسبوعي:* ${CONFIG.WEEKLY_SUBSCRIPTION} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)
-📅 *شهري:* ${CONFIG.MONTHLY_SUBSCRIPTION} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)
-👨‍🏫 *معلم شهري:* ${CONFIG.TEACHER_MONTHLY_FEE} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)
-
-💳 **طرق الدفع:** ${CONFIG.PAYMENT_METHODS.join(', ')}
-🏦 **رقم الحساب:** ${CONFIG.ADMIN_BANK_ACCOUNT}
-👤 **اسم صاحب الحساب:** ${CONFIG.ADMIN_NAME}
-📞 **للتواصل:** ${CONFIG.ADMIN_PHONE}
-
-🔗 **رابط المنصة:** ${BOT_URL}
-        `;
-        ctx.reply(message, { 
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: "💳 إرسال إيصال دفع", callback_data: "send_payment" },
-                        { text: "📋 شروط الاستخدام", callback_data: "terms" }
-                    ],
-                    [
-                        { text: "🌐 زيارة المنصة", url: BOT_URL },
-                        { text: "📞 الاتصال بالدعم", url: `tel:${CONFIG.ADMIN_PHONE.replace('+', '')}` }
-                    ]
-                ]
-            }
-        });
-    });
-    
-    telegramBot.command('status', (ctx) => {
-        const activeRooms = Array.from(liveRooms.values());
-        const totalParticipants = activeRooms.reduce((acc, room) => acc + room.participants.size, 0);
-        
-        const statusMessage = `
-✅ **حالة النظام:**
-
-🤖 *البوت:* 🟢 يعمل
-🌐 *السيرفر:* ${BOT_URL}
-📅 *الوقت:* ${new Date().toLocaleString('ar-SA')}
-👥 *المستخدمون النشطون:* ${totalParticipants}
-🎥 *الغرف النشطة:* ${activeRooms.length}
-
-🔧 *الخدمات:*
-• DeepSeek AI: ${deepseekClient ? '🟢 نشط' : '🔴 غير نشط'}
-• Firebase: ${isFirebaseInitialized ? '🟢 متصل' : '🔴 غير متصل'}
-• التخزين: ${telegramBot ? '🟢 متاح' : '🔴 غير متاح'}
-        `;
-        ctx.reply(statusMessage, { parse_mode: 'Markdown' });
-    });
-    
-    telegramBot.command('help', (ctx) => {
-        const helpMessage = `
-🆘 **مركز المساعدة:**
-
-📞 *الدعم الفني:* ${CONFIG.ADMIN_PHONE}
-
-🔗 **الروابط المهمة:**
-• المنصة الرئيسية: ${BOT_URL}
-• حالة الخدمة: ${BOT_URL}/health
-
-⚡ **نصائح سريعة:**
-1. جرب الأمر /start لرؤية البداية
-2. /subscribe لعرض خطط الاشتراك
-3. أرسل سؤالك مباشرة للبوت للحصول على إجابة
-
-🔄 **في حالة وجود مشكلة:**
-• تأكد من اتصال الإنترنت
-• حاول إعادة تشغيل البوت
-• تواصل مع الدعم الفني
-        `;
-        ctx.reply(helpMessage, { parse_mode: 'Markdown' });
-    });
-    
-    // معالجة callback queries
-    telegramBot.on('callback_query', (ctx) => {
-        const callbackData = ctx.callbackQuery.data;
-        
-        if (callbackData === 'show_subscription') {
-            ctx.answerCbQuery('عرض خطط الاشتراك');
-            ctx.reply(`💰 **خطط الاشتراك:**\n\n🎁 تجربة مجانية: ${CONFIG.FREE_TRIAL_DAYS} أيام\n📦 أسبوعي: ${CONFIG.WEEKLY_SUBSCRIPTION} SDG\n📅 شهري: ${CONFIG.MONTHLY_SUBSCRIPTION} SDG\n👨‍🏫 معلم: ${CONFIG.TEACHER_MONTHLY_FEE} SDG\n\n${BOT_URL}`, {
-                parse_mode: 'Markdown'
-            });
-        }
-        else if (callbackData === 'ask_ai') {
-            ctx.answerCbQuery('اسأل الذكاء الاصطناعي');
-            ctx.reply(`🧠 **مساعد DeepSeek الذكي**\n\nيمكنك استخدام المساعد الذكي من خلال:\n\n1. زيارة ${BOT_URL}\n2. استخدام زر "اسأل AI"\n3. إرسال سؤالك التعليمي مباشرة\n\nللاستفادة الكاملة، يرجى الاشتراك في إحدى الخطط.`, {
-                parse_mode: 'Markdown'
-            });
-        }
-        else if (callbackData === 'live_stream') {
-            ctx.answerCbQuery('البث المباشر');
-            ctx.reply(`🎥 **نظام البث المباشر**\n\nيمكنك استخدام نظام البث المباشر من خلال:\n\n1. زيارة ${BOT_URL}\n2. إنشاء غرفة بث جديدة\n3. دعوة الطلاب للانضمام\n\nللاستفادة الكاملة، يرجى الاشتراك في إحدى الخطط.`, {
-                parse_mode: 'Markdown'
-            });
-        }
-        else if (callbackData === 'show_books') {
-            ctx.answerCbQuery('المكتبة التعليمية');
-            ctx.reply(`📚 **المكتبة التعليمية**\n\nيمكنك الوصول إلى المكتبة التعليمية من خلال:\n\n1. زيارة ${BOT_URL}\n2. الانتقال إلى قسم المكتبة\n3. تصفح الكتب حسب المرحلة والمادة\n\n🔗 ${BOT_URL}/api/books`, {
-                parse_mode: 'Markdown'
-            });
-        }
-    });
-    
-    // معالجة الرسائل النصية العادية
-    telegramBot.on('text', (ctx) => {
-        const text = ctx.message.text;
-        if (!text.startsWith('/')) {
-            ctx.reply(`📝 *رسالتك:* ${text}\n\nللاستفادة من خدمات المنصة التعليمية، يرجى:\n\n1. زيارة ${BOT_URL}\n2. استخدام /subscribe لعرض خطط الاشتراك\n3. التواصل مع الدعم: ${CONFIG.ADMIN_PHONE}`, {
-                parse_mode: 'Markdown'
-            });
-        }
-    });
-}
-
 // ==================== [ نقاط النهاية الرئيسية ] ====================
 app.get('/api/test', (req, res) => {
     res.json({ 
@@ -405,9 +401,6 @@ app.get('/api/test', (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-    const activeUsers = Array.from(liveRooms.values()).reduce((acc, room) => acc + room.participants.size, 0);
-    const activeRoomsCount = liveRooms.size;
-    
     res.json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
@@ -424,19 +417,75 @@ app.get('/health', (req, res) => {
             firebase: isFirebaseInitialized ? '✅ Connected' : '❌ Disconnected',
             deepseek: deepseekClient ? '✅ Connected' : '❌ Disconnected'
         },
-        stats: {
-            activeUsers: activeUsers,
-            activeRooms: activeRoomsCount,
-            userSessions: userSessions.size
+        config: {
+            adminPhone: CONFIG.ADMIN_PHONE,
+            adminBankAccount: CONFIG.ADMIN_BANK_ACCOUNT,
+            adminName: CONFIG.ADMIN_NAME
         }
     });
 });
 
+// ==================== [ نقطة نهاية AI مبسطة ] ====================
+app.post('/api/ai/ask', async (req, res) => {
+    try {
+        const { question } = req.body;
+        
+        if (!question) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'السؤال مطلوب',
+                serverUrl: BOT_URL 
+            });
+        }
+        
+        let answer;
+        
+        if (deepseekClient) {
+            try {
+                const response = await deepseekClient.chat.completions.create({
+                    model: "deepseek-chat",
+                    messages: [
+                        { 
+                            role: "system", 
+                            content: "أنت مساعد تعليمي عربي ذكي في منصة تعليمية. هدفك مساعدة الطلاب في فهم المواد التعليمية وإجابة أسئلتهم بدقة ووضوح." 
+                        },
+                        { role: "user", content: question }
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 1000
+                });
+                
+                answer = response.choices[0].message.content;
+            } catch (aiError) {
+                answer = `أعتذر، حدث خطأ في الاتصال بخدمة الذكاء الاصطناعي. يمكنك المحاولة لاحقاً.\n\n🔗 ${BOT_URL}`;
+            }
+        } else {
+            answer = `أنا مساعد DeepSeek التعليمي. حالياً أنا في وضع التجربة. يمكنني الإجابة على أسئلتك التعليمية في مختلف المجالات.\n\n🔗 ${BOT_URL}`;
+        }
+        
+        res.json({
+            success: true,
+            question: question,
+            answer: answer,
+            metadata: {
+                aiProvider: deepseekClient ? 'DeepSeek' : 'Mock',
+                timestamp: new Date().toISOString(),
+                serverUrl: BOT_URL
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error in AI ask:', error.message);
+        res.status(500).json({ 
+            success: false, 
+            error: 'حدث خطأ في معالجة السؤال',
+            serverUrl: BOT_URL 
+        });
+    }
+});
+
 // ==================== [ نقطة نهاية root للوصول ] ====================
 app.get('/', (req, res) => {
-    const activeRoomsCount = liveRooms.size;
-    const totalParticipants = Array.from(liveRooms.values()).reduce((acc, room) => acc + room.participants.size, 0);
-    
     res.send(`
         <!DOCTYPE html>
         <html lang="ar" dir="rtl">
@@ -457,6 +506,7 @@ app.get('/', (req, res) => {
                     color: white;
                     min-height: 100vh;
                     padding: 20px;
+                    line-height: 1.6;
                 }
                 
                 .container {
@@ -466,6 +516,7 @@ app.get('/', (req, res) => {
                     border-radius: 15px;
                     padding: 30px;
                     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+                    backdrop-filter: blur(10px);
                 }
                 
                 header {
@@ -489,18 +540,19 @@ app.get('/', (req, res) => {
                 
                 .url-display {
                     background: rgba(0, 0, 0, 0.3);
-                    padding: 10px;
+                    padding: 12px;
                     border-radius: 8px;
                     margin: 15px 0;
                     word-break: break-all;
                     font-family: monospace;
+                    border-left: 4px solid #4cc9f0;
                 }
                 
                 .status-grid {
                     display: grid;
                     grid-template-columns: repeat(2, 1fr);
                     gap: 15px;
-                    margin: 20px 0;
+                    margin: 25px 0;
                 }
                 
                 .status-card {
@@ -508,22 +560,33 @@ app.get('/', (req, res) => {
                     padding: 20px;
                     border-radius: 10px;
                     text-align: center;
+                    transition: transform 0.3s;
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                }
+                
+                .status-card:hover {
+                    transform: translateY(-3px);
+                    background: rgba(255, 255, 255, 0.15);
                 }
                 
                 .btn-container {
                     display: flex;
                     flex-wrap: wrap;
-                    gap: 10px;
+                    gap: 12px;
                     justify-content: center;
                     margin: 30px 0;
                 }
                 
                 .btn {
-                    padding: 10px 20px;
-                    border-radius: 5px;
+                    padding: 12px 24px;
+                    border-radius: 8px;
                     text-decoration: none;
                     font-weight: bold;
                     transition: all 0.3s;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-width: 150px;
                 }
                 
                 .btn-primary {
@@ -535,6 +598,7 @@ app.get('/', (req, res) => {
                 .btn-primary:hover {
                     background: transparent;
                     color: #4361ee;
+                    transform: translateY(-2px);
                 }
                 
                 .btn-secondary {
@@ -546,27 +610,60 @@ app.get('/', (req, res) => {
                 .btn-secondary:hover {
                     background: white;
                     color: #333;
+                    transform: translateY(-2px);
                 }
                 
                 .info-section {
                     background: rgba(0, 0, 0, 0.2);
-                    padding: 15px;
+                    padding: 20px;
                     border-radius: 10px;
-                    margin: 20px 0;
+                    margin: 25px 0;
+                }
+                
+                .info-section h3 {
+                    margin-bottom: 15px;
+                    color: #4cc9f0;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+                    padding-bottom: 10px;
+                }
+                
+                .info-section p {
+                    margin: 10px 0;
+                    padding-right: 10px;
                 }
                 
                 footer {
                     text-align: center;
                     margin-top: 30px;
-                    padding-top: 15px;
+                    padding-top: 20px;
                     border-top: 1px solid rgba(255, 255, 255, 0.2);
                     opacity: 0.8;
                     font-size: 0.9em;
                 }
                 
+                .status-badge {
+                    display: inline-block;
+                    padding: 5px 12px;
+                    border-radius: 20px;
+                    font-size: 0.9em;
+                    margin-top: 8px;
+                }
+                
+                .status-online {
+                    background: rgba(76, 201, 240, 0.2);
+                    color: #4cc9f0;
+                    border: 1px solid #4cc9f0;
+                }
+                
+                .status-offline {
+                    background: rgba(220, 53, 69, 0.2);
+                    color: #dc3545;
+                    border: 1px solid #dc3545;
+                }
+                
                 @media (max-width: 768px) {
                     .container {
-                        padding: 15px;
+                        padding: 20px;
                     }
                     
                     h1 {
@@ -575,6 +672,11 @@ app.get('/', (req, res) => {
                     
                     .status-grid {
                         grid-template-columns: 1fr;
+                    }
+                    
+                    .btn {
+                        width: 100%;
+                        min-width: auto;
                     }
                 }
             </style>
@@ -586,50 +688,69 @@ app.get('/', (req, res) => {
                     <p class="subtitle">منصة التعليم الذكي مع DeepSeek AI - نظام متكامل للتعليم الإلكتروني</p>
                     
                     <div class="url-display">
-                        <strong>Server URL:</strong> ${BOT_URL}
+                        <strong>🌐 Server URL:</strong> ${BOT_URL}
                     </div>
                 </header>
                 
                 <div class="status-grid">
                     <div class="status-card">
                         <h3>حالة السيرفر</h3>
-                        <p>🟢 يعمل</p>
+                        <p>🟢 يعمل بنظام 24/7</p>
+                        <span class="status-badge status-online">Online</span>
                     </div>
                     
                     <div class="status-card">
                         <h3>DeepSeek AI</h3>
                         <p>${deepseekClient ? '🟢 متصل' : '🔴 وضع التجربة'}</p>
+                        <span class="status-badge ${deepseekClient ? 'status-online' : 'status-offline'}">
+                            ${deepseekClient ? 'Connected' : 'Mock Mode'}
+                        </span>
                     </div>
                     
                     <div class="status-card">
                         <h3>Telegram Bot</h3>
                         <p>${telegramBot ? '🟢 نشط' : '🔴 غير متصل'}</p>
+                        <span class="status-badge ${telegramBot ? 'status-online' : 'status-offline'}">
+                            ${telegramBot ? 'Active' : 'Disabled'}
+                        </span>
                     </div>
                     
                     <div class="status-card">
                         <h3>Firebase</h3>
                         <p>${isFirebaseInitialized ? '🟢 متصل' : '🔴 غير متصل'}</p>
+                        <span class="status-badge ${isFirebaseInitialized ? 'status-online' : 'status-offline'}">
+                            ${isFirebaseInitialized ? 'Connected' : 'Disabled'}
+                        </span>
                     </div>
                 </div>
                 
                 <div class="btn-container">
-                    <a href="/health" class="btn btn-primary">Health Check</a>
-                    <a href="/api/test" class="btn btn-secondary">API Test</a>
-                    <a href="/api/books" class="btn btn-primary">المكتبة</a>
+                    <a href="/health" class="btn btn-primary">🩺 Health Check</a>
+                    <a href="/api/test" class="btn btn-secondary">🧪 API Test</a>
+                    <a href="/api/ai/ask" class="btn btn-primary">🧠 اسأل AI</a>
                 </div>
                 
                 <div class="info-section">
-                    <h3>📞 معلومات الدعم</h3>
-                    <p><strong>الدعم الفني:</strong> ${CONFIG.ADMIN_PHONE}</p>
-                    <p><strong>الموقع:</strong> ${BOT_URL}</p>
+                    <h3>📞 معلومات الدعم والدفع</h3>
+                    <p><strong>📞 الدعم الفني:</strong> ${CONFIG.ADMIN_PHONE}</p>
+                    <p><strong>🏦 رقم الحساب:</strong> ${CONFIG.ADMIN_BANK_ACCOUNT}</p>
+                    <p><strong>👤 اسم صاحب الحساب:</strong> ${CONFIG.ADMIN_NAME}</p>
+                    <p><strong>🌐 الموقع:</strong> ${BOT_URL}</p>
                 </div>
                 
                 <div class="info-section">
                     <h3>💰 خطط الاشتراك</h3>
-                    <p>🎁 <strong>تجربة مجانية:</strong> ${CONFIG.FREE_TRIAL_DAYS} أيام</p>
-                    <p>📦 <strong>أسبوعي:</strong> ${CONFIG.WEEKLY_SUBSCRIPTION} SDG</p>
-                    <p>📅 <strong>شهري:</strong> ${CONFIG.MONTHLY_SUBSCRIPTION} SDG</p>
-                    <p>👨‍🏫 <strong>معلم شهري:</strong> ${CONFIG.TEACHER_MONTHLY_FEE} SDG</p>
+                    <p>🎁 <strong>تجربة مجانية:</strong> ${CONFIG.FREE_TRIAL_DAYS} أيام (${CONFIG.MAX_DAILY_QUESTIONS.trial} سؤال/يوم)</p>
+                    <p>📦 <strong>أسبوعي:</strong> ${CONFIG.WEEKLY_SUBSCRIPTION} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)</p>
+                    <p>📅 <strong>شهري:</strong> ${CONFIG.MONTHLY_SUBSCRIPTION} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)</p>
+                    <p>👨‍🏫 <strong>معلم شهري:</strong> ${CONFIG.TEACHER_MONTHLY_FEE} SDG (${CONFIG.MAX_DAILY_QUESTIONS.paid} سؤال/يوم)</p>
+                </div>
+                
+                <div class="info-section">
+                    <h3>🔗 نقاط نهاية API</h3>
+                    <p><code>POST ${BOT_URL}/api/ai/ask</code> - اسأل DeepSeek AI</p>
+                    <p><code>GET ${BOT_URL}/health</code> - حالة النظام</p>
+                    <p><code>GET ${BOT_URL}/api/test</code> - اختبار API</p>
                 </div>
                 
                 <footer>
@@ -642,22 +763,14 @@ app.get('/', (req, res) => {
     `);
 });
 
-// ==================== [ باقي نقاط النهاية ] ====================
-// ... (يمكنك إضافة باقي نقاط النهاية هنا)
-
 // ==================== [ نقطة نهاية 404 ] ====================
 app.use((req, res) => {
-    let url = req.url;
-    if (url.includes('/bot') && CONFIG.TELEGRAM_BOT_TOKEN) {
-        url = url.replace(CONFIG.TELEGRAM_BOT_TOKEN, '***TOKEN***');
-    }
-    
     res.status(404).json({
         success: false,
         error: 'Route not found',
         serverUrl: BOT_URL,
         availableEndpoints: {
-            GET: ['/', '/health', '/api/test', '/api/books'],
+            GET: ['/', '/health', '/api/test'],
             POST: ['/api/ai/ask']
         }
     });
@@ -666,60 +779,26 @@ app.use((req, res) => {
 // ==================== [ تشغيل السيرفر ] ====================
 server.listen(port, '0.0.0.0', () => {
     console.log(`
+    ============================================
     🚀 Smart Education Platform Server v4.0
     🔗 Running on port: ${port}
     📡 Local: http://localhost:${port}
     🌐 Public: ${BOT_URL}
     
-    🧠 DEEPSEEK AI: ${deepseekClient ? '✅ Connected' : '⚠️ Mock Mode'}
-    🔥 FIREBASE: ${isFirebaseInitialized ? '✅ Connected' : '❌ Disabled'}
-    🤖 TELEGRAM: ${telegramBot ? '✅ Active' : '❌ Disabled'}
+    📊 SERVICES STATUS:
+    • DeepSeek AI: ${deepseekClient ? '✅ Connected' : '⚠️ Mock Mode'}
+    • Firebase: ${isFirebaseInitialized ? '✅ Connected' : '❌ Disabled'}
+    • Telegram Bot: ${telegramBot ? '✅ Active' : '❌ Disabled'}
+    
+    📞 ADMIN CONTACT:
+    • Phone: ${CONFIG.ADMIN_PHONE}
+    • Account: ${CONFIG.ADMIN_BANK_ACCOUNT}
+    • Name: ${CONFIG.ADMIN_NAME}
     
     ⚡ SYSTEM READY! Access at: ${BOT_URL}
+    ============================================
     `);
 });
-
-// ==================== [ دوال مساعدة ] ====================
-async function initializeBooksDatabase() {
-    try {
-        if (!isFirebaseInitialized) return;
-        
-        const db = admin.database();
-        const books = [
-            {
-                id: 'math_grade1',
-                title: 'الرياضيات للصف الأول الابتدائي',
-                author: 'وزارة التربية والتعليم',
-                grade: 'الأول الابتدائي',
-                subject: 'الرياضيات',
-                description: 'كتاب الرياضيات للمرحلة الابتدائية',
-                pages: 100,
-                fileName: 'math_grade1.pdf',
-                isFree: true
-            },
-            {
-                id: 'arabic_grade1',
-                title: 'اللغة العربية للصف الأول الابتدائي',
-                author: 'وزارة التربية والتعليم',
-                grade: 'الأول الابتدائي',
-                subject: 'اللغة العربية',
-                description: 'كتاب اللغة العربية للمرحلة الابتدائية',
-                pages: 120,
-                fileName: 'arabic_grade1.pdf',
-                isFree: true
-            }
-        ];
-        
-        for (const book of books) {
-            await db.ref(`books/${book.id}`).set(book);
-        }
-        
-        console.log(`✅ Added ${books.length} books to database`);
-        
-    } catch (error) {
-        console.error('❌ Error initializing books database:', error.message);
-    }
-}
 
 // ==================== [ معالجة الأخطاء ] ====================
 process.on('uncaughtException', (error) => {
