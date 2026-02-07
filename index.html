@@ -1123,9 +1123,22 @@
         }
 
         function updateUserUI() {
-            document.getElementById('user-name').textContent = userData.name || 'مستخدم';
-            document.getElementById('user-level').textContent = `المستوى ${userData.stats?.level || 1}`;
-        }
+    // تحديث اسم المستخدم
+    const nameElem = document.getElementById('user-name');
+    if (nameElem) nameElem.textContent = userData.name || 'مستخدم';
+
+    // تحديث المستوى في الهيدر (فوق)
+    const levelElem = document.getElementById('user-level');
+    if (levelElem) levelElem.textContent = `المستوى ${userData.stats?.level || 1}`;
+
+    // تحديث الـ IQ في الشريط الجانبي
+    const iqElem = document.getElementById('ai-intelligence');
+    if (iqElem) {
+        const currentLevel = userData.stats?.level || 1;
+        const iq = 180 + (currentLevel * 5); 
+        iqElem.textContent = `IQ: ${iq}`;
+    }
+}
 
         async function login() {
             const email = document.getElementById('login-email').value;
@@ -2372,44 +2385,31 @@ class TestSystem {
         }
 
         async function submitTest() {
-            const answered = currentAnswers.filter(answer => answer !== null && answer !== '').length;
-            const total = currentTest.questions.length;
-            
-            if (answered === 0) {
-                showNotification('لم تقم بالإجابة على أي سؤال بعد', 'error');
-                return;
-            }
-            
-            if (answered < total) {
-                const confirm = await Swal.fire({
-                    title: 'هل أنت متأكد؟',
-                    text: `لديك ${total - answered} أسئلة لم تجب عليها. هل تريد المتابعة؟`,
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonText: 'نعم، إنهاء الاختبار',
-                    cancelButtonText: 'لا، أكمل الإجابة',
-                    reverseButtons: true
-                });
-                
-                if (!confirm.isConfirmed) {
-                    return;
-                }
-            }
-            
-            showLoading('جاري تصحيح الاختبار...');
-            
-            try {
-                const evaluation = await testSystem.evaluateTest(currentTest.id, currentAnswers);
-                
-                hideLoading();
-                displayResults(evaluation);
-                
-            } catch (error) {
-                hideLoading();
-                console.error('❌ خطأ في تصحيح الاختبار:', error);
-                showNotification('حدث خطأ في تصحيح الاختبار', 'error');
-            }
-        }
+    const answered = currentAnswers.filter(answer => answer !== null && answer !== '').length;
+    const total = currentTest.questions.length;
+    
+    if (answered === 0) {
+        showNotification('لم تقم بالإجابة على أي سؤال بعد', 'error');
+        return;
+    }
+    
+    showLoading('جاري تصحيح الاختبار وحفظ التقدم...');
+    
+    try {
+        const evaluation = await testSystem.evaluateTest(currentTest.id, currentAnswers);
+        
+        // --- إضافة منطق حفظ السجلات والمستوى هنا ---
+        await handleUserProgress(evaluation);
+        
+        hideLoading();
+        displayResults(evaluation);
+        
+    } catch (error) {
+        hideLoading();
+        console.error('❌ خطأ في تصحيح الاختبار:', error);
+        showNotification('حدث خطأ في تصحيح الاختبار', 'error');
+    }
+}
 
         function displayResults(evaluation) {
             const content = `
@@ -3380,6 +3380,68 @@ function goBack() {
 // تصدير الدوال للعمل عالمياً
 window.navigateTo = navigateTo;
 window.goBack = goBack;
+        async function handleUserProgress(evaluation) {
+    if (!userData.stats) userData.stats = { totalXP: 0, level: 1, testsTaken: 0, averageScore: 0, bestScore: 0 };
+    if (!userData.tests) userData.tests = [];
+
+    // 1. حساب نقاط الخبرة (XP)
+    let gainedXP = 50; // نقاط أساسية لإنهاء الاختبار
+    if (evaluation.passed) gainedXP += 50; // مكافأة النجاح
+    
+    // مكافأة خاصة للدرجة النهائية 100%
+    let isPerfect = parseFloat(evaluation.percentage) === 100;
+    if (isPerfect) {
+        gainedXP += 200; // مكافأة ضخمة للدرجة الكاملة
+    }
+
+    // 2. تحديث الإحصائيات العامة
+    userData.stats.totalXP = (userData.stats.totalXP || 0) + gainedXP;
+    userData.stats.testsTaken = (userData.stats.testsTaken || 0) + 1;
+    
+    // تحديث أفضل درجة
+    if (parseFloat(evaluation.percentage) > (userData.stats.bestScore || 0)) {
+        userData.stats.bestScore = parseFloat(evaluation.percentage);
+    }
+
+    // 3. نظام رفع المستويات (كل 500 نقطة مستوى جديد)
+    const oldLevel = userData.stats.level || 1;
+    const newLevel = Math.floor(userData.stats.totalXP / 500) + 1;
+    
+    if (newLevel > oldLevel) {
+        userData.stats.level = newLevel;
+        // إشعار رفع المستوى
+        setTimeout(() => {
+            Swal.fire({
+                title: '🎉 مستوى جديد!',
+                text: `مبروك! لقد وصلت إلى المستوى ${newLevel}`,
+                icon: 'success',
+                confirmButtonText: 'رائع'
+            });
+        }, 1500);
+    }
+
+    // 4. حفظ الاختبار في السجلات
+    const testRecord = {
+        id: currentTest.id,
+        title: currentTest.title,
+        score: evaluation.percentage,
+        correctAnswers: evaluation.correctAnswers,
+        totalQuestions: evaluation.totalQuestions,
+        date: new Date().toISOString(),
+        result: evaluation.passed ? 'ناجح' : 'راسب',
+        status: 'completed'
+    };
+    
+    userData.tests.unshift(testRecord); // إضافة في بداية القائمة
+
+    // 5. حفظ البيانات في Firebase والمتصفح
+    await saveUserData();
+    updateUserUI(); // تحديث اسم المستخدم والمستوى في الهيدر فوراً
+    
+    if (isPerfect) {
+        showNotification('🏆 مذهل! درجة كاملة ومكافأة XP مضاعفة!', 'success');
+    }
+}
     </script>
 </body>
 </html>
