@@ -1579,23 +1579,25 @@
                 }
             }
             
+            // ========== [ التعديلات المطلوبة هنا ] ==========
+            
             createMCQuestionFromKeyPoint(keyPoint, difficulty, index) {
                 const sentence = keyPoint.sentence;
                 const mainKeyword = keyPoint.keywords[0];
                 
                 // إنشاء سؤال ذكي يركز على المعلومة المهمة
-                const questionText = this.generateMCQuestionText(sentence, mainKeyword);
+                const questionText = `بناءً على النص، ما هي العبارة التي تصف بشكل دقيق دور أو أهمية "${mainKeyword}"؟`;
                 
-                // إنشاء خيارات ذكية
-                const options = this.generateSmartOptions(mainKeyword, keyPoint.keywords, sentence);
+                // إنشاء خيارات ذكية باستخدام الدالة المحسنة
+                const optionsData = this.generateSmartOptions(mainKeyword, keyPoint.keywords, sentence);
                 
                 const question = {
                     id: 'q_' + Date.now() + '_' + index,
                     type: 'multiple_choice',
                     text: questionText,
-                    options: options,
-                    correctAnswer: 0, // الخيار الأول هو الصحيح دائماً
-                    explanation: `هذا السؤال يركز على مفهوم "${mainKeyword}" الذي يعتبر من النقاط الأساسية في النص.`,
+                    options: optionsData.finalOptions,
+                    correctAnswer: optionsData.correctIndex,
+                    explanation: `الإجابة الصحيحة مستمدة من الفقرة: "${sentence}"`,
                     difficulty: difficulty,
                     points: this.calculatePoints(difficulty),
                     keyPoint: keyPoint
@@ -1604,46 +1606,47 @@
                 return question;
             }
             
-            generateMCQuestionText(sentence, keyword) {
-                const questionTemplates = [
-                    `ماذا يعني مصطلح "${keyword}" في الجملة التالية: "${sentence.substring(0, 100)}..."؟`,
-                    `ما هو المقصود بـ "${keyword}" في هذا السياق؟`,
-                    `بناءً على النص، ما هو تعريف "${keyword}"؟`,
-                    `أي من الخيارات التالية يصف بدقة مفهوم "${keyword}"؟`
-                ];
-                
-                return questionTemplates[Math.floor(Math.random() * questionTemplates.length)];
-            }
-            
             generateSmartOptions(correctKeyword, allKeywords, sentence) {
                 const options = [];
                 
-                // الخيار الصحيح
-                options.push(`المفهوم الصحيح لـ "${correctKeyword}" كما ورد في النص`);
+                // 1. الخيار الصحيح (يجب أن يكون مستخلصاً من سياق الجملة)
+                // نحاول أخذ جزء من الجملة كتعريف
+                let correctClean = sentence.length > 80 ? sentence.substring(0, 80) + "..." : sentence;
+                options.push(correctClean);
+
+                // 2. توليد خيارات خاطئة "ذكية" من كلمات مفتاحية أخرى في النص
+                // بدلاً من نصوص وهمية، نأخذ جمل أخرى أو مصطلحات أخرى وردت في النص
+                let otherKeywords = allKeywords.filter(k => k !== correctKeyword);
                 
-                // خيارات خاطئة ذكية
-                const distractors = [
-                    `مفهوم مخالف لـ "${correctKeyword}"`,
-                    `تفسير خاطئ لـ "${correctKeyword}" بناءً على سياق مختلف`,
-                    `مصطلح مشابه لـ "${correctKeyword}" لكنه غير دقيق`,
-                    `تعريف عام لا يتناسب مع سياق النص`
-                ];
-                
-                // إضافة 3 خيارات خاطئة
+                // خلط الكلمات الأخرى لاختيار عشوائي
+                this.shuffleArray(otherKeywords);
+
                 for (let i = 0; i < 3; i++) {
-                    if (i < distractors.length) {
-                        options.push(distractors[i]);
+                    if (otherKeywords[i]) {
+                        options.push(`يرتبط هذا المفهوم بـ "${otherKeywords[i]}" وكيفية تأثيره في السياق العام.`);
                     } else {
-                        options.push(`خيار غير صحيح ${i + 1}`);
+                        // خيارات احتياطية في حال كان النص قصيراً جداً
+                        const backups = [
+                            "لا توجد علاقة مباشرة لهذا المصطلح بالفقرة المذكورة.",
+                            "يعتبر هذا العنصر ثانوياً ولا يؤثر على العملية الرئيسية.",
+                            "تشير الدراسات إلى أن هذا التأثير ناتج عن عوامل خارجية."
+                        ];
+                        options.push(backups[i]);
                     }
                 }
+
+                // خلط الكل مع الحفاظ على تذكر مكان الصحيح
+                const result = {
+                    finalOptions: [],
+                    correctIndex: 0
+                };
                 
-                // خلط الخيارات مع الحفاظ على الصحيح في الفهرس 0
-                const correct = options[0];
-                const wrong = options.slice(1);
-                this.shuffleArray(wrong);
-                
-                return [correct, ...wrong];
+                let originalOptions = [...options];
+                this.shuffleArray(originalOptions);
+                result.finalOptions = originalOptions;
+                result.correctIndex = originalOptions.indexOf(options[0]);
+
+                return result;
             }
             
             createTFQuestionFromKeyPoint(keyPoint, difficulty, index) {
@@ -1672,6 +1675,19 @@
                 
                 return question;
             }
+            
+            modifySentenceToFalse(sentence, keywords) {
+                let words = sentence.split(/\s+/);
+                if (keywords.length >= 2) {
+                    // استبدال الكلمة المفتاحية الأولى بالثانية لجعل الجملة خاطئة تقنياً
+                    let wrongSentence = sentence.replace(keywords[0], keywords[1]);
+                    if (wrongSentence !== sentence) return wrongSentence;
+                }
+                // نفي الفعل إذا لم تنجح طريقة الاستبدال
+                return sentence.replace("هو", "ليس").replace("يعتبر", "لا يعتبر").replace("يؤدي", "لا يؤدي");
+            }
+            
+            // ========== [ نهاية التعديلات ] ==========
             
             createSAQuestionFromKeyPoint(keyPoint, difficulty, index) {
                 const keyword = keyPoint.keywords[0];
@@ -1730,21 +1746,6 @@
                 };
                 
                 return question;
-            }
-            
-            modifySentenceToFalse(sentence, keywords) {
-                const words = sentence.split(/\s+/);
-                if (words.length > 4) {
-                    // تغيير كلمة مفتاحية أو إضافة نفي
-                    const keywordIndex = words.findIndex(w => keywords.includes(w));
-                    if (keywordIndex !== -1) {
-                        words[keywordIndex] = 'ليس ' + words[keywordIndex];
-                    } else {
-                        const randomIndex = Math.floor(Math.random() * (words.length - 2)) + 1;
-                        words[randomIndex] = 'غير';
-                    }
-                }
-                return words.join(' ');
             }
             
             calculatePoints(difficulty) {
