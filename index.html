@@ -1282,635 +1282,210 @@
 
         // =============== [ 3. نظام توليد الاختبارات الذكي ] ===============
         class TestSystem {
-            constructor() {
-                this.tests = new Map();
-                this.keywordCache = new Map();
-                this.textAnalysisCache = new Map();
-            }
-            
-            async generateTestFromText(text, options = {}) {
-                try {
-                    showLoading('جاري تحليل النص وتوليد الأسئلة...');
-                    
-                    // تحليل النص واستخراج المفاهيم المهمة فقط
-                    const analysis = await this.analyzeText(text);
-                    
-                    // توليد الأسئلة الذكية بناءً على التحليل
-                    const questions = await this.generateSmartQuestions(analysis, options);
-                    
-                    // إنشاء كائن الاختبار
-                    const test = {
-                        id: 'test_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-                        title: options.title || 'اختبار ذكي مولد',
-                        description: options.description || 'تم إنشاء هذا الاختبار باستخدام الذكاء الاصطناعي المتقدم',
-                        textSource: text.substring(0, 500) + '...',
-                        originalText: text,
-                        questions: questions,
-                        analysis: analysis,
-                        settings: {
-                            difficulty: options.difficulty || 'medium',
-                            timeLimit: options.timeLimit || 30,
-                            passingScore: options.passingScore || 70,
-                            questionCount: questions.length,
-                            generatedAt: new Date().toISOString()
-                        },
-                        metadata: {
-                            source: 'text',
-                            wordCount: text.split(/\s+/).length,
-                            language: 'ar',
-                            focusPoints: analysis.keywords.slice(0, 10)
-                        }
-                    };
-                    
-                    // حفظ الاختبار مؤقتاً
-                    this.tests.set(test.id, test);
-                    
-                    // تحديث إحصائيات المستخدم
-                    await this.updateUserStats(test);
-                    
-                    hideLoading();
-                    return test;
-                    
-                } catch (error) {
-                    hideLoading();
-                    console.error('❌ خطأ في توليد الاختبار:', error);
-                    throw error;
-                }
-            }
-            
-            async analyzeText(text) {
-                // تنظيف النص وتحسينه
-                const cleanedText = this.cleanArabicText(text);
-                
-                // تحليل النص باستخدام خوارزميات متقدمة
-                const sentences = this.splitIntoSentences(cleanedText);
-                const paragraphs = this.splitIntoParagraphs(cleanedText);
-                
-                // استخراج الكلمات المفتاحية المهمة فقط
-                const keywords = this.extractImportantKeywords(cleanedText);
-                
-                // تحديد الموضوعات الرئيسية
-                const topics = this.identifyMainTopics(cleanedText, keywords);
-                
-                // تحليل مستوى الصعوبة بناءً على المحتوى
-                const difficulty = this.analyzeContentDifficulty(cleanedText);
-                
-                // تحديد النقاط الأساسية (المعلومات المهمة)
-                const keyPoints = this.extractKeyPoints(sentences, keywords);
-                
-                // إزالة التكرارات
-                const uniqueKeywords = this.removeDuplicates(keywords);
-                
-                return {
-                    text: cleanedText,
-                    sentences: sentences,
-                    paragraphs: paragraphs,
-                    keywords: uniqueKeywords,
-                    keyPoints: keyPoints,
-                    topics: topics,
-                    difficulty: difficulty,
-                    wordCount: cleanedText.split(/\s+/).length,
-                    sentenceCount: sentences.length,
-                    paragraphCount: paragraphs.length
-                };
-            }
-            
-            cleanArabicText(text) {
-                // تنظيف النص العربي من الرموز والأخطاء
-                let cleaned = text
-                    .replace(/[إأآا]/g, 'ا')
-                    .replace(/ة/g, 'ه')
-                    .replace(/ى/g, 'ي')
-                    .replace(/[ؤئ]/g, 'ء')
-                    .replace(/[^\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\s\d\.\,\?\!،؛:\-\'"\(\)\[\]]/g, '')
-                    .replace(/\s+/g, ' ')
-                    .replace(/\n+/g, '\n')
-                    .trim();
-                
-                // إزالة الجمل القصيرة جداً (حشو)
-                cleaned = cleaned.split('.').filter(sentence => {
-                    const words = sentence.trim().split(/\s+/);
-                    return words.length > 3 || /[؟!\?]/.test(sentence);
-                }).join('.');
-                
-                return cleaned;
-            }
-            
-            splitIntoSentences(text) {
-                return text.split(/[\.\?!۔؟]+/).filter(s => s.trim().length > 0);
-            }
-            
-            splitIntoParagraphs(text) {
-                return text.split(/\n+/).filter(p => p.trim().length > 0);
-            }
-            
-            extractImportantKeywords(text) {
-                const words = text.split(/\s+/);
-                const stopWords = ['في', 'من', 'إلى', 'على', 'أن', 'إن', 'هو', 'هي', 'هم', 'هذا', 'هذه', 'ذلك', 'كان', 'يكون', 'ذلك', 'هناك', 'عند', 'مع', 'من', 'عن', 'في', 'على', 'إلى', 'أن', 'إن', 'كان', 'يكون', 'ليس', 'ما', 'ماذا', 'من', 'متى', 'أين', 'كيف', 'لماذا', 'كم', 'أي'];
-                
-                const wordFrequency = {};
-                words.forEach(word => {
-                    const cleanWord = word.replace(/[\.\,\?\!،؛:\-\'"\(\)\[\]]/g, '');
-                    if (cleanWord.length > 3 && !stopWords.includes(cleanWord)) {
-                        wordFrequency[cleanWord] = (wordFrequency[cleanWord] || 0) + 1;
-                    }
-                });
-                
-                // ترتيب الكلمات حسب الأهمية (التكرار × طول الكلمة)
-                const scoredWords = Object.entries(wordFrequency).map(([word, freq]) => ({
-                    word,
-                    score: freq * word.length * (word.length > 5 ? 1.5 : 1)
-                }));
-                
-                scoredWords.sort((a, b) => b.score - a.score);
-                
-                return scoredWords.slice(0, 30).map(item => item.word);
-            }
-            
-            identifyMainTopics(text, keywords) {
-                const topics = [];
-                const topicPatterns = {
-                    'علوم': ['علم', 'تجربة', 'بحث', 'دراسة', 'طبيعة', 'كيمي', 'فيزي', 'أحياء'],
-                    'رياضيات': ['رياضيات', 'عدد', 'معادلة', 'حساب', 'هندسة', 'جبر', 'إحصاء'],
-                    'تاريخ': ['تاريخ', 'حدث', 'حرب', 'سلام', 'أمة', 'حضارة', 'قديم'],
-                    'جغرافيا': ['جغرافيا', 'بلد', 'مدينة', 'نهر', 'جبل', 'مناخ', 'طقس'],
-                    'أدب': ['أدب', 'شعر', 'رواية', 'قصة', 'أديب', 'كتاب', 'نثر'],
-                    'دين': ['دين', 'إسلام', 'مسلم', 'صلاة', 'قرآن', 'حديث', 'فقه']
-                };
-                
-                Object.entries(topicPatterns).forEach(([topic, words]) => {
-                    const matches = words.filter(word => text.includes(word));
-                    if (matches.length >= 2) {
-                        const confidence = matches.length / words.length;
-                        if (confidence > 0.3) {
-                            topics.push({
-                                name: topic,
-                                confidence: confidence,
-                                keywords: matches,
-                                relevance: matches.length * 10
-                            });
-                        }
-                    }
-                });
-                
-                // إضافة موضوعات من الكلمات المفتاحية
-                keywords.forEach(keyword => {
-                    if (!topics.some(t => t.keywords.includes(keyword))) {
-                        topics.push({
-                            name: keyword,
-                            confidence: 0.5,
-                            keywords: [keyword],
-                            relevance: 5
-                        });
-                    }
-                });
-                
-                return topics.sort((a, b) => b.relevance - a.relevance).slice(0, 5);
-            }
-            
-            analyzeContentDifficulty(text) {
-                const words = text.split(/\s+/);
-                const longWords = words.filter(w => w.length > 7).length;
-                const complexWords = words.filter(w => /[َُِّْ]/.test(w)).length;
-                const ratio = (longWords + complexWords) / words.length;
-                
-                if (ratio > 0.3) return 'hard';
-                if (ratio > 0.15) return 'medium';
-                return 'easy';
-            }
-            
-            extractKeyPoints(sentences, keywords) {
-                const keyPoints = [];
-                
-                sentences.forEach(sentence => {
-                    const sentenceKeywords = keywords.filter(keyword => 
-                        sentence.includes(keyword) && keyword.length > 3
-                    );
-                    
-                    if (sentenceKeywords.length >= 2) {
-                        const importance = sentenceKeywords.length * 5;
-                        keyPoints.push({
-                            sentence: sentence.trim(),
-                            keywords: sentenceKeywords,
-                            importance: importance
-                        });
-                    }
-                });
-                
-                // ترتيب حسب الأهمية
-                keyPoints.sort((a, b) => b.importance - a.importance);
-                
-                return keyPoints.slice(0, 15);
-            }
-            
-            removeDuplicates(keywords) {
-                const unique = [];
-                const seen = new Set();
-                
-                keywords.forEach(keyword => {
-                    if (!seen.has(keyword)) {
-                        seen.add(keyword);
-                        unique.push(keyword);
-                    }
-                });
-                
-                return unique;
-            }
-            
-            async generateSmartQuestions(analysis, options) {
-                const questions = [];
-                const count = options.count || 15;
-                
-                // تحديد أنواع الأسئلة بناءً على الصعوبة
-                const questionTypes = this.getQuestionTypes(options.difficulty);
-                
-                // توليد أسئلة من النقاط الأساسية
-                for (let i = 0; i < count && i < analysis.keyPoints.length; i++) {
-                    const keyPoint = analysis.keyPoints[i];
-                    const type = questionTypes[Math.floor(Math.random() * questionTypes.length)];
-                    
-                    const question = this.createSmartQuestion(keyPoint, type, options.difficulty, i);
-                    if (question) {
-                        questions.push(question);
-                    }
-                }
-                
-                // إذا لم يكن هناك أسئلة كافية، أضف أسئلة من الكلمات المفتاحية
-                if (questions.length < count) {
-                    const remaining = count - questions.length;
-                    for (let i = 0; i < remaining; i++) {
-                        const keyword = analysis.keywords[i % analysis.keywords.length];
-                        const type = questionTypes[Math.floor(Math.random() * questionTypes.length)];
-                        const question = this.createQuestionFromKeyword(keyword, analysis, type, options.difficulty, questions.length);
-                        if (question) {
-                            questions.push(question);
-                        }
-                    }
-                }
-                
-                return questions;
-            }
-            
-            getQuestionTypes(difficulty) {
-                switch(difficulty) {
-                    case 'easy':
-                        return ['multiple_choice', 'true_false'];
-                    case 'medium':
-                        return ['multiple_choice', 'true_false', 'short_answer'];
-                    case 'hard':
-                        return ['multiple_choice', 'short_answer', 'fill_blank'];
-                    default:
-                        return ['multiple_choice', 'true_false', 'short_answer'];
-                }
-            }
-            
-            createSmartQuestion(keyPoint, type, difficulty, index) {
-                switch(type) {
-                    case 'multiple_choice':
-                        return this.createMCQuestionFromKeyPoint(keyPoint, difficulty, index);
-                    case 'true_false':
-                        return this.createTFQuestionFromKeyPoint(keyPoint, difficulty, index);
-                    case 'short_answer':
-                        return this.createSAQuestionFromKeyPoint(keyPoint, difficulty, index);
-                    case 'fill_blank':
-                        return this.createFBQuestionFromKeyPoint(keyPoint, difficulty, index);
-                    default:
-                        return this.createMCQuestionFromKeyPoint(keyPoint, difficulty, index);
-                }
-            }
-            
-            // ========== [ التعديلات المطلوبة هنا ] ==========
-            
-            createMCQuestionFromKeyPoint(keyPoint, difficulty, index) {
-                const sentence = keyPoint.sentence;
-                const mainKeyword = keyPoint.keywords[0];
-                
-                // إنشاء سؤال ذكي يركز على المعلومة المهمة
-                const questionText = `بناءً على النص، ما هي العبارة التي تصف بشكل دقيق دور أو أهمية "${mainKeyword}"؟`;
-                
-                // إنشاء خيارات ذكية باستخدام الدالة المحسنة
-                const optionsData = this.generateSmartOptions(mainKeyword, keyPoint.keywords, sentence);
-                
-                const question = {
-                    id: 'q_' + Date.now() + '_' + index,
-                    type: 'multiple_choice',
-                    text: questionText,
-                    options: optionsData.finalOptions,
-                    correctAnswer: optionsData.correctIndex,
-                    explanation: `الإجابة الصحيحة مستمدة من الفقرة: "${sentence}"`,
-                    difficulty: difficulty,
-                    points: this.calculatePoints(difficulty),
-                    keyPoint: keyPoint
-                };
-                
-                return question;
-            }
-            
-            generateSmartOptions(correctKeyword, allKeywords, sentence) {
-                const options = [];
-                
-                // 1. الخيار الصحيح (يجب أن يكون مستخلصاً من سياق الجملة)
-                // نحاول أخذ جزء من الجملة كتعريف
-                let correctClean = sentence.length > 80 ? sentence.substring(0, 80) + "..." : sentence;
-                options.push(correctClean);
+    constructor() {
+        this.tests = new Map();
+        this.usedSentences = new Set(); // لتتبع الجمل التي استخدمت ومنع التكرار
+    }
 
-                // 2. توليد خيارات خاطئة "ذكية" من كلمات مفتاحية أخرى في النص
-                // بدلاً من نصوص وهمية، نأخذ جمل أخرى أو مصطلحات أخرى وردت في النص
-                let otherKeywords = allKeywords.filter(k => k !== correctKeyword);
-                
-                // خلط الكلمات الأخرى لاختيار عشوائي
-                this.shuffleArray(otherKeywords);
+    async generateTestFromText(text, options = {}) {
+        this.usedSentences.clear(); // إعادة تهيئة الذاكرة عند كل اختبار جديد
+        const analysis = await this.analyzeText(text);
+        const questions = this.generateHighQualityQuestions(analysis, options);
 
-                for (let i = 0; i < 3; i++) {
-                    if (otherKeywords[i]) {
-                        options.push(`يرتبط هذا المفهوم بـ "${otherKeywords[i]}" وكيفية تأثيره في السياق العام.`);
-                    } else {
-                        // خيارات احتياطية في حال كان النص قصيراً جداً
-                        const backups = [
-                            "لا توجد علاقة مباشرة لهذا المصطلح بالفقرة المذكورة.",
-                            "يعتبر هذا العنصر ثانوياً ولا يؤثر على العملية الرئيسية.",
-                            "تشير الدراسات إلى أن هذا التأثير ناتج عن عوامل خارجية."
-                        ];
-                        options.push(backups[i]);
-                    }
-                }
+        const test = {
+            id: 'test_' + Date.now(),
+            title: options.title || analysis.topics[0]?.name || "اختبار تقييمي",
+            questions: questions,
+            analysis: analysis,
+            settings: {
+                difficulty: options.difficulty || 'medium',
+                passingScore: 70,
+                generatedAt: new Date().toISOString()
+            }
+        };
 
-                // خلط الكل مع الحفاظ على تذكر مكان الصحيح
-                const result = {
-                    finalOptions: [],
-                    correctIndex: 0
-                };
-                
-                let originalOptions = [...options];
-                this.shuffleArray(originalOptions);
-                result.finalOptions = originalOptions;
-                result.correctIndex = originalOptions.indexOf(options[0]);
+        this.tests.set(test.id, test);
+        await this.updateUserStats(test);
+        return test;
+    }
 
-                return result;
+    async analyzeText(text) {
+        // تنظيف متقدم للنص وإزالة الفراغات الزائدة
+        const cleanText = text.replace(/\s+/g, ' ').trim();
+        
+        // تقسيم النص إلى جمل حقيقية بناءً على علامات الترقيم
+        const sentences = cleanText.split(/[.؟!] /).filter(s => s.trim().length > 25);
+        
+        // استخراج الكلمات المفتاحية الأكثر أهمية (الأسماء والمصطلحات)
+        const keywords = this.extractKeywords(cleanText);
+
+        return {
+            fullText: cleanText,
+            sentences: sentences,
+            keywords: keywords,
+            topics: this.identifyTopics(cleanText, keywords)
+        };
+    }
+
+    extractKeywords(text) {
+        const stopWords = ['من', 'في', 'على', 'إلى', 'أن', 'كان', 'هذا', 'هذه', 'تم', 'عن'];
+        const words = text.split(/\s+/);
+        const freq = {};
+        words.forEach(w => {
+            const word = w.replace(/[^\u0600-\u06FF]/g, '');
+            if (word.length > 3 && !stopWords.includes(word)) {
+                freq[word] = (freq[word] || 0) + 1;
             }
-            
-            createTFQuestionFromKeyPoint(keyPoint, difficulty, index) {
-                const sentence = keyPoint.sentence;
-                const isTrue = Math.random() > 0.3; // 70% صحيح لتعزيز المعلومات الصحيحة
-                
-                let statement = sentence;
-                if (!isTrue) {
-                    // تعديل الجملة لجعلها خاطئة بطريقة ذكية
-                    statement = this.modifySentenceToFalse(sentence, keyPoint.keywords);
-                }
-                
-                const question = {
-                    id: 'q_' + Date.now() + '_' + index,
-                    type: 'true_false',
-                    text: `هل العبارة التالية صحيحة: "${statement}"؟`,
-                    options: ['صحيح', 'خطأ'],
-                    correctAnswer: isTrue ? 0 : 1,
-                    explanation: isTrue 
-                        ? 'العبارة صحيحة كما وردت في النص وتعتبر من المعلومات المهمة.'
-                        : 'العبارة خاطئة، حيث أن النص يقول شيئاً مختلفاً عن هذه المعلومة.',
-                    difficulty: difficulty,
-                    points: 1,
-                    keyPoint: keyPoint
-                };
-                
-                return question;
+        });
+        return Object.entries(freq)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 20)
+            .map(e => e[0]);
+    }
+
+    generateHighQualityQuestions(analysis, options) {
+        const questions = [];
+        const count = options.count || 10;
+        const availableSentences = [...analysis.sentences];
+
+        // ترتيب الجمل حسب الأهمية (التي تحتوي على كلمات مفتاحية أكثر)
+        availableSentences.sort((a, b) => {
+            const countA = analysis.keywords.filter(k => a.includes(k)).length;
+            const countB = analysis.keywords.filter(k => b.includes(k)).length;
+            return countB - countA;
+        });
+
+        for (let sentence of availableSentences) {
+            if (questions.length >= count) break;
+            if (this.usedSentences.has(sentence)) continue;
+
+            // تحديد نوع السؤال بشكل عشوائي لكسر الملل
+            const type = Math.random() > 0.4 ? 'multiple_choice' : 'true_false';
+            let q = null;
+
+            if (type === 'multiple_choice') {
+                q = this.createSmartMCQ(sentence, analysis);
+            } else {
+                q = this.createSmartTF(sentence, analysis);
             }
-            
-            modifySentenceToFalse(sentence, keywords) {
-                let words = sentence.split(/\s+/);
-                if (keywords.length >= 2) {
-                    // استبدال الكلمة المفتاحية الأولى بالثانية لجعل الجملة خاطئة تقنياً
-                    let wrongSentence = sentence.replace(keywords[0], keywords[1]);
-                    if (wrongSentence !== sentence) return wrongSentence;
-                }
-                // نفي الفعل إذا لم تنجح طريقة الاستبدال
-                return sentence.replace("هو", "ليس").replace("يعتبر", "لا يعتبر").replace("يؤدي", "لا يؤدي");
+
+            if (q) {
+                questions.push(q);
+                this.usedSentences.add(sentence);
             }
+        }
+        return questions;
+    }
+
+    createSmartMCQ(sentence, analysis) {
+        // البحث عن الكلمة الأكثر أهمية في هذه الجملة لتكون هي "محور السؤال"
+        const targetKeyword = analysis.keywords.find(k => sentence.includes(k));
+        if (!targetKeyword) return null;
+
+        // صياغة السؤال: نحذف الكلمة ونضع مكانها فراغ أو نسأل عن معناها
+        const questionText = `في سياق النص، ما هو المقصود بـ "${targetKeyword}" في هذه العبارة: "${sentence.replace(targetKeyword, '(...)')}"؟`;
+
+        // توليد خيارات من جمل أخرى حقيقية لضمان عدم وجود "حشو"
+        const distractors = analysis.sentences
+            .filter(s => s !== sentence)
+            .sort(() => 0.5 - Math.random())
+            .slice(0, 3);
+
+        if (distractors.length < 3) return null;
+
+        const options = [
+            sentence, // الخيار الصحيح هو الجملة الكاملة التي تشرح المفهوم
+            ...distractors
+        ];
+
+        // خلط الخيارات وتحديد مكان الإجابة الصحيحة
+        const shuffled = this.shuffleWithIndex(options, 0);
+
+        return {
+            type: 'multiple_choice',
+            text: questionText,
+            options: shuffled.items,
+            correctAnswer: shuffled.correctIndex,
+            explanation: `الإجابة الصحيحة تظهر في النص كالتالي: "${sentence}"`,
+            points: 2
+        };
+    }
+
+    createSmartTF(sentence, analysis) {
+        const isTrue = Math.random() > 0.5;
+        let statement = sentence;
+        let explanation = `هذه العبارة دقيقة وتتفق مع محتوى النص.`;
+
+        if (!isTrue) {
+            // جعل الجملة خاطئة عن طريق استبدال الكلمة المفتاحية بكلمة مفتاحية أخرى من النص
+            const otherKeyword = analysis.keywords.find(k => !sentence.includes(k));
+            const targetKeyword = analysis.keywords.find(k => sentence.includes(k));
             
-            // ========== [ نهاية التعديلات ] ==========
-            
-            createSAQuestionFromKeyPoint(keyPoint, difficulty, index) {
-                const keyword = keyPoint.keywords[0];
-                
-                const question = {
-                    id: 'q_' + Date.now() + '_' + index,
-                    type: 'short_answer',
-                    text: `اشرح باختصار مفهوم "${keyword}" كما ورد في النص.`,
-                    correctAnswer: `${keyword} هو مفهوم أساسي في النص يشرح...`,
-                    explanation: `المقصود بـ ${keyword} في النص هو...`,
-                    difficulty: difficulty,
-                    points: this.calculatePoints(difficulty) + 1,
-                    keyPoint: keyPoint
-                };
-                
-                return question;
-            }
-            
-            createFBQuestionFromKeyPoint(keyPoint, difficulty, index) {
-                const sentence = keyPoint.sentence;
-                const keyword = keyPoint.keywords[0];
-                
-                // إخفاء الكلمة المفتاحية في الجملة
-                const blankSentence = sentence.replace(keyword, '______');
-                
-                const question = {
-                    id: 'q_' + Date.now() + '_' + index,
-                    type: 'fill_blank',
-                    text: `أكمل الفراغ في الجملة التالية: "${blankSentence}"`,
-                    correctAnswer: keyword,
-                    explanation: `الكلمة الصحيحة هي "${keyword}" وهي من الكلمات المفتاحية المهمة في النص.`,
-                    difficulty: difficulty,
-                    points: this.calculatePoints(difficulty),
-                    keyPoint: keyPoint
-                };
-                
-                return question;
-            }
-            
-            createQuestionFromKeyword(keyword, analysis, type, difficulty, index) {
-                // إنشاء سؤال من كلمة مفتاحية
-                const question = {
-                    id: 'q_' + Date.now() + '_' + index,
-                    type: 'multiple_choice',
-                    text: `ما معنى "${keyword}" في سياق النص؟`,
-                    options: [
-                        `المعنى الدقيق كما ورد في النص`,
-                        `معنى عام للكلمة`,
-                        `معنى مخالف للسياق`,
-                        `تفسير غير دقيق`
-                    ],
-                    correctAnswer: 0,
-                    explanation: `كلمة "${keyword}" تعتبر من الكلمات المهمة في النص.`,
-                    difficulty: difficulty,
-                    points: this.calculatePoints(difficulty)
-                };
-                
-                return question;
-            }
-            
-            calculatePoints(difficulty) {
-                switch(difficulty) {
-                    case 'easy': return 1;
-                    case 'medium': return 2;
-                    case 'hard': return 3;
-                    default: return 2;
-                }
-            }
-            
-            shuffleArray(array) {
-                for (let i = array.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [array[i], array[j]] = [array[j], array[i]];
-                }
-                return array;
-            }
-            
-            async evaluateTest(testId, answers) {
-                const test = this.tests.get(testId);
-                if (!test) return null;
-                
-                let score = 0;
-                let correctAnswers = 0;
-                const results = [];
-                
-                test.questions.forEach((question, index) => {
-                    const userAnswer = answers[index];
-                    let isCorrect = false;
-                    
-                    switch(question.type) {
-                        case 'multiple_choice':
-                        case 'true_false':
-                            isCorrect = userAnswer == question.correctAnswer;
-                            break;
-                        case 'short_answer':
-                        case 'fill_blank':
-                            // تقييم متقدم للإجابات النصية
-                            isCorrect = this.evaluateTextAnswer(userAnswer, question.correctAnswer);
-                            break;
-                    }
-                    
-                    if (isCorrect) {
-                        score += question.points;
-                        correctAnswers++;
-                    }
-                    
-                    results.push({
-                        question: question.text,
-                        userAnswer: userAnswer,
-                        correctAnswer: question.correctAnswer,
-                        isCorrect: isCorrect,
-                        explanation: question.explanation,
-                        points: question.points,
-                        earnedPoints: isCorrect ? question.points : 0
-                    });
-                });
-                
-                const totalPoints = test.questions.reduce((sum, q) => sum + q.points, 0);
-                const percentage = (score / totalPoints) * 100;
-                
-                const evaluation = {
-                    testId: testId,
-                    score: score,
-                    totalPoints: totalPoints,
-                    percentage: percentage.toFixed(2),
-                    correctAnswers: correctAnswers,
-                    totalQuestions: test.questions.length,
-                    results: results,
-                    date: new Date().toISOString(),
-                    passed: percentage >= test.settings.passingScore,
-                    testTitle: test.title
-                };
-                
-                // تحديث إحصائيات المستخدم
-                await this.updateUserTestStats(evaluation);
-                
-                return evaluation;
-            }
-            
-            evaluateTextAnswer(userAnswer, correctAnswer) {
-                if (!userAnswer || userAnswer.trim().length === 0) return false;
-                
-                const userText = userAnswer.toLowerCase().trim();
-                const correctText = correctAnswer.toLowerCase().trim();
-                
-                // تقييم بسيط: إذا كانت الإجابة تحتوي على كلمات مفتاحية
-                const keywords = correctText.split(/\s+/).filter(w => w.length > 3);
-                const matchingKeywords = keywords.filter(kw => userText.includes(kw));
-                
-                return matchingKeywords.length >= Math.ceil(keywords.length / 2);
-            }
-            
-            async updateUserStats(test) {
-                if (!userData.stats) userData.stats = {};
-                
-                userData.stats.testsCreated = (userData.stats.testsCreated || 0) + 1;
-                userData.stats.totalXP = (userData.stats.totalXP || 0) + 20;
-                
-                // حساب المستوى الجديد
-                const newLevel = Math.floor(userData.stats.totalXP / 100) + 1;
-                if (newLevel > userData.stats.level) {
-                    userData.stats.level = newLevel;
-                    showNotification(`🎉 تقدمت إلى المستوى ${newLevel}!`, 'success');
-                }
-                
-                // حفظ الاختبار في بيانات المستخدم
-                if (!userData.tests) userData.tests = [];
-                userData.tests.unshift({
-                    id: test.id,
-                    title: test.title,
-                    date: new Date().toISOString(),
-                    score: 0,
-                    status: 'created',
-                    questionCount: test.questions.length
-                });
-                
-                // حفظ فقط آخر 50 اختبار
-                if (userData.tests.length > 50) {
-                    userData.tests = userData.tests.slice(0, 50);
-                }
-                
-                await saveUserData();
-                updateUserUI();
-            }
-            
-            async updateUserTestStats(evaluation) {
-                if (!userData.stats) userData.stats = {};
-                
-                userData.stats.testsTaken = (userData.stats.testsTaken || 0) + 1;
-                
-                // حساب متوسط الدرجات
-                const totalTests = userData.stats.testsTaken;
-                const currentAverage = userData.stats.averageScore || 0;
-                userData.stats.averageScore = ((currentAverage * (totalTests - 1)) + parseFloat(evaluation.percentage)) / totalTests;
-                
-                // تحديث أفضل نتيجة
-                if (parseFloat(evaluation.percentage) > (userData.stats.bestScore || 0)) {
-                    userData.stats.bestScore = parseFloat(evaluation.percentage);
-                }
-                
-                userData.stats.totalXP = (userData.stats.totalXP || 0) + Math.floor(evaluation.percentage / 10);
-                
-                // تحديث المستوى
-                const newLevel = Math.floor(userData.stats.totalXP / 100) + 1;
-                if (newLevel > userData.stats.level) {
-                    userData.stats.level = newLevel;
-                    showNotification(`🎉 تقدمت إلى المستوى ${newLevel}!`, 'success');
-                }
-                
-                // تحديث سجل الاختبار
-                const testIndex = userData.tests?.findIndex(t => t.id === evaluation.testId);
-                if (testIndex !== -1 && userData.tests) {
-                    userData.tests[testIndex].score = evaluation.percentage;
-                    userData.tests[testIndex].status = 'completed';
-                    userData.tests[testIndex].completedAt = new Date().toISOString();
-                    userData.tests[testIndex].result = evaluation.passed ? 'ناجح' : 'راسب';
-                }
-                
-                await saveUserData();
-                updateUserUI();
+            if (otherKeyword && targetKeyword) {
+                statement = sentence.replace(targetKeyword, otherKeyword);
+                explanation = `هذه العبارة خاطئة، لأن النص يتحدث عن "${targetKeyword}" وليس "${otherKeyword}".`;
+            } else {
+                return null; // إلغاء السؤال إذا لم نجد استبدالاً منطقياً
             }
         }
 
+        return {
+            type: 'true_false',
+            text: `هل العبارة التالية صحيحة بناءً على النص: "${statement}"؟`,
+            options: ['صحيح', 'خطأ'],
+            correctAnswer: isTrue ? 0 : 1,
+            explanation: explanation,
+            points: 1
+        };
+    }
+
+    shuffleWithIndex(array, correctIdx) {
+        const items = array.map((item, index) => ({ item, index }));
+        for (let i = items.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [items[i], items[j]] = [items[j], items[i]];
+        }
+        return {
+            items: items.map(i => i.item),
+            correctIndex: items.findIndex(i => i.index === correctIdx)
+        };
+    }
+
+    // نظام التقييم المحسن
+    async evaluateTest(testId, answers) {
+        const test = this.tests.get(testId);
+        const results = test.questions.map((q, i) => {
+            const isCorrect = answers[i] == q.correctAnswer;
+            return {
+                question: q.text,
+                isCorrect: isCorrect,
+                correctAnswer: q.options[q.correctAnswer],
+                explanation: q.explanation
+            };
+        });
+
+        const score = results.filter(r => r.isCorrect).length;
+        const percentage = (score / test.questions.length) * 100;
+
+        return {
+            percentage: percentage.toFixed(0),
+            passed: percentage >= 70,
+            results: results,
+            feedback: this.getFeedback(percentage)
+        };
+    }
+
+    getFeedback(score) {
+        if (score >= 90) return "أداء استثنائي! أنت تتقن هذا المحتوى تماماً.";
+        if (score >= 70) return "أداء جيد جداً، لديك استيعاب قوي للنقاط الأساسية.";
+        if (score >= 50) return "أداء متوسط. تحتاج لمراجعة النص مرة أخرى بتركيز.";
+        return "تحتاج إلى إعادة قراءة النص، هناك مفاهيم أساسية لم يتم استيعابها بعد.";
+    }
+
+    shuffleArray(array) {
+        return array.sort(() => Math.random() - 0.5);
+    }
+}
         // =============== [ 4. واجهة المستخدم ] ===============
         function showLoginScreen() {
             document.getElementById('login-screen').classList.remove('hidden');
