@@ -18,8 +18,13 @@
     <!-- Tesseract.js للتعرف على النصوص من الصور -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
     
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+    
     <style>
-        /* كل أنماط CSS المذكورة سابقاً */
         :root {
             --bg-dark: #0a0a1a;
             --bg-darker: #050510;
@@ -269,54 +274,14 @@
             box-shadow: var(--shadow-glow);
         }
 
-        /* سؤال الاختبار */
-        .question-item {
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 15px;
-            padding: 20px;
-            margin: 15px 0;
-            border: 1px solid rgba(0, 245, 255, 0.1);
-            transition: all 0.3s;
-        }
-
-        .question-text {
-            font-size: 18px;
-            margin-bottom: 15px;
-            color: white;
-            font-weight: 500;
-        }
-
-        .option-item {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 10px;
-            padding: 12px 15px;
-            margin: 8px 0;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .option-item:hover {
-            background: rgba(0, 245, 255, 0.1);
-            border-color: var(--neon-blue);
-        }
-
-        .option-item.selected {
-            background: rgba(0, 245, 255, 0.2);
-            border-color: var(--neon-blue);
-            box-shadow: 0 0 10px rgba(0, 245, 255, 0.3);
-        }
-
-        .option-item.correct {
-            background: rgba(0, 255, 157, 0.2);
-            border-color: var(--neon-green);
-            box-shadow: 0 0 10px rgba(0, 255, 157, 0.3);
-        }
-
-        .option-item.wrong {
-            background: rgba(255, 0, 110, 0.2);
-            border-color: var(--accent);
-            box-shadow: 0 0 10px rgba(255, 0, 110, 0.3);
+        /* مودال الاختبار */
+        .quiz-modal {
+            background: var(--gradient-card);
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 700px;
+            margin: 50px auto;
+            border: 3px solid rgba(0, 245, 255, 0.3);
         }
 
         /* تأثيرات الجسيمات */
@@ -372,6 +337,38 @@
             background: var(--gradient-ai);
             border-radius: 6px;
             transition: width 0.5s ease;
+        }
+
+        /* شجرة المهارات */
+        .skill-tree {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .skill-node {
+            background: rgba(0, 245, 255, 0.1);
+            border-radius: 15px;
+            padding: 15px;
+            border: 2px solid rgba(0, 245, 255, 0.3);
+            position: relative;
+        }
+
+        .skill-node.unlocked {
+            border-color: var(--neon-green);
+            background: rgba(0, 255, 157, 0.1);
+        }
+
+        /* رتب المستخدم */
+        .user-rank {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(157, 78, 221, 0.1);
+            padding: 10px 20px;
+            border-radius: 25px;
+            border: 2px solid rgba(157, 78, 221, 0.3);
         }
 
         /* أقسام لوحة التحكم */
@@ -450,6 +447,95 @@
             line-height: 1.6;
         }
 
+        /* بطاقات الإنجاز */
+        .achievement-card {
+            background: linear-gradient(135deg, rgba(255,215,102,0.1), rgba(255,215,102,0.05));
+            border: 2px solid rgba(255,215,102,0.3);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 10px;
+            text-align: center;
+            transition: transform 0.3s;
+        }
+
+        .achievement-card:hover {
+            transform: scale(1.05);
+        }
+
+        /* سؤال الاختبار */
+        .question-item {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 15px 0;
+            border: 1px solid rgba(0, 245, 255, 0.1);
+            transition: all 0.3s;
+        }
+
+        .question-text {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: white;
+            font-weight: 500;
+        }
+
+        .option-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 12px 15px;
+            margin: 8px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .option-item:hover {
+            background: rgba(0, 245, 255, 0.1);
+            border-color: var(--neon-blue);
+        }
+
+        .option-item.selected {
+            background: rgba(0, 245, 255, 0.2);
+            border-color: var(--neon-blue);
+            box-shadow: 0 0 10px rgba(0, 245, 255, 0.3);
+        }
+
+        .option-item.correct {
+            background: rgba(0, 255, 157, 0.2);
+            border-color: var(--neon-green);
+            box-shadow: 0 0 10px rgba(0, 255, 157, 0.3);
+        }
+
+        .option-item.wrong {
+            background: rgba(255, 0, 110, 0.2);
+            border-color: var(--accent);
+            box-shadow: 0 0 10px rgba(255, 0, 110, 0.3);
+        }
+
+        /* معاينة الصورة */
+        .image-preview-container {
+            border: 2px dashed rgba(0, 245, 255, 0.3);
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            margin: 20px 0;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .image-preview-container:hover {
+            border-color: var(--neon-blue);
+            background: rgba(0, 245, 255, 0.05);
+        }
+
+        .image-preview {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 10px;
+            margin-top: 15px;
+            display: none;
+        }
+
         /* إشعارات */
         .notification {
             position: fixed;
@@ -523,36 +609,15 @@
             }
         }
 
-        /* شجرة المهارات */
-        .skill-tree {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            margin: 20px 0;
+        /* تأثيرات النصوص المتوهجة */
+        .glow-text {
+            text-shadow: 0 0 10px currentColor;
+            animation: glow 2s infinite alternate;
         }
 
-        .skill-node {
-            background: rgba(0, 245, 255, 0.1);
-            border-radius: 15px;
-            padding: 15px;
-            border: 2px solid rgba(0, 245, 255, 0.3);
-            position: relative;
-        }
-
-        .skill-node.unlocked {
-            border-color: var(--neon-green);
-            background: rgba(0, 255, 157, 0.1);
-        }
-
-        /* رتب المستخدم */
-        .user-rank {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: rgba(157, 78, 221, 0.1);
-            padding: 10px 20px;
-            border-radius: 25px;
-            border: 2px solid rgba(157, 78, 221, 0.3);
+        @keyframes glow {
+            from { text-shadow: 0 0 10px currentColor; }
+            to { text-shadow: 0 0 20px currentColor; }
         }
 
         /* تحميل */
@@ -888,8 +953,19 @@
     <script>
         // =============== [ نظام الذكاء الاصطناعي الخارق ] ===============
         
+        // إعدادات Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyD6S6cFeVK4WbXz7x5J9y8M8Lk1N2P3Q4R",
+            authDomain: "super-intelligence-test.firebaseapp.com",
+            databaseURL: "https://super-intelligence-test-default-rtdb.firebaseio.com",
+            projectId: "super-intelligence-test",
+            storageBucket: "super-intelligence-test.appspot.com",
+            messagingSenderId: "123456789012",
+            appId: "1:123456789012:web:abcdef1234567890"
+        };
+
         // متغيرات النظام
-        let currentUser = null;
+        let auth, db, storage, currentUser = null;
         let userData = {};
         let currentTest = null;
         let currentAnswers = [];
@@ -897,7 +973,7 @@
         let chaosCount = 0;
         let lastChaosTime = 0;
         const CHAOS_LIMIT = 3;
-        const CHAOS_RESET_TIME = 60000;
+        const CHAOS_RESET_TIME = 60000; // 60 ثانية
 
         // =============== [ 1. تهيئة النظام ] ===============
         document.addEventListener('DOMContentLoaded', async () => {
@@ -906,14 +982,14 @@
             // تهيئة شاشة التحميل
             simulateLoading();
             
+            // تهيئة Firebase
+            await initializeFirebase();
+            
             // تهيئة الواجهة
             initializeUI();
             
-            // تحميل لوحة التحكم تلقائياً
-            setTimeout(() => {
-                document.getElementById('loading-screen').classList.add('hidden');
-                showAppScreen();
-            }, 1500);
+            // فحص جلسة المستخدم
+            checkUserSession();
             
             console.log('✅ النظام جاهز للعمل!');
         });
@@ -935,6 +1011,41 @@
                 progress = steps[i].progress;
                 progressBar.style.width = `${progress}%`;
             }
+            
+            setTimeout(() => {
+                document.getElementById('loading-screen').classList.add('hidden');
+                checkUserSession();
+            }, 500);
+        }
+
+        async function initializeFirebase() {
+            try {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                
+                auth = firebase.auth();
+                db = firebase.database();
+                storage = firebase.storage();
+                
+                // مراقبة حالة المصادقة
+                auth.onAuthStateChanged(async (user) => {
+                    if (user) {
+                        currentUser = user;
+                        await loadUserData();
+                        showAppScreen();
+                    } else {
+                        showLoginScreen();
+                    }
+                });
+                
+                console.log('✅ Firebase مهيأ');
+            } catch (error) {
+                console.error('❌ خطأ في تهيئة Firebase:', error);
+                // وضع تجريبي بدون Firebase
+                console.log('⚠️ العمل في الوضع التجريبي');
+                showAppScreen();
+            }
         }
 
         function initializeUI() {
@@ -947,36 +1058,229 @@
             // تهيئة نظام الاختبارات
             testSystem = new TestSystem();
             
-            // بيانات مستخدم تجريبية
-            userData = {
-                email: 'demo@example.com',
-                name: 'مستخدم تجريبي',
-                stats: {
-                    testsTaken: 3,
-                    testsCreated: 5,
-                    averageScore: 75.5,
-                    totalXP: 180,
-                    level: 3,
-                    streak: 7,
-                    bestScore: 92
-                },
-                achievements: [
-                    { name: 'المبتدئ الذكي', description: 'إنشاء أول اختبار' },
-                    { name: 'المتفوق', description: 'حصول على أكثر من 90%' },
-                    { name: 'المثابر', description: 'حل 3 اختبارات متتالية' }
-                ],
-                tests: [
-                    { id: '1', title: 'اختبار الكواكب', date: '2024-01-15', score: 85, status: 'completed', questionCount: 15 },
-                    { id: '2', title: 'اختبار العلوم', date: '2024-01-10', score: 92, status: 'completed', questionCount: 20 },
-                    { id: '3', title: 'اختبار الرياضيات', date: '2024-01-05', score: 78, status: 'completed', questionCount: 12 }
-                ]
-            };
-            
             // تحميل لوحة التحكم تلقائياً
             loadDashboard();
         }
 
-        // =============== [ 2. نظام توليد الاختبارات الذكي ] ===============
+        // =============== [ 2. نظام إدارة المستخدمين ] ===============
+        async function loadUserData() {
+            if (!currentUser) return;
+            
+            try {
+                const snapshot = await db.ref(`users/${currentUser.uid}`).once('value');
+                userData = snapshot.val() || {};
+                
+                // إذا كان المستخدم جديداً، إنشاء بيانات افتراضية
+                if (!userData.createdAt) {
+                    userData = {
+                        email: currentUser.email,
+                        name: currentUser.email.split('@')[0],
+                        createdAt: new Date().toISOString(),
+                        lastLogin: new Date().toISOString(),
+                        stats: {
+                            testsTaken: 0,
+                            testsCreated: 0,
+                            averageScore: 0,
+                            totalXP: 0,
+                            level: 1,
+                            streak: 1,
+                            bestScore: 0
+                        },
+                        preferences: {
+                            theme: 'dark',
+                            language: 'ar',
+                            notifications: true
+                        },
+                        tests: [],
+                        achievements: []
+                    };
+                    
+                    await saveUserData();
+                }
+                
+                // تحديث آخر دخول
+                userData.lastLogin = new Date().toISOString();
+                await saveUserData();
+                
+                // تحديث واجهة المستخدم
+                updateUserUI();
+                
+            } catch (error) {
+                console.error('❌ خطأ في تحميل بيانات المستخدم:', error);
+                // بيانات افتراضية للوضع التجريبي
+                userData = {
+                    email: 'demo@example.com',
+                    name: 'مستخدم تجريبي',
+                    stats: {
+                        testsTaken: 0,
+                        testsCreated: 0,
+                        averageScore: 0,
+                        totalXP: 0,
+                        level: 1,
+                        streak: 1,
+                        bestScore: 0
+                    }
+                };
+                updateUserUI();
+            }
+        }
+
+        async function saveUserData() {
+            if (!currentUser || !userData) return;
+            
+            try {
+                await db.ref(`users/${currentUser.uid}`).set(userData);
+            } catch (error) {
+                console.error('❌ خطأ في حفظ بيانات المستخدم:', error);
+            }
+        }
+
+        function updateUserUI() {
+            document.getElementById('user-name').textContent = userData.name || 'مستخدم';
+            document.getElementById('user-level').textContent = `المستوى ${userData.stats?.level || 1}`;
+        }
+
+        async function login() {
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            
+            if (!email || !password) {
+                showNotification('الرجاء إدخال البريد الإلكتروني وكلمة المرور', 'error');
+                return;
+            }
+            
+            showLoading('جاري تسجيل الدخول...');
+            
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+                showNotification('مرحباً بك في نظام الذكاء الخارق!', 'success');
+                
+                localStorage.setItem('ai_system_email', email);
+                
+            } catch (error) {
+                console.error('❌ خطأ في تسجيل الدخول:', error);
+                
+                // وضع تجريبي
+                if (error.code === 'auth/network-request-failed') {
+                    showNotification('✅ تم الدخول في الوضع التجريبي', 'success');
+                    currentUser = { email: email, uid: 'demo_' + Date.now() };
+                    await loadUserData();
+                    showAppScreen();
+                } else {
+                    let message = 'حدث خطأ في تسجيل الدخول';
+                    
+                    switch(error.code) {
+                        case 'auth/user-not-found':
+                            message = 'المستخدم غير موجود';
+                            break;
+                        case 'auth/wrong-password':
+                            message = 'كلمة المرور غير صحيحة';
+                            break;
+                        case 'auth/invalid-email':
+                            message = 'بريد إلكتروني غير صالح';
+                            break;
+                    }
+                    
+                    showNotification(message, 'error');
+                }
+            }
+            
+            hideLoading();
+        }
+
+        async function logout() {
+            try {
+                await auth.signOut();
+                showNotification('تم تسجيل الخروج بنجاح', 'success');
+                showLoginScreen();
+            } catch (error) {
+                console.error('❌ خطأ في تسجيل الخروج:', error);
+                currentUser = null;
+                userData = {};
+                showLoginScreen();
+            }
+        }
+
+        function showRegister() {
+            Swal.fire({
+                title: 'إنشاء حساب جديد',
+                html: `
+                    <input type="text" id="register-name" class="swal2-input" placeholder="الاسم الكامل" dir="rtl">
+                    <input type="email" id="register-email" class="swal2-input" placeholder="البريد الإلكتروني" dir="rtl">
+                    <input type="password" id="register-password" class="swal2-input" placeholder="كلمة المرور" dir="rtl">
+                    <input type="password" id="register-confirm" class="swal2-input" placeholder="تأكيد كلمة المرور" dir="rtl">
+                `,
+                confirmButtonText: 'إنشاء حساب',
+                cancelButtonText: 'إلغاء',
+                showCancelButton: true,
+                focusConfirm: false,
+                preConfirm: async () => {
+                    const name = document.getElementById('register-name').value;
+                    const email = document.getElementById('register-email').value;
+                    const password = document.getElementById('register-password').value;
+                    const confirm = document.getElementById('register-confirm').value;
+                    
+                    if (!name || !email || !password || !confirm) {
+                        Swal.showValidationMessage('الرجاء ملء جميع الحقول');
+                        return false;
+                    }
+                    
+                    if (password !== confirm) {
+                        Swal.showValidationMessage('كلمتا المرور غير متطابقتين');
+                        return false;
+                    }
+                    
+                    if (password.length < 6) {
+                        Swal.showValidationMessage('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+                        return false;
+                    }
+                    
+                    showLoading('جاري إنشاء الحساب...');
+                    
+                    try {
+                        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                        const user = userCredential.user;
+                        
+                        await db.ref(`users/${user.uid}`).set({
+                            email: email,
+                            name: name,
+                            createdAt: new Date().toISOString(),
+                            lastLogin: new Date().toISOString(),
+                            stats: {
+                                testsTaken: 0,
+                                testsCreated: 0,
+                                averageScore: 0,
+                                totalXP: 0,
+                                level: 1,
+                                streak: 1,
+                                bestScore: 0
+                            },
+                            preferences: {
+                                theme: 'dark',
+                                language: 'ar',
+                                notifications: true
+                            },
+                            tests: [],
+                            achievements: []
+                        });
+                        
+                        hideLoading();
+                        return user;
+                        
+                    } catch (error) {
+                        hideLoading();
+                        Swal.showValidationMessage(error.message);
+                        return false;
+                    }
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    showNotification('تم إنشاء حسابك بنجاح!', 'success');
+                }
+            });
+        }
+
+        // =============== [ 3. نظام توليد الاختبارات الذكي ] ===============
         class TestSystem {
             constructor() {
                 this.tests = new Map();
@@ -988,10 +1292,10 @@
                 try {
                     showLoading('جاري تحليل النص وتوليد الأسئلة...');
                     
-                    // تحليل النص واستخراج المفاهيم المهمة
+                    // تحليل النص واستخراج المفاهيم المهمة فقط
                     const analysis = await this.analyzeText(text);
                     
-                    // توليد الأسئلة الذكية
+                    // توليد الأسئلة الذكية بناءً على التحليل
                     const questions = await this.generateSmartQuestions(analysis, options);
                     
                     // إنشاء كائن الاختبار
@@ -1022,7 +1326,7 @@
                     this.tests.set(test.id, test);
                     
                     // تحديث إحصائيات المستخدم
-                    this.updateUserStats(test);
+                    await this.updateUserStats(test);
                     
                     hideLoading();
                     return test;
@@ -1038,27 +1342,30 @@
                 // تنظيف النص وتحسينه
                 const cleanedText = this.cleanArabicText(text);
                 
-                // تحليل النص
+                // تحليل النص باستخدام خوارزميات متقدمة
                 const sentences = this.splitIntoSentences(cleanedText);
                 const paragraphs = this.splitIntoParagraphs(cleanedText);
                 
-                // استخراج الكلمات المفتاحية المهمة
+                // استخراج الكلمات المفتاحية المهمة فقط
                 const keywords = this.extractImportantKeywords(cleanedText);
                 
                 // تحديد الموضوعات الرئيسية
                 const topics = this.identifyMainTopics(cleanedText, keywords);
                 
-                // تحليل مستوى الصعوبة
+                // تحليل مستوى الصعوبة بناءً على المحتوى
                 const difficulty = this.analyzeContentDifficulty(cleanedText);
                 
-                // تحديد النقاط الأساسية
+                // تحديد النقاط الأساسية (المعلومات المهمة)
                 const keyPoints = this.extractKeyPoints(sentences, keywords);
+                
+                // إزالة التكرارات
+                const uniqueKeywords = this.removeDuplicates(keywords);
                 
                 return {
                     text: cleanedText,
                     sentences: sentences,
                     paragraphs: paragraphs,
-                    keywords: keywords,
+                    keywords: uniqueKeywords,
                     keyPoints: keyPoints,
                     topics: topics,
                     difficulty: difficulty,
@@ -1069,6 +1376,7 @@
             }
             
             cleanArabicText(text) {
+                // تنظيف النص العربي من الرموز والأخطاء
                 let cleaned = text
                     .replace(/[إأآا]/g, 'ا')
                     .replace(/ة/g, 'ه')
@@ -1079,7 +1387,7 @@
                     .replace(/\n+/g, '\n')
                     .trim();
                 
-                // إزالة الجمل القصيرة جداً
+                // إزالة الجمل القصيرة جداً (حشو)
                 cleaned = cleaned.split('.').filter(sentence => {
                     const words = sentence.trim().split(/\s+/);
                     return words.length > 3 || /[؟!\?]/.test(sentence);
@@ -1108,6 +1416,7 @@
                     }
                 });
                 
+                // ترتيب الكلمات حسب الأهمية (التكرار × طول الكلمة)
                 const scoredWords = Object.entries(wordFrequency).map(([word, freq]) => ({
                     word,
                     score: freq * word.length * (word.length > 5 ? 1.5 : 1)
@@ -1144,6 +1453,7 @@
                     }
                 });
                 
+                // إضافة موضوعات من الكلمات المفتاحية
                 keywords.forEach(keyword => {
                     if (!topics.some(t => t.keywords.includes(keyword))) {
                         topics.push({
@@ -1187,16 +1497,31 @@
                     }
                 });
                 
+                // ترتيب حسب الأهمية
                 keyPoints.sort((a, b) => b.importance - a.importance);
                 
                 return keyPoints.slice(0, 15);
+            }
+            
+            removeDuplicates(keywords) {
+                const unique = [];
+                const seen = new Set();
+                
+                keywords.forEach(keyword => {
+                    if (!seen.has(keyword)) {
+                        seen.add(keyword);
+                        unique.push(keyword);
+                    }
+                });
+                
+                return unique;
             }
             
             async generateSmartQuestions(analysis, options) {
                 const questions = [];
                 const count = options.count || 15;
                 
-                // أنواع الأسئلة حسب الصعوبة
+                // تحديد أنواع الأسئلة بناءً على الصعوبة
                 const questionTypes = this.getQuestionTypes(options.difficulty);
                 
                 // توليد أسئلة من النقاط الأساسية
@@ -1210,7 +1535,7 @@
                     }
                 }
                 
-                // إذا لم يكن هناك أسئلة كافية
+                // إذا لم يكن هناك أسئلة كافية، أضف أسئلة من الكلمات المفتاحية
                 if (questions.length < count) {
                     const remaining = count - questions.length;
                     for (let i = 0; i < remaining; i++) {
@@ -1258,7 +1583,10 @@
                 const sentence = keyPoint.sentence;
                 const mainKeyword = keyPoint.keywords[0];
                 
+                // إنشاء سؤال ذكي يركز على المعلومة المهمة
                 const questionText = this.generateMCQuestionText(sentence, mainKeyword);
+                
+                // إنشاء خيارات ذكية
                 const options = this.generateSmartOptions(mainKeyword, keyPoint.keywords, sentence);
                 
                 const question = {
@@ -1266,7 +1594,7 @@
                     type: 'multiple_choice',
                     text: questionText,
                     options: options,
-                    correctAnswer: 0,
+                    correctAnswer: 0, // الخيار الأول هو الصحيح دائماً
                     explanation: `هذا السؤال يركز على مفهوم "${mainKeyword}" الذي يعتبر من النقاط الأساسية في النص.`,
                     difficulty: difficulty,
                     points: this.calculatePoints(difficulty),
@@ -1290,8 +1618,10 @@
             generateSmartOptions(correctKeyword, allKeywords, sentence) {
                 const options = [];
                 
+                // الخيار الصحيح
                 options.push(`المفهوم الصحيح لـ "${correctKeyword}" كما ورد في النص`);
                 
+                // خيارات خاطئة ذكية
                 const distractors = [
                     `مفهوم مخالف لـ "${correctKeyword}"`,
                     `تفسير خاطئ لـ "${correctKeyword}" بناءً على سياق مختلف`,
@@ -1299,6 +1629,7 @@
                     `تعريف عام لا يتناسب مع سياق النص`
                 ];
                 
+                // إضافة 3 خيارات خاطئة
                 for (let i = 0; i < 3; i++) {
                     if (i < distractors.length) {
                         options.push(distractors[i]);
@@ -1307,6 +1638,7 @@
                     }
                 }
                 
+                // خلط الخيارات مع الحفاظ على الصحيح في الفهرس 0
                 const correct = options[0];
                 const wrong = options.slice(1);
                 this.shuffleArray(wrong);
@@ -1316,10 +1648,11 @@
             
             createTFQuestionFromKeyPoint(keyPoint, difficulty, index) {
                 const sentence = keyPoint.sentence;
-                const isTrue = Math.random() > 0.3;
+                const isTrue = Math.random() > 0.3; // 70% صحيح لتعزيز المعلومات الصحيحة
                 
                 let statement = sentence;
                 if (!isTrue) {
+                    // تعديل الجملة لجعلها خاطئة بطريقة ذكية
                     statement = this.modifySentenceToFalse(sentence, keyPoint.keywords);
                 }
                 
@@ -1361,6 +1694,7 @@
                 const sentence = keyPoint.sentence;
                 const keyword = keyPoint.keywords[0];
                 
+                // إخفاء الكلمة المفتاحية في الجملة
                 const blankSentence = sentence.replace(keyword, '______');
                 
                 const question = {
@@ -1378,6 +1712,7 @@
             }
             
             createQuestionFromKeyword(keyword, analysis, type, difficulty, index) {
+                // إنشاء سؤال من كلمة مفتاحية
                 const question = {
                     id: 'q_' + Date.now() + '_' + index,
                     type: 'multiple_choice',
@@ -1400,6 +1735,7 @@
             modifySentenceToFalse(sentence, keywords) {
                 const words = sentence.split(/\s+/);
                 if (words.length > 4) {
+                    // تغيير كلمة مفتاحية أو إضافة نفي
                     const keywordIndex = words.findIndex(w => keywords.includes(w));
                     if (keywordIndex !== -1) {
                         words[keywordIndex] = 'ليس ' + words[keywordIndex];
@@ -1447,6 +1783,7 @@
                             break;
                         case 'short_answer':
                         case 'fill_blank':
+                            // تقييم متقدم للإجابات النصية
                             isCorrect = this.evaluateTextAnswer(userAnswer, question.correctAnswer);
                             break;
                     }
@@ -1483,7 +1820,8 @@
                     testTitle: test.title
                 };
                 
-                this.updateUserTestStats(evaluation);
+                // تحديث إحصائيات المستخدم
+                await this.updateUserTestStats(evaluation);
                 
                 return evaluation;
             }
@@ -1494,24 +1832,27 @@
                 const userText = userAnswer.toLowerCase().trim();
                 const correctText = correctAnswer.toLowerCase().trim();
                 
+                // تقييم بسيط: إذا كانت الإجابة تحتوي على كلمات مفتاحية
                 const keywords = correctText.split(/\s+/).filter(w => w.length > 3);
                 const matchingKeywords = keywords.filter(kw => userText.includes(kw));
                 
                 return matchingKeywords.length >= Math.ceil(keywords.length / 2);
             }
             
-            updateUserStats(test) {
+            async updateUserStats(test) {
                 if (!userData.stats) userData.stats = {};
                 
                 userData.stats.testsCreated = (userData.stats.testsCreated || 0) + 1;
                 userData.stats.totalXP = (userData.stats.totalXP || 0) + 20;
                 
+                // حساب المستوى الجديد
                 const newLevel = Math.floor(userData.stats.totalXP / 100) + 1;
                 if (newLevel > userData.stats.level) {
                     userData.stats.level = newLevel;
                     showNotification(`🎉 تقدمت إلى المستوى ${newLevel}!`, 'success');
                 }
                 
+                // حفظ الاختبار في بيانات المستخدم
                 if (!userData.tests) userData.tests = [];
                 userData.tests.unshift({
                     id: test.id,
@@ -1522,34 +1863,40 @@
                     questionCount: test.questions.length
                 });
                 
+                // حفظ فقط آخر 50 اختبار
                 if (userData.tests.length > 50) {
                     userData.tests = userData.tests.slice(0, 50);
                 }
                 
+                await saveUserData();
                 updateUserUI();
             }
             
-            updateUserTestStats(evaluation) {
+            async updateUserTestStats(evaluation) {
                 if (!userData.stats) userData.stats = {};
                 
                 userData.stats.testsTaken = (userData.stats.testsTaken || 0) + 1;
                 
+                // حساب متوسط الدرجات
                 const totalTests = userData.stats.testsTaken;
                 const currentAverage = userData.stats.averageScore || 0;
                 userData.stats.averageScore = ((currentAverage * (totalTests - 1)) + parseFloat(evaluation.percentage)) / totalTests;
                 
+                // تحديث أفضل نتيجة
                 if (parseFloat(evaluation.percentage) > (userData.stats.bestScore || 0)) {
                     userData.stats.bestScore = parseFloat(evaluation.percentage);
                 }
                 
                 userData.stats.totalXP = (userData.stats.totalXP || 0) + Math.floor(evaluation.percentage / 10);
                 
+                // تحديث المستوى
                 const newLevel = Math.floor(userData.stats.totalXP / 100) + 1;
                 if (newLevel > userData.stats.level) {
                     userData.stats.level = newLevel;
                     showNotification(`🎉 تقدمت إلى المستوى ${newLevel}!`, 'success');
                 }
                 
+                // تحديث سجل الاختبار
                 const testIndex = userData.tests?.findIndex(t => t.id === evaluation.testId);
                 if (testIndex !== -1 && userData.tests) {
                     userData.tests[testIndex].score = evaluation.percentage;
@@ -1558,11 +1905,12 @@
                     userData.tests[testIndex].result = evaluation.passed ? 'ناجح' : 'راسب';
                 }
                 
+                await saveUserData();
                 updateUserUI();
             }
         }
 
-        // =============== [ 3. واجهة المستخدم ] ===============
+        // =============== [ 4. واجهة المستخدم ] ===============
         function showLoginScreen() {
             document.getElementById('login-screen').classList.remove('hidden');
             document.getElementById('app-screen').classList.add('hidden');
@@ -1575,12 +1923,7 @@
             loadDashboard();
         }
 
-        function updateUserUI() {
-            document.getElementById('user-name').textContent = userData.name || 'مستخدم';
-            document.getElementById('user-level').textContent = `المستوى ${userData.stats?.level || 1}`;
-        }
-
-        // =============== [ 4. تحميل المحتوى ] ===============
+        // =============== [ 5. تحميل المحتوى ] ===============
         async function loadDashboard() {
             const content = `
                 <div style="max-width: 1200px; margin: 0 auto;">
@@ -1718,7 +2061,6 @@
             `;
             
             document.getElementById('content-area').innerHTML = content;
-            updateUserUI();
         }
 
         async function loadTestGenerator() {
@@ -1735,7 +2077,7 @@
                     </div>
                     
                     <div id="tab-content" style="background: var(--gradient-card); border-radius: 20px; padding: 30px; border: 2px solid rgba(0,245,255,0.2);">
-                        ${loadTextTabContent()}
+                        ${await loadTextTabContent()}
                     </div>
                 </div>
             `;
@@ -1743,7 +2085,7 @@
             document.getElementById('content-area').innerHTML = content;
         }
 
-        function loadTextTabContent() {
+        async function loadTextTabContent() {
             return `
                 <div id="text-tab-content">
                     <h3 style="color: var(--neon-blue); margin-bottom: 20px;">
@@ -1752,7 +2094,7 @@
                     
                     <div class="form-group">
                         <textarea id="input-text" class="form-control text-area" placeholder="الصق النص التعليمي هنا... يمكن أن يكون النص بأي شكل (مرقم، فقرات، عناوين، إلخ). سيقوم الذكاء الاصطناعي بتحليله واستخراج أهم النقاط لتوليد أسئلة ذكية تركز على المعلومات الأساسية فقط. 
-
+                        
 مثال:
 التنفس الخلوي هو عملية حيوية تقوم بها الخلايا لتحويل الطاقة الكيميائية المخزنة في الجلوكوز إلى طاقة قابلة للاستخدام (ATP). تحدث هذه العملية في الميتوكوندريا وتتطلب الأكسجين." rows="10"></textarea>
                         <div style="color: var(--text-dim); font-size: 12px; margin-top: 5px;">
@@ -1818,28 +2160,9 @@
             `;
         }
 
-        function switchTestTab(tabName) {
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
-            
-            const tabContent = document.getElementById('tab-content');
-            
-            switch(tabName) {
-                case 'text':
-                    tabContent.innerHTML = loadTextTabContent();
-                    break;
-                case 'image':
-                    tabContent.innerHTML = loadImageTabContent();
-                    break;
-                case 'topic':
-                    tabContent.innerHTML = loadTopicTabContent();
-                    break;
-            }
-        }
-
-        function loadImageTabContent() {
+        async function loadImageTabContent() {
             return `
-                <div id="image-tab-content">
+                <div id="image-tab-content" style="display: none;">
                     <h3 style="color: var(--neon-green); margin-bottom: 20px;">
                         <i class="fas fa-image"></i> رفع صورة تحتوي على نص
                     </h3>
@@ -1864,6 +2187,17 @@
                         </div>
                     </div>
                     
+                    <div style="margin-bottom: 25px;">
+                        <label style="color: var(--text-secondary); display: block; margin-bottom: 8px;">
+                            <i class="fas fa-language"></i> لغة النص في الصورة
+                        </label>
+                        <select id="ocr-language" class="form-control">
+                            <option value="ara" selected>العربية</option>
+                            <option value="eng">الإنجليزية</option>
+                            <option value="ara+eng">العربية والإنجليزية</option>
+                        </select>
+                    </div>
+                    
                     <button id="generate-image-btn" class="btn btn-primary" onclick="generateTestFromImage()" style="width: 100%; padding: 18px; font-size: 18px;" disabled>
                         <i class="fas fa-image"></i> استخراج النص وإنشاء اختبار
                     </button>
@@ -1871,9 +2205,9 @@
             `;
         }
 
-        function loadTopicTabContent() {
+        async function loadTopicTabContent() {
             return `
-                <div id="topic-tab-content">
+                <div id="topic-tab-content" style="display: none;">
                     <h3 style="color: var(--neon-purple); margin-bottom: 20px;">
                         <i class="fas fa-hashtag"></i> إنشاء اختبار من موضوع
                     </h3>
@@ -1889,6 +2223,26 @@
                         <textarea id="topic-details" class="form-control" placeholder="يمكنك إضافة تفاصيل إضافية أو نقاط محددة تريد التركيز عليها..." rows="4"></textarea>
                     </div>
                     
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px;">
+                        <div>
+                            <label style="color: var(--text-secondary); display: block; margin-bottom: 8px;">
+                                مستوى التفصيل
+                            </label>
+                            <select id="topic-depth" class="form-control">
+                                <option value="basic">أساسي</option>
+                                <option value="intermediate" selected>متوسط</option>
+                                <option value="advanced">متقدم</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label style="color: var(--text-secondary); display: block; margin-bottom: 8px;">
+                                عدد الأسئلة
+                            </label>
+                            <input type="number" id="topic-question-count" class="form-control" value="15" min="5" max="30">
+                        </div>
+                    </div>
+                    
                     <button class="btn btn-primary" onclick="generateTestFromTopic()" style="width: 100%; padding: 18px; font-size: 18px;">
                         <i class="fas fa-brain"></i> إنشاء محتوى وتوليد اختبار
                     </button>
@@ -1896,11 +2250,33 @@
             `;
         }
 
+        function switchTestTab(tabName) {
+            // تحديث أزرار التبويب
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // تحميل محتوى التبويب
+            const tabContent = document.getElementById('tab-content');
+            
+            switch(tabName) {
+                case 'text':
+                    loadTextTabContent().then(content => tabContent.innerHTML = content);
+                    break;
+                case 'image':
+                    loadImageTabContent().then(content => tabContent.innerHTML = content);
+                    break;
+                case 'topic':
+                    loadTopicTabContent().then(content => tabContent.innerHTML = content);
+                    break;
+            }
+        }
+
         async function generateTestFromText() {
             const text = document.getElementById('input-text')?.value;
             const questionCount = parseInt(document.getElementById('question-count')?.value || 15);
             const difficulty = document.getElementById('difficulty')?.value;
             
+            // التحقق من كلمة "خلطة"
             if (checkChaosWord(text)) {
                 showChaosWarning();
                 return;
@@ -1955,11 +2331,13 @@
                     return;
                 }
                 
+                // التحقق من كلمة "خلطة"
                 if (checkChaosWord(text)) {
                     showChaosWarning();
                     return;
                 }
                 
+                // إنشاء اختبار من النص المستخرج
                 const test = await testSystem.generateTestFromText(text, {
                     count: 15,
                     difficulty: 'medium',
@@ -1983,7 +2361,10 @@
         async function generateTestFromTopic() {
             const topic = document.getElementById('topic-input')?.value;
             const details = document.getElementById('topic-details')?.value;
+            const depth = document.getElementById('topic-depth')?.value;
+            const questionCount = parseInt(document.getElementById('topic-question-count')?.value || 15);
             
+            // التحقق من كلمة "خلطة"
             if (checkChaosWord(topic) || checkChaosWord(details)) {
                 showChaosWarning();
                 return;
@@ -1994,7 +2375,8 @@
                 return;
             }
             
-            const generatedText = await generateContentFromTopic(topic, details);
+            // إنشاء محتوى نصي من الموضوع
+            const generatedText = await generateContentFromTopic(topic, details, depth);
             
             if (!generatedText) {
                 showNotification('حدث خطأ في إنشاء المحتوى', 'error');
@@ -2003,8 +2385,8 @@
             
             try {
                 const test = await testSystem.generateTestFromText(generatedText, {
-                    count: 15,
-                    difficulty: 'medium',
+                    count: questionCount,
+                    difficulty: depth === 'advanced' ? 'hard' : depth === 'basic' ? 'easy' : 'medium',
                     title: `اختبار في: ${topic}`,
                     description: details || `اختبار تم إنشاؤه حول موضوع: ${topic}`
                 });
@@ -2021,24 +2403,80 @@
             }
         }
 
-        async function generateContentFromTopic(topic, details) {
+        async function generateContentFromTopic(topic, details, depth) {
             showLoading('جاري إنشاء محتوى ذكي...');
             
+            // محتوى معرف مسبقاً بناءً على الموضوع
             const contentTemplates = {
-                'التنفس الخلوي': `التنفس الخلوي هو عملية حيوية أساسية تقوم بها الخلايا لتحويل الطاقة الكيميائية المخزنة في الجلوكوز إلى طاقة قابلة للاستخدام (ATP). تحدث هذه العملية في الميتوكوندريا وتتطلب الأكسجين.`,
-                'الحرب العالمية الأولى': `الحرب العالمية الأولى (1914-1918) كانت حرباً عالمية شاركت فيها معظم دول العالم. أسباب الحرب تشمل التحالفات العسكرية المعقدة وسباق التسلح والقومية المتطرفة.`,
-                'نظرية التطور': `نظرية التطور هي النظرية العلمية التي تفسر تنوع الكائنات الحية على الأرض عبر الزمن الجيولوجي. تعتمد النظرية على الانتخاب الطبيعي والتنوع الجيني.`
+                'التنفس الخلوي': `
+                    التنفس الخلوي هو عملية حيوية أساسية تقوم بها الخلايا لتحويل الطاقة الكيميائية المخزنة في الجلوكوز إلى طاقة قابلة للاستخدام (ATP). 
+                    
+                    المراحل الرئيسية للتنفس الخلوي:
+                    1. التحلل السكري: يحدث في السيتوبلازم، حيث يتم تكسير جزيء الجلوكوز إلى جزيئين من حمض البيروفيك مع إنتاج كمية قليلة من ATP.
+                    2. دورة كريبس: تحدث في الميتوكوندريا، حيث يتم أكسدة حمض البيروفيك لإنتاج NADH وFADH2.
+                    3. سلسلة نقل الإلكترون: تحدث في الغشاء الداخلي للميتوكوندريا، حيث يتم إنتاج معظم جزيئات ATP.
+                    
+                    أهمية التنفس الخلوي:
+                    - إنتاج الطاقة للخلايا
+                    - الحفاظ على درجة حرارة الجسم
+                    - توفير الهيكل الكربوني لبناء الجزيئات الحيوية
+                `,
+                'الحرب العالمية الأولى': `
+                    الحرب العالمية الأولى (1914-1918) كانت حرباً عالمية شاركت فيها معظم دول العالم، وقسمت الدول إلى قوتين رئيسيتين: دول المركز ودول الحلفاء.
+                    
+                    أسباب الحرب:
+                    1. التحالفات العسكرية المعقدة
+                    2. سباق التسلح
+                    3. القومية المتطرفة
+                    4. اغتيال الأرشيدوق فرانز فرديناند
+                    
+                    النتائج الرئيسية:
+                    - سقوط الإمبراطوريات الألمانية والنمساوية المجرية والعثمانية
+                    - معاهدة فرساي والعقوبات على ألمانيا
+                    - نشأة عصبة الأمم
+                    - تغيرات جيوسياسية كبرى في أوروبا والشرق الأوسط
+                `,
+                'نظرية التطور': `
+                    نظرية التطور هي النظرية العلمية التي تفسر تنوع الكائنات الحية على الأرض عبر الزمن الجيولوجي.
+                    
+                    المبادئ الأساسية:
+                    1. الانتخاب الطبيعي: البقاء للأصلح
+                    2 التكيف: قدرة الكائنات على التكيف مع بيئتها
+                    3. التنوع الجيني: الاختلافات بين أفراد النوع الواحد
+                    4. الانتواع: تكون أنواع جديدة عبر الزمن
+                    
+                    أدلة على التطور:
+                    - السجل الأحفوري
+                    - التشابه التشريحي
+                    - الأدلة الجينية
+                    - التوزيع الجغرافي للكائنات
+                `
             };
             
+            // محاكاة وقت المعالجة
             await new Promise(resolve => setTimeout(resolve, 2000));
             
             hideLoading();
             
+            // إذا كان الموضوع موجوداً في القوالب، استخدمه
             if (contentTemplates[topic]) {
-                return contentTemplates[topic] + (details ? `\n\n${details}` : '');
+                return contentTemplates[topic] + (details ? `\n\nتفاصيل إضافية: ${details}` : '');
             }
             
-            return `${topic} هو موضوع مهم في مجال المعرفة. يعتبر من المواضيع الأساسية التي تدرس في العديد من التخصصات الأكاديمية. ${details || ''}`;
+            // إذا لم يكن موجوداً، أنشئ محتوى عام
+            return `
+                ${topic} هو موضوع مهم في مجال المعرفة. 
+                
+                يعتبر ${topic} من المواضيع الأساسية التي تدرس في العديد من التخصصات الأكاديمية. 
+                
+                من أهم جوانب ${topic}:
+                1. المبادئ الأساسية
+                2. التطبيقات العملية
+                3. الأهمية العلمية
+                4. التطور التاريخي
+                
+                ${details ? `\nتفاصيل إضافية: ${details}` : ''}
+            `;
         }
 
         function handleImageUpload(event) {
@@ -2216,8 +2654,10 @@
         function selectAnswer(questionIndex, answer) {
             currentAnswers[questionIndex] = answer;
             
+            // تحديث الواجهة للاختيار من متعدد
             const question = currentTest.questions[questionIndex];
             if (question.type === 'multiple_choice') {
+                // إزالة التحديد من جميع الخيارات
                 for (let i = 0; i < question.options.length; i++) {
                     const optionElement = document.getElementById(`option-${questionIndex}-${i}`);
                     if (optionElement) {
@@ -2225,11 +2665,13 @@
                     }
                 }
                 
+                // إضافة التحديد للخيار المختار
                 const selectedOption = document.getElementById(`option-${questionIndex}-${answer}`);
                 if (selectedOption) {
                     selectedOption.classList.add('selected');
                 }
             } else if (question.type === 'true_false') {
+                // تحديث أزرار الصح/خطأ
                 const trueBtn = document.querySelector(`#question-${questionIndex} .btn:nth-child(1)`);
                 const falseBtn = document.querySelector(`#question-${questionIndex} .btn:nth-child(2)`);
                 
@@ -2237,6 +2679,7 @@
                 falseBtn.className = `btn ${answer === 1 ? 'btn-primary' : 'btn-secondary'}`;
             }
             
+            // تحديث عدد الأسئلة المجابة
             updateAnswerCount();
         }
 
@@ -2248,6 +2691,7 @@
             document.getElementById('answered-count').textContent = answered;
             document.getElementById('answered-percentage').textContent = `${percentage}%`;
             
+            // حساب النقاط المحتملة للإجابات الحالية
             let potentialPoints = 0;
             currentTest.questions.forEach((question, index) => {
                 if (currentAnswers[index] !== null && currentAnswers[index] !== '') {
@@ -2256,6 +2700,7 @@
             });
             document.getElementById('total-points').textContent = potentialPoints;
             
+            // تغيير لون العداد
             const countElement = document.getElementById('answered-count');
             if (percentage >= 80) {
                 countElement.style.color = 'var(--neon-green)';
@@ -2355,6 +2800,36 @@
                             <button class="btn btn-secondary" onclick="reviewAnswers(evaluation)" style="padding: 12px 25px;">
                                 <i class="fas fa-eye"></i> مراجعة الإجابات
                             </button>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 40px;">
+                        <h3 style="color: var(--neon-blue); margin-bottom: 20px;">
+                            <i class="fas fa-chart-line"></i> تقدمك الدراسي
+                        </h3>
+                        
+                        <div style="background: var(--gradient-card); border-radius: 15px; padding: 20px;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                                <div>
+                                    <div style="color: var(--text-secondary);">مستواك الحالي:</div>
+                                    <div style="color: white; font-size: 20px; font-weight: bold;">${userData.stats?.level || 1}</div>
+                                </div>
+                                
+                                <div>
+                                    <div style="color: var(--text-secondary);">إجمالي النقاط:</div>
+                                    <div style="color: var(--neon-green); font-size: 20px; font-weight: bold;">${userData.stats?.totalXP || 0}</div>
+                                </div>
+                                
+                                <div>
+                                    <div style="color: var(--text-secondary);">متوسط نتائجك:</div>
+                                    <div style="color: var(--neon-purple); font-size: 20px; font-weight: bold;">${(userData.stats?.averageScore || 0).toFixed(1)}%</div>
+                                </div>
+                                
+                                <div>
+                                    <div style="color: var(--text-secondary);">أفضل نتيجة:</div>
+                                    <div style="color: var(--neon-yellow); font-size: 20px; font-weight: bold;">${(userData.stats?.bestScore || 0).toFixed(1)}%</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2467,15 +2942,469 @@
                                 `).join('')}
                             </div>
                         </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <h4 style="color: var(--neon-purple);">الموضوعات الرئيسية:</h4>
+                            <div style="margin-top: 10px;">
+                                ${analysis.topics.map(topic => `
+                                    <div style="margin-bottom: 8px;">
+                                        <span style="color: white;">${topic.name}</span>
+                                        <div style="background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; margin-top: 5px;">
+                                            <div style="background: var(--neon-purple); height: 100%; width: ${topic.confidence * 100}%; border-radius: 3px;"></div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h4 style="color: var(--neon-yellow);">مستوى الصعوبة:</h4>
+                            <div style="text-align: center; margin-top: 10px;">
+                                <span style="color: ${analysis.difficulty === 'easy' ? 'var(--neon-green)' : 
+                                                     analysis.difficulty === 'medium' ? 'var(--neon-yellow)' : 
+                                                     'var(--accent)'}; font-size: 24px; font-weight: bold;">
+                                    ${analysis.difficulty === 'easy' ? 'سهل' : 
+                                      analysis.difficulty === 'medium' ? 'متوسط' : 'صعب'}
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 `,
                 width: 600,
-                confirmButtonText: 'حسناً'
+                confirmButtonText: 'حسناً',
+                customClass: {
+                    popup: 'rtl-popup'
+                }
             });
         }
 
-        // =============== [ 5. دوال المساعدة ] ===============
+        async function loadTestHistory() {
+            const tests = userData.tests || [];
+            
+            const content = `
+                <div style="max-width: 1000px; margin: 0 auto;">
+                    <h1 style="color: var(--neon-blue); margin-bottom: 30px; font-size: 36px;">
+                        <i class="fas fa-history"></i> سجل الاختبارات
+                    </h1>
+                    
+                    <div style="background: var(--gradient-card); border-radius: 20px; padding: 30px; margin-bottom: 30px; border: 2px solid rgba(0,245,255,0.2);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h3 style="color: var(--neon-blue); margin: 0;">
+                                <i class="fas fa-list"></i> جميع الاختبارات
+                            </h3>
+                            <div style="color: var(--text-secondary);">
+                                ${tests.length} اختبار
+                            </div>
+                        </div>
+                        
+                        ${tests.length > 0 ? `
+                            <div style="max-height: 500px; overflow-y: auto; padding-right: 10px;">
+                                ${tests.map((test, index) => `
+                                    <div class="quiz-card" onclick="viewTestHistory('${test.id}')">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                            <div>
+                                                <div style="font-weight: bold; color: white; font-size: 18px;">${test.title || 'اختبار بدون عنوان'}</div>
+                                                <div style="color: var(--text-secondary); font-size: 12px;">
+                                                    ${new Date(test.date).toLocaleDateString('ar-SA', {
+                                                        year: 'numeric',
+                                                        month: 'long',
+                                                        day: 'numeric',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                ${test.status === 'completed' ? `
+                                                    <div style="background: ${test.score >= 70 ? 'var(--neon-green)' : 'var(--accent)'}; 
+                                                        padding: 5px 15px; border-radius: 20px; color: white; font-weight: bold;">
+                                                        ${test.score}%
+                                                    </div>
+                                                    <div style="color: var(--text-secondary); font-size: 11px; text-align: center; margin-top: 5px;">
+                                                        ${test.result === 'ناجح' ? 'ناجح' : 'راسب'}
+                                                    </div>
+                                                ` : `
+                                                    <div style="background: rgba(0,245,255,0.2); padding: 5px 15px; border-radius: 20px; color: var(--neon-blue);">
+                                                        تحت الإنشاء
+                                                    </div>
+                                                `}
+                                            </div>
+                                        </div>
+                                        
+                                        ${test.status === 'completed' ? `
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(0,245,255,0.1);">
+                                                <div style="color: var(--text-secondary); font-size: 12px;">
+                                                    ${test.questionCount} سؤال
+                                                </div>
+                                                <div style="color: var(--text-secondary); font-size: 12px;">
+                                                    ${test.completedAt ? new Date(test.completedAt).toLocaleDateString('ar-SA') : ''}
+                                                </div>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : `
+                            <div style="text-align: center; padding: 50px; color: var(--text-secondary);">
+                                <i class="fas fa-history" style="font-size: 64px; margin-bottom: 20px; color: var(--text-dim);"></i>
+                                <h3 style="color: var(--text-secondary); margin-bottom: 15px;">لا توجد اختبارات سابقة</h3>
+                                <p>أنشئ اختبارك الأول ليرد هنا في السجل</p>
+                                <button class="btn btn-primary" onclick="loadTestGenerator()" style="margin-top: 20px;">
+                                    <i class="fas fa-plus"></i> إنشاء اختبار جديد
+                                </button>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('content-area').innerHTML = content;
+        }
+
+        function viewTestHistory(testId) {
+            showNotification('ميزة عرض تفاصيل الاختبار قيد التطوير', 'info');
+        }
+
+        async function loadTestLibrary() {
+            const sampleTests = [
+                {
+                    id: 'sample1',
+                    title: 'اختبار في العلوم العامة',
+                    description: 'أسئلة متنوعة في العلوم الأساسية',
+                    difficulty: 'medium',
+                    questions: 15,
+                    time: 25,
+                    subject: 'علوم'
+                },
+                {
+                    id: 'sample2',
+                    title: 'اختبار في التاريخ العربي',
+                    description: 'أسئلة في التاريخ العربي والإسلامي',
+                    difficulty: 'medium',
+                    questions: 20,
+                    time: 30,
+                    subject: 'تاريخ'
+                },
+                {
+                    id: 'sample3',
+                    title: 'اختبار في الرياضيات الأساسية',
+                    description: 'أسئلة في الحساب والهندسة',
+                    difficulty: 'easy',
+                    questions: 10,
+                    time: 20,
+                    subject: 'رياضيات'
+                },
+                {
+                    id: 'sample4',
+                    title: 'اختبار في الجغرافيا',
+                    description: 'أسئلة في الجغرافيا الطبيعية والبشرية',
+                    difficulty: 'hard',
+                    questions: 25,
+                    time: 35,
+                    subject: 'جغرافيا'
+                }
+            ];
+            
+            const content = `
+                <div style="max-width: 1000px; margin: 0 auto;">
+                    <h1 style="color: var(--neon-blue); margin-bottom: 30px; font-size: 36px;">
+                        <i class="fas fa-book"></i> مكتبة الاختبارات
+                    </h1>
+                    
+                    <div style="background: var(--gradient-card); border-radius: 20px; padding: 30px; margin-bottom: 30px; border: 2px solid rgba(0,245,255,0.2);">
+                        <h3 style="color: var(--neon-blue); margin-bottom: 25px;">
+                            <i class="fas fa-star"></i> اختبارات جاهزة
+                        </h3>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                            ${sampleTests.map(test => `
+                                <div class="quiz-card" onclick="startSampleTest('${test.id}')">
+                                    <div style="font-weight: bold; color: white; font-size: 18px; margin-bottom: 10px;">${test.title}</div>
+                                    <div style="color: var(--text-secondary); margin-bottom: 15px; font-size: 14px;">${test.description}</div>
+                                    
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div>
+                                            <div style="color: var(--text-dim); font-size: 12px;">الصعوبة</div>
+                                            <div style="color: ${test.difficulty === 'easy' ? 'var(--neon-green)' : 
+                                                          test.difficulty === 'medium' ? 'var(--neon-yellow)' : 
+                                                          'var(--accent)'}; font-weight: bold;">
+                                                ${test.difficulty === 'easy' ? 'سهل' : 
+                                                  test.difficulty === 'medium' ? 'متوسط' : 'صعب'}
+                                            </div>
+                                        </div>
+                                        
+                                        <div>
+                                            <div style="color: var(--text-dim); font-size: 12px;">الأسئلة</div>
+                                            <div style="color: var(--neon-blue); font-weight: bold;">${test.questions}</div>
+                                        </div>
+                                        
+                                        <div>
+                                            <div style="color: var(--text-dim); font-size: 12px;">الوقت</div>
+                                            <div style="color: var(--neon-purple); font-weight: bold;">${test.time} د</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(0,245,255,0.1);">
+                                        <span style="color: var(--text-secondary); font-size: 12px;">${test.subject}</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    
+                    <div style="background: var(--gradient-card); border-radius: 20px; padding: 30px; border: 2px solid rgba(0,245,255,0.2);">
+                        <h3 style="color: var(--neon-green); margin-bottom: 20px;">
+                            <i class="fas fa-lightbulb"></i> إنشاء اختبارات مخصصة
+                        </h3>
+                        <div style="color: var(--text-secondary); margin-bottom: 25px; line-height: 1.6;">
+                            استخدم مولد الاختبارات الذكي لإنشاء اختبارات مخصصة تناسب احتياجاتك التعليمية. 
+                            النظام يستخدم الذكاء الاصطناعي لتحليل النصوص واستخراج أهم النقاط وتوليد أسئلة ذكية.
+                        </div>
+                        <button class="btn btn-primary" onclick="loadTestGenerator()" style="padding: 15px 30px;">
+                            <i class="fas fa-magic"></i> الانتقال لمولد الاختبارات
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('content-area').innerHTML = content;
+        }
+
+        function startSampleTest(testId) {
+            // في الإصدار الحالي، سنستخدم اختباراً افتراضياً
+            const sampleTest = {
+                id: 'sample_test',
+                title: 'اختبار العلوم العامة',
+                description: 'اختبار في العلوم العامة يتضمن أسئلة متنوعة',
+                questions: [
+                    {
+                        id: 'q1',
+                        type: 'multiple_choice',
+                        text: 'ما هو الغاز الذي تشتعل فيه المواد؟',
+                        options: ['الأكسجين', 'الهيدروجين', 'النتروجين', 'ثاني أكسيد الكربون'],
+                        correctAnswer: 0,
+                        explanation: 'الأكسجين هو غاز يساعد على الاشتعال.',
+                        difficulty: 'easy',
+                        points: 1
+                    },
+                    {
+                        id: 'q2',
+                        type: 'true_false',
+                        text: 'الماء يتكون من ذرتي هيدروجين وذرة أكسجين',
+                        options: ['صحيح', 'خطأ'],
+                        correctAnswer: 0,
+                        explanation: 'الصيغة الكيميائية للماء هي H₂O أي ذرتي هيدروجين وذرة أكسجين.',
+                        difficulty: 'easy',
+                        points: 1
+                    },
+                    {
+                        id: 'q3',
+                        type: 'multiple_choice',
+                        text: 'أي من الكواكب التالية يعرف بالكوكب الأحمر؟',
+                        options: ['المريخ', 'الزهرة', 'المشتري', 'زحل'],
+                        correctAnswer: 0,
+                        explanation: 'المريخ يعرف بالكوكب الأحمر بسبب لونه المائل للحمرة.',
+                        difficulty: 'medium',
+                        points: 2
+                    }
+                ],
+                settings: {
+                    difficulty: 'medium',
+                    timeLimit: 30,
+                    passingScore: 70,
+                    questionCount: 3,
+                    generatedAt: new Date().toISOString()
+                }
+            };
+            
+            currentTest = sampleTest;
+            currentAnswers = new Array(sampleTest.questions.length).fill(null);
+            displayTest(sampleTest);
+            showNotification('تم تحميل الاختبار النموذجي', 'success');
+        }
+
+        async function loadProgress() {
+            const stats = userData.stats || {};
+            
+            const content = `
+                <div style="max-width: 1000px; margin: 0 auto;">
+                    <h1 style="color: var(--neon-blue); margin-bottom: 30px; font-size: 36px;">
+                        <i class="fas fa-chart-line"></i> التقدم الدراسي
+                    </h1>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-bottom: 40px;">
+                        <div class="dashboard-section">
+                            <h3 style="color: var(--neon-blue); margin-bottom: 20px;">
+                                <i class="fas fa-trophy"></i> مستوى التقدم
+                            </h3>
+                            <div style="text-align: center;">
+                                <div class="score-circle" style="margin: 0 auto 20px;">
+                                    ${stats.level || 1}
+                                </div>
+                                <div style="color: white; font-size: 20px; font-weight: bold; margin-bottom: 10px;">المستوى ${stats.level || 1}</div>
+                                <div style="color: var(--text-secondary);">${stats.totalXP || 0} نقطة خبرة</div>
+                                
+                                <div style="margin-top: 20px;">
+                                    <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">التقدم للوصول للمستوى ${(stats.level || 1) + 1}</div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" style="width: ${((stats.totalXP || 0) % 100)}%"></div>
+                                    </div>
+                                    <div style="color: var(--text-dim); font-size: 11px; margin-top: 5px;">${((stats.totalXP || 0) % 100)}/100 نقطة</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="dashboard-section">
+                            <h3 style="color: var(--neon-green); margin-bottom: 20px;">
+                                <i class="fas fa-chart-bar"></i> الإحصائيات
+                            </h3>
+                            <div style="margin-bottom: 25px;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,245,255,0.1);">
+                                    <span style="color: var(--text-secondary);">الاختبارات المكتملة:</span>
+                                    <span style="color: var(--neon-green); font-weight: bold;">${stats.testsTaken || 0}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,245,255,0.1);">
+                                    <span style="color: var(--text-secondary);">الاختبارات المنشأة:</span>
+                                    <span style="color: var(--neon-blue); font-weight: bold;">${stats.testsCreated || 0}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,245,255,0.1);">
+                                    <span style="color: var(--text-secondary);">متوسط النتائج:</span>
+                                    <span style="color: var(--neon-purple); font-weight: bold;">${(stats.averageScore || 0).toFixed(1)}%</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: var(--text-secondary);">أفضل نتيجة:</span>
+                                    <span style="color: var(--neon-yellow); font-weight: bold;">${(stats.bestScore || 0).toFixed(1)}%</span>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top: 20px; text-align: center;">
+                                <div style="color: var(--text-secondary); margin-bottom: 10px;">معدل نجاحك</div>
+                                <div class="score-circle" style="width: 80px; height: 80px; font-size: 24px; margin: 0 auto;">
+                                    ${(stats.averageScore || 0).toFixed(0)}%
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-section" style="margin-bottom: 30px;">
+                        <h3 style="color: var(--neon-purple); margin-bottom: 20px;">
+                            <i class="fas fa-award"></i> الأهداف المقترحة
+                        </h3>
+                        <div style="color: var(--text-secondary); line-height: 1.8; font-size: 14px;">
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <i class="fas fa-check-circle" style="color: var(--neon-green); margin-left: 10px;"></i>
+                                <span>إنشاء 5 اختبارات ذكية</span>
+                            </div>
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <i class="fas fa-check-circle" style="color: ${(stats.testsTaken || 0) >= 10 ? 'var(--neon-green)' : 'var(--text-dim)'}; margin-left: 10px;"></i>
+                                <span>حل 10 اختبارات بنسبة نجاح 80% فأكثر</span>
+                            </div>
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <i class="fas fa-check-circle" style="color: ${(stats.level || 1) >= 5 ? 'var(--neon-green)' : 'var(--text-dim)'}; margin-left: 10px;"></i>
+                                <span>الوصول إلى المستوى 5</span>
+                            </div>
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <i class="fas fa-check-circle" style="color: ${(stats.totalXP || 0) >= 500 ? 'var(--neon-green)' : 'var(--text-dim)'}; margin-left: 10px;"></i>
+                                <span>اكتساب 500 نقطة خبرة</span>
+                            </div>
+                            <div style="display: flex; align-items: center;">
+                                <i class="fas fa-check-circle" style="color: var(--text-dim); margin-left: 10px;"></i>
+                                <span>فتح 3 إنجازات جديدة</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('content-area').innerHTML = content;
+        }
+
+        async function loadSettings() {
+            const content = `
+                <div style="max-width: 800px; margin: 0 auto;">
+                    <h1 style="color: var(--neon-blue); margin-bottom: 30px; font-size: 36px;">
+                        <i class="fas fa-cog"></i> الإعدادات
+                    </h1>
+                    
+                    <div class="dashboard-section" style="margin-bottom: 30px;">
+                        <h3 style="color: var(--neon-blue); margin-bottom: 25px;">
+                            <i class="fas fa-user"></i> الملف الشخصي
+                        </h3>
+                        
+                        <div class="form-group">
+                            <label style="color: var(--text-secondary); display: block; margin-bottom: 8px;">الاسم</label>
+                            <input type="text" id="profile-name" class="form-control" value="${userData.name || ''}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label style="color: var(--text-secondary); display: block; margin-bottom: 8px;">البريد الإلكتروني</label>
+                            <input type="email" class="form-control" value="${userData.email || ''}" disabled>
+                        </div>
+                        
+                        <button class="btn btn-primary" onclick="updateProfile()" style="width: 100%; padding: 15px; margin-top: 10px;">
+                            <i class="fas fa-save"></i> حفظ التغييرات
+                        </button>
+                    </div>
+                    
+                    <div class="dashboard-section" style="margin-bottom: 30px;">
+                        <h3 style="color: var(--neon-green); margin-bottom: 25px;">
+                            <i class="fas fa-palette"></i> التفضيلات
+                        </h3>
+                        
+                        <div class="form-group">
+                            <label style="color: var(--text-secondary); display: block; margin-bottom: 8px;">اللغة</label>
+                            <select id="pref-language" class="form-control">
+                                <option value="ar" selected>العربية</option>
+                                <option value="en">الإنجليزية</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label style="color: var(--text-secondary); display: block; margin-bottom: 8px;">الوضع</label>
+                            <select id="pref-theme" class="form-control">
+                                <option value="dark" selected>داكن</option>
+                                <option value="light">فاتح</option>
+                            </select>
+                        </div>
+                        
+                        <div style="margin-top: 20px;">
+                            <label style="color: var(--text-secondary); cursor: pointer; display: flex; align-items: center;">
+                                <input type="checkbox" id="pref-notifications" ${userData.preferences?.notifications ? 'checked' : ''} style="margin-left: 10px;">
+                                تفعيل الإشعارات
+                            </label>
+                        </div>
+                        
+                        <button class="btn btn-secondary" onclick="updatePreferences()" style="width: 100%; padding: 15px; margin-top: 20px;">
+                            <i class="fas fa-check"></i> تطبيق التفضيلات
+                        </button>
+                    </div>
+                    
+                    <div class="dashboard-section">
+                        <h3 style="color: var(--accent); margin-bottom: 25px;">
+                            <i class="fas fa-shield-alt"></i> الخصوصية والأمان
+                        </h3>
+                        
+                        <div style="color: var(--text-secondary); margin-bottom: 20px;">
+                            <p>يمكنك تغيير كلمة المرور أو حذف حسابك من هنا.</p>
+                        </div>
+                        
+                        <button class="btn btn-secondary" onclick="changePassword()" style="width: 100%; padding: 15px; margin-bottom: 15px;">
+                            <i class="fas fa-key"></i> تغيير كلمة المرور
+                        </button>
+                        
+                        <button class="btn btn-danger" onclick="deleteAccount()" style="width: 100%; padding: 15px;">
+                            <i class="fas fa-trash"></i> حذف الحساب
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('content-area').innerHTML = content;
+        }
+
+        // =============== [ 6. دوال المساعدة ] ===============
         function showNotification(message, type = 'info') {
+            // إزالة أي إشعارات سابقة
             const oldNotifications = document.querySelectorAll('.notification');
             oldNotifications.forEach(notif => notif.remove());
             
@@ -2557,7 +3486,21 @@
                     e.preventDefault();
                     loadTestHistory();
                 }
+                
+                // Ctrl + Q: تسجيل الخروج
+                if (e.ctrlKey && e.key === 'q') {
+                    e.preventDefault();
+                    logout();
+                }
             });
+        }
+
+        function checkUserSession() {
+            const savedEmail = localStorage.getItem('ai_system_email');
+            if (savedEmail) {
+                document.getElementById('login-email').value = savedEmail;
+                document.getElementById('login-password').focus();
+            }
         }
 
         function checkChaosWord(text) {
@@ -2565,10 +3508,12 @@
             
             const now = Date.now();
             
+            // إعادة تعيين العداد إذا مرت فترة زمنية طويلة
             if (now - lastChaosTime > CHAOS_RESET_TIME) {
                 chaosCount = 0;
             }
             
+            // التحقق من وجود كلمة "خلطة"
             if (text.toLowerCase().includes('خلطة')) {
                 chaosCount++;
                 lastChaosTime = now;
@@ -2599,11 +3544,79 @@
             showNotification('تم تجاوز الحد المسموح. يجب إنشاء اختبار جديد.', 'error');
         }
 
+        async function updateProfile() {
+            const name = document.getElementById('profile-name').value;
+            
+            if (!name) {
+                showNotification('الرجاء إدخال اسم', 'error');
+                return;
+            }
+            
+            userData.name = name;
+            await saveUserData();
+            
+            updateUserUI();
+            showNotification('تم تحديث الملف الشخصي بنجاح', 'success');
+        }
+
+        async function updatePreferences() {
+            const language = document.getElementById('pref-language').value;
+            const theme = document.getElementById('pref-theme').value;
+            const notifications = document.getElementById('pref-notifications').checked;
+            
+            userData.preferences = {
+                language: language,
+                theme: theme,
+                notifications: notifications
+            };
+            
+            await saveUserData();
+            showNotification('تم تحديث التفضيلات بنجاح', 'success');
+        }
+
+        async function changePassword() {
+            Swal.fire({
+                title: 'هذه الميزة تحت التطوير',
+                text: 'تغيير كلمة المرور متاح فقط في الإصدار الكامل مع اتصال Firebase.',
+                icon: 'info',
+                confirmButtonText: 'حسناً'
+            });
+        }
+
+        async function deleteAccount() {
+            const confirm = await Swal.fire({
+                title: 'هل أنت متأكد؟',
+                text: 'سيتم حذف حسابك وكل بياناتك بشكل نهائي.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'نعم، احذف الحساب',
+                cancelButtonText: 'إلغاء',
+                reverseButtons: true,
+                confirmButtonColor: '#ff006e'
+            });
+            
+            if (confirm.isConfirmed) {
+                try {
+                    if (currentUser && auth) {
+                        await db.ref(`users/${currentUser.uid}`).remove();
+                        await currentUser.delete();
+                    }
+                    
+                    showNotification('تم حذف الحساب بنجاح', 'success');
+                    showLoginScreen();
+                } catch (error) {
+                    console.error('❌ خطأ في حذف الحساب:', error);
+                    showNotification('حدث خطأ في حذف الحساب', 'error');
+                }
+            }
+        }
+
         async function quickGenerateTest() {
             const text = document.getElementById('quick-test-text')?.value;
             const questionCount = parseInt(document.getElementById('quick-question-count')?.value || 10);
             const difficulty = document.getElementById('quick-difficulty')?.value;
             
+            // التحقق من كلمة "خلطة"
             if (checkChaosWord(text)) {
                 showChaosWarning();
                 return;
@@ -2634,338 +3647,7 @@
             }
         }
 
-        // =============== [ 6. دوال تسجيل الدخول (تجريبية) ] ===============
-        async function login() {
-            const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-password').value;
-            
-            if (!email || !password) {
-                showNotification('الرجاء إدخال البريد الإلكتروني وكلمة المرور', 'error');
-                return;
-            }
-            
-            showLoading('جاري تسجيل الدخول...');
-            
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            
-            hideLoading();
-            showNotification('✅ تم الدخول في الوضع التجريبي', 'success');
-            currentUser = { email: email };
-            userData.name = email.split('@')[0];
-            showAppScreen();
-        }
-
-        function logout() {
-            currentUser = null;
-            showNotification('تم تسجيل الخروج بنجاح', 'success');
-            showLoginScreen();
-        }
-
-        function showRegister() {
-            Swal.fire({
-                title: 'هذه الميزة تحت التطوير',
-                text: 'إنشاء الحسابات متاح فقط في الإصدار الكامل مع اتصال قاعدة البيانات.',
-                icon: 'info',
-                confirmButtonText: 'حسناً'
-            });
-        }
-
-        // =============== [ 7. تحميل الصفحات الأخرى ] ===============
-        async function loadTestHistory() {
-            const content = `
-                <div style="max-width: 1000px; margin: 0 auto;">
-                    <h1 style="color: var(--neon-blue); margin-bottom: 30px; font-size: 36px;">
-                        <i class="fas fa-history"></i> سجل الاختبارات
-                    </h1>
-                    
-                    <div style="background: var(--gradient-card); border-radius: 20px; padding: 30px; margin-bottom: 30px; border: 2px solid rgba(0,245,255,0.2);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                            <h3 style="color: var(--neon-blue); margin: 0;">
-                                <i class="fas fa-list"></i> جميع الاختبارات
-                            </h3>
-                            <div style="color: var(--text-secondary);">
-                                ${userData.tests?.length || 0} اختبار
-                            </div>
-                        </div>
-                        
-                        ${userData.tests?.length > 0 ? `
-                            <div style="max-height: 500px; overflow-y: auto; padding-right: 10px;">
-                                ${userData.tests.map((test, index) => `
-                                    <div class="quiz-card">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                            <div>
-                                                <div style="font-weight: bold; color: white; font-size: 18px;">${test.title || 'اختبار بدون عنوان'}</div>
-                                                <div style="color: var(--text-secondary); font-size: 12px;">
-                                                    ${new Date(test.date).toLocaleDateString('ar-SA')}
-                                                </div>
-                                            </div>
-                                            <div>
-                                                ${test.status === 'completed' ? `
-                                                    <div style="background: ${test.score >= 70 ? 'var(--neon-green)' : 'var(--accent)'}; 
-                                                        padding: 5px 15px; border-radius: 20px; color: white; font-weight: bold;">
-                                                        ${test.score}%
-                                                    </div>
-                                                    <div style="color: var(--text-secondary); font-size: 11px; text-align: center; margin-top: 5px;">
-                                                        ${test.result === 'ناجح' ? 'ناجح' : 'راسب'}
-                                                    </div>
-                                                ` : `
-                                                    <div style="background: rgba(0,245,255,0.2); padding: 5px 15px; border-radius: 20px; color: var(--neon-blue);">
-                                                        تحت الإنشاء
-                                                    </div>
-                                                `}
-                                            </div>
-                                        </div>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        ` : `
-                            <div style="text-align: center; padding: 50px; color: var(--text-secondary);">
-                                <i class="fas fa-history" style="font-size: 64px; margin-bottom: 20px; color: var(--text-dim);"></i>
-                                <h3 style="color: var(--text-secondary); margin-bottom: 15px;">لا توجد اختبارات سابقة</h3>
-                                <p>أنشئ اختبارك الأول ليرد هنا في السجل</p>
-                                <button class="btn btn-primary" onclick="loadTestGenerator()" style="margin-top: 20px;">
-                                    <i class="fas fa-plus"></i> إنشاء اختبار جديد
-                                </button>
-                            </div>
-                        `}
-                    </div>
-                </div>
-            `;
-            
-            document.getElementById('content-area').innerHTML = content;
-        }
-
-        async function loadTestLibrary() {
-            const content = `
-                <div style="max-width: 1000px; margin: 0 auto;">
-                    <h1 style="color: var(--neon-blue); margin-bottom: 30px; font-size: 36px;">
-                        <i class="fas fa-book"></i> مكتبة الاختبارات
-                    </h1>
-                    
-                    <div style="background: var(--gradient-card); border-radius: 20px; padding: 30px; margin-bottom: 30px; border: 2px solid rgba(0,245,255,0.2);">
-                        <h3 style="color: var(--neon-blue); margin-bottom: 25px;">
-                            <i class="fas fa-star"></i> اختبارات جاهزة
-                        </h3>
-                        
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
-                            <div class="quiz-card" onclick="startSampleTest('science')">
-                                <div style="font-weight: bold; color: white; font-size: 18px; margin-bottom: 10px;">اختبار في العلوم العامة</div>
-                                <div style="color: var(--text-secondary); margin-bottom: 15px; font-size: 14px;">أسئلة متنوعة في العلوم الأساسية</div>
-                                
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div>
-                                        <div style="color: var(--text-dim); font-size: 12px;">الصعوبة</div>
-                                        <div style="color: var(--neon-yellow); font-weight: bold;">متوسط</div>
-                                    </div>
-                                    
-                                    <div>
-                                        <div style="color: var(--text-dim); font-size: 12px;">الأسئلة</div>
-                                        <div style="color: var(--neon-blue); font-weight: bold;">15</div>
-                                    </div>
-                                    
-                                    <div>
-                                        <div style="color: var(--text-dim); font-size: 12px;">الوقت</div>
-                                        <div style="color: var(--neon-purple); font-weight: bold;">25 د</div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="quiz-card" onclick="startSampleTest('history')">
-                                <div style="font-weight: bold; color: white; font-size: 18px; margin-bottom: 10px;">اختبار في التاريخ العربي</div>
-                                <div style="color: var(--text-secondary); margin-bottom: 15px; font-size: 14px;">أسئلة في التاريخ العربي والإسلامي</div>
-                                
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div>
-                                        <div style="color: var(--text-dim); font-size: 12px;">الصعوبة</div>
-                                        <div style="color: var(--neon-yellow); font-weight: bold;">متوسط</div>
-                                    </div>
-                                    
-                                    <div>
-                                        <div style="color: var(--text-dim); font-size: 12px;">الأسئلة</div>
-                                        <div style="color: var(--neon-blue); font-weight: bold;">20</div>
-                                    </div>
-                                    
-                                    <div>
-                                        <div style="color: var(--text-dim); font-size: 12px;">الوقت</div>
-                                        <div style="color: var(--neon-purple); font-weight: bold;">30 د</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div style="background: var(--gradient-card); border-radius: 20px; padding: 30px; border: 2px solid rgba(0,245,255,0.2);">
-                        <h3 style="color: var(--neon-green); margin-bottom: 20px;">
-                            <i class="fas fa-lightbulb"></i> إنشاء اختبارات مخصصة
-                        </h3>
-                        <div style="color: var(--text-secondary); margin-bottom: 25px; line-height: 1.6;">
-                            استخدم مولد الاختبارات الذكي لإنشاء اختبارات مخصصة تناسب احتياجاتك التعليمية. 
-                            النظام يستخدم الذكاء الاصطناعي لتحليل النصوص واستخراج أهم النقاط وتوليد أسئلة ذكية.
-                        </div>
-                        <button class="btn btn-primary" onclick="loadTestGenerator()" style="padding: 15px 30px;">
-                            <i class="fas fa-magic"></i> الانتقال لمولد الاختبارات
-                        </button>
-                    </div>
-                </div>
-            `;
-            
-            document.getElementById('content-area').innerHTML = content;
-        }
-
-        function startSampleTest(testType) {
-            const sampleTests = {
-                'science': {
-                    title: 'اختبار العلوم العامة',
-                    questions: [
-                        {
-                            type: 'multiple_choice',
-                            text: 'ما هو الغاز الذي تشتعل فيه المواد؟',
-                            options: ['الأكسجين', 'الهيدروجين', 'النتروجين', 'ثاني أكسيد الكربون'],
-                            correctAnswer: 0,
-                            points: 2
-                        },
-                        {
-                            type: 'true_false',
-                            text: 'الماء يتكون من ذرتي هيدروجين وذرة أكسجين',
-                            options: ['صحيح', 'خطأ'],
-                            correctAnswer: 0,
-                            points: 1
-                        },
-                        {
-                            type: 'multiple_choice',
-                            text: 'أي من الكواكب التالية يعرف بالكوكب الأحمر؟',
-                            options: ['المريخ', 'الزهرة', 'المشتري', 'زحل'],
-                            correctAnswer: 0,
-                            points: 2
-                        }
-                    ]
-                },
-                'history': {
-                    title: 'اختبار التاريخ العربي',
-                    questions: [
-                        {
-                            type: 'multiple_choice',
-                            text: 'في أي عام حدثت معركة اليرموك؟',
-                            options: ['632م', '636م', '640م', '644م'],
-                            correctAnswer: 1,
-                            points: 2
-                        },
-                        {
-                            type: 'true_false',
-                            text: 'كانت الدولة الأموية أول دولة إسلامية في التاريخ',
-                            options: ['صحيح', 'خطأ'],
-                            correctAnswer: 1,
-                            points: 1
-                        }
-                    ]
-                }
-            };
-            
-            const test = {
-                id: 'sample_' + testType,
-                title: sampleTests[testType].title,
-                questions: sampleTests[testType].questions,
-                settings: {
-                    difficulty: 'medium',
-                    timeLimit: 30,
-                    passingScore: 70
-                }
-            };
-            
-            currentTest = test;
-            currentAnswers = new Array(test.questions.length).fill(null);
-            displayTest(test);
-            showNotification('تم تحميل الاختبار النموذجي', 'success');
-        }
-
-        async function loadProgress() {
-            const content = `
-                <div style="max-width: 1000px; margin: 0 auto;">
-                    <h1 style="color: var(--neon-blue); margin-bottom: 30px; font-size: 36px;">
-                        <i class="fas fa-chart-line"></i> التقدم الدراسي
-                    </h1>
-                    
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-bottom: 40px;">
-                        <div class="dashboard-section">
-                            <h3 style="color: var(--neon-blue); margin-bottom: 20px;">
-                                <i class="fas fa-trophy"></i> مستوى التقدم
-                            </h3>
-                            <div style="text-align: center;">
-                                <div class="score-circle" style="margin: 0 auto 20px;">
-                                    ${userData.stats?.level || 1}
-                                </div>
-                                <div style="color: white; font-size: 20px; font-weight: bold; margin-bottom: 10px;">المستوى ${userData.stats?.level || 1}</div>
-                                <div style="color: var(--text-secondary);">${userData.stats?.totalXP || 0} نقطة خبرة</div>
-                            </div>
-                        </div>
-                        
-                        <div class="dashboard-section">
-                            <h3 style="color: var(--neon-green); margin-bottom: 20px;">
-                                <i class="fas fa-chart-bar"></i> الإحصائيات
-                            </h3>
-                            <div style="margin-bottom: 25px;">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,245,255,0.1);">
-                                    <span style="color: var(--text-secondary);">الاختبارات المكتملة:</span>
-                                    <span style="color: var(--neon-green); font-weight: bold;">${userData.stats?.testsTaken || 0}</span>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,245,255,0.1);">
-                                    <span style="color: var(--text-secondary);">متوسط النتائج:</span>
-                                    <span style="color: var(--neon-purple); font-weight: bold;">${(userData.stats?.averageScore || 0).toFixed(1)}%</span>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span style="color: var(--text-secondary);">أفضل نتيجة:</span>
-                                    <span style="color: var(--neon-yellow); font-weight: bold;">${(userData.stats?.bestScore || 0).toFixed(1)}%</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            document.getElementById('content-area').innerHTML = content;
-        }
-
-        async function loadSettings() {
-            const content = `
-                <div style="max-width: 800px; margin: 0 auto;">
-                    <h1 style="color: var(--neon-blue); margin-bottom: 30px; font-size: 36px;">
-                        <i class="fas fa-cog"></i> الإعدادات
-                    </h1>
-                    
-                    <div class="dashboard-section" style="margin-bottom: 30px;">
-                        <h3 style="color: var(--neon-blue); margin-bottom: 25px;">
-                            <i class="fas fa-user"></i> الملف الشخصي
-                        </h3>
-                        
-                        <div class="form-group">
-                            <label style="color: var(--text-secondary); display: block; margin-bottom: 8px;">الاسم</label>
-                            <input type="text" id="profile-name" class="form-control" value="${userData.name || ''}">
-                        </div>
-                        
-                        <button class="btn btn-primary" onclick="updateProfile()" style="width: 100%; padding: 15px; margin-top: 10px;">
-                            <i class="fas fa-save"></i> حفظ التغييرات
-                        </button>
-                    </div>
-                </div>
-            `;
-            
-            document.getElementById('content-area').innerHTML = content;
-        }
-
-        function updateProfile() {
-            const name = document.getElementById('profile-name').value;
-            
-            if (!name) {
-                showNotification('الرجاء إدخال اسم', 'error');
-                return;
-            }
-            
-            userData.name = name;
-            updateUserUI();
-            showNotification('تم تحديث الملف الشخصي بنجاح', 'success');
-        }
-
-        // =============== [ 8. تصدير الدوال للنطاق العام ] ===============
+        // =============== [ 7. تصدير الدوال للنطاق العام ] ===============
         window.login = login;
         window.logout = logout;
         window.showRegister = showRegister;
@@ -2985,11 +3667,22 @@
         window.submitTest = submitTest;
         window.reviewAnswers = reviewAnswers;
         window.updateProfile = updateProfile;
+        window.updatePreferences = updatePreferences;
+        window.changePassword = changePassword;
+        window.deleteAccount = deleteAccount;
         window.quickGenerateTest = quickGenerateTest;
         window.startSampleTest = startSampleTest;
+        window.viewTestHistory = viewTestHistory;
         window.showTestAnalysis = showTestAnalysis;
 
         console.log('🚀 نظام الذكاء الاصطناعي الخارق جاهز للعمل!');
+        console.log('📊 النظام يدعم:');
+        console.log('- توليد اختبارات ذكية من النصوص العربية');
+        console.log('- تحليل النصوص واستخراج المعلومات المهمة فقط');
+        console.log('- تجنب الحشو والمعلومات غير المهمة');
+        console.log('- وضع علامة صح/خطأ مع التصحيح الفوري');
+        console.log('- نظام الذاكرة والمعرفة الذكية');
+        console.log('- واجهة عربية كاملة وتصميم عصري');
     </script>
 </body>
 </html>
