@@ -1740,6 +1740,8 @@ class TestSystem {
                         <button class="tab-btn active" onclick="switchTestTab('text')">من نص</button>
                         <button class="tab-btn" onclick="switchTestTab('image')">من صورة</button>
                         <button class="tab-btn" onclick="switchTestTab('topic')">من موضوع</button>
+                        button class="tab-btn" onclick="switchTestTab('manual')">إدخال يدوي</button> <!-- أضف هذا السطر هنا -->
+                   </div>
                     </div>
                     
                     <div id="tab-content" style="background: var(--gradient-card); border-radius: 20px; padding: 30px; border: 2px solid rgba(0,245,255,0.2);">
@@ -1917,25 +1919,18 @@ class TestSystem {
         }
 
         function switchTestTab(tabName) {
-            // تحديث أزرار التبويب
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
-            
-            // تحميل محتوى التبويب
-            const tabContent = document.getElementById('tab-content');
-            
-            switch(tabName) {
-                case 'text':
-                    loadTextTabContent().then(content => tabContent.innerHTML = content);
-                    break;
-                case 'image':
-                    loadImageTabContent().then(content => tabContent.innerHTML = content);
-                    break;
-                case 'topic':
-                    loadTopicTabContent().then(content => tabContent.innerHTML = content);
-                    break;
-            }
-        }
+    // 1. تغيير شكل الأزرار
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    if (event) event.target.classList.add('active');
+    
+    const tabContent = document.getElementById('tab-content');
+    
+    // 2. تحميل المحتوى المناسب
+    if (tabName === 'text') loadTextTabContent().then(c => tabContent.innerHTML = c);
+    else if (tabName === 'image') loadImageTabContent().then(c => tabContent.innerHTML = c);
+    else if (tabName === 'topic') loadTopicTabContent().then(c => tabContent.innerHTML = c);
+    else if (tabName === 'manual') loadManualTabContent().then(c => tabContent.innerHTML = c); // الحالة الجديدة
+}
 
         async function generateTestFromText() {
             const text = document.getElementById('input-text')?.value;
@@ -3334,6 +3329,8 @@ class TestSystem {
         window.startSampleTest = startSampleTest;
         window.viewTestHistory = viewTestHistory;
         window.showTestAnalysis = showTestAnalysis;
+        window.addManualQuestionField = addManualQuestionField;
+        window.generateManualTest = generateManualTest;
 
         console.log('🚀 نظام الذكاء الاصطناعي الخارق جاهز للعمل!');
         console.log('📊 النظام يدعم:');
@@ -3441,6 +3438,77 @@ window.goBack = goBack;
     if (isPerfect) {
         showNotification('🏆 مذهل! درجة كاملة ومكافأة XP مضاعفة!', 'success');
     }
+}
+        // دالة بناء واجهة الإدخال اليدوي
+async function loadManualTabContent() {
+    return `
+        <div id="manual-tab-content">
+            <h3 style="color: var(--neon-blue); margin-bottom: 20px;"><i class="fas fa-edit"></i> إنشاء اختبار يدوي</h3>
+            <div class="form-group">
+                <input type="text" id="manual-test-title" class="form-control" placeholder="عنوان الاختبار (مثلاً: مراجعة نهائية)">
+            </div>
+            <div id="manual-questions-list">
+                <div class="manual-q-item" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid rgba(0,245,255,0.2);">
+                    <input type="text" class="form-control q-text" placeholder="اكتب السؤال هنا..." style="margin-bottom: 10px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <input type="text" class="form-control q-opt" placeholder="الإجابة الصحيحة">
+                        <input type="text" class="form-control q-opt" placeholder="خيار خطأ 1">
+                        <input type="text" class="form-control q-opt" placeholder="خيار خطأ 2">
+                        <input type="text" class="form-control q-opt" placeholder="خيار خطأ 3">
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-secondary" onclick="addManualQuestionField()" style="width: 100%; margin-bottom: 15px;">+ إضافة سؤال آخر</button>
+            <button class="btn btn-primary" onclick="generateManualTest()" style="width: 100%; padding: 15px;">بدء الاختبار الآن</button>
+        </div>
+    `;
+}
+
+// دالة إضافة حقل سؤال جديد
+function addManualQuestionField() {
+    const div = document.createElement('div');
+    div.className = "manual-q-item";
+    div.style = "background: rgba(255,255,255,0.05); padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid rgba(0,245,255,0.2);";
+    div.innerHTML = `
+        <input type="text" class="form-control q-text" placeholder="اكتب السؤال هنا..." style="margin-bottom: 10px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <input type="text" class="form-control q-opt" placeholder="الإجابة الصحيحة">
+            <input type="text" class="form-control q-opt" placeholder="خيار خطأ 1">
+            <input type="text" class="form-control q-opt" placeholder="خيار خطأ 2">
+            <input type="text" class="form-control q-opt" placeholder="خيار خطأ 3">
+        </div>
+    `;
+    document.getElementById('manual-questions-list').appendChild(div);
+}
+
+// دالة تحويل ما كتبته إلى اختبار حقيقي
+async function generateManualTest() {
+    const title = document.getElementById('manual-test-title').value || "اختبار يدوي";
+    const items = document.querySelectorAll('.manual-q-item');
+    const questions = [];
+
+    items.forEach(item => {
+        const text = item.querySelector('.q-text').value;
+        const opts = Array.from(item.querySelectorAll('.q-opt')).map(i => i.value).filter(v => v !== "");
+        if (text && opts.length >= 2) {
+            const correctText = opts[0]; // الأول هو الصحيح دائماً عند الإدخال
+            const shuffled = [...opts].sort(() => Math.random() - 0.5); // خلطهم
+            questions.push({
+                type: 'multiple_choice',
+                text: text,
+                options: shuffled,
+                correctAnswer: shuffled.indexOf(correctText),
+                explanation: "سؤال يدوي",
+                points: 2
+            });
+        }
+    });
+
+    if (questions.length === 0) return showNotification('أضف سؤالاً واحداً على الأقل!', 'error');
+
+    currentTest = { id: 'm_'+Date.now(), title: title, questions: questions, settings: { difficulty: 'manual', passingScore: 70 } };
+    currentAnswers = new Array(questions.length).fill(null);
+    displayTest(currentTest);
 }
     </script>
 </body>
