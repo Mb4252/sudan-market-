@@ -1827,52 +1827,41 @@ class TestSystem {
                 </div>
             `;
         }
-
         async function loadImageTabContent() {
-            return `
-                <div id="image-tab-content" style="display: none;">
-                    <h3 style="color: var(--neon-green); margin-bottom: 20px;">
-                        <i class="fas fa-image"></i> رفع صورة تحتوي على نص
-                    </h3>
-                    
-                    <div class="image-preview-container" onclick="document.getElementById('image-file-input').click()" id="image-drop-zone">
-                        <i class="fas fa-cloud-upload-alt" style="font-size: 64px; color: var(--neon-blue); margin-bottom: 15px;"></i>
-                        <div style="color: var(--neon-blue); font-size: 18px; margin-bottom: 10px;">انقر لرفع صورة</div>
-                        <div style="color: var(--text-secondary); font-size: 14px;">
-                            أو اسحب وأفلت الصورة هنا
-                            <br>
-                            يدعم: JPG, PNG, GIF
-                        </div>
-                        <input type="file" id="image-file-input" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
-                    </div>
-                    
-                    <div id="image-preview" style="text-align: center; margin: 20px 0; display: none;">
-                        <img id="preview-img" style="max-width: 100%; max-height: 300px; border-radius: 10px; border: 2px solid var(--neon-blue);">
-                        <div style="margin-top: 10px;">
-                            <button class="btn btn-secondary" onclick="clearImage()" style="padding: 8px 15px;">
-                                <i class="fas fa-times"></i> إزالة الصورة
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div style="margin-bottom: 25px;">
-                        <label style="color: var(--text-secondary); display: block; margin-bottom: 8px;">
-                            <i class="fas fa-language"></i> لغة النص في الصورة
-                        </label>
-                        <select id="ocr-language" class="form-control">
-                            <option value="ara" selected>العربية</option>
-                            <option value="eng">الإنجليزية</option>
-                            <option value="ara+eng">العربية والإنجليزية</option>
-                        </select>
-                    </div>
-                    
-                    <button id="generate-image-btn" class="btn btn-primary" onclick="generateTestFromImage()" style="width: 100%; padding: 18px; font-size: 18px;" disabled>
-                        <i class="fas fa-image"></i> استخراج النص وإنشاء اختبار
-                    </button>
-                </div>
-            `;
-        }
+    return `
+        <div id="image-tab-content">
+            <h3 style="color: var(--neon-green); margin-bottom: 20px;">
+                <i class="fas fa-image"></i> رفع صورة الكتاب أو الملخص
+            </h3>
+            
+            <div class="image-preview-container" onclick="document.getElementById('image-file-input').click()" 
+                 style="border: 2px dashed var(--neon-blue); padding: 40px; text-align: center; cursor: pointer; border-radius: 15px;">
+                <i class="fas fa-cloud-upload-alt" style="font-size: 50px; color: var(--neon-blue); margin-bottom: 10px;"></i>
+                <p>اضغط هنا لرفع صورة (PNG, JPG)</p>
+                <input type="file" id="image-file-input" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
+            </div>
+            
+            <div id="image-preview-area" style="margin-top: 20px; display: none; text-align: center;">
+                <img id="preview-img" style="max-width: 100%; border-radius: 10px; border: 2px solid var(--neon-blue); max-height: 300px;">
+                <p style="color: var(--text-secondary); margin-top: 10px;">تم تحميل الصورة بنجاح</p>
+            </div>
 
+            <div class="form-group" style="margin-top: 20px;">
+                <label>لغة النص في الصورة:</label>
+                <select id="ocr-lang" class="form-control">
+                    <option value="ara">العربية</option>
+                    <option value="eng">الإنجليزية</option>
+                    <option value="ara+eng">العربية + الإنجليزية</option>
+                </select>
+            </div>
+            
+            <button class="btn btn-primary" id="ocr-btn" onclick="generateTestFromImage()" style="width: 100%; padding: 15px; margin-top: 20px;" disabled>
+                <i class="fas fa-magic"></i> قراءة الصورة وتوليد الاختبار
+            </button>
+        </div>
+    `;
+}
+        
         async function loadTopicTabContent() {
             return `
                 <div id="topic-tab-content" style="display: none;">
@@ -3509,6 +3498,67 @@ async function generateManualTest() {
     currentTest = { id: 'm_'+Date.now(), title: title, questions: questions, settings: { difficulty: 'manual', passingScore: 70 } };
     currentAnswers = new Array(questions.length).fill(null);
     displayTest(currentTest);
+}
+        // 1. دالة التعامل مع رفع الصورة ومعاينتها
+function handleImageUpload(event) {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('preview-img').src = e.target.result;
+            document.getElementById('image-preview-area').style.display = 'block';
+            document.getElementById('ocr-btn').disabled = false; // تفعيل الزر
+        }
+        reader.readAsDataURL(file);
+    }
+}
+
+// 2. الدالة الرئيسية لتحويل الصورة إلى اختبار
+async function generateTestFromImage() {
+    const fileInput = document.getElementById('image-file-input');
+    const lang = document.getElementById('ocr-lang').value;
+    
+    if (!fileInput.files[0]) return;
+
+    showLoading('جاري قراءة النص من الصورة بالذكاء الاصطناعي...');
+
+    try {
+        // استخدام Tesseract.js لاستخراج النص
+        const result = await Tesseract.recognize(
+            fileInput.files[0],
+            lang,
+            { logger: m => console.log(m) } // لمراقبة التقدم في الكونسول
+        );
+
+        const extractedText = result.data.text;
+
+        if (extractedText.length < 50) {
+            hideLoading();
+            showNotification('النص المستخرج قصير جداً، تأكد من جودة الصورة', 'error');
+            return;
+        }
+
+        // إخفاء التحميل وبدء توليد الأسئلة باستخدام النظام الموجود لديك
+        showLoading('تم استخراج النص! جاري توليد الأسئلة...');
+        
+        const test = await testSystem.generateTestFromText(extractedText, {
+            count: 10,
+            difficulty: 'medium',
+            title: 'اختبار من صورة مستخرجة'
+        });
+
+        currentTest = test;
+        currentAnswers = new Array(test.questions.length).fill(null);
+        
+        hideLoading();
+        displayTest(test);
+        showNotification('تم استخراج النص وإنشاء الاختبار بنجاح!', 'success');
+
+    } catch (error) {
+        hideLoading();
+        console.error('OCR Error:', error);
+        showNotification('فشل في قراءة الصورة. حاول مرة أخرى', 'error');
+    }
 }
     </script>
 </body>
