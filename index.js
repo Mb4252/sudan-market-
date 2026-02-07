@@ -12,108 +12,111 @@ const upload = multer({ storage: multer.memoryStorage() });
 app.use(cors());
 app.use(express.json());
 
-// ==================== [ 1. تهيئة الخدمات بشكل آمن ] ====================
-
-// --- تهيئة Firebase ---
+// ==================== [ 1. تهيئة Firebase بشكل احترافي ] ====================
+// لكي يعمل هذا الجزء، يجب وضع محتوى ملف الـ JSON كاملاً في متغير بيئة اسمه FIREBASE_SERVICE_ACCOUNT
 try {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG || '{}');
-    if (process.env.FIREBASE_CONFIG) {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
         admin.initializeApp({
             credential: admin.credential.cert(serviceAccount),
             databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com"
         });
-        console.log("✅ Firebase Admin Initialized");
+        console.log("✅ Firebase Admin Connected Successfully!");
     } else {
-        console.log("⚠️ Warning: FIREBASE_CONFIG missing. Database features restricted.");
+        console.log("⚠️ Warning: FIREBASE_SERVICE_ACCOUNT missing in Environment Variables.");
     }
 } catch (e) {
     console.log("❌ Firebase Init Error: ", e.message);
 }
 
-// --- تهيئة OpenAI ---
-let openai = null;
-if (process.env.OPENAI_API_KEY) {
-    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    console.log("✅ OpenAI Ready");
-} else {
-    console.log("⚠️ Warning: OPENAI_API_KEY missing. AI features will use 'Mock Mode'.");
-}
+const db = admin.database();
 
-// --- تهيئة Telegram Bot ---
-let bot = null;
-if (process.env.TELEGRAM_BOT_TOKEN) {
-    bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
-    bot.launch().catch(err => console.log("❌ Telegram Bot Launch Error:", err.message));
-    console.log("✅ Telegram Bot Ready");
-} else {
-    console.log("⚠️ Warning: TELEGRAM_BOT_TOKEN missing. Storage features disabled.");
-}
+// ==================== [ 2. تهيئة OpenAI وتليجرام ] ====================
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+const bot = process.env.TELEGRAM_BOT_TOKEN ? new Telegraf(process.env.TELEGRAM_BOT_TOKEN) : null;
 
-// ==================== [ 2. المسارات (Routes) ] ====================
+if (bot) bot.launch().catch(err => console.log("Telegram Bot Error:", err.message));
 
-// مسار فحص الحالة (عشان تعرف السيرفر شغال)
-app.get('/', (req, res) => {
-    res.send('🚀 Smart Education Server is LIVE and RUNNING!');
-});
+// ==================== [ 3. المسارات البرمجية (API Routes) ] ====================
 
-// --- الذكاء الاصطناعي: إنشاء اختبار ---
-app.post('/api/ai/generate-quiz', async (req, res) => {
-    const { subject, difficulty, count } = req.body;
+// --- رفع ملف لتليجرام وحفظ "الرابط والمعلومات" في فايربيس ---
+app.post('/api/upload-and-save', upload.single('file'), async (req, res) => {
+    const { userId, fileType, fileName } = req.body;
 
-    if (!openai) {
-        // Mock Data: في حال عدم وجود توكن، نرسل بيانات تجريبية بدلاً من الخطأ
-        return res.json({
-            success: true,
-            quiz: {
-                title: `اختبار ${subject} (وضع تجريبي)`,
-                questions: [
-                    {
-                        question: "ما هو ناتج 5 + 5؟",
-                        options: ["10", "15", "20", "25"],
-                        correctAnswer: 0,
-                        explanation: "هذا سؤال تجريبي لأن مفتاح AI غير مفعل حالياً."
-                    }
-                ]
-            }
-        });
-    }
-
-    try {
-        const completion = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: [{ role: "user", content: `أنشئ اختبار ${subject} مستوى ${difficulty} عدد ${count} أسئلة بصيغة JSON.` }],
-            response_format: { type: "json_object" }
-        });
-        res.json({ success: true, quiz: JSON.parse(completion.choices[0].message.content) });
-    } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
-    }
-});
-
-// --- التخزين الذكي: رفع الملفات لتليجرام ---
-app.post('/api/telegram/store', upload.single('file'), async (req, res) => {
     if (!bot || !process.env.TELEGRAM_CHANNEL_ID) {
-        return res.status(503).json({ success: false, error: "Telegram Storage not configured." });
+        return res.status(500).json({ success: false, error: "Storage not configured" });
     }
 
     try {
+        // 1. إرسال الملف إلى تليجرام
         const result = await bot.telegram.sendDocument(process.env.TELEGRAM_CHANNEL_ID, {
             source: req.file.buffer,
-            filename: req.file.originalname
+            filename: fileName || req.file.originalname
         });
-        res.json({ success: true, messageId: result.message_id });
+
+        const telegramFileId = result.document.file_id;
+        const messageId = result.message_id;
+
+        // 2. حفظ "الرابط والمعلومات" في Firebase Realtime Database
+        const fileData = {
+            fileName: fileName || req.file.originalname,
+            fileType: fileType,
+            telegramMessageId: messageId,
+            telegramFileId: telegramFileId,
+            uploadDate: Date.now(),
+            status: "stored"
+        };
+
+        await db.ref(`users/${userId}/files`).push(fileData);
+
+        res.json({ 
+            success: true, 
+            message: "File stored in Telegram and link saved to Firebase",
+            data: fileData 
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// --- جلب جميع الروابط والملفات الخاصة بطالب معين ---
+app.get('/api/user-files/:userId', async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        const snapshot = await db.ref(`users/${userId}/files`).once('value');
+        const files = snapshot.val();
+        res.json({ success: true, files: files || {} });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// ==================== [ 3. تشغيل السيرفر ] ====================
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`
-    *****************************************
-    🟢 Server is running on port ${PORT}
-    🌐 URL: http://localhost:${PORT}
-    *****************************************
-    `);
+// --- تحديث إحصائيات الطالب بعد الاختبار ---
+app.post('/api/update-stats', async (req, res) => {
+    const { userId, score, totalQuestions } = req.body;
+    try {
+        const statsRef = db.ref(`users/${userId}/stats`);
+        await statsRef.transaction((currentStats) => {
+            if (currentStats === null) {
+                return { totalExams: 1, lastScore: score, totalScore: score };
+            } else {
+                return {
+                    totalExams: (currentStats.totalExams || 0) + 1,
+                    lastScore: score,
+                    totalScore: (currentStats.totalScore || 0) + score
+                };
+            }
+        });
+        res.json({ success: true, message: "Stats updated in Firebase" });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
+
+app.get('/', (req, res) => res.send('🚀 Smart Education System is Online'));
+
+// ==================== [ 4. التشغيل ] ====================
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
