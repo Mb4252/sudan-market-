@@ -830,31 +830,22 @@
     <div id="app-screen" class="hidden">
           <!-- الهيدر -->
         <header>
-            <div class="header-content">
-                <div style="display: flex; align-items: center; gap: 15px;">
-                    <div style="width: 50px; height: 50px; background: var(--gradient-ai); border-radius: 15px; display: flex; align-items: center; justify-content: center;">
-                        <i class="fas fa-brain" style="color: white; font-size: 24px;"></i>
-                    </div>
-                    <div>
-                        <h2 style="background: var(--gradient-ai); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0;">الذكاء الخارق</h2>
-                        <p style="color: var(--text-secondary); font-size: 12px; margin: 0;">نظام توليد الاختبارات الذكي</p>
-                    </div>
-                </div>
-                
-                <div style="display: flex; align-items: center; gap: 20px;">
-                    <div style="text-align: right;">
-                        <div id="user-name" style="font-weight: bold; color: var(--neon-blue); font-size: 16px;"></div>
-                        <div id="user-level" style="color: var(--text-secondary); font-size: 12px;"></div>
-                    </div>
-                    <div id="user-avatar" style="width: 50px; height: 50px; background: var(--gradient-ai); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px;">
-                        <i class="fas fa-user"></i>
-                    </div>
-                    <button class="btn btn-secondary" onclick="logout()" style="padding: 10px 15px;">
-                        <i class="fas fa-sign-out-alt"></i>
-                    </button>
-                </div>
+    <div class="header-content">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <!-- زر الرجوع الجديد -->
+            <button id="back-button" class="btn btn-secondary hidden" onclick="goBack()" style="padding: 5px 12px; margin-left: 10px;">
+                <i class="fas fa-arrow-right"></i>
+            </button>
+            
+            <div style="width: 50px; height: 50px; background: var(--gradient-ai); border-radius: 15px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-brain" style="color: white; font-size: 24px;"></i>
             </div>
-        </header>
+            <div>
+                <h2 style="background: var(--gradient-ai); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0;">الذكاء الخارق</h2>
+                <p style="color: var(--text-secondary); font-size: 12px; margin: 0;">نظام توليد الاختبارات الذكي</p>
+            </div>
+        </div>
+        <!-- بقية محتوى الهيدر كما هو -->
         <!-- المحتوى الرئيسي -->
         <div class="main-content">
             <!-- الشريط الجانبي -->
@@ -3487,8 +3478,8 @@ async function generateManualTest() {
         const text = item.querySelector('.q-text').value;
         const opts = Array.from(item.querySelectorAll('.q-opt')).map(i => i.value).filter(v => v !== "");
         if (text && opts.length >= 2) {
-            const correctText = opts[0]; // الأول هو الصحيح دائماً عند الإدخال
-            const shuffled = [...opts].sort(() => Math.random() - 0.5); // خلطهم
+            const correctText = opts[0]; 
+            const shuffled = [...opts].sort(() => Math.random() - 0.5); 
             questions.push({
                 type: 'multiple_choice',
                 text: text,
@@ -3502,10 +3493,33 @@ async function generateManualTest() {
 
     if (questions.length === 0) return showNotification('أضف سؤالاً واحداً على الأقل!', 'error');
 
-    currentTest = { id: 'm_'+Date.now(), title: title, questions: questions, settings: { difficulty: 'manual', passingScore: 70 } };
+    // إنشاء كائن الاختبار
+    currentTest = { 
+        id: 'm_'+Date.now(), 
+        title: title, 
+        questions: questions, 
+        settings: { difficulty: 'manual', passingScore: 70 },
+        date: new Date().toISOString(),
+        status: 'pending' // حالة الانتظار ليظهر في السجل
+    };
+
+    // --- الجزء المضاف للحفظ في السجل ---
+    if (!userData.tests) userData.tests = [];
+    userData.tests.unshift({
+        id: currentTest.id,
+        title: currentTest.title,
+        date: currentTest.date,
+        questionCount: questions.length,
+        status: 'pending' 
+    });
+    await saveUserData(); // حفظ في Firebase/Local
+    // --------------------------------
+
     currentAnswers = new Array(questions.length).fill(null);
     displayTest(currentTest);
+    showNotification('تم حفظ وبدء الاختبار اليدوي', 'success');
 }
+
         // 1. دالة التعامل مع رفع الصورة ومعاينتها
 function handleImageUpload(event) {
     const file = event.target.files[0];
