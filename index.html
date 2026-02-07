@@ -1905,55 +1905,62 @@ class TestSystem {
         }
 
         async function generateTestFromImage() {
-            const fileInput = document.getElementById('image-file-input');
-            if (!fileInput?.files[0]) {
-                showNotification('الرجاء اختيار صورة أولاً', 'error');
-                return;
-            }
-            
-            showLoading('جاري استخراج النص من الصورة...');
-            
-            try {
-                const worker = await Tesseract.createWorker();
-                await worker.loadLanguage('ara');
-                await worker.initialize('ara');
-                
-                const { data: { text } } = await worker.recognize(fileInput.files[0]);
-                await worker.terminate();
-                
-                hideLoading();
-                
-                if (!text || text.length < 50) {
-                    showNotification('لم يتم استخراج نص كافي من الصورة', 'error');
-                    return;
-                }
-                
-                // التحقق من كلمة "خلطة"
-                if (checkChaosWord(text)) {
-                    showChaosWarning();
-                    return;
-                }
-                
-                // إنشاء اختبار من النص المستخرج
-                const test = await testSystem.generateTestFromText(text, {
-                    count: 15,
-                    difficulty: 'medium',
-                    title: 'اختبار من صورة',
-                    description: 'تم إنشاء هذا الاختبار من نص مستخرج من صورة'
-                });
-                
-                currentTest = test;
-                currentAnswers = new Array(test.questions.length).fill(null);
-                
-                displayTest(test);
-                showNotification('تم إنشاء الاختبار من الصورة بنجاح!', 'success');
-                
-            } catch (error) {
-                hideLoading();
-                console.error('❌ خطأ في استخراج النص من الصورة:', error);
-                showNotification('حدث خطأ في معالجة الصورة', 'error');
-            }
+    const fileInput = document.getElementById('image-file-input');
+    const langSelect = document.getElementById('ocr-language') || { value: 'ara' };
+    
+    if (!fileInput?.files[0]) {
+        showNotification('الرجاء اختيار صورة أولاً', 'error');
+        return;
+    }
+
+    showLoading('جاري تحليل الصورة واستخراج النصوص (قد يستغرق وقتاً)...');
+
+    try {
+        // إنشاء عامل Tesseract
+        const worker = await Tesseract.createWorker();
+        
+        // تحميل اللغة العربية (ara) أو الإنجليزية (eng)
+        await worker.loadLanguage(langSelect.value);
+        await worker.initialize(langSelect.value);
+
+        // تنفيذ عملية التعرف على النص
+        const { data: { text } } = await worker.recognize(fileInput.files[0]);
+        
+        // إنهاء العامل لتوفير الموارد
+        await worker.terminate();
+
+        hideLoading();
+
+        // تنظيف النص المستخرج
+        const cleanText = text.trim();
+
+        if (cleanText.length < 50) {
+            showNotification('النص المستخرج قصير جداً أو غير واضح. حاول صورة أوضح.', 'warning');
+            console.log("النص المستخرج:", cleanText); // للمراجعة في الكونسول
+            return;
         }
+
+        // إرسال النص المستخرج إلى دالة توليد الاختبار
+        // ملاحظة: نستخدم نفس دالة النصوص لكن نمرر لها النص المستخرج من الصورة
+        const test = await testSystem.generateTestFromText(cleanText, {
+            count: 10,
+            difficulty: 'medium',
+            title: 'اختبار من صورة (OCR)',
+            description: 'تم استخراج هذا النص تلقائياً من الصورة المرفقة.'
+        });
+
+        currentTest = test;
+        currentAnswers = new Array(test.questions.length).fill(null);
+        
+        displayTest(test);
+        showNotification('تم استخراج النص وتوليد الاختبار بنجاح!', 'success');
+
+    } catch (error) {
+        hideLoading();
+        console.error('❌ خطأ في OCR:', error);
+        showNotification('فشل في قراءة الصورة. تأكد من الاتصال بالإنترنت لتحميل ملفات اللغة.', 'error');
+    }
+}
 
         async function generateTestFromTopic() {
             const topic = document.getElementById('topic-input')?.value;
