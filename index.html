@@ -829,32 +829,24 @@
     <!-- الشاشة الرئيسية -->
     <div id="app-screen" class="hidden">
         <!-- الهيدر -->
-        <header>
-            <div class="header-content">
-                <div style="display: flex; align-items: center; gap: 15px;">
-                    <div style="width: 50px; height: 50px; background: var(--gradient-ai); border-radius: 15px; display: flex; align-items: center; justify-content: center;">
-                        <i class="fas fa-brain" style="color: white; font-size: 24px;"></i>
-                    </div>
-                    <div>
-                        <h2 style="background: var(--gradient-ai); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0;">الذكاء الخارق</h2>
-                        <p style="color: var(--text-secondary); font-size: 12px; margin: 0;">نظام توليد الاختبارات الذكي</p>
-                    </div>
-                </div>
-                
-                <div style="display: flex; align-items: center; gap: 20px;">
-                    <div style="text-align: right;">
-                        <div id="user-name" style="font-weight: bold; color: var(--neon-blue); font-size: 16px;"></div>
-                        <div id="user-level" style="color: var(--text-secondary); font-size: 12px;"></div>
-                    </div>
-                    <div id="user-avatar" style="width: 50px; height: 50px; background: var(--gradient-ai); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px;">
-                        <i class="fas fa-user"></i>
-                    </div>
-                    <button class="btn btn-secondary" onclick="logout()" style="padding: 10px 15px;">
-                        <i class="fas fa-sign-out-alt"></i>
-                    </button>
-                </div>
+        <!-- استبدل محتوى الـ header القديم بهذا -->
+<header>
+    <div class="header-content">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <!-- زر الرجوع الجديد اضيف هنا -->
+            <button id="back-button" class="btn btn-secondary hidden" onclick="goBack()" style="padding: 10px 15px; border-radius: 50%; width: 45px; height: 45px; justify-content: center;">
+                <i class="fas fa-arrow-right"></i>
+            </button>
+
+            <div style="width: 50px; height: 50px; background: var(--gradient-ai); border-radius: 15px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-brain" style="color: white; font-size: 24px;"></i>
             </div>
-        </header>
+            <div>
+                <h2 style="background: var(--gradient-ai); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0;">الذكاء الخارق</h2>
+                <p style="color: var(--text-secondary); font-size: 12px; margin: 0;">نظام توليد الاختبارات الذكي</p>
+            </div>
+        </div>
+        <!-- باقي كود الهيدر (معلومات المستخدم) يبقى كما هو -->
 
         <!-- المحتوى الرئيسي -->
         <div class="main-content">
@@ -864,7 +856,7 @@
                     <i class="fas fa-th-large"></i> القائمة الرئيسية
                 </h3>
                 
-                <div class="action-btn" onclick="loadDashboard()">
+                <div class="action-btn" onclick="navigateTo('dashboard')">
                     <i class="fas fa-home" style="color: var(--neon-blue);"></i>
                     <div>
                         <div style="font-weight: bold; color: white;">لوحة التحكم</div>
@@ -872,7 +864,8 @@
                     </div>
                 </div>
                 
-                <div class="action-btn" onclick="loadTestGenerator()">
+                <div class="action-btn" onclick="navigateTo('generator')"
+
                     <i class="fas fa-file-alt" style="color: var(--neon-green);"></i>
                     <div>
                         <div style="font-weight: bold; color: white;">إنشاء اختبار</div>
@@ -880,7 +873,7 @@
                     </div>
                 </div>
                 
-                <div class="action-btn" onclick="loadTestHistory()">
+                <div class="action-btn" onclick="navigateTo('history')"
                     <i class="fas fa-history" style="color: var(--neon-purple);"></i>
                     <div>
                         <div style="font-weight: bold; color: white;">سجل الاختبارات</div>
@@ -888,7 +881,7 @@
                     </div>
                 </div>
                 
-                <div class="action-btn" onclick="loadTestLibrary()">
+                <div class="action-btn" navigateTo('library')
                     <i class="fas fa-book" style="color: var(--neon-yellow);"></i>
                     <div>
                         <div style="font-weight: bold; color: white;">مكتبة الاختبارات</div>
@@ -896,7 +889,7 @@
                     </div>
                 </div>
                 
-                <div class="action-btn" onclick="loadProgress()">
+                <div class="action-btn" navigateTo('progress')
                     <i class="fas fa-chart-line" style="color: var(--neon-blue);"></i>
                     <div>
                         <div style="font-weight: bold; color: white;">التقدم الدراسي</div>
@@ -904,7 +897,7 @@
                     </div>
                 </div>
                 
-                <div class="action-btn" onclick="loadSettings()">
+                <div class="action-btn" navigateTo('settings')
                     <i class="fas fa-cog" style="color: var(--text-secondary);"></i>
                     <div>
                         <div style="font-weight: bold; color: white;">الإعدادات</div>
@@ -1047,18 +1040,14 @@
         }
 
         function initializeUI() {
-            // تهيئة تأثيرات الجسيمات
-            createParticles();
-            
-            // إعداد أحداث لوحة المفاتيح
-            setupKeyboardShortcuts();
-            
-            // تهيئة نظام الاختبارات
-            testSystem = new TestSystem();
-            
-            // تحميل لوحة التحكم تلقائياً
-            loadDashboard();
-        }
+    createParticles();
+    setupKeyboardShortcuts();
+    testSystem = new TestSystem();
+    
+    // هذا الجزء هو الذي يتذكر مكانك عند تحديث الصفحة
+    const lastPage = localStorage.getItem('last_active_page') || 'dashboard';
+    navigateTo(lastPage, false);
+}
 
         // =============== [ 2. نظام إدارة المستخدمين ] ===============
         async function loadUserData() {
@@ -3354,6 +3343,43 @@ class TestSystem {
         console.log('- وضع علامة صح/خطأ مع التصحيح الفوري');
         console.log('- نظام الذاكرة والمعرفة الذكية');
         console.log('- واجهة عربية كاملة وتصميم عصري');
+                // --- كود نظام التنقل والذاكرة ---
+let navigationHistory = []; 
+let currentPage = localStorage.getItem('last_active_page') || 'dashboard'; 
+
+async function navigateTo(pageName, saveToHistory = true) {
+    if (saveToHistory && currentPage !== pageName) {
+        navigationHistory.push(currentPage);
+    }
+    currentPage = pageName;
+    localStorage.setItem('last_active_page', pageName); 
+
+    // إظهار سهم الرجوع في الهيدر
+    const backBtn = document.getElementById('back-button');
+    if (backBtn) {
+        if (navigationHistory.length > 0) backBtn.classList.remove('hidden');
+        else backBtn.classList.add('hidden');
+    }
+
+    // نداء الدوال الأصلية لفتح الصفحات
+    if (pageName === 'dashboard') loadDashboard();
+    else if (pageName === 'generator') loadTestGenerator();
+    else if (pageName === 'history') loadTestHistory();
+    else if (pageName === 'library') loadTestLibrary();
+    else if (pageName === 'progress') loadProgress();
+    else if (pageName === 'settings') loadSettings();
+}
+
+function goBack() {
+    if (navigationHistory.length > 0) {
+        const previousPage = navigationHistory.pop();
+        navigateTo(previousPage, false);
+    }
+}
+
+// تصدير الدوال للعمل عالمياً
+window.navigateTo = navigateTo;
+window.goBack = goBack;
     </script>
 </body>
 </html>
