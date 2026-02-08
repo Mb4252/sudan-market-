@@ -1380,49 +1380,45 @@ class TestSystem {
         ]);
     }
 
-    async generateTestFromText(text, options = {}) {
-        this.usedSentences.clear();
-        
-        // 1. تحليل أعمق للنص
-        const analysis = await this.analyzeTextDeeply(text);
-        
-        // التحقق من وجود محتوى كافٍ
-        if (analysis.sentences.length < 2 && analysis.equations.length === 0) {
-            throw new Error("النص قصير جداً. الرجاء إدخال نص علمي أو رياضي أو تعليمي أطول.");
-        }
-
-        // 2. توليد أسئلة بناءً على نوع المحتوى
-        let questions = [];
-        
-        // أ. أسئلة رياضية وعلمية (إذا وجدت معادلات أو أرقام بوحدات)
-        if (analysis.isScientific) {
-            questions = [...questions, ...this.generateScientificQuestions(analysis)];
-        }
-        
-        // ب. أسئلة نصية ذكية (تركز على التعاريف والحقائق)
-        const textQuestions = this.generateSmartTextQuestions(analysis, options.count - questions.length);
-        questions = [...questions, ...textQuestions];
-
-        // خلط الأسئلة
-        questions = questions.sort(() => Math.random() - 0.5);
-
-        // إنشاء كائن الاختبار
-        const test = {
-            id: 'test_' + Date.now(),
-            title: options.title || analysis.predictedTopic || "اختبار ذكي شامل",
-            questions: questions.slice(0, options.count || 10), // نأخذ العدد المطلوب فقط
-            analysis: analysis,
-            settings: {
-                difficulty: options.difficulty || 'medium',
-                passingScore: 70,
-                timeLimit: Math.max(5, Math.ceil(questions.length * 1.5)),
-                generatedAt: new Date().toISOString()
+    async function generateTestFromText() {
+            const text = document.getElementById('input-text')?.value;
+            const questionCount = parseInt(document.getElementById('question-count')?.value || 15);
+            const difficulty = document.getElementById('difficulty')?.value;
+            
+            if (!text || text.length < 50) {
+                showNotification('الرجاء إدخال نص كافٍ (50 حرف على الأقل)', 'error');
+                return;
             }
-        };
+            
+            showLoading('جاري تحليل النص وتوليد الأسئلة...');
+            
+            try {
+                const test = await testSystem.generateTestFromText(text, {
+                    count: questionCount,
+                    difficulty: difficulty,
+                    title: 'اختبار ذكي مولد'
+                });
+                
+                hideLoading();
 
-        this.tests.set(test.id, test);
-        return test;
-    }
+                // التحقق من وجود أسئلة قبل العرض
+                if (!test.questions || test.questions.length === 0) {
+                    showNotification('لم يستطع الذكاء الاصطناعي استخراج أسئلة واضحة من هذا النص. حاول استخدام نص يحتوي على حقائق أو تعاريف.', 'warning');
+                    return;
+                }
+                
+                currentTest = test;
+                currentAnswers = new Array(test.questions.length).fill(null);
+                
+                displayTest(test);
+                showNotification(`تم توليد ${test.questions.length} سؤال بنجاح!`, 'success');
+                
+            } catch (error) {
+                hideLoading();
+                console.error('❌ خطأ:', error);
+                showNotification(error.message || 'حدث خطأ في إنشاء الاختبار', 'error');
+            }
+        }
 
     async analyzeTextDeeply(text) {
         let cleanText = text.replace(/\s+/g, ' ').trim();
@@ -1518,19 +1514,17 @@ class TestSystem {
             return ["A", "B", "C", "D"];
         }
     }
-
-    generateSmartTextQuestions(analysis, count) {
+   generateSmartTextQuestions(analysis, count) {
         const questions = [];
         const complexPatterns = [
-            { trigger: /بسبب|لأن|يؤدي إلى/g, type: "سبب ونتيجة" },
-            { trigger: /هو عبارة عن|يُعرف بـ|تعريف/g, type: "مفهوم" },
-            { trigger: /تتكون من|أجزاء|عناصر/g, type: "تحليل" }
+            { trigger: /بسبب|لأن|يؤدي إلى|نتج عن/g, type: "سبب ونتيجة" },
+            { trigger: /هو عبارة عن|يُعرف بـ|يقصد به|تعريف/g, type: "مفهوم" },
+            { trigger: /تتكون من|أجزاء|عناصر|أنواع/g, type: "تحليل" }
         ];
 
+        // 1. المحاولة الأولى: البحث عن علاقات منطقية (الأسئلة الذكية)
         for (let sentence of analysis.sentences) {
             if (questions.length >= count) break;
-
-            // البحث عن الجمل التي تحتوي على علاقات منطقية (Deep Logic)
             let foundPattern = complexPatterns.find(p => p.trigger.test(sentence));
             
             if (foundPattern) {
@@ -1538,7 +1532,7 @@ class TestSystem {
                 if (keyTerm && keyTerm.length > 2) {
                     questions.push({
                         type: 'multiple_choice',
-                        text: `بناءً على فهمك للنص، ما هو التفسير العلمي الصحيح لـ (${keyTerm})؟`,
+                        text: `بناءً على فهمك للنص، ما هو التفسير الصحيح المتعلق بـ (${keyTerm})؟`,
                         options: this.generateLogicalDistractors(keyTerm, analysis.keywords),
                         correctAnswer: 0,
                         points: 5,
@@ -1547,8 +1541,34 @@ class TestSystem {
                 }
             }
         }
+
+        // 2. المحاولة الثانية (الاحتياطية): إذا لم نصل للعدد المطلوب، نولد أسئلة من الجمل المهمة الأخرى
+        if (questions.length < count) {
+            for (let sentence of analysis.sentences) {
+                if (questions.length >= count) break;
+                
+                // نختار الكلمات المهمة في الجملة (التي ليست كلمات توقف)
+                let importantWords = sentence.split(' ').filter(w => w.length > 4 && !this.stopWords.has(w));
+                
+                if (importantWords.length > 0) {
+                    let subject = importantWords[0];
+                    // نتأكد أن السؤال لم يتم تكراره
+                    if (!questions.some(q => q.text.includes(subject))) {
+                        questions.push({
+                            type: 'multiple_choice',
+                            text: `أكمل الفراغ بما يناسب النص: "${sentence.replace(subject, '.......')}"`,
+                            options: this.generateLogicalDistractors(subject, analysis.keywords),
+                            correctAnswer: 0,
+                            points: 3,
+                            explanation: `هذه المعلومة وردت مباشرة في النص كحقيقة علمية/تعليمية.`
+                        });
+                    }
+                }
+            }
+        }
         return questions;
     }
+    
 
     // استخراج المفهوم الرئيسي من الجملة (بدلاً من مجرد حذف كلمة)
     extractMainConcept(sentence) {
