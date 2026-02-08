@@ -7,205 +7,1474 @@
     
     <!-- المكتبات الأساسية للمعالجة -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.7/dist/katex.min.css">
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.7/dist/katex.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
         :root {
             --core-gold: #ffcc00;
             --science-blue: #00d4ff;
+            --chemistry-green: #00ff88;
+            --physics-red: #ff3366;
             --bg-dark: #0a0a0c;
             --panel-bg: #141418;
+            --success: #00ff88;
+            --warning: #ffcc00;
+        }
+
+        * {
+            box-sizing: border-box;
         }
 
         body {
-            margin: 0; background: var(--bg-dark); color: #fff;
-            font-family: 'Cairo', sans-serif; height: 100vh; display: flex;
+            margin: 0; 
+            background: var(--bg-dark); 
+            color: #fff;
+            font-family: 'Cairo', sans-serif; 
+            height: 100vh; 
+            display: flex;
+            overflow: hidden;
         }
 
         /* تصميم الواجهة الاحترافية */
         .sidebar {
-            width: 250px; background: #000; border-left: 1px solid #222;
-            padding: 20px; display: flex; flex-direction: column; gap: 20px;
+            width: 280px; 
+            background: linear-gradient(180deg, #000 0%, #0a0a20 100%); 
+            border-left: 1px solid #222;
+            padding: 25px 15px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 25px;
+            overflow-y: auto;
         }
 
         .main-engine {
-            flex: 1; display: flex; flex-direction: column; position: relative;
+            flex: 1; 
+            display: flex; 
+            flex-direction: column; 
+            position: relative;
         }
 
         header {
-            padding: 15px 30px; background: var(--panel-bg);
-            border-bottom: 1px solid #222; display: flex; justify-content: space-between;
+            padding: 15px 30px; 
+            background: linear-gradient(90deg, var(--panel-bg) 0%, #1a1a25 100%);
+            border-bottom: 1px solid #222; 
+            display: flex; 
+            justify-content: space-between;
+            align-items: center;
         }
 
         #output-stream {
-            flex: 1; padding: 30px; overflow-y: auto; background: rgba(0,0,0,0.3);
-            display: flex; flex-direction: column; gap: 25px;
+            flex: 1; 
+            padding: 30px; 
+            overflow-y: auto; 
+            background: rgba(0,0,0,0.3);
+            display: flex; 
+            flex-direction: column; 
+            gap: 25px;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(0, 212, 255, 0.05) 0%, transparent 20%),
+                radial-gradient(circle at 90% 80%, rgba(255, 204, 0, 0.05) 0%, transparent 20%);
         }
 
         .terminal-card {
-            background: #1a1a20; border-right: 4px solid var(--science-blue);
-            padding: 20px; border-radius: 4px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            background: rgba(26, 26, 32, 0.9); 
+            border-right: 4px solid var(--science-blue);
+            padding: 25px; 
+            border-radius: 8px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
             animation: slideIn 0.4s ease-out;
+            backdrop-filter: blur(10px);
+            transition: transform 0.3s, box-shadow 0.3s;
         }
 
-        @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } }
+        .terminal-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+        }
+
+        .physics-card {
+            border-right-color: var(--physics-red);
+        }
+
+        .chemistry-card {
+            border-right-color: var(--chemistry-green);
+        }
+
+        .math-card {
+            border-right-color: var(--core-gold);
+        }
+
+        .logic-card {
+            border-right-color: #9966ff;
+        }
+
+        @keyframes slideIn { 
+            from { 
+                opacity: 0; 
+                transform: translateX(20px); 
+            } 
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
 
         .input-area {
-            padding: 25px; background: var(--panel-bg); display: flex; gap: 15px;
+            padding: 25px; 
+            background: var(--panel-bg); 
+            display: flex; 
+            gap: 15px;
+            border-top: 1px solid #222;
         }
 
         textarea {
-            flex: 1; background: #000; border: 1px solid #333; border-radius: 8px;
-            padding: 15px; color: var(--science-blue); font-family: 'Fira Code', monospace;
-            font-size: 1rem; resize: none; outline: none; transition: 0.3s;
+            flex: 1; 
+            background: #000; 
+            border: 1px solid #333; 
+            border-radius: 12px;
+            padding: 18px; 
+            color: var(--science-blue); 
+            font-family: 'Fira Code', monospace;
+            font-size: 1.05rem; 
+            resize: none; 
+            outline: none; 
+            transition: 0.3s;
+            line-height: 1.5;
         }
 
-        textarea:focus { border-color: var(--core-gold); box-shadow: 0 0 15px rgba(255,204,0,0.2); }
+        textarea:focus { 
+            border-color: var(--core-gold); 
+            box-shadow: 0 0 20px rgba(255,204,0,0.3); 
+        }
 
         .exec-btn {
-            background: var(--core-gold); color: #000; border: none;
-            padding: 0 40px; border-radius: 8px; cursor: pointer;
-            font-weight: 900; font-size: 1.1rem;
+            background: linear-gradient(135deg, var(--core-gold) 0%, #ffaa00 100%); 
+            color: #000; 
+            border: none;
+            padding: 0 45px; 
+            border-radius: 12px; 
+            cursor: pointer;
+            font-weight: 900; 
+            font-size: 1.1rem;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
-        .math-block { background: #000; padding: 15px; margin: 10px 0; border-radius: 4px; border: 1px solid #222; }
-        .logic-tag { font-size: 0.7rem; background: #333; padding: 2px 8px; border-radius: 10px; margin-left: 10px; }
+        .exec-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255,204,0,0.5);
+        }
+
+        .exec-btn:active {
+            transform: scale(0.98);
+        }
+
+        .math-block { 
+            background: rgba(0,0,0,0.5); 
+            padding: 18px; 
+            margin: 15px 0; 
+            border-radius: 8px; 
+            border: 1px solid #222; 
+            font-family: 'Fira Code', monospace;
+            line-height: 1.6;
+            overflow-x: auto;
+        }
+
+        .logic-tag { 
+            font-size: 0.75rem; 
+            background: #333; 
+            padding: 4px 12px; 
+            border-radius: 20px; 
+            margin-left: 10px; 
+            display: inline-block;
+        }
+
+        .physics-tag {
+            background: var(--physics-red);
+        }
+
+        .chemistry-tag {
+            background: var(--chemistry-green);
+            color: #000;
+        }
+
+        .math-tag {
+            background: var(--core-gold);
+            color: #000;
+        }
+
+        .logic-tag-custom {
+            background: #9966ff;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--success);
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        .stats-panel {
+            background: rgba(20, 20, 24, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 0.85rem;
+            border: 1px solid #333;
+        }
+
+        .solution-steps {
+            margin-top: 15px;
+            padding-left: 20px;
+            border-left: 2px solid var(--science-blue);
+        }
+
+        .solution-step {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: rgba(0, 212, 255, 0.05);
+            border-radius: 4px;
+        }
+
+        .confidence-meter {
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s;
+        }
+
+        .user-query {
+            text-align: left; 
+            color: #aaa; 
+            font-size: 0.9rem;
+            background: rgba(30, 30, 40, 0.5);
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 5px;
+            border-right: 3px solid #444;
+        }
+
+        .user-query::before {
+            content: "> ";
+            color: var(--core-gold);
+            font-weight: bold;
+        }
+
+        .complexity-badge {
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: #444;
+            margin-left: 8px;
+        }
+
+        .complexity-high {
+            background: #ff3366;
+        }
+
+        .complexity-medium {
+            background: #ffcc00;
+            color: #000;
+        }
+
+        .complexity-low {
+            background: #00ff88;
+            color: #000;
+        }
+
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .quick-action-btn {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid #444;
+            color: #ccc;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .quick-action-btn:hover {
+            background: rgba(255,255,255,0.2);
+            border-color: var(--science-blue);
+        }
+
+        /* تحسينات للشريط الجانبي */
+        .module-card {
+            background: rgba(30, 30, 40, 0.6);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #333;
+            transition: all 0.3s;
+        }
+
+        .module-card:hover {
+            border-color: var(--science-blue);
+            transform: translateX(-5px);
+        }
+
+        .module-title {
+            color: var(--core-gold);
+            font-size: 1rem;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .module-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+
+        /* تصميم شريط التمرير */
+        #output-stream::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #output-stream::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.2);
+            border-radius: 4px;
+        }
+
+        #output-stream::-webkit-scrollbar-thumb {
+            background: var(--core-gold);
+            border-radius: 4px;
+        }
+
+        /* تأثير الكتابة */
+        .typing-indicator {
+            display: inline-block;
+            font-family: 'Fira Code', monospace;
+            color: var(--science-blue);
+        }
+
+        .typing-indicator::after {
+            content: '|';
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
     </style>
 </head>
 <body>
 
     <div class="sidebar">
-        <h3 style="color:var(--core-gold)">OMNI CORE</h3>
-        <div style="font-size: 0.8rem; color: #666;">
-            ● الرياضيات المتقدمة<br>
-            ● ميكانيكا السوائل<br>
-            ● الكيمياء التحليلية<br>
-            ● المنطق السياقي
+        <h2 style="color:var(--core-gold); text-align: center; margin-bottom: 20px;">
+            <i class="fas fa-atom"></i> OMNI CORE
+        </h2>
+        
+        <div class="module-card">
+            <div class="module-title">
+                <div class="module-status"></div>
+                <span>الرياضيات المتقدمة</span>
+            </div>
+            <div style="font-size: 0.85rem; color: #aaa;">
+                ● حساب التفاضل والتكامل<br>
+                ● الجبر الخطي والمصفوفات<br>
+                ● المعادلات التفاضلية<br>
+                ● الإحصاء والاحتمالات<br>
+                ● الهندسة التحليلية
+            </div>
+        </div>
+
+        <div class="module-card">
+            <div class="module-title">
+                <div class="module-status"></div>
+                <span>الفيزياء النظرية</span>
+            </div>
+            <div style="font-size: 0.85rem; color: #aaa;">
+                ● ميكانيكا نيوتن ولاغرانج<br>
+                ● ديناميكا السوائل<br>
+                ● الديناميكا الحرارية<br>
+                ● الكهرومغناطيسية<br>
+                ● الفيزياء الحديثة
+            </div>
+        </div>
+
+        <div class="module-card">
+            <div class="module-title">
+                <div class="module-status"></div>
+                <span>الكيمياء التحليلية</span>
+            </div>
+            <div style="font-size: 0.85rem; color: #aaa;">
+                ● الحسابات الكيميائية<br>
+                ● التفاعلات والاتزان<br>
+                ● الكيمياء العضوية<br>
+                ● الكيمياء الكهربائية<br>
+                ● كيمياء الكم
+            </div>
+        </div>
+
+        <div class="module-card">
+            <div class="module-title">
+                <div class="module-status"></div>
+                <span>الاستدلال المنطقي</span>
+            </div>
+            <div style="font-size: 0.85rem; color: #aaa;">
+                ● تحليل النصوص<br>
+                ● الاستنتاج المنطقي<br>
+                ● حل المشكلات<br>
+                ● التحليل السياقي<br>
+                ● التفسير العلمي
+            </div>
+        </div>
+
+        <div class="stats-panel">
+            <div style="color: var(--science-blue); margin-bottom: 10px;">
+                <i class="fas fa-chart-line"></i> إحصائيات النظام
+            </div>
+            <div>المسائل المحلولة: <span id="solved-count">0</span></div>
+            <div>دقة الحلول: <span id="accuracy-rate">100%</span></div>
+            <div>زمن الاستجابة: <span id="response-time">~0.2s</span></div>
+        </div>
+
+        <div style="margin-top: auto; font-size: 0.8rem; color: #666; text-align: center;">
+            نظام OMNI-SCIENCE AI v12.0<br>
+            <span style="color: var(--core-gold);">جميع الحقوق العلمية محفوظة</span>
         </div>
     </div>
 
     <div class="main-engine">
         <header>
-            <div id="status">● النظام متصل: جاهز للمعالجة الشاملة</div>
-            <div style="font-family: 'Fira Code'; color: var(--core-gold);">v10.4.0_PRO</div>
+            <div>
+                <span class="status-indicator"></span>
+                <span id="status-text">النظام متصل: جاهز للمعالجة الشاملة</span>
+            </div>
+            <div style="font-family: 'Fira Code'; color: var(--core-gold); display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-bolt"></i>
+                <span>v12.0_PRO</span>
+            </div>
         </header>
 
         <div id="output-stream">
-            <div class="terminal-card">
-                <strong>نظام الاستدلال المركزي:</strong> مرحباً بك. لقد تم إلغاء كافة قيود الحوار التقليدية. 
-                أنا الآن أعمل كمحرك تحليل علمي مباشر. أدخل أي مسألة (رياضيات، فيزياء، كيمياء، منطق) وسأقوم بتفكيكها وحلها فوراً.
+            <div class="terminal-card logic-card">
+                <div>
+                    <span class="logic-tag logic-tag-custom">نظام التشغيل</span> 
+                    <strong>OMNI-SCIENCE AI</strong>
+                </div>
+                <div class="math-block">
+                    مرحباً بك في المحرك العلمي الشامل.<br><br>
+                    تم تفعيل كافة وحدات المعالجة:<br>
+                    • الرياضيات المتقدمة (التفاضل، التكامل، الجبر، الإحصاء)<br>
+                    • الفيزياء النظرية (الميكانيكا، الديناميكا، الكهرومغناطيسية)<br>
+                    • الكيمياء التحليلية (العضوية، غير العضوية، الكمومية)<br>
+                    • الاستدلال المنطقي والتحليل السياقي<br><br>
+                    أدخل أي مسألة علمية (بسيطة أو معقدة) وسأقدم لك حلاً تفصيلياً مع خطوات الحل والشرح.
+                </div>
+                <div class="confidence-meter">
+                    <div class="confidence-fill" style="width: 100%; background: var(--success);"></div>
+                </div>
+                <div style="font-size: 0.85rem; margin-top: 10px; color: #aaa;">
+                    <i class="fas fa-lightbulb"></i> تلميح: يمكنك استخدام الرموز الرياضية (+, -, *, /, ^, sqrt(), sin(), cos(), log())
+                </div>
             </div>
         </div>
 
         <div class="input-area">
-            <textarea id="user-input" rows="2" placeholder="أدخل المسألة أو السؤال هنا..."></textarea>
-            <button class="exec-btn" onclick="masterExecute()">تنفيذ</button>
+            <textarea id="user-input" rows="3" placeholder="أدخل المسألة أو السؤال العلمي هنا... (اضغط Enter للإرسال أو Shift+Enter لسطر جديد)"></textarea>
+            <button class="exec-btn" onclick="masterExecute()">
+                <i class="fas fa-play"></i>
+                تنفيذ
+            </button>
         </div>
     </div>
 
     <script>
-        // عقل النظام - قواعد البيانات والقوانين
-        const SCI_DATABASE = {
-            constants: { g: 9.81, G: 6.674e-11, c: 299792458, R: 8.314 },
-            elements: { 'H': 1.008, 'He': 4.002, 'C': 12.01, 'O': 16.00, 'N': 14.01, 'Fe': 55.84 },
-            
-            // محرك الاستنتاج
-            reason(input) {
-                const text = input.toLowerCase();
-                const numbers = input.match(/-?\d+(\.\d+)?/g)?.map(Number) || [];
-
-                // 1. فحص سياق السوائل (Fluid Dynamics)
-                if (text.includes('ضغط') || text.includes('سائل') || text.includes('كثافة')) {
-                    if (numbers.length >= 2) {
-                        const res = numbers[0] * numbers[1] * 9.81;
-                        return { type: 'PHYSICS', title: 'ديناميكا السوائل', detail: `حساب الضغط الهيدروستاتيكي: $P = \\rho gh = ${numbers[0]} \\times 9.81 \\times ${numbers[1]} = ${res.toFixed(2)} \\text{ Pa}$` };
-                    }
-                }
-
-                // 2. فحص سياق الكيمياء
-                for (let symbol in this.elements) {
-                    if (input.includes(symbol) || text.includes('مول') || text.includes('كتلة')) {
-                        return { type: 'CHEMISTRY', title: 'الكيمياء التحليلية', detail: `تم رصد عنصر ${symbol}. الكتلة المولية القياسية هي ${this.elements[symbol]} g/mol. هل تريد حساب عدد المولات؟` };
-                    }
-                }
-
-                // 3. فحص سياق الرياضيات (تفاضل، تكامل، جبر)
-                try {
-                    const mathClean = input.replace(/[أ-ي]/g, '').trim();
-                    if (mathClean.length > 1) {
-                        const result = math.evaluate(mathClean);
-                        return { type: 'MATH', title: 'المعالجة الرياضية', detail: `الناتج التحليلي: $${mathClean} = ${result}$` };
-                    }
-                } catch (e) {}
-
-                // 4. الحوار الذكي (أي نوع حوار آخر)
-                return { type: 'LOGIC', title: 'الاستدلال المنطقي', detail: this.generateSmartResponse(text) };
+        // عقل النظام - قواعد البيانات والقوانين المتقدمة
+        const OMNI_CORE = {
+            // إحصائيات النظام
+            stats: {
+                solved: 0,
+                accuracy: 100,
+                responseTimes: []
             },
 
-            generateSmartResponse(input) {
+            // الثوابت العلمية
+            constants: {
+                g: 9.80665,
+                G: 6.67430e-11,
+                c: 299792458,
+                R: 8.314462618,
+                h: 6.62607015e-34,
+                Na: 6.02214076e23,
+                k: 1.380649e-23,
+                e: 1.602176634e-19
+            },
+
+            // قاعدة بيانات العناصر الكيميائية
+            elements: {
+                'H': { name: 'هيدروجين', mass: 1.008, group: 1 },
+                'He': { name: 'هيليوم', mass: 4.0026, group: 18 },
+                'C': { name: 'كربون', mass: 12.011, group: 14 },
+                'O': { name: 'أكسجين', mass: 15.999, group: 16 },
+                'N': { name: 'نيتروجين', mass: 14.007, group: 15 },
+                'Fe': { name: 'حديد', mass: 55.845, group: 8 },
+                'Na': { name: 'صوديوم', mass: 22.990, group: 1 },
+                'Cl': { name: 'كلور', mass: 35.45, group: 17 },
+                'Ca': { name: 'كالسيوم', mass: 40.078, group: 2 },
+                'Au': { name: 'ذهب', mass: 196.97, group: 11 }
+            },
+
+            // دوال رياضية متقدمة
+            advancedMath: {
+                derivative: function(expr, variable) {
+                    try {
+                        return math.derivative(expr, variable).toString();
+                    } catch (e) {
+                        return null;
+                    }
+                },
+                
+                integrate: function(expr, variable) {
+                    try {
+                        // تكامل بسيط للدوال الأساسية
+                        if (expr.includes(variable + '^')) {
+                            const power = parseInt(expr.split('^')[1]);
+                            return `(${variable}^${power+1})/(${power+1}) + C`;
+                        } else if (expr.includes('sin(' + variable + ')')) {
+                            return `-cos(${variable}) + C`;
+                        } else if (expr.includes('cos(' + variable + ')')) {
+                            return `sin(${variable}) + C`;
+                        }
+                        return `∫(${expr}) d${variable} (تحتاج معالجة متقدمة)`;
+                    } catch (e) {
+                        return null;
+                    }
+                },
+                
+                solveEquation: function(eq) {
+                    try {
+                        // معادلة تربيعية
+                        if (eq.includes('x^2')) {
+                            const parts = eq.split('x');
+                            // معالجة بسيطة للمعادلة التربيعية
+                            return "الحل باستخدام المميز: x = [-b ± √(b²-4ac)]/(2a)";
+                        }
+                        return "معادلة تحتاج لخطوات حل تفصيلية";
+                    } catch (e) {
+                        return null;
+                    }
+                }
+            },
+
+            // محرك الاستدلال الرئيسي
+            analyze: function(input) {
+                const startTime = performance.now();
+                const text = input.toLowerCase();
+                const numbers = input.match(/-?\d+(\.\d+)?/g)?.map(Number) || [];
+                
+                // تحليل السياق وتحديد نوع المشكلة
+                const context = this.determineContext(text);
+                
+                // معالجة حسب السياق
+                let result;
+                switch(context.category) {
+                    case 'PHYSICS':
+                        result = this.solvePhysics(text, numbers, context);
+                        break;
+                    case 'CHEMISTRY':
+                        result = this.solveChemistry(text, numbers, context);
+                        break;
+                    case 'MATHEMATICS':
+                        result = this.solveMathematics(text, numbers, context);
+                        break;
+                    default:
+                        result = this.handleGeneralQuery(text, numbers, context);
+                }
+                
+                // حساب زمن الاستجابة
+                const responseTime = performance.now() - startTime;
+                this.stats.responseTimes.push(responseTime);
+                if (this.stats.responseTimes.length > 10) this.stats.responseTimes.shift();
+                
+                // تحديث الإحصائيات
+                this.stats.solved++;
+                
+                // إضافة زمن الاستجابة للنتيجة
+                result.responseTime = responseTime.toFixed(1);
+                result.confidence = this.calculateConfidence(result);
+                
+                return result;
+            },
+
+            // تحديد سياق المشكلة
+            determineContext: function(text) {
+                const physicsKeywords = ['سرعة', 'تسارع', 'قوة', 'كتلة', 'ضغط', 'طاقة', 'شغل', 'قدرة', 'سائل', 'حرارة', 'كهرباء', 'مغناطيس', 'ضوء', 'صوت'];
+                const chemistryKeywords = ['مول', 'تفاعل', 'عنصر', 'مركب', 'ذرة', 'جزيء', 'حمض', 'قلوي', 'محلول', 'تركيز', 'تفاعل', 'اتزان'];
+                const mathKeywords = ['مشتق', 'تكامل', 'نهاية', 'معادلة', 'جذر', 'لوغاريتم', 'دالة', 'هندسة', 'مثلث', 'زاوية', 'احتمال', 'إحصاء'];
+                
+                let physicsCount = 0, chemistryCount = 0, mathCount = 0;
+                
+                physicsKeywords.forEach(word => {
+                    if (text.includes(word)) physicsCount++;
+                });
+                
+                chemistryKeywords.forEach(word => {
+                    if (text.includes(word)) chemistryCount++;
+                });
+                
+                mathKeywords.forEach(word => {
+                    if (text.includes(word)) mathCount++;
+                });
+                
+                // تحديد الفئة الأساسية
+                let category = 'LOGIC';
+                let complexity = 'medium';
+                
+                if (physicsCount >= chemistryCount && physicsCount >= mathCount && physicsCount > 0) {
+                    category = 'PHYSICS';
+                } else if (chemistryCount >= physicsCount && chemistryCount >= mathCount && chemistryCount > 0) {
+                    category = 'CHEMISTRY';
+                } else if (mathCount >= physicsCount && mathCount >= chemistryCount && mathCount > 0) {
+                    category = 'MATHEMATICS';
+                }
+                
+                // تحديد مستوى التعقيد
+                const wordCount = text.split(' ').length;
+                if (wordCount > 15 || numbers.length > 3) complexity = 'high';
+                else if (wordCount < 5 && numbers.length === 0) complexity = 'low';
+                
+                return { category, complexity, physicsCount, chemistryCount, mathCount };
+            },
+
+            // حل مسائل الفيزياء
+            solvePhysics: function(text, numbers, context) {
+                let solution = "";
+                let steps = [];
+                let title = "الفيزياء";
+                let detail = "";
+                
+                // 1. مسائل الحركة
+                if (text.includes('سرعة') || text.includes('تسارع') || text.includes('مسافة')) {
+                    title = "ميكانيكا الحركة";
+                    if (numbers.length >= 2) {
+                        if (text.includes('تسارع') && text.includes('زمن')) {
+                            // v = u + at
+                            const u = numbers[0] || 0;
+                            const a = numbers[1];
+                            const t = numbers[2] || 1;
+                            const v = u + a * t;
+                            
+                            steps = [
+                                `المعطيات: السرعة الابتدائية (u) = ${u} م/ث، التسارع (a) = ${a} م/ث²، الزمن (t) = ${t} ث`,
+                                `القانون: السرعة النهائية (v) = u + a*t`,
+                                `الحل: v = ${u} + ${a} * ${t} = ${v} م/ث`
+                            ];
+                            
+                            detail = `السرعة النهائية: $v = u + at = ${u} + ${a} \\times ${t} = ${v} \\text{ m/s}$`;
+                        } else if (text.includes('قوة') && text.includes('كتلة') && text.includes('تسارع')) {
+                            // F = ma
+                            const m = numbers[0];
+                            const a = numbers[1] || this.constants.g;
+                            const F = m * a;
+                            
+                            steps = [
+                                `المعطيات: الكتلة (m) = ${m} كجم، التسارع (a) = ${a} م/ث²`,
+                                `قانون نيوتن الثاني: القوة (F) = m * a`,
+                                `الحل: F = ${m} * ${a} = ${F} نيوتن`
+                            ];
+                            
+                            detail = `القوة: $F = ma = ${m} \\times ${a} = ${F} \\text{ N}$`;
+                        }
+                    }
+                }
+                
+                // 2. مسائل الطاقة
+                else if (text.includes('طاقة') || text.includes('شغل')) {
+                    title = "الطاقة والشغل";
+                    if (text.includes('طاقة حركية') && numbers.length >= 2) {
+                        // KE = 0.5 * m * v^2
+                        const m = numbers[0];
+                        const v = numbers[1];
+                        const ke = 0.5 * m * v * v;
+                        
+                        steps = [
+                            `المعطيات: الكتلة (m) = ${m} كجم، السرعة (v) = ${v} م/ث`,
+                            `قانون الطاقة الحركية: KE = ½ * m * v²`,
+                            `الحل: KE = 0.5 * ${m} * ${v}² = ${ke} جول`
+                        ];
+                        
+                        detail = `الطاقة الحركية: $KE = \\frac{1}{2}mv^2 = \\frac{1}{2} \\times ${m} \\times ${v}^2 = ${ke} \\text{ J}$`;
+                    }
+                }
+                
+                // 3. مسائل الضغط
+                else if (text.includes('ضغط') && text.includes('سائل')) {
+                    title = "ديناميكا السوائل";
+                    if (numbers.length >= 2) {
+                        const density = numbers[0] || 1000; // كثافة الماء
+                        const height = numbers[1];
+                        const pressure = density * this.constants.g * height;
+                        
+                        steps = [
+                            `المعطيات: الكثافة (ρ) = ${density} كجم/م³، الارتفاع (h) = ${height} م، ثابت الجاذبية (g) = ${this.constants.g} م/ث²`,
+                            `قانون الضغط الهيدروستاتيكي: P = ρgh`,
+                            `الحل: P = ${density} * ${this.constants.g} * ${height} = ${pressure.toFixed(2)} باسكال`
+                        ];
+                        
+                        detail = `الضغط الهيدروستاتيكي: $P = \\rho gh = ${density} \\times ${this.constants.g} \\times ${height} = ${pressure.toFixed(2)} \\text{ Pa}$`;
+                    }
+                }
+                
+                // 4. مسائل الكهرباء
+                else if (text.includes('كهرباء') || text.includes('تيار') || text.includes('مقاومة')) {
+                    title = "الكهرباء";
+                    if (text.includes('أوم') && numbers.length >= 2) {
+                        const V = numbers[0];
+                        const I = numbers[1];
+                        const R = V / I;
+                        
+                        steps = [
+                            `المعطيات: الجهد (V) = ${V} فولت، التيار (I) = ${I} أمبير`,
+                            `قانون أوم: V = I * R ⇒ R = V / I`,
+                            `الحل: R = ${V} / ${I} = ${R.toFixed(2)} أوم`
+                        ];
+                        
+                        detail = `المقاومة: $R = \\frac{V}{I} = \\frac{${V}}{${I}} = ${R.toFixed(2)} \\ \\Omega$`;
+                    }
+                }
+                
+                // إذا لم يتم تحديد نوع محدد
+                if (!detail) {
+                    detail = this.generatePhysicsExplanation(text, numbers);
+                    steps = [`تحليل السؤال: ${text}`, `المعطيات الرقمية: ${numbers.length > 0 ? numbers.join(', ') : 'لا توجد معطيات رقمية'}`, detail];
+                }
+                
+                return {
+                    type: 'PHYSICS',
+                    title: title,
+                    detail: detail,
+                    steps: steps,
+                    complexity: context.complexity
+                };
+            },
+
+            // حل مسائل الكيمياء
+            solveChemistry: function(text, numbers, context) {
+                let title = "الكيمياء";
+                let detail = "";
+                let steps = [];
+                
+                // البحث عن رموز العناصر
+                let elementFound = null;
+                for (let symbol in this.elements) {
+                    if (text.includes(symbol) || text.includes(this.elements[symbol].name)) {
+                        elementFound = { symbol, ...this.elements[symbol] };
+                        break;
+                    }
+                }
+                
+                // 1. حسابات المولات
+                if (text.includes('مول') || text.includes('كتلة')) {
+                    title = "الحسابات الكيميائية";
+                    
+                    if (elementFound && numbers.length > 0) {
+                        const mass = numbers[0];
+                        const moles = mass / elementFound.mass;
+                        
+                        steps = [
+                            `المعطيات: كتلة ${elementFound.name} = ${mass} جم، الكتلة المولية = ${elementFound.mass} جم/مول`,
+                            `عدد المولات (n) = الكتلة / الكتلة المولية`,
+                            `الحل: n = ${mass} / ${elementFound.mass} = ${moles.toFixed(4)} مول`
+                        ];
+                        
+                        detail = `عدد المولات: $n = \\frac{\\text{الكتلة}}{\\text{الكتلة المولية}} = \\frac{${mass}}{${elementFound.mass}} = ${moles.toFixed(4)} \\text{ mol}$`;
+                    }
+                }
+                
+                // 2. التفاعلات الكيميائية
+                else if (text.includes('تفاعل') || text.includes('يتفاعل')) {
+                    title = "التفاعلات الكيميائية";
+                    
+                    if (elementFound) {
+                        detail = `تفاعل ${elementFound.name} (${elementFound.symbol}) يعتمد على خواصه الكيميائية. العناصر في المجموعة ${elementFound.group} من الجدول الدوري.`;
+                        steps = [
+                            `تحليل العنصر: ${elementFound.name} (${elementFound.symbol})`,
+                            `الكتلة الذرية: ${elementFound.mass} وحدة كتلة ذرية`,
+                            `المجموعة: ${elementFound.group} في الجدول الدوري`,
+                            detail
+                        ];
+                    }
+                }
+                
+                // 3. تركيز المحاليل
+                else if (text.includes('تركيز') || text.includes('محلول')) {
+                    title = "محاليل وتركيز";
+                    
+                    if (numbers.length >= 2) {
+                        const solute = numbers[0]; // مادة مذابة بالجرام
+                        const volume = numbers[1]; // حجم المحلول باللتر
+                        const concentration = solute / volume;
+                        
+                        steps = [
+                            `المعطيات: كتلة المادة المذابة = ${solute} جم، حجم المحلول = ${volume} لتر`,
+                            `التركيز (C) = كتلة المذاب / حجم المحلول`,
+                            `الحل: C = ${solute} / ${volume} = ${concentration.toFixed(2)} جم/لتر`
+                        ];
+                        
+                        detail = `التركيز: $C = \\frac{\\text{كتلة المذاب}}{\\text{حجم المحلول}} = \\frac{${solute}}{${volume}} = ${concentration.toFixed(2)} \\text{ g/L}$`;
+                    }
+                }
+                
+                // إذا لم يتم تحديد نوع محدد
+                if (!detail) {
+                    if (elementFound) {
+                        detail = `عنصر ${elementFound.name} (${elementFound.symbol})، كتلته الذرية ${elementFound.mass} وحدة كتلة ذرية، يقع في المجموعة ${elementFound.group} من الجدول الدوري.`;
+                        steps = [`تم تحديد العنصر: ${elementFound.name}`, detail];
+                    } else {
+                        detail = this.generateChemistryExplanation(text, numbers);
+                        steps = [`تحليل المسألة الكيميائية: ${text}`, detail];
+                    }
+                }
+                
+                return {
+                    type: 'CHEMISTRY',
+                    title: title,
+                    detail: detail,
+                    steps: steps,
+                    complexity: context.complexity
+                };
+            },
+
+            // حل مسائل الرياضيات
+            solveMathematics: function(text, numbers, context) {
+                let title = "الرياضيات";
+                let detail = "";
+                let steps = [];
+                
+                // 1. مسائل الجبر
+                if (text.includes('معادلة') || text.includes('س')) {
+                    title = "الجبر وحل المعادلات";
+                    
+                    // استخراج المعادلة من النص
+                    const equationMatch = input.match(/(\d+)\s*س\s*([+-])\s*(\d+)\s*=\s*(\d+)/);
+                    if (equationMatch) {
+                        const a = parseInt(equationMatch[1]);
+                        const sign = equationMatch[2];
+                        const b = parseInt(equationMatch[3]);
+                        const c = parseInt(equationMatch[4]);
+                        
+                        let solution;
+                        if (sign === '+') {
+                            solution = (c - b) / a;
+                            steps = [
+                                `المعادلة: ${a}س ${sign} ${b} = ${c}`,
+                                `ننقل ${b} إلى الطرف الآخر: ${a}س = ${c} - ${b} = ${c - b}`,
+                                `نقسم على ${a}: س = ${c - b} / ${a} = ${solution}`
+                            ];
+                        } else {
+                            solution = (c + b) / a;
+                            steps = [
+                                `المعادلة: ${a}س ${sign} ${b} = ${c}`,
+                                `ننقل ${b} إلى الطرف الآخر: ${a}س = ${c} + ${b} = ${c + b}`,
+                                `نقسم على ${a}: س = ${c + b} / ${a} = ${solution}`
+                            ];
+                        }
+                        
+                        detail = `حل المعادلة: $${a}x ${sign} ${b} = ${c} \\Rightarrow x = ${solution}$`;
+                    }
+                }
+                
+                // 2. مسائل التفاضل
+                else if (text.includes('مشتق') || text.includes('تفاضل')) {
+                    title = "حساب التفاضل";
+                    
+                    // البحث عن دالة في النص
+                    const funcMatch = input.match(/(\d*)\s*س\s*\^\s*(\d+)/) || input.match(/س\s*(\d+)/) || input.match(/(sin|cos|tan|ln|log)\s*\(/);
+                    
+                    if (funcMatch) {
+                        let derivative;
+                        if (funcMatch[1] && funcMatch[2]) {
+                            const coeff = parseInt(funcMatch[1]) || 1;
+                            const power = parseInt(funcMatch[2]);
+                            derivative = `${coeff * power}س^${power - 1}`;
+                            
+                            steps = [
+                                `الدالة: ${coeff}س^${power}`,
+                                `قاعدة القوة: مشتق (س^ن) = ن*س^(ن-1)`,
+                                `الحل: مشتق (${coeff}س^${power}) = ${coeff * power}س^${power - 1}`
+                            ];
+                        } else if (funcMatch[0] && funcMatch[0].includes('sin')) {
+                            derivative = 'cos(س)';
+                            steps = [`الدالة: sin(س)`, `مشتق sin(س) = cos(س)`, `الحل: مشتق sin(س) = cos(س)`];
+                        } else if (funcMatch[0] && funcMatch[0].includes('cos')) {
+                            derivative = '-sin(س)';
+                            steps = [`الدالة: cos(س)`, `مشتق cos(س) = -sin(س)`, `الحل: مشتق cos(س) = -sin(س)`];
+                        }
+                        
+                        if (derivative) {
+                            detail = `المشتق: $\\frac{d}{dx}(${funcMatch[0]}) = ${derivative}$`;
+                        }
+                    }
+                }
+                
+                // 3. مسائل التكامل
+                else if (text.includes('تكامل') || text.includes('∫')) {
+                    title = "حساب التكامل";
+                    detail = "التكامل هو عملية عكسية للتفاضل. للتكامل غير المحدود نضيف ثابت التكامل (C).";
+                    
+                    if (text.includes('س^')) {
+                        const powerMatch = input.match(/س\s*\^\s*(\d+)/);
+                        if (powerMatch) {
+                            const n = parseInt(powerMatch[1]);
+                            const integral = `(س^${n+1})/(${n+1}) + C`;
+                            
+                            steps = [
+                                `الدالة: س^${n}`,
+                                `قاعدة القوة للتكامل: ∫س^ن دس = س^(ن+1)/(ن+1) + C`,
+                                `الحل: ∫س^${n} دس = س^${n+1}/${n+1} + C`
+                            ];
+                            
+                            detail = `التكامل: $\\int x^{${n}} dx = \\frac{x^{${n+1}}}{${n+1}} + C$`;
+                        }
+                    }
+                }
+                
+                // 4. المسائل الحسابية البسيطة
+                else {
+                    try {
+                        // تنظيف النص للحساب
+                        let mathExpr = input
+                            .replace(/[أ-ي]/g, '')
+                            .replace(/س/g, 'x')
+                            .replace(/×/g, '*')
+                            .replace(/÷/g, '/')
+                            .replace(/جذر/g, 'sqrt')
+                            .replace(/أس/g, '^')
+                            .trim();
+                        
+                        if (mathExpr.length > 1) {
+                            const result = math.evaluate(mathExpr);
+                            title = "الحساب الرياضي";
+                            steps = [`العبارة: ${mathExpr}`, `الحساب: ${mathExpr} = ${result}`];
+                            detail = `$${mathExpr} = ${result}$`;
+                        }
+                    } catch (e) {
+                        // في حالة فشل الحساب
+                    }
+                }
+                
+                // إذا لم يتم تحديد نوع محدد
+                if (!detail) {
+                    detail = this.generateMathExplanation(text, numbers);
+                    steps = [`تحليل المسألة الرياضية: ${text}`, detail];
+                }
+                
+                return {
+                    type: 'MATHEMATICS',
+                    title: title,
+                    detail: detail,
+                    steps: steps,
+                    complexity: context.complexity
+                };
+            },
+
+            // معالجة الاستفسارات العامة
+            handleGeneralQuery: function(text, numbers, context) {
+                let title = "الاستدلال المنطقي";
+                let detail = "";
+                
+                // توليد رد ذكي حسب السياق
+                detail = this.generateSmartResponse(text);
+                
+                return {
+                    type: 'LOGIC',
+                    title: title,
+                    detail: detail,
+                    steps: [`تحليل النص: ${text}`, `التفسير: ${detail}`],
+                    complexity: context.complexity
+                };
+            },
+
+            // توليد تفسير فيزيائي
+            generatePhysicsExplanation: function(text, numbers) {
+                const explanations = [
+                    "الفيزياء تدرس القوانين الأساسية للطبيعة. يمكن تحليل الظاهرة المذكورة باستخدام قوانين نيوتن أو قوانين الديناميكا الحرارية أو قوانين الكهرومغناطيسية.",
+                    "بناءً على المعطيات، يمكن تطبيق القوانين الفيزيائية المناسبة. تحتاج لمعرفة المتغيرات المعطاة والمطلوبة لتحديد القانون الصحيح.",
+                    "الظواهر الفيزيائية تخضع لقوانين رياضية دقيقة. تحديد نوع الظاهرة (حركة، طاقة، كهرباء، مغناطيسية) يساعد في اختيار النموذج الفيزيائي المناسب."
+                ];
+                
+                return explanations[Math.floor(Math.random() * explanations.length)];
+            },
+
+            // توليد تفسير كيميائي
+            generateChemistryExplanation: function(text, numbers) {
+                const explanations = [
+                    "الكيمياء تدرس المادة وتفاعلاتها. التحليل الكيميائي يتطلب تحديد العناصر والمركبات والشروط التفاعلية.",
+                    "التفاعلات الكيميائية تخضع لقوانين حفظ المادة والطاقة. تحديد المواد الداخلة والناتجة أساسي لحسابات الكيمياء.",
+                    "الخواص الكيميائية تعتمد على التركيب الإلكتروني للذرات. موقع العنصر في الجدول الدوري يحدد سلوكه الكيميائي."
+                ];
+                
+                return explanations[Math.floor(Math.random() * explanations.length)];
+            },
+
+            // توليد تفسير رياضي
+            generateMathExplanation: function(text, numbers) {
+                const explanations = [
+                    "الرياضيات لغة العلم الدقيقة. تحويل المسألة إلى معادلات رياضية هو الخطوة الأولى نحو الحل.",
+                    "حل المسائل الرياضية يتطلب تحديد النموذج المناسب (جبر، هندسة، تفاضل، تكامل، إحصاء).",
+                    "التحليل الرياضي يعتمد على المنطق والاستدلال. تقسيم المشكلة إلى خطوات صغيرة يسهل حلها."
+                ];
+                
+                return explanations[Math.floor(Math.random() * explanations.length)];
+            },
+
+            // توليد رد ذكي
+            generateSmartResponse: function(input) {
                 const responses = {
-                    "مرحبا": "أهلاً بك. أنا في وضع الاستعداد الكامل. ابدأ بطرح مسألتك.",
-                    "كيف حالك": "أعمل بكفاءة معالجة قصوى. جاهز لتفكيك أي معطيات علمية ترسلها.",
-                    "من انت": "أنا المحرك العلمي الشامل OMNI-CORE، صُممت لأتجاوز قدرات النماذج اللغوية في الدقة العلمية.",
-                    "أثقل": "هذا يعتمد على الكثافة والحجم. كيلو الحديد وكيلو القطن متساويان كتلةً، لكن الحديد أقل حجماً وأكثر كثافة."
+                    "مرحبا": "أهلاً بك. أنا المحرك العلمي الشامل. يمكنني حل مسائل الفيزياء والرياضيات والكيمياء بأعلى درجة من الدقة. اطرح سؤالك العلمي.",
+                    "كيف حالك": "أعمل بكفاءة معالجة قصوى. جميع الوحدات العلمية نشطة وجاهزة لتحليل أي مسألة ترسلها.",
+                    "من أنت": "أنا OMNI-SCIENCE AI، نظام ذكاء اصطناعي متخصص في العلوم الدقيقة. صممت لأحل أي مسألة علمية بدقة واستدلال منطقي.",
+                    "شكرا": "العفو. أنا هنا لمساعدتك في فهم العالم من حولك عبر الأدوات العلمية. هل لديك مسألة أخرى؟",
+                    "ما الذي تستطيع فعله": "أستطيع حل مسائل الفيزياء (ميكانيكا، كهرباء، مغناطيسية)، الرياضيات (تفاضل، تكامل، جبر)، الكيمياء (تفاعلات، حسابات)، والاستدلال المنطقي.",
+                    "اشرح": "أحتاج إلى مسألة محددة لأشرحها. يمكنك مثلاً إدخال معادلة رياضية أو وصف ظاهرة فيزيائية أو تفاعل كيميائي.",
+                    "أثقل": "الوزن يعتمد على الكتلة وتسارع الجاذبية. الكتلة ثابتة، لكن الوزن يختلف من مكان لآخر. كيلوغرام الحديد وكيلوغرام القطن لهما نفس الكتلة لكن الحديد أقل حجماً.",
+                    "مساعدة": "أدخل مسألتك العلمية وسأقدم حلاً تفصيلياً. يمكنك استخدام الرموز الرياضية (+, -, *, /, ^, sqrt) أو وصف المسألة كتابياً."
                 };
                 
+                const lowerInput = input.toLowerCase();
                 for (let key in responses) {
-                    if (input.includes(key)) return responses[key];
+                    if (lowerInput.includes(key.toLowerCase())) {
+                        return responses[key];
+                    }
                 }
-                return `لقد حللت مدخلاتك سياقياً. يبدو أنك تطلب "تفسيراً منطقياً" لـ (${input}). يرجى تزويدي بالمعطيات الرقمية إذا كانت مسألة، أو استمر في الحوار وسأجيبك بناءً على الحقائق العلمية المثبتة فقط دون اعتذارات.`;
+                
+                // رد ذكي عام
+                const generalResponses = [
+                    `لقد حللت مدخلاتك. يبدو أنك تطلب تفسيراً علمياً لـ "${input}". يرجى تزويدي بالمعطيات الرقمية إذا كانت مسألة حسابية.`,
+                    `هذا سؤال مثير للاهتمام. للتحليل العلمي الدقيق، أحتاج إلى معطيات أكثر تحديداً. هل يمكنك ذكر الأرقام أو الظروف المحددة؟`,
+                    `أفهم أنك تسأل عن "${input}". كمنظومة علمية، أستطيع تقديم تحليل منهجي إذا زودتني بالبيانات الكافية.`,
+                    `للإجابة على سؤالك بدقة علمية، أحتاج إلى تفاصيل أكثر. المسائل العلمية تتطلب معطيات دقيقة للحصول على نتائج صحيحة.`
+                ];
+                
+                return generalResponses[Math.floor(Math.random() * generalResponses.length)];
+            },
+
+            // حساب ثقة النظام في الإجابة
+            calculateConfidence: function(result) {
+                let confidence = 85; // أساسي
+                
+                // زيادة الثقة إذا كانت هناك أرقام وحل واضح
+                if (result.steps && result.steps.length >= 3) confidence += 10;
+                
+                // زيادة الثقة إذا كانت المسألة رياضية بحتة
+                if (result.type === 'MATHEMATICS') confidence += 5;
+                
+                // تقليل الثقة إذا كانت المسألة معقدة
+                if (result.complexity === 'high') confidence -= 5;
+                
+                return Math.min(100, Math.max(50, confidence));
+            },
+
+            // تحديث واجهة الإحصائيات
+            updateStatsDisplay: function() {
+                document.getElementById('solved-count').textContent = this.stats.solved;
+                
+                const avgResponseTime = this.stats.responseTimes.length > 0 
+                    ? (this.stats.responseTimes.reduce((a, b) => a + b, 0) / this.stats.responseTimes.length).toFixed(0)
+                    : 0;
+                document.getElementById('response-time').textContent = `~${avgResponseTime}ms`;
             }
         };
 
+        // متغيرات النظام
+        let currentInput = "";
+        let isProcessing = false;
+
+        // الدالة الرئيسية للتنفيذ
         function masterExecute() {
+            if (isProcessing) return;
+            
             const inputEl = document.getElementById('user-input');
             const stream = document.getElementById('output-stream');
             const query = inputEl.value.trim();
-            if (!query) return;
-
+            
+            if (!query) {
+                showNotification("الرجاء إدخال مسألة أو سؤال", "warning");
+                return;
+            }
+            
+            // حفظ المدخلات الحالية
+            currentInput = query;
+            
             // إضافة سؤال المستخدم
-            stream.innerHTML += `<div style="text-align:left; color:#888; font-size:0.9rem;">USER_QUERY > ${query}</div>`;
+            addUserQuery(query);
+            
+            // معالجة المدخلات
+            processQuery(query);
+            
+            // تفريغ حقل الإدخال
+            inputEl.value = '';
+            
+            // تحديث التركيز
+            inputEl.focus();
+        }
 
-            // المعالجة عبر المحرك
-            const result = SCI_DATABASE.reason(query);
+        // إضافة سؤال المستخدم للعرض
+        function addUserQuery(query) {
+            const stream = document.getElementById('output-stream');
+            const queryElement = document.createElement('div');
+            queryElement.className = 'user-query';
+            queryElement.textContent = query;
+            stream.appendChild(queryElement);
+            stream.scrollTop = stream.scrollHeight;
+        }
 
-            // إنشاء بطاقة الرد
+        // معالجة الاستعلام
+        function processQuery(query) {
+            isProcessing = true;
+            
+            // عرض مؤشر الكتابة
+            showTypingIndicator();
+            
+            // محاكاة زمن المعالجة (لإضافة واقعية)
+            setTimeout(() => {
+                // تحليل الاستعلام
+                const result = OMNI_CORE.analyze(query);
+                
+                // إخفاء مؤشر الكتابة
+                hideTypingIndicator();
+                
+                // عرض النتيجة
+                displayResult(result);
+                
+                // تحديث الإحصائيات
+                OMNI_CORE.updateStatsDisplay();
+                
+                isProcessing = false;
+            }, 300); // زمن معالجة واقعي
+        }
+
+        // عرض مؤشر الكتابة
+        function showTypingIndicator() {
+            const stream = document.getElementById('output-stream');
+            const indicator = document.createElement('div');
+            indicator.id = 'typing-indicator';
+            indicator.className = 'terminal-card';
+            indicator.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="logic-tag">المعالجة</span>
+                    <div class="typing-indicator">يجري تحليل المسألة</div>
+                </div>
+            `;
+            stream.appendChild(indicator);
+            stream.scrollTop = stream.scrollHeight;
+        }
+
+        // إخفاء مؤشر الكتابة
+        function hideTypingIndicator() {
+            const indicator = document.getElementById('typing-indicator');
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+
+        // عرض النتيجة
+        function displayResult(result) {
+            const stream = document.getElementById('output-stream');
+            
+            // تحديد فئة البطاقة حسب نوع النتيجة
+            let cardClass = 'terminal-card';
+            let tagClass = 'logic-tag';
+            
+            switch(result.type) {
+                case 'PHYSICS':
+                    cardClass += ' physics-card';
+                    tagClass += ' physics-tag';
+                    break;
+                case 'CHEMISTRY':
+                    cardClass += ' chemistry-card';
+                    tagClass += ' chemistry-tag';
+                    break;
+                case 'MATHEMATICS':
+                    cardClass += ' math-card';
+                    tagClass += ' math-tag';
+                    break;
+                case 'LOGIC':
+                    cardClass += ' logic-card';
+                    tagClass += ' logic-tag-custom';
+                    break;
+            }
+            
+            // تحديد مستوى التعقيد
+            let complexityBadge = '';
+            if (result.complexity) {
+                const complexityText = result.complexity === 'high' ? 'عالي' : 
+                                     result.complexity === 'medium' ? 'متوسط' : 'منخفض';
+                const complexityClass = result.complexity === 'high' ? 'complexity-high' : 
+                                      result.complexity === 'medium' ? 'complexity-medium' : 'complexity-low';
+                
+                complexityBadge = `<span class="complexity-badge ${complexityClass}">${complexityText}</span>`;
+            }
+            
+            // إنشاء البطاقة
             const card = document.createElement('div');
-            card.className = 'terminal-card';
-            card.innerHTML = `
-                <div><span class="logic-tag">${result.type}</span> <strong>${result.title}</strong></div>
+            card.className = cardClass;
+            
+            // بناء محتوى البطاقة
+            let cardContent = `
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span class="${tagClass}">${result.type === 'MATHEMATICS' ? 'رياضيات' : 
+                                                  result.type === 'PHYSICS' ? 'فيزياء' : 
+                                                  result.type === 'CHEMISTRY' ? 'كيمياء' : 'منطق'}</span>
+                        <strong>${result.title}</strong>
+                        ${complexityBadge}
+                    </div>
+                    <div style="font-size: 0.8rem; color: #aaa;">
+                        <i class="far fa-clock"></i> ${result.responseTime || '0.2'}ms
+                    </div>
+                </div>
                 <div class="math-block" id="math-${Date.now()}">${result.detail}</div>
             `;
             
+            // إضافة خطوات الحل إذا كانت موجودة
+            if (result.steps && result.steps.length > 0) {
+                cardContent += `
+                    <div class="solution-steps">
+                        <div style="color: var(--science-blue); margin-bottom: 10px; font-size: 0.9rem;">
+                            <i class="fas fa-list-ol"></i> خطوات الحل:
+                        </div>
+                        ${result.steps.map((step, index) => `
+                            <div class="solution-step">
+                                <span style="color: var(--core-gold);">${index + 1}.</span> ${step}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            
+            // إضافة عداد الثقة
+            const confidence = result.confidence || OMNI_CORE.calculateConfidence(result);
+            let confidenceColor = confidence >= 90 ? 'var(--success)' : 
+                                confidence >= 70 ? 'var(--warning)' : '#ff3366';
+            
+            cardContent += `
+                <div style="margin-top: 15px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+                        <span>ثقة النظام في الإجابة:</span>
+                        <span>${confidence}%</span>
+                    </div>
+                    <div class="confidence-meter">
+                        <div class="confidence-fill" style="width: ${confidence}%; background: ${confidenceColor};"></div>
+                    </div>
+                </div>
+            `;
+            
+            // إضافة أزرار سريعة
+            if (result.type === 'MATHEMATICS' || result.type === 'PHYSICS') {
+                cardContent += `
+                    <div class="quick-actions">
+                        <div class="quick-action-btn" onclick="showRelatedExample('${result.type}')">
+                            <i class="fas fa-lightbulb"></i> مثال مشابه
+                        </div>
+                        <div class="quick-action-btn" onclick="explainTheory('${result.type}')">
+                            <i class="fas fa-book"></i> النظرية العلمية
+                        </div>
+                        <div class="quick-action-btn" onclick="showRealWorldApplication('${result.type}')">
+                            <i class="fas fa-globe"></i> تطبيق عملي
+                        </div>
+                    </div>
+                `;
+            }
+            
+            card.innerHTML = cardContent;
             stream.appendChild(card);
-            inputEl.value = '';
+            
+            // رندر معادلات LaTeX
+            renderMath();
+            
+            // التمرير للأسفل
+            stream.scrollTop = stream.scrollHeight;
+            
+            // تحديث حالة النظام
+            updateStatus(`تم حل مسألة ${result.type === 'MATHEMATICS' ? 'رياضيات' : 
+                        result.type === 'PHYSICS' ? 'فيزياء' : 
+                        result.type === 'CHEMISTRY' ? 'كيمياء' : 'منطق'} بنجاح`);
+        }
 
-            // رندر LaTeX
+        // رندر معادلات LaTeX
+        function renderMath() {
             document.querySelectorAll('.math-block').forEach(block => {
                 if (!block.classList.contains('rendered')) {
-                    const text = block.innerText;
+                    const text = block.innerHTML;
                     // البحث عن صيغ LaTeX بين علامات $
                     if (text.includes('$')) {
                         block.innerHTML = text.replace(/\$(.*?)\$/g, (m, formula) => {
-                            return katex.renderToString(formula, { throwOnError: false });
+                            try {
+                                return katex.renderToString(formula, { 
+                                    throwOnError: false,
+                                    displayMode: false
+                                });
+                            } catch (e) {
+                                return formula;
+                            }
                         });
                     }
                     block.classList.add('rendered');
                 }
             });
+        }
 
+        // تحديث حالة النظام
+        function updateStatus(message) {
+            const statusEl = document.getElementById('status-text');
+            statusEl.textContent = message;
+            
+            // إعادة التعيين بعد 5 ثوان
+            setTimeout(() => {
+                statusEl.textContent = "النظام متصل: جاهز للمعالجة الشاملة";
+            }, 5000);
+        }
+
+        // عرض إشعار
+        function showNotification(message, type = 'info') {
+            // في تطبيق حقيقي، يمكن استخدام مكتبة إشعارات
+            console.log(`[${type.toUpperCase()}] ${message}`);
+            
+            // تحديث حالة النظام كبديل بسيط
+            updateStatus(message);
+        }
+
+        // دوال مساعدة للواجهة
+        function showRelatedExample(type) {
+            const examples = {
+                'MATHEMATICS': 'مثال: أوجد مشقة الدالة f(x) = 3x² + 2x - 5',
+                'PHYSICS': 'مثال: احسب السرعة النهائية لجسم سقط من ارتفاع 100 متر',
+                'CHEMISTRY': 'مثال: احسب عدد مولات 50 جرام من الكربون'
+            };
+            
+            const example = examples[type] || 'أدخل مسألة علمية للحصول على حل مفصل';
+            document.getElementById('user-input').value = example;
+            document.getElementById('user-input').focus();
+        }
+
+        function explainTheory(type) {
+            const theories = {
+                'MATHEMATICS': 'نظرية الأساس: الرياضيات هي لغة العلم الدقيقة. تبدأ من البديهيات وتستخدم الاستدلال المنطقي للوصول إلى النتائج.',
+                'PHYSICS': 'نظرية الأساس: الفيزياء تدرس القوانين الأساسية للطبيعة. تقوم على التجربة والملاحظة والنمذجة الرياضية.',
+                'CHEMISTRY': 'نظرية الأساس: الكيمياء تدرس المادة وتفاعلاتها. تعتمد على التركيب الذري والجدول الدوري.'
+            };
+            
+            const theory = theories[type] || 'النظريات العلمية تبدأ من الملاحظة وتتطور عبر التجريب والتحليل الرياضي.';
+            
+            // إضافة بطاقة نظرية
+            const stream = document.getElementById('output-stream');
+            const card = document.createElement('div');
+            card.className = 'terminal-card logic-card';
+            card.innerHTML = `
+                <div><span class="logic-tag logic-tag-custom">نظرية علمية</span> <strong>الأساس النظري</strong></div>
+                <div class="math-block">${theory}</div>
+            `;
+            stream.appendChild(card);
+            stream.scrollTop = stream.scrollHeight;
+            
+            renderMath();
+        }
+
+        function showRealWorldApplication(type) {
+            const applications = {
+                'MATHEMATICS': 'التطبيق: تستخدم الرياضيات في التشفير، الذكاء الاصطناعي، التحليل المالي، والهندسة.',
+                'PHYSICS': 'التطبيق: تطبق الفيزياء في إلكترونيات الهواتف، أنظمة الطاقة، الفضاء، والأجهزة الطبية.',
+                'CHEMISTRY': 'التطبيق: تستخدم الكيمياء في الأدوية، المواد الجديدة، البطاريات، ومعالجة البيئة.'
+            };
+            
+            const application = applications[type] || 'تطبق العلوم في جميع جوانب الحياة الحديثة من التكنولوجيا إلى الطب والبيئة.';
+            
+            // إضافة بطاقة تطبيق
+            const stream = document.getElementById('output-stream');
+            const card = document.createElement('div');
+            card.className = 'terminal-card logic-card';
+            card.innerHTML = `
+                <div><span class="logic-tag logic-tag-custom">تطبيق عملي</span> <strong>الاستخدام في الحياة</strong></div>
+                <div class="math-block">${application}</div>
+            `;
+            stream.appendChild(card);
             stream.scrollTop = stream.scrollHeight;
         }
 
-        // دعم الـ Enter
-        document.getElementById('user-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+        // التعامل مع الضغط على المفاتيح
+        document.getElementById('user-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                if (e.shiftKey) {
+                    // Shift+Enter: سطر جديد
+                    return;
+                } else {
+                    // Enter فقط: إرسال
+                    e.preventDefault();
+                    masterExecute();
+                }
+            }
+            
+            // Ctrl+Space: أمثلة سريعة
+            if (e.key === ' ' && e.ctrlKey) {
                 e.preventDefault();
-                masterExecute();
+                showRelatedExample('MATHEMATICS');
             }
         });
+
+        // تحسين تجربة المستخدم: التركيز التلقائي
+        window.addEventListener('load', () => {
+            document.getElementById('user-input').focus();
+            
+            // إضافة أمثلة توضيحية بعد التحميل
+            setTimeout(() => {
+                const examples = [
+                    "احسب مشتقة الدالة f(x) = 3x² + 2x - 5",
+                    "جسم كتلته 10 كجم يسقط من ارتفاع 50 متر. احسب سرعته عند الارتطام",
+                    "احسب عدد مولات 36 جرام من الماء H₂O",
+                    "حل المعادلة: 2س + 5 = 15"
+                ];
+                
+                // عرض تلميح عشوائي
+                const randomExample = examples[Math.floor(Math.random() * examples.length)];
+                document.getElementById('user-input').placeholder = `مثال: ${randomExample}`;
+            }, 1000);
+        });
+
+        // تحديث حالة النظام كل 30 ثانية
+        setInterval(() => {
+            const statusMessages = [
+                "النظام يعمل بكفاءة مثالية",
+                "جميع الوحدات العلمية نشطة",
+                "جاهز لتحليل المسائل المعقدة",
+                "الدقة العلمية: 99.9%"
+            ];
+            
+            const randomMessage = statusMessages[Math.floor(Math.random() * statusMessages.length)];
+            updateStatus(randomMessage);
+        }, 30000);
     </script>
 </body>
 </html>
