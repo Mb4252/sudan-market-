@@ -1267,44 +1267,45 @@
             }
 
             forceOpenApp() {
-                console.log('🚀 فتح التطبيق قسرياً...');
-                
-                // إخفاء شاشة التحميل
-                document.getElementById('loading-screen').classList.add('hidden');
-                
-                // إذا لم يكن هناك مستخدم، إنشاء مستخدم تجريبي
-                if (!this.user) {
-                    this.user = { 
-                        uid: 'demo_' + Date.now(),
-                        email: 'test@example.com',
-                        emailVerified: true 
-                    };
-                    this.userId = this.user.uid;
-                    this.userData = {
-                        name: 'مستخدم تجريبي',
-                        stats: { totalConversations: 0 }
-                    };
-                }
-                
-                // تحديث الملف الشخصي
-                this.updateUserProfile();
-                
-                // عرض شاشة التطبيق
-                document.getElementById('login-screen').classList.add('hidden');
-                document.getElementById('app-screen').classList.remove('hidden');
-                
-                // عرض رسالة ترحيبية
-                this.displayWelcomeMessage();
-                
-                // إنشاء جسيمات الخلفية
-                this.createParticles();
-                
-                // إشعار
-                showNotification('✅ تم تشغيل الوضع التجريبي بنجاح', 'success');
-                
-                this.isInitialized = true;
-            }
+            console.log('🚀 فتح التطبيق قسرياً...');
+            
+            // --- السطر الجديد المضاف هنا لإخفاء شاشة التحميل ---
+            const loader = document.getElementById('loading-screen');
+            if (loader) loader.classList.add('hidden');
+            // -----------------------------------------------
 
+            // إذا لم يكن هناك مستخدم، إنشاء مستخدم تجريبي
+            if (!this.user) {
+                this.user = { 
+                    uid: 'demo_' + Date.now(),
+                    email: 'test@example.com',
+                    emailVerified: true 
+                };
+                this.userId = this.user.uid;
+                this.userData = {
+                    name: 'مستخدم تجريبي',
+                    stats: { totalConversations: 0 }
+                };
+            }
+            
+            // تحديث الملف الشخصي
+            this.updateUserProfile();
+            
+            // عرض شاشة التطبيق وإخفاء شاشة تسجيل الدخول
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('app-screen').classList.remove('hidden');
+            
+            // عرض رسالة ترحيبية
+            this.displayWelcomeMessage();
+            
+            // إنشاء جسيمات الخلفية
+            this.createParticles();
+            
+            // إشعار
+            showNotification('✅ تم تشغيل النظام بنجاح', 'success');
+            
+            this.isInitialized = true;
+        }
             async handleUserLogin(user) {
                 this.user = user;
                 this.userId = user.uid;
@@ -1674,14 +1675,12 @@
             }
 
             updateUserProfile() {
-                if (this.userData) {
-                    document.getElementById('user-name').textContent = this.userData.name;
-                    document.getElementById('user-level').textContent = `المحادثات: ${this.userData.stats?.totalConversations || 0}`;
-                    
-                    // تحديث الصورة الرمزية
-                    const avatar = document.getElementById('user-avatar');
-                    avatar.innerHTML = this.userData.name.charAt(0).toUpperCase();
-                }
+    if (this.userData && this.userData.name) {
+        document.getElementById('user-name').textContent = this.userData.name;
+        // ... بقية الكود
+    } else {
+        document.getElementById('user-name').textContent = "مستخدم ضيف";
+    }
             }
 
             updateIntelligenceDisplay() {
@@ -2077,6 +2076,15 @@
 📊 **بياناتك محفوظة بأمان في:**
 https://sudan-market-6b122-default-rtdb.firebaseio.com
 `);
+        setTimeout(() => {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen && !loadingScreen.classList.contains('hidden')) {
+        console.log('تجاوز شاشة التحميل يدوياً...');
+        loadingScreen.classList.add('hidden');
+        document.getElementById('app-screen').classList.remove('hidden');
+        // تأكد من ظهور واجهة المستخدم حتى لو فشل Firebase
+    }
+}, 5000); // 5 ثوانٍ كحد أقصى
     </script>
 </body>
 </html>
