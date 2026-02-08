@@ -1364,7 +1364,6 @@ const ScienceEngine = {
             });
         }
 
-        // =============== [ 3. نظام توليد الاختبارات الذكي ] ===============
         // =============== [ 3. نظام توليد الاختبارات الذكي - المطور العلمي ] ===============
 class TestSystem {
     constructor() {
@@ -1627,12 +1626,6 @@ class TestSystem {
 
         // =============== [ 5. تحميل المحتوى ] ===============
         async function loadDashboard() {
-    // تنظيف الاختبار الحالي عند العودة للرئيسية
-    currentTest = null;
-    currentAnswers = [];
-    
-    // ... باقي الكود كما هو ...
-        }
             const content = `
                 <div style="max-width: 1200px; margin: 0 auto;">
                     <h1 style="color: var(--neon-blue); margin-bottom: 30px; font-size: 36px;">
@@ -1777,13 +1770,11 @@ class TestSystem {
             
             document.getElementById('content-area').innerHTML = content;
         }
-           async function loadTestGenerator() {
-    // تنظيف الاختبار الحالي
-    currentTest = null;
-    currentAnswers = [];
-    
-    // ... باقي الكود كما هو ...
-}
+
+        async function loadTestGenerator() {
+            // تحميل المحتوى الأولي أولاً
+            const textTabContent = await loadTextTabContent();
+            
             const content = `
                 <div style="max-width: 900px; margin: 0 auto;">
                     <h1 style="color: var(--neon-blue); margin-bottom: 30px; font-size: 36px;">
@@ -1798,7 +1789,7 @@ class TestSystem {
                     </div>
                     
                     <div id="tab-content" style="background: var(--gradient-card); border-radius: 20px; padding: 30px; border: 2px solid rgba(0,245,255,0.2);">
-                        ${await loadTextTabContent()}
+                        ${textTabContent}
                     </div>
                 </div>
             `;
@@ -3355,53 +3346,52 @@ class TestSystem {
         }
 
         // =============== [ 7. نظام التنقل والذاكرة ] ===============
-        // =============== [ 7. نظام التنقل والذاكرة ] ===============
-let navigationHistory = JSON.parse(localStorage.getItem('navigation_history')) || []; 
-let currentPage = localStorage.getItem('last_active_page') || 'dashboard';
+        let navigationHistory = JSON.parse(localStorage.getItem('navigation_history')) || []; 
+        let currentPage = localStorage.getItem('last_active_page') || 'dashboard';
 
-async function navigateTo(pageName, saveToHistory = true) {
-    if (saveToHistory && currentPage !== pageName) {
-        navigationHistory.push(currentPage);
-        localStorage.setItem('navigation_history', JSON.stringify(navigationHistory));
-    }
-    
-    currentPage = pageName;
-    localStorage.setItem('last_active_page', pageName);
+        async function navigateTo(pageName, saveToHistory = true) {
+            if (saveToHistory && currentPage !== pageName) {
+                navigationHistory.push(currentPage);
+                localStorage.setItem('navigation_history', JSON.stringify(navigationHistory));
+            }
+            
+            currentPage = pageName;
+            localStorage.setItem('last_active_page', pageName);
 
-    // إظهار/إخفاء زر الرجوع
-    updateBackButton();
+            // إظهار/إخفاء زر الرجوع
+            updateBackButton();
 
-    // تحميل المحتوى المناسب
-    if (pageName === 'dashboard') loadDashboard();
-    else if (pageName === 'generator') loadTestGenerator();
-    else if (pageName === 'history') loadTestHistory();
-    else if (pageName === 'library') loadTestLibrary();
-    else if (pageName === 'progress') loadProgress();
-    else if (pageName === 'settings') loadSettings();
-    else if (pageName === 'solver') loadSolver();
-}
-
-function updateBackButton() {
-    const backBtn = document.getElementById('back-button');
-    if (backBtn) {
-        if (navigationHistory.length > 0) {
-            backBtn.classList.remove('hidden');
-        } else {
-            backBtn.classList.add('hidden');
+            // تحميل المحتوى المناسب
+            if (pageName === 'dashboard') loadDashboard();
+            else if (pageName === 'generator') loadTestGenerator();
+            else if (pageName === 'history') loadTestHistory();
+            else if (pageName === 'library') loadTestLibrary();
+            else if (pageName === 'progress') loadProgress();
+            else if (pageName === 'settings') loadSettings();
+            else if (pageName === 'solver') loadSolver();
         }
-    }
-}
 
-function goBack() {
-    if (navigationHistory.length > 0) {
-        const previousPage = navigationHistory.pop();
-        localStorage.setItem('navigation_history', JSON.stringify(navigationHistory));
-        navigateTo(previousPage, false);
-    } else {
-        // إذا لم يكن هناك سجل، ارجع للرئيسية
-        navigateTo('dashboard', false);
-    }
-}
+        function updateBackButton() {
+            const backBtn = document.getElementById('back-button');
+            if (backBtn) {
+                if (navigationHistory.length > 0) {
+                    backBtn.classList.remove('hidden');
+                } else {
+                    backBtn.classList.add('hidden');
+                }
+            }
+        }
+
+        function goBack() {
+            if (navigationHistory.length > 0) {
+                const previousPage = navigationHistory.pop();
+                localStorage.setItem('navigation_history', JSON.stringify(navigationHistory));
+                navigateTo(previousPage, false);
+            } else {
+                // إذا لم يكن هناك سجل، ارجع للرئيسية
+                navigateTo('dashboard', false);
+            }
+        }
 
         async function handleUserProgress(evaluation) {
             if (!userData.stats) userData.stats = { totalXP: 0, level: 1, testsTaken: 0, averageScore: 0, bestScore: 0 };
