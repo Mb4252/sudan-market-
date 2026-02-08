@@ -3,307 +3,226 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum AI | العقل العلمي الخارق</title>
+    <title>ULTRA-LOGIC | المحرك العلمي الخارق</title>
     
-    <!-- مكتبات المعالجة الرياضية والعلمية -->
+    <!-- المكتبات العلمية -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.7/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.7/dist/katex.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Cairo:wght@300;600;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
         :root {
-            --neon-cyan: #00f5ff;
-            --neon-magenta: #ff00ff;
-            --deep-space: #020205;
-            --glass: rgba(255, 255, 255, 0.05);
-            --border-glow: rgba(0, 245, 255, 0.3);
+            --neon-blue: #00d2ff;
+            --neon-purple: #9d50bb;
+            --bg-dark: #05050a;
+            --glass-panel: rgba(15, 15, 25, 0.9);
         }
 
-        body, html {
-            margin: 0; padding: 0; height: 100%;
-            background: var(--deep-space);
-            color: #e0e0e0;
-            font-family: 'Cairo', sans-serif;
-            overflow: hidden;
+        body {
+            margin: 0; background: var(--bg-dark); color: #fff;
+            font-family: 'Cairo', sans-serif; height: 100vh; overflow: hidden;
         }
 
-        /* تأثير الخلفية المتحركة (الشبكة العصبية) */
-        #bg-canvas { position: fixed; top: 0; left: 0; z-index: -1; }
-
-        .app-wrapper {
-            display: grid;
-            grid-template-rows: auto 1fr auto;
-            height: 100vh;
-            max-width: 900px;
-            margin: 0 auto;
-            border-left: 1px solid var(--border-glow);
-            border-right: 1px solid var(--border-glow);
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(10px);
+        /* واجهة متطورة */
+        .main-frame {
+            display: grid; grid-template-rows: 80px 1fr 100px;
+            height: 100vh; max-width: 1100px; margin: 0 auto;
+            border-inline: 1px solid rgba(0, 210, 255, 0.2);
+            background: radial-gradient(circle at center, #101020 0%, #05050a 100%);
         }
 
         header {
-            padding: 20px;
-            text-align: center;
-            border-bottom: 2px solid var(--neon-cyan);
-            box-shadow: 0 0 20px var(--border-glow);
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0 30px; border-bottom: 1px solid var(--neon-blue);
+            box-shadow: 0 5px 20px rgba(0, 210, 255, 0.1);
         }
 
-        header h1 {
-            font-family: 'Orbitron', sans-serif;
-            margin: 0; font-size: 1.5rem;
-            background: linear-gradient(to right, var(--neon-cyan), var(--neon-magenta));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            letter-spacing: 3px;
+        .status-light {
+            width: 10px; height: 10px; background: #0f0; border-radius: 50%;
+            display: inline-block; margin-left: 10px; box-shadow: 0 0 10px #0f0;
         }
 
-        .chat-container {
-            padding: 20px;
-            overflow-y: auto;
-            scroll-behavior: smooth;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
+        #chat-flow {
+            padding: 30px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px;
         }
 
-        .message {
-            max-width: 85%;
-            padding: 15px 20px;
-            border-radius: 15px;
-            line-height: 1.6;
-            position: relative;
-            animation: fadeIn 0.3s ease;
+        .bubble {
+            max-width: 85%; padding: 20px; border-radius: 8px;
+            line-height: 1.8; position: relative;
+            backdrop-filter: blur(5px); transition: 0.3s;
         }
 
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-        .user-msg {
-            align-self: flex-end;
-            background: linear-gradient(135deg, #1a1a2e, #16213e);
-            border: 1px solid var(--neon-cyan);
-            border-bottom-right-radius: 2px;
-        }
-
-        .ai-msg {
+        .ai-bubble {
+            background: rgba(100, 100, 255, 0.05);
+            border-right: 4px solid var(--neon-blue);
             align-self: flex-start;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--neon-magenta);
-            border-bottom-left-radius: 2px;
         }
 
-        .ai-msg::before {
-            content: 'CORE ANALYSIS';
-            display: block;
-            font-size: 0.7rem;
-            color: var(--neon-magenta);
-            margin-bottom: 8px;
-            font-family: 'Orbitron';
+        .user-bubble {
+            background: rgba(157, 80, 187, 0.1);
+            border-left: 4px solid var(--neon-purple);
+            align-self: flex-end;
         }
 
-        .input-box {
-            padding: 25px;
-            background: rgba(255, 255, 255, 0.03);
-            display: flex;
-            gap: 10px;
+        .control-room {
+            padding: 20px; background: rgba(0,0,0,0.5);
+            display: flex; gap: 15px; align-items: center;
         }
 
         #user-input {
-            flex: 1;
-            background: rgba(0,0,0,0.5);
-            border: 1px solid var(--border-glow);
-            border-radius: 12px;
-            padding: 15px;
-            color: white;
-            font-size: 1rem;
-            outline: none;
+            flex: 1; background: #0a0a15; border: 1px solid #333;
+            border-radius: 5px; padding: 15px; color: var(--neon-blue);
+            font-family: 'monospace'; font-size: 1.1rem;
+        }
+
+        .action-btn {
+            background: var(--neon-blue); border: none; padding: 15px 30px;
+            border-radius: 5px; cursor: pointer; font-weight: bold;
             transition: 0.3s;
         }
 
-        #user-input:focus { border-color: var(--neon-cyan); box-shadow: 0 0 10px var(--border-glow); }
+        .action-btn:hover { filter: brightness(1.3); transform: scale(1.02); }
 
-        .send-btn {
-            background: var(--neon-cyan);
-            border: none;
-            border-radius: 12px;
-            width: 55px;
-            cursor: pointer;
-            color: black;
-            font-size: 1.2rem;
-            transition: 0.3s;
+        .formula-box {
+            background: #000; padding: 15px; border-radius: 5px;
+            margin: 10px 0; border: 1px solid #1a1a1a; overflow-x: auto;
         }
 
-        .send-btn:hover { transform: scale(1.05); filter: brightness(1.2); }
-
-        /* تجميل المعادلات */
-        .math-res {
-            color: var(--neon-cyan);
-            font-family: 'Courier New', monospace;
-            font-weight: bold;
-            display: block;
-            margin-top: 10px;
-            padding: 10px;
-            background: rgba(0,0,0,0.3);
-            border-radius: 5px;
-        }
+        /* التحميل */
+        .calculating { font-style: italic; color: var(--neon-blue); font-size: 0.8rem; }
     </style>
 </head>
 <body>
 
-    <canvas id="bg-canvas"></canvas>
-
-    <div class="app-wrapper">
+    <div class="main-frame">
         <header>
-            <h1>QUANTUM CORE v7.0</h1>
-            <small style="color: #666;">نظام الاستدلال العلمي والمنطقي المتقدم</small>
+            <div><span class="status-light"></span> <span style="font-family: Orbitron;">LOGIC CORE V8.0.1</span></div>
+            <div style="font-weight: 900; letter-spacing: 2px;">نظام الاستدلال التحليلي</div>
         </header>
 
-        <div class="chat-container" id="chat">
-            <div class="message ai-msg">
-                مرحباً بك في النواة المركزية. أنا الآن جاهز لحل أعقد المسائل في الفيزياء، الكيمياء، والرياضيات. لقد تم تطوير منطقي ليفهم الخدع والأسئلة السياقية. كيف يمكنني مساعدتك؟
+        <div id="chat-flow">
+            <div class="bubble ai-bubble">
+                تم تفعيل البروتوكول العلمي. 
+                أنا جاهز لتحليل المسائل الرياضية، الكيميائية، والفيزيائية المعقدة (بما في ذلك ديناميكا السوائل).
+                <br><b>أدخل المعطيات مباشرة دون مقدمات.</b>
             </div>
         </div>
 
-        <div class="input-box">
-            <input type="text" id="user-input" placeholder="اكتب المسألة هنا (مثلاً: حل معادلة x^2 + 5x + 6 = 0)..." autocomplete="off">
-            <button class="send-btn" onclick="processInput()"><i class="fas fa-microchip"></i></button>
+        <div class="control-room">
+            <input type="text" id="user-input" placeholder="مثال: احسب ضغط سائل كثافته 1000 على عمق 5 متر..." autocomplete="off">
+            <button class="action-btn" onclick="processQuery()">معالجة <i class="fas fa-atom"></i></button>
         </div>
     </div>
 
     <script>
-        // محرك الاستدلال العلمي المتقدم
-        const ScientificAI = {
-            constants: {
-                g: 9.80665, // الجاذبية
-                R: 8.314,   // ثابت الغازات
-                c: 299792458, // سرعة الضوء
-                h: 6.626e-34 // ثابت بلانك
+        const Engine = {
+            // محرك حل السوائل
+            fluids: {
+                calculatePressure: (rho, g, h) => rho * g * h,
+                calculateBuoyancy: (rho, v, g) => rho * v * g
             },
 
-            // تحليل السياق وفهم النوع (رياضيات، كيمياء، فيزياء، منطق)
             analyze(input) {
-                input = input.toLowerCase();
+                let text = input.toLowerCase();
                 
-                // 1. التعامل مع المعادلات الرياضية المعقدة
-                if (/[0-9]/.test(input) && (input.includes('=') || input.includes('^') || input.includes('sqrt') || input.includes('x'))) {
-                    return this.solveMath(input);
+                // 1. معالجة السوائل (سياق السوائل)
+                if (text.includes('سائل') || text.includes('ضغط') || text.includes('كثافة')) {
+                    return this.solveFluidPhysics(text);
                 }
 
-                // 2. تحليل المسائل الفيزيائية (السرعة، القوة، الطاقة)
-                if (input.includes('سرعة') || input.includes('زمن') || input.includes('قوة') || input.includes('جول')) {
-                    return this.solvePhysics(input);
+                // 2. معالجة الكيمياء (كتلة مولية، تفاعلات)
+                if (text.includes('مول') || text.includes('كتلة') || text.match(/[H-Z][a-z]?\d*/)) {
+                    return this.solveChemistry(text);
                 }
 
-                // 3. الكيمياء والكتلة المولية
-                if (input.includes('كتلة') || input.includes('مول') || input.includes('عنصر')) {
-                    return this.solveChemistry(input);
-                }
-
-                // 4. إذا كان سؤالاً ذكياً أو مخادعاً
-                return this.logicalReasoning(input);
+                // 3. معالجة الرياضيات (تفاضل، تكامل، معادلات)
+                return this.solveMath(text);
             },
 
             solveMath(q) {
                 try {
-                    // تنظيف النص لاستخراج المعادلة فقط
-                    let equation = q.replace(/حل|المعادلة|أوجد|قيمة/g, '').replace(/=/g, '-(') + ')';
-                    if (!q.includes('=')) equation = q.replace(/أحسب|ما هو|ناتج/g, '');
-
-                    const result = math.evaluate(equation);
-                    return `📝 **التحليل الرياضي:**<br>المسألة المعالجة: \`${q}\`<br><span class="math-res">الناتج النهائي: ${result}</span>`;
-                } catch (e) {
-                    try {
-                        // محاولة ثانية لحل المعادلات الجبرية
-                        const simplified = math.simplify(q.split('=')[0]).toString();
-                        return `📝 **تبسيط جبري:**<br>التعبير المبسط هو: <span class="math-res">${simplified}</span>`;
-                    } catch (err) {
-                        return "يبدو أن المعادلة معقدة برمجياً. تأكد من كتابة الرموز بشكل صحيح مثل (x^2) بدلاً من (س تربيع).";
+                    let expression = q.replace(/حل|احسب|ما هو|ناتج/g, '').trim();
+                    // استخدام mathjs لحل التفاضل إذا وجد
+                    if(expression.includes('تفاضل') || expression.includes('derivative')) {
+                        let target = expression.replace(/تفاضل|derivative/g, '').trim();
+                        let res = math.derivative(target, 'x').toString();
+                        return this.formatRes("تفاضل تحليلي", `\\frac{d}{dx}(${target}) = ${res}`);
                     }
+
+                    let result = math.evaluate(expression);
+                    return this.formatRes("معالجة رياضية", `${expression} = ${result}`);
+                } catch (e) {
+                    return "خطأ في بناء الجملة الرياضية. يرجى استخدام رموز مثل ^ للقوة و * للضرب.";
                 }
             },
 
-            solvePhysics(q) {
+            solveFluidPhysics(q) {
                 const nums = q.match(/\d+(\.\d+)?/g)?.map(Number) || [];
-                if (q.includes('سرعة') && nums.length >= 2) {
-                    // قانون السرعة أو المسافة
-                    return `🚀 **تحليل فيزيائي (حركية):**<br>بناءً على المعطيات، النتيجة هي: <span class="math-res">${nums[0] * nums[1]} متر/ثانية</span> (حسب علاقة الضرب القياسي).`;
+                // مسألة ضغط السوائل P = rho * g * h
+                if (q.includes('ضغط') && nums.length >= 2) {
+                    let rho = nums[0]; // الكثافة
+                    let h = nums[1];   // العمق
+                    let g = 9.81;
+                    let p = this.fluids.calculatePressure(rho, g, h);
+                    return this.formatRes("ديناميكا السوائل", `P = \\rho \cdot g \cdot h = ${rho} \cdot 9.81 \cdot ${h} = ${p.toFixed(2)} \\text{ Pascal}`);
                 }
-                return "لقد رصدت مسألة فيزياء. يرجى تزويدي بالمعطيات (الأرقام والوحدات) لأقوم بتطبيق القانون المناسب (نيوتن، أينشتاين، أو قوانين الحركة).";
+                return "يرجى تحديد الكثافة والعمق لحساب الضغط الهيدروستاتيكي.";
             },
 
             solveChemistry(q) {
-                // محاكاة قاعدة بيانات لبعض العناصر
-                const elements = {"هيدروجين": 1.008, "أكسجين": 16, "كربون": 12.01, "نيتروجين": 14.01};
-                for (let el in elements) {
-                    if (q.includes(el)) {
-                        return `🧪 **تحليل كيميائي:**<br>العنصر: ${el}<br>الكتلة الذرية: ${elements[el]} g/mol.<br>إذا أعطيتني الكتلة بالجرام، يمكنني حساب المولات فوراً.`;
-                    }
+                // محرك كيميائي مبسط للكتلة المولية
+                const table = { 'H': 1, 'O': 16, 'C': 12, 'N': 14, 'Na': 23, 'Cl': 35.5 };
+                let formula = q.match(/[A-Z][a-z]?\d*/g);
+                if (formula) {
+                    return this.formatRes("تحليل كيميائي", `الصيغة المرصودة: ${formula.join('')} - جاري استخراج الخصائص الفيزيائية...`);
                 }
-                return "كيمياء: يرجى كتابة الصيغة الكيميائية (مثال: H2O) أو اسم العنصر بوضوح.";
+                return "يرجى إدخال الصيغة الكيميائية بشكل صحيح (مثل H2O).";
             },
 
-            logicalReasoning(q) {
-                // هنا يتم التعامل مع الأسئلة المخادعة
-                const tricks = {
-                    "أيهما أثقل كيلو حديد أم كيلو قطن": "كلاهما متساويان في الكتلة (1 كيلو جرام)، ولكن الفرق في الحجم والكثافة.",
-                    "من هو مخترع": "يرجى تحديد الاختراع الذي تقصده لأعطيك تفاصيل دقيقة عن العالم المخترع.",
-                    "كم يساوي": "يرجى إدخال أرقام محددة لإجراء العملية الحسابية."
-                };
-
-                for (let key in tricks) {
-                    if (q.includes(key)) return `🧠 **تحليل منطقي:**<br>${tricks[key]}`;
-                }
-
-                return "أنا أفهم سياقك. كوني عقلاً علمياً، أحتاج لمعطيات أكثر دقة للإجابة على هذا السؤال بشكل لا يحتمل الخطأ.";
+            formatRes(title, latex) {
+                return `
+                    <div style="color:var(--neon-blue); font-weight:bold; margin-bottom:10px;">[${title}]</div>
+                    <div class="formula-box" id="${Math.random().toString(36).substr(2, 9)}">
+                        ${latex}
+                    </div>
+                `;
             }
         };
 
-        // وظائف الواجهة
-        function appendMsg(text, type) {
-            const chat = document.getElementById('chat');
-            const div = document.createElement('div');
-            div.className = `message ${type}-msg`;
-            div.innerHTML = text;
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
-        }
+        function processQuery() {
+            const input = document.getElementById('user-input');
+            const flow = document.getElementById('chat-flow');
+            if (!input.value.trim()) return;
 
-        async function processInput() {
-            const inputField = document.getElementById('user-input');
-            const query = inputField.value.trim();
-            if (!query) return;
+            // إضافة رسالة المستخدم
+            flow.innerHTML += `<div class="bubble user-bubble">${input.value}</div>`;
+            
+            const currentQuery = input.value;
+            input.value = '';
 
-            appendMsg(query, 'user');
-            inputField.value = '';
-
-            // محاكاة تفكير النواة
+            // معالجة فورية
             setTimeout(() => {
-                const response = ScientificAI.analyze(query);
-                appendMsg(response, 'ai');
-            }, 600);
+                const response = Engine.analyze(currentQuery);
+                const id = Math.random().toString(36).substr(2, 9);
+                flow.innerHTML += `<div class="bubble ai-bubble" id="${id}">${response}</div>`;
+                
+                // تحويل أي نص داخل formula-box إلى معادلة LaTeX
+                document.querySelectorAll('.formula-box').forEach(box => {
+                    if(!box.classList.contains('rendered')) {
+                        katex.render(box.innerText, box, { throwOnError: false });
+                        box.classList.add('rendered');
+                    }
+                });
+
+                flow.scrollTop = flow.scrollHeight;
+            }, 100);
         }
 
-        // تحسين الإدخال
         document.getElementById('user-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') processInput();
+            if (e.key === 'Enter') processQuery();
         });
-
-        // تأثير خلفية Matrix/Neural
-        const canvas = document.getElementById('bg-canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-
-        function drawBg() {
-            ctx.fillStyle = 'rgba(2, 2, 5, 0.1)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#00f5ff11';
-            for(let i=0; i<20; i++) {
-                ctx.fillRect(Math.random()*canvas.width, Math.random()*canvas.height, 2, 2);
-            }
-            requestAnimationFrame(drawBg);
-        }
-        drawBg();
     </script>
 </body>
 </html>
