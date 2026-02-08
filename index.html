@@ -965,6 +965,49 @@
             messagingSenderId: "66729481566",
             appId: "1:66729481566:web:93393f28dc22d32cceebcf"
         };
+        // محرك القوانين العلمية المطور (Deep Science Engine)
+const ScienceEngine = {
+    formulas: [
+        { name: "قانون نيوتن الثاني", pattern: /force|mass|acceleration|قوة|كتلة|تسارع/i, formula: "F=m*a", units: { F: "N", m: "kg", a: "m/s²" } },
+        { name: "السرعة", pattern: /speed|distance|time|سرعة|مسافة|زمن/i, formula: "v=d/t", units: { v: "m/s", d: "m", t: "s" } },
+        { name: "قانون أوم", pattern: /voltage|current|resistance|جهد|تيار|مقاومة/i, formula: "V=I*R", units: { V: "V", I: "A", R: "Ω" } },
+        { name: "الطاقة الحركية", pattern: /energy|mass|velocity|طاقة|كتلة|سرعة/i, formula: "KE=0.5*m*v^2" }
+    ],
+
+    solve(input) {
+        let text = input.toLowerCase();
+        let numbers = text.match(/\d+(\.\d+)?/g);
+        if (!numbers) return "الرجاء إدخال أرقام واضحة للمسألة (بالأرقام الإنجليزية 1, 2, 3).";
+
+        for (let item of this.formulas) {
+            if (item.pattern.test(text)) {
+                if (numbers.length >= 2) {
+                    let n1 = parseFloat(numbers[0]);
+                    let n2 = parseFloat(numbers[1]);
+                    
+                    // تحليل ذكي حسب القانون
+                    if (item.formula === "F=m*a") {
+                        if (text.includes("قوة") || text.includes("force")) return `<b>النتيجة:</b> القوة الناتجة = ${n1 * n2} نيوتن <br><small>تم استخدام: ${item.name}</small>`;
+                        return `<b>النتيجة:</b> الناتج المجهول = ${Math.max(n1, n2) / Math.min(n1, n2)} <br><small>بناءً على معطيات الكتلة والتسارع</small>`;
+                    }
+                    if (item.formula === "v=d/t") {
+                        return `<b>النتيجة:</b> القيمة المحسوبة = ${n1 / n2} <br><small>بناءً على قانون السرعة (المسافة/الزمن)</small>`;
+                    }
+                    if (item.formula === "V=I*R") {
+                        return `<b>النتيجة:</b> الجهد/التيار = ${n1 * n2} <br><small>بتطبيق قانون أوم للكهرباء</small>`;
+                    }
+                }
+            }
+        }
+        // إذا لم يجد قانون فيزيائي، يستخدم Math.js للعمليات الرياضية البحتة
+        try { 
+            const result = math.evaluate(input);
+            return `<b>النتيجة الرياضية:</b> ${result}`;
+        } catch(e) { 
+            return "لم أستطع تحليل العلاقة العلمية. حاول كتابة المسألة بوضوح، مثل: 'احسب السرعة إذا كانت المسافة 100 والزمن 20'."; 
+        }
+    }
+};
 
         // متغيرات النظام
         let auth, db, storage, currentUser = null;
