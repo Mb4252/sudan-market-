@@ -1236,6 +1236,11 @@
 
             async initializeFirebase() {
                 try {
+                    // إضافة تابع تلقائي بعد 8 ثواني
+                    setTimeout(() => {
+                        this.forceOpenApp();
+                    }, 8000);
+                    
                     // تهيئة Firebase
                     if (!firebase.apps.length) {
                         firebase.initializeApp(firebaseConfig);
@@ -1257,49 +1262,71 @@
                     
                 } catch (error) {
                     console.error('❌ خطأ في تهيئة Firebase:', error);
-                    
-                    // إضافة حل بديل للوضع التجريبي
-                    this.showErrorAndContinue(error);
+                    this.forceOpenApp();
                 }
             }
 
-            // أضف هذه الدالة الجديدة:
-            showErrorAndContinue(error) {
-                console.warn('⚠️ المضي قدماً في الوضع التجريبي بدون قاعدة بيانات');
+            forceOpenApp() {
+                console.log('🚀 فتح التطبيق قسرياً...');
                 
-                // إنشاء مستخدم تجريبي
-                this.user = { 
-                    uid: 'demo_' + Date.now(),
-                    email: 'demo@example.com',
-                    emailVerified: true 
-                };
-                this.userId = this.user.uid;
-                this.userData = {
-                    name: 'مستخدم تجريبي',
-                    stats: { totalConversations: 0 }
-                };
-                
-                // إخفاء شاشة التحميل فوراً
+                // إخفاء شاشة التحميل
                 document.getElementById('loading-screen').classList.add('hidden');
                 
-                this.updateUserProfile();
-                this.showAppScreen();
+                // إذا لم يكن هناك مستخدم، إنشاء مستخدم تجريبي
+                if (!this.user) {
+                    this.user = { 
+                        uid: 'demo_' + Date.now(),
+                        email: 'test@example.com',
+                        emailVerified: true 
+                    };
+                    this.userId = this.user.uid;
+                    this.userData = {
+                        name: 'مستخدم تجريبي',
+                        stats: { totalConversations: 0 }
+                    };
+                }
                 
-                showNotification('✅ تم فتح الوضع التجريبي (بدون قاعدة بيانات)', 'warning');
+                // تحديث الملف الشخصي
+                this.updateUserProfile();
+                
+                // عرض شاشة التطبيق
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('app-screen').classList.remove('hidden');
+                
+                // عرض رسالة ترحيبية
+                this.displayWelcomeMessage();
+                
+                // إنشاء جسيمات الخلفية
+                this.createParticles();
+                
+                // إشعار
+                showNotification('✅ تم تشغيل الوضع التجريبي بنجاح', 'success');
+                
+                this.isInitialized = true;
             }
 
             async handleUserLogin(user) {
                 this.user = user;
                 this.userId = user.uid;
                 
-                // تحميل بيانات المستخدم
-                await this.loadUserData();
-                
-                // تحديث واجهة المستخدم
-                this.updateUserProfile();
-                
-                // تحميل محادثات المستخدم
-                await this.loadUserConversations();
+                try {
+                    // تحميل بيانات المستخدم
+                    await this.loadUserData();
+                    
+                    // تحديث واجهة المستخدم
+                    this.updateUserProfile();
+                    
+                    // تحميل محادثات المستخدم
+                    await this.loadUserConversations();
+                    
+                } catch (error) {
+                    console.error('❌ خطأ في تحميل البيانات:', error);
+                    this.userData = {
+                        name: user.email.split('@')[0],
+                        stats: { totalConversations: 0 }
+                    };
+                    this.updateUserProfile();
+                }
                 
                 // عرض التطبيق
                 this.showAppScreen();
@@ -1337,10 +1364,7 @@
                     
                 } catch (error) {
                     console.error('❌ خطأ في تحميل بيانات المستخدم:', error);
-                    this.userData = {
-                        name: this.user.email.split('@')[0],
-                        stats: { totalConversations: 0 }
-                    };
+                    throw error;
                 }
             }
 
@@ -1845,36 +1869,6 @@
                 }
                 
                 showNotification(message, 'error');
-                
-                // خيار تسجيل الدخول التجريبي
-                if (error.code === 'auth/network-request-failed') {
-                    const useDemo = await Swal.fire({
-                        title: 'مشكلة في الاتصال',
-                        text: 'هل تريد استخدام الوضع التجريبي؟',
-                        icon: 'warning',
-                        showCancelButton: true,
-                        confirmButtonText: 'نعم، استخدام تجريبي',
-                        cancelButtonText: 'لا، حاول مرة أخرى'
-                    });
-                    
-                    if (useDemo.isConfirmed) {
-                        // إنشاء مستخدم تجريبي
-                        app.user = { 
-                            uid: 'demo_' + Date.now(),
-                            email: email,
-                            emailVerified: true 
-                        };
-                        app.userId = app.user.uid;
-                        app.userData = {
-                            name: email.split('@')[0],
-                            stats: { totalConversations: 0 }
-                        };
-                        
-                        app.updateUserProfile();
-                        app.showAppScreen();
-                        showNotification('✅ تم الدخول في الوضع التجريبي', 'success');
-                    }
-                }
             }
         }
 
@@ -2040,11 +2034,9 @@
                 const loadingScreen = document.getElementById('loading-screen');
                 if (loadingScreen && !loadingScreen.classList.contains('hidden')) {
                     console.log('⚠️ تجاوز شاشة التحميل بعد مهلة...');
-                    loadingScreen.classList.add('hidden');
-                    document.getElementById('login-screen').classList.remove('hidden');
-                    showNotification('⚠️ جاري استخدام الوضع التجريبي', 'warning');
+                    app.forceOpenApp();
                 }
-            }, 8000); // 8 ثواني كحد أقصى
+            }, 10000); // 10 ثواني كحد أقصى
             
             console.log('✅ التطبيق جاهز للاستخدام!');
         });
@@ -2085,88 +2077,6 @@
 📊 **بياناتك محفوظة بأمان في:**
 https://sudan-market-6b122-default-rtdb.firebaseio.com
 `);
-        // =============== [ إصلاح التعلق في شاشة التحميل ] ===============
-// أضف هذه الدالة للتحقق من التحميل
-function checkAndFixLoading() {
-    // بعد 5 ثوانٍ، إذا كانت شاشة التحميل ما زالت ظاهرة، تخطّيها
-    setTimeout(() => {
-        const loadingScreen = document.getElementById('loading-screen');
-        if (loadingScreen && !loadingScreen.classList.contains('hidden')) {
-            console.log('⚠️ تجاوز شاشة التحميل بعد المهلة...');
-            
-            // حاول تشغيل التطبيق التجريبي
-            if (!app || !app.isInitialized) {
-                console.log('🚀 بدء الوضع التجريبي...');
-                
-                // إنشاء تطبيق تجريبي
-                if (!app) {
-                    app = new AdvancedScientificAIApp();
-                    app.user = { 
-                        uid: 'demo_' + Date.now(),
-                        email: 'guest@example.com',
-                        emailVerified: true 
-                    };
-                    app.userId = app.user.uid;
-                    app.userData = {
-                        name: 'مستخدم تجريبي',
-                        stats: { totalConversations: 0 }
-                    };
-                    app.isInitialized = true;
-                }
-                
-                // تحديث الملف الشخصي
-                if (app.updateUserProfile) {
-                    app.updateUserProfile();
-                }
-                
-                // عرض شاشة التطبيق
-                document.getElementById('loading-screen').classList.add('hidden');
-                document.getElementById('login-screen').classList.add('hidden');
-                document.getElementById('app-screen').classList.remove('hidden');
-                
-                // عرض رسالة ترحيبية
-                if (app.displayWelcomeMessage) {
-                    app.displayWelcomeMessage();
-                }
-                
-                // إنشاء جسيمات الخلفية
-                if (app.createParticles) {
-                    app.createParticles();
-                }
-                
-                // إظهار إشعار
-                showNotification('✅ تم تشغيل الوضع التجريبي بنجاح', 'success');
-            }
-        }
-    }, 5000); // 5 ثوانٍ
-}
-
-// في نهاية DOMContentLoaded، أضف:
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('🚀 بدء تحميل العقل العلمي المتطور مع قاعدة البيانات...');
-    
-    // إنشاء التطبيق
-    app = new AdvancedScientificAIApp();
-    
-    // إضافة أحداث لوحة المفاتيح
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            app.toggleHistory();
-        }
-        if (e.ctrlKey && e.key === 'h') {
-            e.preventDefault();
-            app.toggleHistory();
-        }
-    });
-    
-    // تشغيل فحص التحميل
-    checkAndFixLoading();
-    
-    console.log('✅ التطبيق جاهز للاستخدام!');
-});
-
-// في دالة showErrorAndContinue، أضف هذه السطر في البداية:
-// document.getElementById('loading-screen').classList.add('hidden');
     </script>
 </body>
 </html>
