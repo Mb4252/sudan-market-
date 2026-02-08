@@ -3,2088 +3,531 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>العقل العلمي المتطور | نظام الذكاء الاصطناعي الخارق</title>
+    <title>العقل العلمي الخارق | القمة في الذكاء الاصطناعي</title>
     
-    <!-- خطوط عربية -->
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;500;700;800;900&display=swap" rel="stylesheet">
-    
-    <!-- المكتبات -->
+    <!-- الخطوط والمكتبات الأساسية -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Tajawal:wght@300;500;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- TensorFlow.js للذكاء الاصطناعي -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
-    
-    <!-- Math.js للعمليات الرياضية المعقدة -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
     
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
-    
+
     <style>
         :root {
-            --bg-dark: #0a0a1a;
-            --bg-darker: #050510;
-            --bg-card: #151530;
-            --primary: #00f5ff;
-            --primary-dark: #00b4d8;
-            --accent: #ff006e;
-            --accent-light: #ff4da6;
             --neon-blue: #00f5ff;
             --neon-purple: #9d4edd;
-            --neon-green: #00ff9d;
-            --neon-yellow: #ffd166;
-            --neon-red: #ff4757;
-            --text-main: #ffffff;
-            --text-secondary: #b8b8d1;
-            --text-dim: #8a8aa3;
-            --gradient-ai: linear-gradient(135deg, #00f5ff 0%, #9d4edd 50%, #ff006e 100%);
-            --gradient-dark: linear-gradient(180deg, #0a0a1a 0%, #050510 100%);
-            --gradient-card: linear-gradient(145deg, #151530 0%, #101025 100%);
-            --shadow-glow: 0 0 30px rgba(0, 245, 255, 0.3);
-            --shadow-heavy: 0 10px 40px rgba(0, 0, 0, 0.5);
-            --shadow-accent: 0 0 25px rgba(255, 0, 110, 0.4);
+            --deep-space: #050510;
+            --glass: rgba(255, 255, 255, 0.05);
+            --text-main: #e0e0ff;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Tajawal', sans-serif;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Tajawal', sans-serif; }
 
         body {
-            background: var(--gradient-dark);
+            background: var(--deep-space);
             color: var(--text-main);
-            min-height: 100vh;
-            direction: rtl;
-            overflow-x: hidden;
+            overflow: hidden;
+            height: 100vh;
         }
 
-        body::before {
-            content: '';
+        /* خلفية الجسيمات المتحركة */
+        #bg-canvas {
             position: fixed;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
-            background: 
-                radial-gradient(circle at 20% 30%, rgba(0, 245, 255, 0.05) 0%, transparent 50%),
-                radial-gradient(circle at 80% 70%, rgba(157, 78, 221, 0.05) 0%, transparent 50%),
-                radial-gradient(circle at 40% 80%, rgba(255, 0, 110, 0.05) 0%, transparent 50%);
             z-index: -1;
-        }
-
-        .hidden {
-            display: none !important;
         }
 
         /* شاشة التحميل */
-        #loading-screen {
+        .loader-overlay {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: var(--gradient-dark);
+            inset: 0;
+            background: var(--deep-space);
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            z-index: 9999;
+            z-index: 10000;
+            transition: 0.8s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        .ai-loader {
-            width: 80px;
-            height: 80px;
-            border: 4px solid transparent;
+        .loader-circle {
+            width: 100px;
+            height: 100px;
+            border: 4px solid var(--glass);
             border-top: 4px solid var(--neon-blue);
-            border-right: 4px solid var(--neon-purple);
-            border-bottom: 4px solid var(--accent);
-            border-left: 4px solid var(--neon-green);
             border-radius: 50%;
-            animation: spin 1.5s linear infinite;
+            animation: spin 1s linear infinite;
+            filter: drop-shadow(0 0 15px var(--neon-blue));
         }
 
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
 
         /* شاشة تسجيل الدخول */
         #login-screen {
-            min-height: 100vh;
+            height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
-            position: relative;
         }
 
-        .login-container {
-            width: 100%;
-            max-width: 500px;
-            background: var(--gradient-card);
+        .glass-card {
+            background: rgba(15, 15, 35, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 245, 255, 0.2);
             border-radius: 30px;
-            padding: 50px 40px;
-            border: 3px solid rgba(0, 245, 255, 0.15);
-            box-shadow: var(--shadow-glow), var(--shadow-heavy);
-            position: relative;
-            z-index: 1;
-            backdrop-filter: blur(10px);
+            padding: 40px;
+            width: 100%;
+            max-width: 450px;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+            text-align: center;
         }
 
-        /* الشاشة الرئيسية */
+        .input-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .input-group i {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--neon-blue);
+        }
+
+        .modern-input {
+            width: 100%;
+            padding: 15px 45px 15px 15px;
+            background: var(--glass);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            color: white;
+            outline: none;
+            transition: 0.3s;
+        }
+
+        .modern-input:focus { border-color: var(--neon-blue); box-shadow: 0 0 15px rgba(0,245,255,0.2); }
+
+        .btn-glow {
+            width: 100%;
+            padding: 15px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(45deg, var(--neon-blue), var(--neon-purple));
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-glow:hover { transform: scale(1.02); filter: brightness(1.2); }
+
+        /* الواجهة الرئيسية */
         #app-screen {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
+            display: none;
+            height: 100vh;
+            grid-template-rows: auto 1fr auto;
         }
 
         header {
-            background: rgba(10, 10, 25, 0.95);
-            backdrop-filter: blur(20px);
-            padding: 20px 30px;
-            border-bottom: 2px solid rgba(0, 245, 255, 0.1);
-            position: sticky;
-            top: 0;
-            z-index: 1000;
-        }
-
-        .chat-container {
-            flex: 1;
+            padding: 20px 40px;
+            background: rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
             display: flex;
-            flex-direction: column;
-            max-width: 900px;
-            margin: 0 auto;
-            width: 100%;
-            padding: 20px;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--glass);
         }
 
-        .chat-messages {
-            flex: 1;
+        .chat-area {
             overflow-y: auto;
-            padding: 20px;
+            padding: 30px;
             display: flex;
             flex-direction: column;
             gap: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+            width: 100%;
         }
 
         .message {
-            max-width: 80%;
-            padding: 15px 20px;
+            max-width: 85%;
+            padding: 18px 25px;
             border-radius: 20px;
+            line-height: 1.7;
             position: relative;
-            animation: fadeIn 0.3s ease;
+            animation: slideIn 0.4s ease-out forwards;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
-        .user-message {
-            background: var(--gradient-ai);
+        .user-msg {
             align-self: flex-end;
-            border-bottom-right-radius: 5px;
-            margin-right: 10px;
+            background: linear-gradient(135deg, #2d3436 0%, #000000 100%);
+            border: 1px solid var(--neon-blue);
+            border-bottom-right-radius: 2px;
         }
 
-        .ai-message {
-            background: var(--gradient-card);
-            border: 1px solid rgba(0, 245, 255, 0.2);
+        .ai-msg {
             align-self: flex-start;
-            border-bottom-left-radius: 5px;
-            margin-left: 10px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--neon-purple);
+            border-bottom-left-radius: 2px;
         }
 
-        .ai-thinking {
+        .input-container {
+            padding: 25px 40px;
+            background: rgba(0,0,0,0.5);
+        }
+
+        .input-wrapper {
+            max-width: 1000px;
+            margin: 0 auto;
             display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 20px;
-            background: rgba(0, 245, 255, 0.1);
-            border-radius: 15px;
-            border: 1px solid rgba(0, 245, 255, 0.3);
-            align-self: flex-start;
-            max-width: 200px;
-        }
-
-        .thinking-dots {
-            display: flex;
-            gap: 5px;
-        }
-
-        .thinking-dots span {
-            width: 8px;
-            height: 8px;
-            background: var(--neon-blue);
-            border-radius: 50%;
-            animation: bounce 1.4s infinite ease-in-out;
-        }
-
-        .thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
-        .thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
-
-        @keyframes bounce {
-            0%, 80%, 100% { transform: scale(0); }
-            40% { transform: scale(1.0); }
-        }
-
-        .chat-input-container {
-            padding: 20px;
-            background: rgba(10, 10, 25, 0.8);
-            backdrop-filter: blur(10px);
-            border-top: 1px solid rgba(0, 245, 255, 0.1);
+            gap: 15px;
+            background: var(--glass);
+            padding: 10px;
             border-radius: 20px;
-            margin-top: 20px;
+            border: 1px solid rgba(0,245,255,0.2);
         }
 
-        .chat-input {
-            display: flex;
-            gap: 10px;
-        }
-
-        .input-field {
+        #user-input {
             flex: 1;
-            padding: 15px 20px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 2px solid rgba(0, 245, 255, 0.2);
-            border-radius: 15px;
+            background: transparent;
+            border: none;
             color: white;
+            padding: 10px;
             font-size: 16px;
             resize: none;
-            min-height: 60px;
-            max-height: 200px;
-        }
-
-        .input-field:focus {
+            max-height: 150px;
             outline: none;
-            border-color: var(--neon-blue);
-            box-shadow: 0 0 15px rgba(0, 245, 255, 0.3);
         }
 
-        .send-btn {
-            background: var(--gradient-ai);
+        .action-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 15px;
             border: none;
-            border-radius: 15px;
-            width: 60px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .send-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-glow);
-        }
-
-        .ai-intelligence-display {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(10, 10, 25, 0.9);
-            padding: 15px;
-            border-radius: 15px;
-            border: 2px solid rgba(0, 245, 255, 0.3);
-            backdrop-filter: blur(10px);
-            z-index: 100;
-        }
-
-        .intelligence-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            font-size: 12px;
-        }
-
-        .intelligence-item:last-child {
-            margin-bottom: 0;
-        }
-
-        .intelligence-label {
-            color: var(--text-secondary);
-        }
-
-        .intelligence-value {
-            color: var(--neon-blue);
-            font-weight: bold;
-        }
-
-        .markdown-content {
-            line-height: 1.8;
-        }
-
-        .markdown-content h3 {
-            color: var(--neon-blue);
-            margin: 15px 0 10px 0;
-        }
-
-        .markdown-content ul {
-            padding-right: 20px;
-            margin: 10px 0;
-        }
-
-        .markdown-content li {
-            margin-bottom: 8px;
-            position: relative;
-        }
-
-        .markdown-content li:before {
-            content: "•";
-            color: var(--neon-blue);
-            font-weight: bold;
-            position: absolute;
-            right: -15px;
-        }
-
-        .message-time {
-            font-size: 11px;
-            color: var(--text-dim);
-            margin-top: 5px;
-            text-align: left;
-        }
-
-        .user-message .message-time {
-            text-align: right;
-        }
-
-        .message-content {
-            word-wrap: break-word;
-            line-height: 1.6;
-        }
-
-        .user-profile {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .user-avatar {
-            width: 40px;
-            height: 40px;
-            background: var(--gradient-ai);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-        }
-
-        .user-info {
-            text-align: right;
-        }
-
-        .user-name {
-            color: var(--neon-blue);
-            font-weight: bold;
-            font-size: 14px;
-        }
-
-        .user-level {
-            color: var(--text-secondary);
-            font-size: 12px;
-        }
-
-        .history-sidebar {
-            position: fixed;
-            left: 0;
-            top: 0;
-            height: 100vh;
-            width: 300px;
-            background: rgba(10, 10, 25, 0.95);
-            backdrop-filter: blur(20px);
-            border-right: 2px solid rgba(0, 245, 255, 0.1);
-            padding: 20px;
-            overflow-y: auto;
-            transform: translateX(-100%);
-            transition: transform 0.3s ease;
-            z-index: 900;
-        }
-
-        .history-sidebar.active {
-            transform: translateX(0);
-        }
-
-        .history-item {
-            background: rgba(0, 245, 255, 0.1);
-            border: 1px solid rgba(0, 245, 255, 0.2);
-            border-radius: 10px;
-            padding: 10px;
-            margin-bottom: 10px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .history-item:hover {
-            background: rgba(0, 245, 255, 0.2);
-            border-color: var(--neon-blue);
-        }
-
-        .history-date {
-            color: var(--text-secondary);
-            font-size: 12px;
-        }
-
-        .history-preview {
-            color: white;
-            font-size: 14px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        /* تأثيرات الجسيمات */
-        .particles {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: -1;
-        }
-
-        .particle {
-            position: absolute;
             background: var(--neon-blue);
-            border-radius: 50%;
-            animation: floatParticle 20s infinite linear;
-        }
-
-        @keyframes floatParticle {
-            0% {
-                transform: translateY(100vh) translateX(0) rotate(0deg);
-                opacity: 0;
-            }
-            10% {
-                opacity: 1;
-            }
-            90% {
-                opacity: 1;
-            }
-            100% {
-                transform: translateY(-100px) translateX(100px) rotate(360deg);
-                opacity: 0;
-            }
-        }
-
-        .btn {
-            padding: 8px 15px;
-            border-radius: 10px;
-            border: none;
+            color: var(--deep-space);
             cursor: pointer;
-            font-weight: bold;
-            transition: all 0.3s;
-            display: inline-flex;
+            transition: 0.3s;
+        }
+
+        .action-btn:hover { transform: rotate(-10deg) scale(1.1); }
+
+        .hidden { display: none !important; }
+
+        /* ذكاء مضاف: شريط تحليل */
+        .thinking-process {
+            font-size: 12px;
+            color: var(--neon-blue);
+            margin-bottom: 10px;
+            display: flex;
             align-items: center;
             gap: 8px;
         }
 
-        .btn-primary {
-            background: var(--gradient-ai);
-            color: white;
+        .pulse {
+            width: 8px;
+            height: 8px;
+            background: var(--neon-blue);
+            border-radius: 50%;
+            animation: pulse 1s infinite;
         }
 
-        .btn-secondary {
-            background: rgba(0, 245, 255, 0.1);
-            border: 2px solid rgba(0, 245, 255, 0.3);
-            color: var(--neon-blue);
-        }
-
-        .btn-danger {
-            background: rgba(255, 0, 110, 0.1);
-            border: 2px solid rgba(255, 0, 110, 0.3);
-            color: var(--accent);
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 12px 15px;
-            background: rgba(10, 10, 25, 0.7);
-            border: 2px solid rgba(0, 245, 255, 0.3);
-            border-radius: 12px;
-            color: white;
-            font-size: 16px;
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: var(--neon-blue);
-            box-shadow: 0 0 15px rgba(0, 245, 255, 0.4);
-        }
-
-        /* تحسينات للشاشات الصغيرة */
-        @media (max-width: 768px) {
-            .chat-container {
-                padding: 10px;
-            }
-            
-            .message {
-                max-width: 90%;
-            }
-            
-            .ai-intelligence-display {
-                display: none;
-            }
-            
-            .chat-input {
-                flex-direction: column;
-            }
-            
-            .input-field {
-                min-height: 50px;
-            }
-            
-            .send-btn {
-                width: 100%;
-                height: 50px;
-                margin-top: 10px;
-            }
-            
-            .history-sidebar {
-                width: 100%;
-            }
-        }
+        @keyframes pulse { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
     </style>
 </head>
 <body>
+
+    <canvas id="bg-canvas"></canvas>
+
     <!-- شاشة التحميل -->
-    <div id="loading-screen">
-        <div class="loading-content" style="text-align: center;">
-            <div class="ai-loader"></div>
-            <div style="color: var(--neon-blue); font-size: 24px; font-weight: 700; margin: 20px 0;">
-                جاري تفعيل العقل العلمي المتطور
+    <div class="loader-overlay" id="loader">
+        <div class="loader-circle"></div>
+        <h2 style="margin-top: 25px; font-family: 'Orbitron'; letter-spacing: 5px; color: var(--neon-blue);">NEURAL CORE</h2>
+        <p style="color: var(--glass); margin-top: 10px;">جاري مزامنة الوعي الاصطناعي...</p>
+    </div>
+
+    <!-- شاشة الدخول -->
+    <div id="login-screen">
+        <div class="glass-card">
+            <i class="fas fa-brain" style="font-size: 60px; color: var(--neon-blue); margin-bottom: 20px;"></i>
+            <h1 style="margin-bottom: 10px;">العقل العلمي المتطور</h1>
+            <p style="color: #888; margin-bottom: 30px;">نظام الإدراك الفائق v5.0</p>
+            
+            <div class="input-group">
+                <i class="fas fa-envelope"></i>
+                <input type="email" id="email" class="modern-input" placeholder="البريد الإلكتروني">
             </div>
-            <div style="color: var(--text-secondary);">تهيئة الذكاء الاصطناعي العميق...</div>
+            
+            <div class="input-group">
+                <i class="fas fa-lock"></i>
+                <input type="password" id="pass" class="modern-input" placeholder="كلمة المرور">
+            </div>
+            
+            <button class="btn-glow" onclick="Auth.login()" style="margin-bottom: 15px;">تسجيل الدخول</button>
+            <button class="btn-glow" style="background: var(--glass); border: 1px solid var(--neon-blue);" onclick="Auth.guestMode()">الدخول كضيف</button>
+            
+            <p style="margin-top: 20px; font-size: 13px; color: #666;">نسيت كلمة المرور؟ اتصل بالنظام المركزي</p>
         </div>
     </div>
 
-    <!-- شاشة تسجيل الدخول -->
-    <div id="login-screen" class="hidden">
-        <div class="login-container">
-            <div style="text-align: center; margin-bottom: 40px;">
-                <i class="fas fa-brain" style="font-size: 80px; background: var(--gradient-ai); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i>
-                <h1 style="font-size: 42px; background: var(--gradient-ai); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 20px 0;">العقل العلمي المتطور</h1>
-                <p style="color: var(--text-secondary); font-size: 18px;">نظام الذكاء الاصطناعي الخارق مع قاعدة بيانات متكاملة</p>
-            </div>
-            
-            <div class="form-group">
-                <input type="email" id="login-email" class="form-control" placeholder="البريد الإلكتروني">
-            </div>
-            
-            <div class="form-group">
-                <input type="password" id="login-password" class="form-control" placeholder="كلمة المرور">
-            </div>
-            
-            <button class="btn btn-primary" onclick="login()" style="width: 100%; margin: 20px 0; padding: 15px;">
-                <i class="fas fa-sign-in-alt"></i> تسجيل الدخول
-            </button>
-            
-            <button class="btn btn-secondary" onclick="showRegister()" style="width: 100%; padding: 15px;">
-                <i class="fas fa-user-plus"></i> إنشاء حساب جديد
-            </button>
-            
-            <div style="text-align: center; margin-top: 30px; color: var(--text-dim);">
-                <p>النظام يحفظ جميع محادثاتك ويوفرها على جميع أجهزتك</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- الشاشة الرئيسية -->
-    <div id="app-screen" class="hidden">
+    <!-- واجهة التطبيق -->
+    <div id="app-screen">
         <header>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="display: flex; align-items: center; gap: 15px;">
-                    <button onclick="toggleHistory()" class="btn btn-secondary">
-                        <i class="fas fa-history"></i> التاريخ
-                    </button>
-                    <div style="width: 50px; height: 50px; background: var(--gradient-ai); border-radius: 15px; display: flex; align-items: center; justify-content: center;">
-                        <i class="fas fa-brain" style="color: white; font-size: 24px;"></i>
-                    </div>
-                    <div>
-                        <h2 style="background: var(--gradient-ai); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0;">العقل العلمي المتطور</h2>
-                        <p style="color: var(--text-secondary); font-size: 12px; margin: 0;">نظام الذكاء الاصطناعي الخارق - جميع محادثاتك محفوظة</p>
-                    </div>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div style="padding: 10px; background: var(--neon-blue); color: #000; border-radius: 10px;">
+                    <i class="fas fa-microchip"></i>
                 </div>
-                
-                <div class="user-profile" id="user-profile">
-                    <div class="user-info">
-                        <div class="user-name" id="user-name">جار التحميل...</div>
-                        <div class="user-level" id="user-level">المستوى: 1</div>
-                    </div>
-                    <div class="user-avatar" id="user-avatar">
-                        <i class="fas fa-user"></i>
-                    </div>
-                    <button onclick="logout()" class="btn btn-danger">
-                        <i class="fas fa-sign-out-alt"></i>
-                    </button>
+                <div>
+                    <h3 style="font-family: 'Orbitron';">SCIENTIFIC MIND AI</h3>
+                    <span id="status" style="font-size: 12px; color: var(--neon-blue);">● متصل بالنواة</span>
                 </div>
+            </div>
+            <div style="display: flex; gap: 15px;">
+                <button class="action-btn" style="background: var(--glass); color: white;" onclick="UI.clearChat()">
+                    <i class="fas fa-trash"></i>
+                </button>
+                <button class="action-btn" style="background: #ff4757; color: white;" onclick="Auth.logout()">
+                    <i class="fas fa-power-off"></i>
+                </button>
             </div>
         </header>
 
-        <!-- الشريط الجانبي للتاريخ -->
-        <div class="history-sidebar" id="history-sidebar">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="color: var(--neon-blue);"><i class="fas fa-history"></i> تاريخ المحادثات</h3>
-                <button onclick="toggleHistory()" class="btn btn-secondary" style="padding: 5px 10px;">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div id="history-list">
-                <!-- قائمة المحادثات تظهر هنا -->
-            </div>
-            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(0,245,255,0.1);">
-                <button onclick="clearAllHistory()" class="btn btn-danger" style="width: 100%;">
-                    <i class="fas fa-trash"></i> مسح كل التاريخ
-                </button>
-            </div>
+        <div class="chat-area" id="chat-box">
+            <!-- الرسائل ستظهر هنا -->
         </div>
 
-        <!-- منطقة المحادثة -->
-        <div class="chat-container">
-            <div class="chat-messages" id="chat-messages">
-                <!-- الرسائل تظهر هنا ديناميكياً -->
+        <div class="input-container">
+            <div class="input-wrapper">
+                <textarea id="user-input" placeholder="اسأل عن أي معضلة علمية، رياضية أو فيزيائية..." rows="1"></textarea>
+                <button class="action-btn" id="send-btn" onclick="Core.handleMessage()">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
             </div>
-
-            <!-- منطقة الإدخال -->
-            <div class="chat-input-container">
-                <div class="chat-input">
-                    <textarea 
-                        id="user-input" 
-                        class="input-field" 
-                        placeholder="اكتب مسألتك العلمية هنا... (اضغط Ctrl+Enter للإرسال)"
-                        rows="2"
-                        onkeydown="handleEnterKey(event)"
-                    ></textarea>
-                    <button class="send-btn" onclick="sendMessage()">
-                        <i class="fas fa-paper-plane" style="color: white; font-size: 20px;"></i>
-                    </button>
-                </div>
-                <div style="color: var(--text-dim); font-size: 12px; text-align: center; margin-top: 10px;">
-                    <i class="fas fa-database"></i> جميع محادثاتك محفوظة تلقائياً في قاعدة البيانات
-                </div>
-            </div>
-        </div>
-
-        <!-- عرض حالة الذكاء -->
-        <div class="ai-intelligence-display" id="intelligence-display">
-            <div class="intelligence-item">
-                <span class="intelligence-label">مستوى الذكاء:</span>
-                <span class="intelligence-value" id="ai-iq">IQ: 195</span>
-            </div>
-            <div class="intelligence-item">
-                <span class="intelligence-label">الدقة:</span>
-                <span class="intelligence-value" id="ai-accuracy">99.7%</span>
-            </div>
-            <div class="intelligence-item">
-                <span class="intelligence-label">المحادثات المحفوظة:</span>
-                <span class="intelligence-value" id="saved-conversations">0</span>
-            </div>
+            <p style="text-align: center; font-size: 11px; color: #555; margin-top: 10px;">
+                النظام مدعوم بمحرك معالجة منطقية متطور يحلل ملايين الاحتمالات في الثانية
+            </p>
         </div>
     </div>
 
-    <!-- تأثيرات الجسيمات -->
-    <div class="particles" id="particles"></div>
-
     <script>
-        // =============== [ نظام الذكاء الاصطناعي المتطور ] ===============
-        class DeepScientificAI {
-            constructor() {
-                this.knowledgeBase = this.initializeKnowledgeBase();
-                this.conversationHistory = [];
-                this.userLearningPattern = {};
-                this.analysisDepth = 8;
-                this.confidenceLevel = 0.997;
-                this.totalProblemsSolved = 0;
-                this.averageConfidence = 0.95;
-            }
-
-            initializeKnowledgeBase() {
-                return {
-                    mathematics: {
-                        algebra: this.generateAlgebraKnowledge(),
-                        calculus: this.generateCalculusKnowledge(),
-                        geometry: this.generateGeometryKnowledge()
-                    },
-                    physics: {
-                        mechanics: this.generateMechanicsKnowledge(),
-                        electromagnetism: this.generateElectromagnetismKnowledge(),
-                        thermodynamics: this.generateThermodynamicsKnowledge()
-                    },
-                    problemSolving: this.generateProblemSolvingStrategies(),
-                    linguistic: this.generateLinguisticKnowledge()
-                };
-            }
-
-            generateAlgebraKnowledge() {
-                return {
-                    linear: {
-                        formula: "ax + b = 0 → x = -b/a",
-                        variations: [
-                            "ax + b = c → x = (c - b)/a",
-                            "a(x + b) = c → x = c/a - b"
-                        ]
-                    },
-                    quadratic: {
-                        formula: "ax² + bx + c = 0",
-                        solution: "x = [-b ± √(b² - 4ac)] / 2a",
-                        discriminant: "Δ = b² - 4ac"
-                    },
-                    polynomial: {
-                        factoring: "تحليل إلى عوامل",
-                        synthetic: "القسمة التركيبية",
-                        rationalRoot: "نظرية الجذور النسبية"
-                    }
-                };
-            }
-
-            generateCalculusKnowledge() {
-                return {
-                    derivatives: {
-                        rules: {
-                            power: "d/dx[x^n] = n*x^(n-1)",
-                            product: "d/dx[uv] = u'v + uv'",
-                            quotient: "d/dx[u/v] = (u'v - uv')/v²",
-                            chain: "d/dx[f(g(x))] = f'(g(x)) * g'(x)"
-                        },
-                        applications: ["معدل التغير", "الميل", "القيم القصوى"]
-                    },
-                    integrals: {
-                        indefinite: "∫f(x)dx = F(x) + C",
-                        definite: "∫_a^b f(x)dx = F(b) - F(a)",
-                        methods: ["التعويض", "الأجزاء", "الكسور الجزئية"]
-                    }
-                };
-            }
-
-            generateGeometryKnowledge() {
-                return {
-                    shapes: {
-                        triangle: {
-                            area: "½ × القاعدة × الارتفاع",
-                            pythagorean: "a² + b² = c²"
-                        },
-                        circle: {
-                            area: "πr²",
-                            circumference: "2πr"
-                        }
-                    },
-                    volumes: {
-                        sphere: "⁴/₃πr³",
-                        cylinder: "πr²h",
-                        cone: "⅓πr²h"
-                    }
-                };
-            }
-
-            generateMechanicsKnowledge() {
-                return {
-                    newtonLaws: {
-                        first: "الجسم الساكن يبقى ساكناً والمتحرك يبقى متحركاً",
-                        second: "F = ma",
-                        third: "لكل فعل رد فعل"
-                    },
-                    kinematics: {
-                        equations: [
-                            "v = u + at",
-                            "s = ut + ½at²",
-                            "v² = u² + 2as"
-                        ]
-                    },
-                    energy: {
-                        kinetic: "KE = ½mv²",
-                        potential: "PE = mgh",
-                        conservation: "الطاقة الكلية تبقى ثابتة"
-                    }
-                };
-            }
-
-            generateProblemSolvingStrategies() {
-                return {
-                    understand: "فهم المسألة وتحليل المعطيات",
-                    plan: "تخطيط الاستراتيجية المناسبة",
-                    solve: "تنفيذ الحل خطوة بخطوة",
-                    check: "التحقق من النتيجة والمنطق"
-                };
-            }
-
-            generateLinguisticKnowledge() {
-                return {
-                    arabic: {
-                        scientificTerms: this.generateArabicScientificTerms(),
-                        expressions: this.generateArabicExpressions()
-                    }
-                };
-            }
-
-            generateArabicScientificTerms() {
-                return [
-                    "احسب", "أوجد", "برهن", "استنتج", "حل", "قارن",
-                    "معادلة", "متغير", "ثابت", "دالة", "مجال", "مدى",
-                    "تكامل", "تفاضل", "مشتق", "نهاية", "متسلسلة"
-                ];
-            }
-
-            generateArabicExpressions() {
-                return [
-                    "بما أن ... فإن ...",
-                    "من المعطيات نستنتج ...",
-                    "بتطبيق القانون ... نحصل على ...",
-                    "وبالتالي تكون النتيجة ..."
-                ];
-            }
-
-            async processQuery(input) {
-                try {
-                    this.totalProblemsSolved++;
-                    
-                    const analysis = this.analyzeQuery(input);
-                    const domain = this.identifyDomain(input);
-                    const difficulty = this.analyzeDifficulty(input);
-                    
-                    const solution = await this.solveProblem(input, domain, difficulty);
-                    
-                    this.updateConfidence(solution.confidence);
-                    
-                    return {
-                        success: true,
-                        response: solution.response,
-                        analysis: analysis,
-                        solution: solution,
-                        confidence: solution.confidence,
-                        domain: domain,
-                        timestamp: new Date().toISOString()
-                    };
-
-                } catch (error) {
-                    console.error('❌ خطأ في معالجة الاستعلام:', error);
-                    
-                    return {
-                        success: false,
-                        response: this.generateFallbackResponse(input),
-                        confidence: 0.5,
-                        timestamp: new Date().toISOString()
-                    };
-                }
-            }
-
-            analyzeQuery(text) {
-                return {
-                    length: text.length,
-                    wordCount: text.split(/\s+/).length,
-                    containsFormula: this.containsFormula(text),
-                    containsNumbers: (text.match(/\d+/g) || []).length,
-                    questionType: this.detectQuestionType(text),
-                    complexity: this.calculateComplexity(text)
-                };
-            }
-
-            containsFormula(text) {
-                const patterns = [
-                    /[a-zA-Z]\s*=\s*[^=]+/,
-                    /[a-zA-Z]²/,
-                    /√[^ ]+/,
-                    /∫[^ ]+/,
-                    /∑[^ ]+/,
-                    /sin|cos|tan|log|ln|exp/i
-                ];
-                return patterns.some(pattern => pattern.test(text));
-            }
-
-            detectQuestionType(text) {
-                if (/احسب|أوجد|ما هو|كم/i.test(text)) return 'calculation';
-                if (/اشرح|وضح|عرف|ما معنى/i.test(text)) return 'explanation';
-                if (/برهن|أثبت|استنتج/i.test(text)) return 'proof';
-                return 'general';
-            }
-
-            calculateComplexity(text) {
-                let score = 0;
-                score += Math.min(text.length / 100, 3);
-                score += Math.min((text.match(/\d+/g) || []).length / 5, 2);
-                if (this.containsFormula(text)) score += 3;
-                
-                const advancedTerms = ['تكامل', 'تفاضل', 'مشتق', 'نهاية', 'مصفوفة'];
-                advancedTerms.forEach(term => {
-                    if (text.includes(term)) score += 2;
-                });
-
-                return Math.min(score, 10);
-            }
-
-            identifyDomain(text) {
-                const domains = {
-                    mathematics: ['رياضيات', 'جبر', 'هندسة', 'تفاضل', 'تكامل', 'حساب'],
-                    physics: ['فيزياء', 'قوة', 'كتلة', 'تسارع', 'سرعة', 'طاقة'],
-                    chemistry: ['كيمياء', 'مول', 'تفاعل', 'عنصر', 'مركب', 'ذرة']
-                };
-
-                let maxMatches = 0;
-                let identified = 'general';
-
-                for (const [domain, keywords] of Object.entries(domains)) {
-                    let matches = 0;
-                    keywords.forEach(keyword => {
-                        if (text.toLowerCase().includes(keyword.toLowerCase())) matches++;
-                    });
-                    
-                    if (matches > maxMatches) {
-                        maxMatches = matches;
-                        identified = domain;
-                    }
-                }
-
-                return identified;
-            }
-
-            analyzeDifficulty(text) {
-                const complexity = this.calculateComplexity(text);
-                if (complexity >= 7) return 'expert';
-                if (complexity >= 4) return 'intermediate';
-                return 'beginner';
-            }
-
-            async solveProblem(query, domain, difficulty) {
-                const solution = {
-                    steps: [],
-                    finalAnswer: '',
-                    explanation: '',
-                    confidence: this.confidenceLevel,
-                    understandingLevel: 0
-                };
-
-                try {
-                    // الخطوة 1: فهم المسألة
-                    solution.steps.push(`🔍 **فهم المسألة**: تحليل النص وتحديد المطلوب`);
-
-                    // الخطوة 2: اختيار الاستراتيجية
-                    const strategy = this.selectStrategy(domain, difficulty);
-                    solution.steps.push(`🎯 **الاستراتيجية**: ${strategy}`);
-
-                    // الخطوة 3: حل المسألة
-                    const solved = await this.generateSolution(query, domain);
-                    solution.steps = solution.steps.concat(solved.steps);
-                    
-                    // الخطوة 4: النتيجة
-                    solution.finalAnswer = solved.answer;
-                    solution.explanation = solved.explanation;
-                    
-                    // الخطوة 5: التحقق
-                    solution.verification = this.verifySolution(solved);
-                    if (solution.verification) {
-                        solution.steps.push(`✅ **التحقق**: ${solution.verification}`);
-                    }
-
-                    // تحديث المستوى
-                    solution.understandingLevel = this.calculateUnderstanding(solution);
-                    
-                    // توليد الرد
-                    solution.response = this.formatResponse(solution, query);
-
-                } catch (error) {
-                    console.error('❌ خطأ في حل المسألة:', error);
-                    solution.response = this.generateFallbackResponse(query);
-                    solution.confidence = 0.5;
-                }
-
-                return solution;
-            }
-
-            selectStrategy(domain, difficulty) {
-                const strategies = {
-                    mathematics: {
-                        beginner: "الحل البسيط باستخدام القواعد الأساسية",
-                        intermediate: "الحل المتوسط باستخدام المفاهيم المتقدمة",
-                        expert: "الحل المتطور باستخدام النظريات المعقدة"
-                    },
-                    physics: {
-                        beginner: "تطبيق قوانين نيوتن الأساسية",
-                        intermediate: "تحليل حركي وديناميكي",
-                        expert: "حل نظم معقدة باستخدام الرياضيات المتقدمة"
-                    }
-                };
-
-                return strategies[domain]?.[difficulty] || "الحل المناسب للمسألة";
-            }
-
-            async generateSolution(query, domain) {
-                // محاولة حل المسألة
-                let answer = '';
-                let explanation = '';
-                const steps = [];
-
-                try {
-                    if (domain === 'mathematics') {
-                        // حل رياضي
-                        answer = await this.solveMathProblem(query);
-                        explanation = "تم حل المسألة باستخدام القوانين الرياضية المناسبة";
-                        steps.push("🧮 **الحل الرياضي**: تطبيق القوانين والمعادلات");
-                        
-                    } else if (domain === 'physics') {
-                        // حل فيزيائي
-                        answer = await this.solvePhysicsProblem(query);
-                        explanation = "تم تطبيق القوانين الفيزيائية المناسبة";
-                        steps.push("⚛️ **الحل الفيزيائي**: تطبيق قوانين الفيزياء");
-                        
-                    } else {
-                        // حل عام
-                        answer = await this.solveGeneralProblem(query);
-                        explanation = "تم تحليل المسألة وحلها باستخدام المنطق العلمي";
-                        steps.push("🔬 **الحل العلمي**: التحليل المنطقي والعلمي");
-                    }
-
-                } catch (error) {
-                    answer = "تعذر حل المسألة بالطريقة المعتادة، جرب صياغة مختلفة";
-                    explanation = "المسألة تحتاج إلى مزيد من التوضيح أو المعلومات";
-                }
-
-                return { answer, explanation, steps };
-            }
-
-            async solveMathProblem(query) {
-                try {
-                    // تنظيف التعبير الرياضي
-                    let expression = query
-                        .replace(/احسب|أوجد|ما هو|كم/i, '')
-                        .replace(/يساوي|يعادل|=/, '=')
-                        .trim();
-
-                    // إذا كان هناك تعبير يمكن حسابه
-                    if (expression.match(/[\d\+\-\*\/\^\(\)]/)) {
-                        // استبدال الرموز العربية
-                        expression = expression
-                            .replace(/×/g, '*')
-                            .replace(/÷/g, '/')
-                            .replace(/²/g, '^2')
-                            .replace(/³/g, '^3')
-                            .replace(/π/g, 'pi')
-                            .replace(/جذر|sqrt/gi, 'sqrt');
-
-                        // حساب النتيجة
-                        const result = math.evaluate(expression);
-                        return `النتيجة: ${this.formatNumber(result)}`;
-                    }
-
-                    // إذا كانت معادلة
-                    if (expression.includes('=')) {
-                        return "لحل المعادلة، أحتاج إلى مزيد من التفاصيل عن المتغيرات";
-                    }
-
-                    return "تم تحليل المسألة الرياضية بنجاح";
-                    
-                } catch (error) {
-                    return "تعذر حل المسألة الرياضية، تأكد من صحة الصياغة";
-                }
-            }
-
-            async solvePhysicsProblem(query) {
-                // البحث عن قوانين فيزيائية
-                const laws = {
-                    'قانون نيوتن الثاني': 'F = m × a',
-                    'قانون السرعة': 'v = d ÷ t',
-                    'قانون أوم': 'V = I × R',
-                    'الطاقة الحركية': 'KE = ½ × m × v²'
-                };
-
-                for (const [law, formula] of Object.entries(laws)) {
-                    if (query.includes(law)) {
-                        return `${law}: ${formula}`;
-                    }
-                }
-
-                return "تم تحليل المسألة الفيزيائية، أحتاج إلى قيم محددة للحساب";
-            }
-
-            async solveGeneralProblem(query) {
-                return "تم تحليل المسألة العلمية بنجاح. النتيجة تعتمد على تطبيق المبادئ العلمية المناسبة.";
-            }
-
-            formatNumber(num) {
-                if (typeof num !== 'number') return num;
-                
-                if (Math.abs(num) < 0.0001 || Math.abs(num) > 1000000) {
-                    return num.toExponential(4);
-                }
-                
-                if (Number.isInteger(num)) {
-                    return num.toString();
-                }
-                
-                return num.toFixed(4).replace(/\.?0+$/, '');
-            }
-
-            verifySolution(solution) {
-                if (!solution.answer) return "الحل يحتاج إلى مزيد من التحقق";
-                
-                // التحقق البسيط
-                if (solution.answer.includes('خطأ') || solution.answer.includes('خطأ')) {
-                    return "⚠️ الحل يحتوي على احتمالية خطأ";
-                }
-                
-                return "✅ الحل صحيح منطقياً وعلمياً";
-            }
-
-            calculateUnderstanding(solution) {
-                let level = 0;
-                if (solution.steps.length > 2) level += 2;
-                if (solution.confidence > 0.9) level += 2;
-                if (solution.verification?.includes('✅')) level += 1;
-                return Math.min(level, 10);
-            }
-
-            updateConfidence(newConfidence) {
-                this.averageConfidence = (this.averageConfidence * (this.totalProblemsSolved - 1) + newConfidence) / this.totalProblemsSolved;
-                this.confidenceLevel = Math.min(this.averageConfidence * 1.05, 0.999);
-            }
-
-            formatResponse(solution, query) {
-                let response = `# 🧠 **حل مسألتك**\n\n`;
-                
-                response += `**المسألة:** ${query}\n\n`;
-                
-                response += `## 📊 **ملخص الحل**\n`;
-                response += `- **المجال:** ${solution.domain || 'علمي'}\n`;
-                response += `- **ثقة النظام:** ${(solution.confidence * 100).toFixed(1)}%\n`;
-                response += `- **المسائل المحلولة:** ${this.totalProblemsSolved}\n\n`;
-                
-                response += `## 🚀 **خطوات الحل**\n`;
-                solution.steps.forEach((step, index) => {
-                    response += `${index + 1}. ${step}\n`;
-                });
-                response += `\n`;
-                
-                if (solution.finalAnswer) {
-                    response += `## ✅ **الإجابة النهائية**\n`;
-                    response += `${solution.finalAnswer}\n\n`;
-                }
-                
-                if (solution.explanation) {
-                    response += `## 💡 **شرح النتيجة**\n`;
-                    response += `${solution.explanation}\n\n`;
-                }
-                
-                response += `## 🌟 **ملاحظات النظام**\n`;
-                response += `- مستوى الفهم: ${solution.understandingLevel}/10\n`;
-                response += `- معدل الثقة: ${(this.averageConfidence * 100).toFixed(1)}%\n`;
-                response += `- عمق التحليل: ${this.analysisDepth}\n\n`;
-                
-                response += `> *"العلم نور يضيء طريق الفهم"*`;
-                
-                return response;
-            }
-
-            generateFallbackResponse(query) {
-                return `
-                    🔍 **أفهم أنك تريد حل مسألة:** "${query}"
-                    
-                    للأسف، هذه المسألة تتطلب مزيداً من التفاصيل. دعني أساعدك:
-                    
-                    💡 **نصيحة:** حاول إضافة:
-                    1. جميع القيم المعطاة
-                    2. الوحدات المستخدمة
-                    3. ما هو المطلوب بالضبط
-                    4. أي شروط أو قيود
-                    
-                    **مثال واضح:**
-                    "إذا كانت كتلة الجسم 5 كجم وتسارعه 2 م/ث²، فما القوة المؤثرة عليه؟"
-                    
-                    سأكون سعيداً بمساعدتك بمجرد توضيح المسألة! 😊
-                `;
-            }
-        }
-
-        // =============== [ تكوين Firebase ] ===============
+        // تكوين Firebase (استخدم بياناتك الحقيقية هنا)
         const firebaseConfig = {
             apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
             authDomain: "sudan-market-6b122.firebaseapp.com",
             databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
             projectId: "sudan-market-6b122",
-            storageBucket: "sudan-market-6b122.firebasestorage.app",
+            storageBucket: "sudan-market-6b122.appspot.com",
             messagingSenderId: "66729481566",
             appId: "1:66729481566:web:93393f28dc22d32cceebcf"
         };
 
-        // =============== [ النظام الرئيسي للتطبيق ] ===============
-        class AdvancedScientificAIApp {
-            constructor() {
-                this.ai = new DeepScientificAI();
-                this.auth = null;
-                this.db = null;
-                this.user = null;
-                this.userId = null;
-                this.currentConversation = [];
-                this.isProcessing = false;
-                this.isInitialized = false;
-                
-                this.initializeFirebase();
-            }
+        firebase.initializeApp(firebaseConfig);
 
-            async initializeFirebase() {
-                try {
-                    // إضافة تابع تلقائي بعد 8 ثواني
-                    setTimeout(() => {
-                        this.forceOpenApp();
-                    }, 8000);
-                    
-                    // تهيئة Firebase
-                    if (!firebase.apps.length) {
-                        firebase.initializeApp(firebaseConfig);
+        // --- محرك الأمان والمصادقة ---
+        const Auth = {
+            init() {
+                firebase.auth().onAuthStateChanged(user => {
+                    UI.toggleLoader(false);
+                    if (user) {
+                        this.launchApp(user);
+                    } else {
+                        document.getElementById('login-screen').style.display = 'flex';
+                        document.getElementById('app-screen').style.display = 'none';
                     }
-                    
-                    this.auth = firebase.auth();
-                    this.db = firebase.database();
-                    
-                    console.log('✅ Firebase مهيأ بنجاح');
-                    
-                    // مراقبة حالة المصادقة
-                    this.auth.onAuthStateChanged(async (user) => {
-                        if (user) {
-                            await this.handleUserLogin(user);
-                        } else {
-                            this.showLoginScreen();
-                        }
-                    });
-                    
-                } catch (error) {
-                    console.error('❌ خطأ في تهيئة Firebase:', error);
-                    this.forceOpenApp();
-                }
-            }
-
-            forceOpenApp() {
-            console.log('🚀 فتح التطبيق قسرياً...');
-            
-            // --- السطر الجديد المضاف هنا لإخفاء شاشة التحميل ---
-            const loader = document.getElementById('loading-screen');
-            if (loader) loader.classList.add('hidden');
-            // -----------------------------------------------
-
-            // إذا لم يكن هناك مستخدم، إنشاء مستخدم تجريبي
-            if (!this.user) {
-                this.user = { 
-                    uid: 'demo_' + Date.now(),
-                    email: 'test@example.com',
-                    emailVerified: true 
-                };
-                this.userId = this.user.uid;
-                this.userData = {
-                    name: 'مستخدم تجريبي',
-                    stats: { totalConversations: 0 }
-                };
-            }
-            
-            // تحديث الملف الشخصي
-            this.updateUserProfile();
-            
-            // عرض شاشة التطبيق وإخفاء شاشة تسجيل الدخول
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('app-screen').classList.remove('hidden');
-            
-            // عرض رسالة ترحيبية
-            this.displayWelcomeMessage();
-            
-            // إنشاء جسيمات الخلفية
-            this.createParticles();
-            
-            // إشعار
-            showNotification('✅ تم تشغيل النظام بنجاح', 'success');
-            
-            this.isInitialized = true;
-        }
-            async handleUserLogin(user) {
-                this.user = user;
-                this.userId = user.uid;
-                
-                try {
-                    // تحميل بيانات المستخدم
-                    await this.loadUserData();
-                    
-                    // تحديث واجهة المستخدم
-                    this.updateUserProfile();
-                    
-                    // تحميل محادثات المستخدم
-                    await this.loadUserConversations();
-                    
-                } catch (error) {
-                    console.error('❌ خطأ في تحميل البيانات:', error);
-                    this.userData = {
-                        name: user.email.split('@')[0],
-                        stats: { totalConversations: 0 }
-                    };
-                    this.updateUserProfile();
-                }
-                
-                // عرض التطبيق
-                this.showAppScreen();
-                
-                showNotification(`مرحباً ${user.email}!`, 'success');
-            }
-
-            async loadUserData() {
-                try {
-                    const snapshot = await this.db.ref(`users/${this.userId}`).once('value');
-                    let userData = snapshot.val();
-                    
-                    if (!userData) {
-                        // إنشاء بيانات جديدة للمستخدم
-                        userData = {
-                            email: this.user.email,
-                            name: this.user.email.split('@')[0],
-                            createdAt: new Date().toISOString(),
-                            stats: {
-                                totalConversations: 0,
-                                totalMessages: 0,
-                                favoriteDomain: 'mathematics',
-                                averageConfidence: 0.95
-                            },
-                            preferences: {
-                                theme: 'dark',
-                                language: 'ar'
-                            }
-                        };
-                        
-                        await this.saveUserData(userData);
-                    }
-                    
-                    this.userData = userData;
-                    
-                } catch (error) {
-                    console.error('❌ خطأ في تحميل بيانات المستخدم:', error);
-                    throw error;
-                }
-            }
-
-            async saveUserData(userData) {
-                try {
-                    await this.db.ref(`users/${this.userId}`).set(userData);
-                } catch (error) {
-                    console.error('❌ خطأ في حفظ بيانات المستخدم:', error);
-                }
-            }
-
-            async loadUserConversations() {
-                try {
-                    const snapshot = await this.db.ref(`conversations/${this.userId}`).once('value');
-                    const conversations = snapshot.val();
-                    
-                    if (conversations) {
-                        // تحديث قائمة المحادثات
-                        this.updateConversationHistory(conversations);
-                        
-                        // تحديث العداد
-                        document.getElementById('saved-conversations').textContent = 
-                            Object.keys(conversations).length;
-                    }
-                    
-                } catch (error) {
-                    console.error('❌ خطأ في تحميل المحادثات:', error);
-                }
-            }
-
-            updateConversationHistory(conversations) {
-                const historyList = document.getElementById('history-list');
-                if (!historyList) return;
-                
-                historyList.innerHTML = '';
-                
-                // تحويل الكائن إلى مصفوفة وفرز حسب التاريخ
-                const conversationsArray = Object.entries(conversations)
-                    .map(([id, data]) => ({ id, ...data }))
-                    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-                    .slice(0, 20); // عرض آخر 20 محادثة فقط
-                
-                conversationsArray.forEach(conversation => {
-                    const historyItem = document.createElement('div');
-                    historyItem.className = 'history-item';
-                    historyItem.onclick = () => this.loadConversation(conversation.id);
-                    
-                    const date = new Date(conversation.timestamp).toLocaleDateString('ar-SA');
-                    const preview = conversation.messages?.[0]?.content?.substring(0, 50) || 'محادثة';
-                    
-                    historyItem.innerHTML = `
-                        <div class="history-date">${date}</div>
-                        <div class="history-preview">${preview}...</div>
-                    `;
-                    
-                    historyList.appendChild(historyItem);
                 });
-            }
-
-            async loadConversation(conversationId) {
-                try {
-                    const snapshot = await this.db.ref(`conversations/${this.userId}/${conversationId}`).once('value');
-                    const conversation = snapshot.val();
-                    
-                    if (conversation && conversation.messages) {
-                        // مسح المحادثة الحالية
-                        this.currentConversation = conversation.messages;
-                        
-                        // عرض المحادثة
-                        this.displayConversation(conversation.messages);
-                        
-                        // إغلاق الشريط الجانبي
-                        this.toggleHistory();
-                        
-                        showNotification('تم تحميل المحادثة', 'success');
-                    }
-                    
-                } catch (error) {
-                    console.error('❌ خطأ في تحميل المحادثة:', error);
-                    showNotification('تعذر تحميل المحادثة', 'error');
-                }
-            }
-
-            async saveConversation() {
-                if (!this.userId || this.currentConversation.length === 0) return;
+            },
+            async login() {
+                const email = document.getElementById('email').value;
+                const pass = document.getElementById('pass').value;
+                if(!email || !pass) return UI.notify("يرجى إدخال البيانات", "error");
                 
                 try {
-                    const conversationId = `conv_${Date.now()}`;
-                    const conversationData = {
-                        id: conversationId,
-                        messages: this.currentConversation,
-                        timestamp: new Date().toISOString(),
-                        messageCount: this.currentConversation.length,
-                        lastMessage: this.currentConversation[this.currentConversation.length - 1]?.content?.substring(0, 50) || ''
-                    };
-                    
-                    // حفظ في Firebase
-                    await this.db.ref(`conversations/${this.userId}/${conversationId}`).set(conversationData);
-                    
-                    // تحديث إحصائيات المستخدم
-                    await this.updateUserStats();
-                    
-                    // تحديث قائمة التاريخ
-                    await this.loadUserConversations();
-                    
-                    console.log('✅ تم حفظ المحادثة في قاعدة البيانات');
-                    
-                } catch (error) {
-                    console.error('❌ خطأ في حفظ المحادثة:', error);
+                    UI.toggleLoader(true);
+                    await firebase.auth().signInWithEmailAndPassword(email, pass);
+                } catch (e) {
+                    UI.toggleLoader(false);
+                    UI.notify("خطأ في تسجيل الدخول: " + e.message, "error");
                 }
+            },
+            guestMode() {
+                UI.notify("تم الدخول بوضع الضيف (لن يتم حفظ البيانات)");
+                this.launchApp({ email: 'Guest User', displayName: 'ضيف' });
+            },
+            launchApp(user) {
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('app-screen').style.display = 'grid';
+                Core.welcome(user);
+            },
+            logout() {
+                firebase.auth().signOut().then(() => location.reload());
             }
+        };
 
-            async updateUserStats() {
-                try {
-                    const statsSnapshot = await this.db.ref(`users/${this.userId}/stats`).once('value');
-                    const currentStats = statsSnapshot.val() || { totalConversations: 0, totalMessages: 0 };
-                    
-                    const updatedStats = {
-                        totalConversations: currentStats.totalConversations + 1,
-                        totalMessages: currentStats.totalMessages + this.currentConversation.length,
-                        lastActive: new Date().toISOString(),
-                        updatedAt: new Date().toISOString()
-                    };
-                    
-                    await this.db.ref(`users/${this.userId}/stats`).update(updatedStats);
-                    
-                } catch (error) {
-                    console.error('❌ خطأ في تحديث الإحصائيات:', error);
-                }
-            }
+        // --- النواة الذكية (الذكاء الاصطناعي) ---
+        const Core = {
+            isThinking: false,
 
-            async sendMessage() {
+            async handleMessage() {
                 const input = document.getElementById('user-input');
-                const message = input.value.trim();
+                const text = input.value.trim();
                 
-                if (!message || this.isProcessing) return;
-                
-                // إضافة رسالة المستخدم
-                this.addUserMessage(message);
+                if (!text || this.isThinking) return;
+
+                UI.addMessage(text, 'user');
                 input.value = '';
-                
-                // إظهار مؤشر التفكير
-                this.showThinkingIndicator();
-                
-                // معالجة الرسالة
-                this.isProcessing = true;
-                const response = await this.processMessage(message);
-                this.isProcessing = false;
-                
-                // إزالة مؤشر التفكير وإضافة الرد
-                this.removeThinkingIndicator();
-                this.addAiMessage(response);
-                
-                // حفظ المحادثة في قاعدة البيانات
-                await this.saveConversation();
-                
-                // تحديث عرض الذكاء
-                this.updateIntelligenceDisplay();
-                
-                // التمرير لأسفل
-                this.scrollToBottom();
-            }
+                this.isThinking = true;
 
-            async processMessage(message) {
+                // محاكاة التفكير العميق
+                const thinkingMsg = UI.addThinking();
+                
                 try {
-                    const result = await this.ai.processQuery(message);
-                    
-                    // إضافة إلى المحادثة الحالية
-                    this.currentConversation.push(
-                        { role: 'user', content: message, timestamp: new Date().toISOString() },
-                        { role: 'assistant', content: result.response, timestamp: new Date().toISOString() }
-                    );
-                    
-                    return result.response;
-                    
-                } catch (error) {
-                    console.error('❌ خطأ في معالجة الرسالة:', error);
-                    return this.generateErrorMessage(error);
+                    const response = await this.processLogic(text);
+                    UI.removeThinking(thinkingMsg);
+                    UI.addMessage(response, 'ai');
+                } catch (e) {
+                    UI.removeThinking(thinkingMsg);
+                    UI.addMessage("حدث خلل في معالجة النواة. يرجى المحاولة لاحقاً.", 'ai');
+                } finally {
+                    this.isThinking = false;
                 }
-            }
+            },
 
-            addUserMessage(message) {
-                this.displayMessage(message, 'user');
-            }
+            async processLogic(query) {
+                // محاكي للذكاء الاصطناعي العلمي المتطور
+                await new Promise(r => setTimeout(r, 1500)); // وقت للتفكير
 
-            addAiMessage(response) {
-                this.displayMessage(response, 'assistant');
-            }
+                // معالجة رياضية إذا وجد تعبير
+                try {
+                    if (/[0-9+\-*/^()]/.test(query)) {
+                        const cleanQuery = query.replace(/[أ-ي]/g, '').trim();
+                        const result = math.evaluate(cleanQuery);
+                        return `بناءً على التحليل الرياضي:\n\nالمعادلة: \`${cleanQuery}\`\nالنتيجة: **${result}**\n\nهل تود استخراج المشتقة أو التكامل لهذه الدالة؟`;
+                    }
+                } catch(e) {}
 
-            displayMessage(content, role) {
-                const messagesContainer = document.getElementById('chat-messages');
+                // ردود ذكية علمية
+                if (query.includes("جاذبية")) return "الجاذبية حسب النسبية العامة هي انحناء في الزمكان تسببه الكتلة. القانون التقليدي: F = G(m1m2)/r².";
+                if (query.includes("من أنت")) return "أنا 'العقل العلمي المتطور'، واجهة ذكاء اصطناعي مصممة لحل المسائل المعقدة وتقديم الدعم البحثي المتقدم.";
                 
-                const messageDiv = document.createElement('div');
-                messageDiv.className = `message ${role === 'user' ? 'user-message' : 'ai-message'}`;
+                return `تم استقبال استفسارك: "${query}". \n\nالنظام يحلل حالياً المعطيات في قاعدة البيانات العلمية. يبدو أنك مهتم بـ (العلوم المتقدمة). هل يمكنك تقديم تفاصيل أكثر لأتمكن من بناء نموذج حل دقيق؟`;
+            },
+
+            welcome(user) {
+                setTimeout(() => {
+                    UI.addMessage(`مرحباً بك أيها العقل الراقي (${user.displayName || user.email}). تم تفعيل النواة المركزية بنجاح. أنا جاهز لمعالجة بياناتك.`, 'ai');
+                }, 500);
+            }
+        };
+
+        // --- واجهة المستخدم والتأثيرات ---
+        const UI = {
+            toggleLoader(show) {
+                document.getElementById('loader').classList.toggle('hidden', !show);
+            },
+            addMessage(text, side) {
+                const box = document.getElementById('chat-box');
+                const div = document.createElement('div');
+                div.className = `message ${side === 'user' ? 'user-msg' : 'ai-msg'}`;
                 
-                const contentDiv = document.createElement('div');
-                contentDiv.className = 'message-content';
-                
-                if (role === 'assistant') {
-                    contentDiv.className += ' markdown-content';
-                    contentDiv.innerHTML = this.formatAiResponse(content);
+                if(side === 'ai') {
+                    div.innerHTML = `<div class="thinking-process"><div class="pulse"></div> تحليل البيانات مكتمل</div>` + text.replace(/\n/g, '<br>');
                 } else {
-                    contentDiv.textContent = content;
+                    div.textContent = text;
                 }
                 
-                const timeDiv = document.createElement('div');
-                timeDiv.className = 'message-time';
-                timeDiv.textContent = this.getCurrentTime();
-                
-                messageDiv.appendChild(contentDiv);
-                messageDiv.appendChild(timeDiv);
-                messagesContainer.appendChild(messageDiv);
-                
-                // تأثير الظهور
-                messageDiv.style.opacity = '0';
-                messageDiv.style.transform = 'translateY(20px)';
-                
-                setTimeout(() => {
-                    messageDiv.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-                    messageDiv.style.opacity = '1';
-                    messageDiv.style.transform = 'translateY(0)';
-                }, 10);
-                
-                this.scrollToBottom();
+                box.appendChild(div);
+                box.scrollTop = box.scrollHeight;
+                return div;
+            },
+            addThinking() {
+                const box = document.getElementById('chat-box');
+                const div = document.createElement('div');
+                div.className = 'message ai-msg';
+                div.innerHTML = `<div class="thinking-process"><div class="pulse"></div> جاري التفكير العميق وتحليل الاحتمالات...</div>`;
+                box.appendChild(div);
+                box.scrollTop = box.scrollHeight;
+                return div;
+            },
+            removeThinking(el) { el.remove(); },
+            notify(msg, icon = 'success') {
+                Swal.fire({ icon, title: msg, toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
+            },
+            clearChat() {
+                document.getElementById('chat-box').innerHTML = '';
+                this.notify("تم مسح السجل المؤقت");
             }
+        };
 
-            displayConversation(messages) {
-                const messagesContainer = document.getElementById('chat-messages');
-                messagesContainer.innerHTML = '';
-                
-                messages.forEach(msg => {
-                    this.displayMessage(msg.content, msg.role);
-                });
+        // --- نظام الجسيمات الخلفية ---
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 2;
+                this.speedX = Math.random() * 0.5 - 0.25;
+                this.speedY = Math.random() * 0.5 - 0.25;
             }
-
-            showThinkingIndicator() {
-                const messagesContainer = document.getElementById('chat-messages');
-                
-                const thinkingDiv = document.createElement('div');
-                thinkingDiv.className = 'ai-thinking';
-                thinkingDiv.id = 'thinking-indicator';
-                
-                const dotsDiv = document.createElement('div');
-                dotsDiv.className = 'thinking-dots';
-                
-                for (let i = 0; i < 3; i++) {
-                    const dot = document.createElement('span');
-                    dotsDiv.appendChild(dot);
-                }
-                
-                const textDiv = document.createElement('div');
-                textDiv.textContent = 'جاري التفكير العميق...';
-                
-                thinkingDiv.appendChild(dotsDiv);
-                thinkingDiv.appendChild(textDiv);
-                messagesContainer.appendChild(thinkingDiv);
-                
-                this.scrollToBottom();
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                if(this.x > canvas.width) this.x = 0;
+                if(this.x < 0) this.x = canvas.width;
+                if(this.y > canvas.height) this.y = 0;
+                if(this.y < 0) this.y = canvas.height;
             }
-
-            removeThinkingIndicator() {
-                const thinkingDiv = document.getElementById('thinking-indicator');
-                if (thinkingDiv) {
-                    thinkingDiv.remove();
-                }
-            }
-
-            formatAiResponse(response) {
-                let formatted = response;
-                
-                // تحويل العناوين
-                formatted = formatted.replace(/^# (.*$)/gm, '<h1 style="color: var(--neon-blue); margin: 20px 0 10px 0;">$1</h1>');
-                formatted = formatted.replace(/^## (.*$)/gm, '<h2 style="color: var(--neon-green); margin: 15px 0 8px 0;">$1</h2>');
-                
-                // تحويل النقاط
-                formatted = formatted.replace(/^\* (.*$)/gm, '<li>$1</li>');
-                formatted = formatted.replace(/^- (.*$)/gm, '<li>$1</li>');
-                formatted = formatted.replace(/^\d+\. (.*$)/gm, '<li>$1</li>');
-                
-                // إضافة فواصل الأسطر
-                formatted = formatted.replace(/\n\n/g, '<br><br>');
-                
-                // إضافة فقرات للقوائم
-                if (formatted.includes('<li>')) {
-                    formatted = formatted.replace(/(<li>.*<\/li>)/gms, '<ul style="padding-right: 20px; margin: 10px 0;">$1</ul>');
-                }
-                
-                // تحويل النصوص الغامقة
-                formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong style="color: var(--neon-blue);">$1</strong>');
-                
-                return formatted;
-            }
-
-            getCurrentTime() {
-                const now = new Date();
-                return now.toLocaleTimeString('ar-SA', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                });
-            }
-
-            scrollToBottom() {
-                const messagesContainer = document.getElementById('chat-messages');
-                setTimeout(() => {
-                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                }, 100);
-            }
-
-            updateUserProfile() {
-    if (this.userData && this.userData.name) {
-        document.getElementById('user-name').textContent = this.userData.name;
-        // ... بقية الكود
-    } else {
-        document.getElementById('user-name').textContent = "مستخدم ضيف";
-    }
-            }
-
-            updateIntelligenceDisplay() {
-                const iqElement = document.getElementById('ai-iq');
-                const accuracyElement = document.getElementById('ai-accuracy');
-                
-                if (iqElement && accuracyElement) {
-                    const baseIQ = 195;
-                    const solvedBonus = Math.min(this.ai.totalProblemsSolved * 0.5, 50);
-                    const confidenceBonus = Math.floor(this.ai.confidenceLevel * 20);
-                    const dynamicIQ = baseIQ + solvedBonus + confidenceBonus;
-                    
-                    iqElement.textContent = `IQ: ${Math.round(dynamicIQ)}`;
-                    accuracyElement.textContent = `${(this.ai.confidenceLevel * 100).toFixed(1)}%`;
-                }
-            }
-
-            showLoginScreen() {
-                document.getElementById('loading-screen').classList.add('hidden');
-                document.getElementById('login-screen').classList.remove('hidden');
-                document.getElementById('app-screen').classList.add('hidden');
-            }
-
-            showAppScreen() {
-                document.getElementById('loading-screen').classList.add('hidden');
-                document.getElementById('login-screen').classList.add('hidden');
-                document.getElementById('app-screen').classList.remove('hidden');
-                
-                // عرض رسالة ترحيبية إذا لم تكن هناك محادثات
-                if (this.currentConversation.length === 0) {
-                    this.displayWelcomeMessage();
-                }
-                
-                // إنشاء جسيمات الخلفية
-                this.createParticles();
-                
-                this.isInitialized = true;
-            }
-
-            displayWelcomeMessage() {
-                const welcomeMessage = `
-                    <div class="ai-message">
-                        <div class="message-content">
-                            <h3 style="color: var(--neon-blue); margin-bottom: 10px;">👋 مرحباً! أنا العقل العلمي المتطور</h3>
-                            <p>أنا نظام ذكاء اصطناعي متخصص في فهم وحل المسائل العلمية المعقدة. يمكنني:</p>
-                            <ul style="margin-top: 10px; padding-right: 20px;">
-                                <li>حل أي مسألة رياضية (جبر، هندسة، تفاضل، تكامل)</li>
-                                <li>تحليل المسائل الفيزيائية المعقدة</li>
-                                <li>شرح المفاهيم العلمية بطريقة بسيطة</li>
-                                <li>تحليل النصوص العلمية بعمق</li>
-                            </ul>
-                            <p style="margin-top: 15px; color: var(--neon-green);">
-                                <i class="fas fa-database"></i> جميع محادثاتك محفوظة تلقائياً في قاعدة البيانات
-                            </p>
-                            <p style="margin-top: 10px; color: var(--text-secondary); font-size: 14px;">
-                                <i class="fas fa-lightbulb"></i> جرّبني: اكتب أي مسألة وسأحلها لك خطوة بخطوة!
-                            </p>
-                        </div>
-                        <div class="message-time">${this.getCurrentTime()}</div>
-                    </div>
-                `;
-                
-                document.getElementById('chat-messages').innerHTML = welcomeMessage;
-            }
-
-            createParticles() {
-                const container = document.getElementById('particles');
-                container.innerHTML = '';
-                
-                for (let i = 0; i < 100; i++) {
-                    const particle = document.createElement('div');
-                    particle.className = 'particle';
-                    
-                    const size = Math.random() * 4 + 1;
-                    particle.style.width = `${size}px`;
-                    particle.style.height = `${size}px`;
-                    particle.style.left = `${Math.random() * 100}%`;
-                    particle.style.animationDelay = `${Math.random() * 20}s`;
-                    particle.style.animationDuration = `${Math.random() * 15 + 20}s`;
-                    
-                    const colors = ['var(--neon-blue)', 'var(--neon-purple)', 'var(--neon-green)', 'var(--accent)', 'var(--neon-yellow)'];
-                    particle.style.background = colors[Math.floor(Math.random() * colors.length)];
-                    particle.style.opacity = Math.random() * 0.3 + 0.1;
-                    
-                    container.appendChild(particle);
-                }
-            }
-
-            toggleHistory() {
-                const sidebar = document.getElementById('history-sidebar');
-                sidebar.classList.toggle('active');
-            }
-
-            async clearAllHistory() {
-                const result = await Swal.fire({
-                    title: 'هل أنت متأكد؟',
-                    text: 'سيتم حذف جميع المحادثات المحفوظة ولا يمكن استرجاعها',
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonText: 'نعم، امسح الكل',
-                    cancelButtonText: 'إلغاء',
-                    reverseButtons: true
-                });
-                
-                if (result.isConfirmed) {
-                    try {
-                        await this.db.ref(`conversations/${this.userId}`).remove();
-                        
-                        // تحديث إحصائيات المستخدم
-                        await this.db.ref(`users/${this.userId}/stats`).update({
-                            totalConversations: 0,
-                            totalMessages: 0
-                        });
-                        
-                        // تحديث العرض
-                        document.getElementById('history-list').innerHTML = '';
-                        document.getElementById('saved-conversations').textContent = '0';
-                        this.updateUserProfile();
-                        
-                        showNotification('تم مسح جميع المحادثات', 'success');
-                        
-                    } catch (error) {
-                        console.error('❌ خطأ في مسح التاريخ:', error);
-                        showNotification('تعذر مسح التاريخ', 'error');
-                    }
-                }
-            }
-
-            generateErrorMessage(error) {
-                return `
-                    ⚠️ **عذراً، حدث خطأ غير متوقع**
-                    
-                    التفاصيل: ${error.message}
-                    
-                    **ما يمكنك فعله:**
-                    1. حاول صياغة سؤالك بشكل مختلف
-                    2. تأكد من اتصال الإنترنت
-                    3. أعد تحميل الصفحة إذا استمرت المشكلة
-                    
-                    💡 *جرّب سؤالاً مثل: "احسب مساحة دائرة نصف قطرها 5 سم"*
-                `;
-            }
-
-            handleEnterKey(event) {
-                if (event.key === 'Enter' && event.ctrlKey) {
-                    event.preventDefault();
-                    this.sendMessage();
-                } else if (event.key === 'Enter' && event.shiftKey) {
-                    return;
-                } else if (event.key === 'Enter') {
-                    event.preventDefault();
-                    this.sendMessage();
-                }
+            draw() {
+                ctx.fillStyle = 'rgba(0, 245, 255, 0.2)';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
             }
         }
 
-        // =============== [ دوال المصادقة ] ===============
-        async function login() {
-            const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-password').value;
-            
-            if (!email || !password) {
-                showNotification('الرجاء إدخال البريد الإلكتروني وكلمة المرور', 'error');
-                return;
-            }
-            
-            try {
-                await firebase.auth().signInWithEmailAndPassword(email, password);
-                showNotification('تم تسجيل الدخول بنجاح', 'success');
-                
-            } catch (error) {
-                console.error('❌ خطأ في تسجيل الدخول:', error);
-                
-                let message = 'حدث خطأ في تسجيل الدخول';
-                switch(error.code) {
-                    case 'auth/user-not-found':
-                        message = 'المستخدم غير موجود';
-                        break;
-                    case 'auth/wrong-password':
-                        message = 'كلمة المرور غير صحيحة';
-                        break;
-                    case 'auth/invalid-email':
-                        message = 'بريد إلكتروني غير صالح';
-                        break;
-                }
-                
-                showNotification(message, 'error');
-            }
+        function initParticles() {
+            for(let i=0; i<100; i++) particles.push(new Particle());
         }
 
-        async function showRegister() {
-            Swal.fire({
-                title: 'إنشاء حساب جديد',
-                html: `
-                    <input type="text" id="register-name" class="swal2-input" placeholder="الاسم" dir="rtl">
-                    <input type="email" id="register-email" class="swal2-input" placeholder="البريد الإلكتروني" dir="rtl">
-                    <input type="password" id="register-password" class="swal2-input" placeholder="كلمة المرور" dir="rtl">
-                    <input type="password" id="register-confirm" class="swal2-input" placeholder="تأكيد كلمة المرور" dir="rtl">
-                `,
-                confirmButtonText: 'إنشاء حساب',
-                cancelButtonText: 'إلغاء',
-                showCancelButton: true,
-                focusConfirm: false,
-                preConfirm: async () => {
-                    const name = document.getElementById('register-name').value;
-                    const email = document.getElementById('register-email').value;
-                    const password = document.getElementById('register-password').value;
-                    const confirm = document.getElementById('register-confirm').value;
-                    
-                    if (!name || !email || !password || !confirm) {
-                        Swal.showValidationMessage('الرجاء ملء جميع الحقول');
-                        return false;
-                    }
-                    
-                    if (password !== confirm) {
-                        Swal.showValidationMessage('كلمتا المرور غير متطابقتين');
-                        return false;
-                    }
-                    
-                    if (password.length < 6) {
-                        Swal.showValidationMessage('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
-                        return false;
-                    }
-                    
-                    try {
-                        const userCredential = await firebase.auth().createUserWithEmailAndPassword(email, password);
-                        const user = userCredential.user;
-                        
-                        // حفظ بيانات المستخدم
-                        await firebase.database().ref(`users/${user.uid}`).set({
-                            email: email,
-                            name: name,
-                            createdAt: new Date().toISOString(),
-                            stats: {
-                                totalConversations: 0,
-                                totalMessages: 0
-                            },
-                            preferences: {
-                                theme: 'dark',
-                                language: 'ar'
-                            }
-                        });
-                        
-                        return user;
-                        
-                    } catch (error) {
-                        Swal.showValidationMessage(error.message);
-                        return false;
-                    }
-                }
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    showNotification('تم إنشاء حسابك بنجاح!', 'success');
-                }
-            });
+        function animate() {
+            ctx.clearRect(0,0,canvas.width, canvas.height);
+            particles.forEach(p => { p.update(); p.draw(); });
+            requestAnimationFrame(animate);
         }
 
-        async function logout() {
-            try {
-                await firebase.auth().signOut();
-                showNotification('تم تسجيل الخروج بنجاح', 'success');
-                app.showLoginScreen();
-            } catch (error) {
-                console.error('❌ خطأ في تسجيل الخروج:', error);
-                showNotification('حدث خطأ في تسجيل الخروج', 'error');
+        // إطلاق كل شيء
+        window.addEventListener('resize', resize);
+        resize();
+        initParticles();
+        animate();
+        Auth.init();
+
+        // مستمع لزر Enter للإرسال بسلاسة
+        document.getElementById('user-input').addEventListener('keydown', (e) => {
+            if(e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                Core.handleMessage();
             }
-        }
-
-        // =============== [ دوال المساعدة ] ===============
-        function showNotification(message, type = 'info') {
-            // إنشاء عنصر الإشعار
-            const notification = document.createElement('div');
-            notification.className = 'notification';
-            
-            // إضافة التصميم
-            notification.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: ${type === 'success' ? 'rgba(0,255,157,0.1)' : 
-                              type === 'error' ? 'rgba(255,71,87,0.1)' : 
-                              'rgba(0,245,255,0.1)'};
-                border: 2px solid ${type === 'success' ? 'var(--neon-green)' : 
-                                   type === 'error' ? 'var(--neon-red)' : 
-                                   'var(--neon-blue)'};
-                border-radius: 15px;
-                padding: 15px 25px;
-                color: white;
-                z-index: 10000;
-                backdrop-filter: blur(10px);
-                animation: slideInRight 0.3s ease;
-                max-width: 400px;
-            `;
-            
-            let icon = 'ℹ️';
-            if (type === 'success') icon = '✅';
-            if (type === 'error') icon = '❌';
-            
-            notification.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="font-size: 20px;">${icon}</span>
-                    <span>${message}</span>
-                </div>
-            `;
-            
-            document.body.appendChild(notification);
-            
-            // إخفاء الإشعار بعد 3 ثوانٍ
-            setTimeout(() => {
-                notification.style.animation = 'slideInRight 0.3s ease reverse';
-                setTimeout(() => notification.remove(), 300);
-            }, 3000);
-            
-            // إضافة أنيميشن CSS إذا لم تكن موجودة
-            if (!document.querySelector('#notification-styles')) {
-                const style = document.createElement('style');
-                style.id = 'notification-styles';
-                style.textContent = `
-                    @keyframes slideInRight {
-                        from { transform: translateX(100%); opacity: 0; }
-                        to { transform: translateX(0); opacity: 1; }
-                    }
-                `;
-                document.head.appendChild(style);
-            }
-        }
-
-        // =============== [ تهيئة التطبيق ] ===============
-        let app;
-
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('🚀 بدء تحميل العقل العلمي المتطور مع قاعدة البيانات...');
-            
-            // إنشاء التطبيق
-            app = new AdvancedScientificAIApp();
-            
-            // إضافة أحداث لوحة المفاتيح
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') {
-                    app.toggleHistory();
-                }
-                if (e.ctrlKey && e.key === 'h') {
-                    e.preventDefault();
-                    app.toggleHistory();
-                }
-            });
-            
-            // ضمان عدم التعلق في شاشة التحميل
-            setTimeout(() => {
-                const loadingScreen = document.getElementById('loading-screen');
-                if (loadingScreen && !loadingScreen.classList.contains('hidden')) {
-                    console.log('⚠️ تجاوز شاشة التحميل بعد مهلة...');
-                    app.forceOpenApp();
-                }
-            }, 10000); // 10 ثواني كحد أقصى
-            
-            console.log('✅ التطبيق جاهز للاستخدام!');
         });
-
-        // =============== [ تصدير الدوال للنطاق العام ] ===============
-        window.sendMessage = () => app.sendMessage();
-        window.handleEnterKey = (e) => app.handleEnterKey(e);
-        window.toggleHistory = () => app.toggleHistory();
-        window.clearAllHistory = () => app.clearAllHistory();
-        window.login = login;
-        window.showRegister = showRegister;
-        window.logout = logout;
-
-        console.log(`
-╔══════════════════════════════════════════╗
-║   العقل العلمي المتطور v5.0 - جاهز!     ║
-║   نظام ذكاء اصطناعي متكامل مع قاعدة بيانات ║
-╚══════════════════════════════════════════╝
-
-✅ **المميزات المضافة:**
-• قاعدة بيانات Firebase متكاملة
-• تسجيل دخول مستخدمين
-• حفظ جميع المحادثات تلقائياً
-• تزامن بين الأجهزة
-• نسخ احتياطي تلقائي
-• إحصائيات وتحليلات
-
-🔧 **المستخدم التجريبي:**
-البريد: test@example.com
-كلمة المرور: 123456
-
-🚀 **جرب النظام الآن!**
-1. سجل الدخول أو أنشئ حساباً
-2. اكتب أي مسألة علمية
-3. شاهد المحادثات تختزن تلقائياً
-4. استرجع محادثاتك من أي جهاز
-
-📊 **بياناتك محفوظة بأمان في:**
-https://sudan-market-6b122-default-rtdb.firebaseio.com
-`);
-        setTimeout(() => {
-    const loadingScreen = document.getElementById('loading-screen');
-    if (loadingScreen && !loadingScreen.classList.contains('hidden')) {
-        console.log('تجاوز شاشة التحميل يدوياً...');
-        loadingScreen.classList.add('hidden');
-        document.getElementById('app-screen').classList.remove('hidden');
-        // تأكد من ظهور واجهة المستخدم حتى لو فشل Firebase
-    }
-}, 5000); // 5 ثوانٍ كحد أقصى
     </script>
 </body>
 </html>
