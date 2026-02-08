@@ -1410,7 +1410,43 @@ class TestSystem {
             predictedTopic: keywords[0] ? `اختبار في ${keywords[0]}` : "اختبار عام"
         };
     }
+    async generateTestFromText(text, options) {
+        // 1. تحليل النص بعمق
+        const analysis = await this.analyzeTextDeeply(text);
+        
+        // 2. توليد الأسئلة
+        let questions = [];
+        
+        // إذا كان النص علمياً (معادلات أو وحدات)، ولد أسئلة علمية
+        if (analysis.isScientific) {
+            const sciQuestions = this.generateScientificQuestions(analysis);
+            questions = [...sciQuestions];
+        }
+        
+        // تكملة بقية الأسئلة بأسئلة نصية ذكية
+        const remainingCount = options.count - questions.length;
+        if (remainingCount > 0) {
+            const textQuestions = this.generateSmartTextQuestions(analysis, remainingCount);
+            questions = [...questions, ...textQuestions];
+        }
 
+        // 3. بناء كائن الاختبار
+        const test = {
+            id: 'test_' + Date.now(),
+            title: options.title || analysis.predictedTopic,
+            description: options.description || "اختبار مولد ذكياً",
+            questions: questions,
+            analysis: analysis,
+            settings: {
+                difficulty: options.difficulty || 'medium',
+                timeLimit: Math.max(10, questions.length * 1.5),
+                passingScore: 70
+            }
+        };
+
+        this.tests.set(test.id, test);
+        return test;
+    }
     extractSmartKeywords(text) {
         const words = text.split(/[\s\(\)\-،,.]+/); // تقسيم النص بشكل أفضل
         const freq = {};
