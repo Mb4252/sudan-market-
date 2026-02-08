@@ -3624,24 +3624,33 @@ async function generateTestFromImage() {
     `;
     document.getElementById('content-area').innerHTML = content;
 }
-        function solveInput() {
-    const input = document.getElementById('solver-input').value;
-    const resultDiv = document.getElementById('solver-result');
-    const resultValue = document.getElementById('result-value');
+        solve(input) {
+        let text = input.toLowerCase();
+        let numbers = text.match(/\d+(\.\d+)?/g);
+        if (!numbers || numbers.length < 2) return "الرجاء إدخال رقمين على الأقل للمسألة.";
 
-    if (!input) {
-        showNotification('الرجاء كتابة المسألة أولاً', 'error');
-        return;
+        let n1 = parseFloat(numbers[0]);
+        let n2 = parseFloat(numbers[1]);
+
+        for (let item of this.formulas) {
+            if (item.pattern.test(text)) {
+                let result = 0;
+                let unit = "";
+
+                // محرك حسابي ذكي يعالج القوانين تلقائياً
+                if (item.formula === "F=m*a") { result = n1 * n2; unit = "نيوتن"; }
+                else if (item.formula === "v=d/t") { result = n1 / n2; unit = "م/ث"; }
+                else if (item.formula === "V=I*R") { result = n1 * n2; unit = "فولت"; }
+                else if (item.formula === "P=F/A") { result = n1 / n2; unit = "باسكال"; }
+                else if (item.formula === "ρ=m/V") { result = n1 / n2; unit = "كجم/م³"; } // قانون الكثافة
+
+                return `<b>النتيجة:</b> ${result.toFixed(2)} ${unit} <br><small>تم الحل باستخدام: ${item.name}</small>`;
+            }
+        }
+        
+        try { return `<b>النتيجة الرياضية:</b> ${math.evaluate(input)}`; } 
+        catch(e) { return "لم أستطع تحديد القانون الفيزيائي. حاول ذكر كلمات مثل (ضغط، قوة، مساحة)."; }
     }
-
-    // استدعاء المحرك العلمي الجديد
-    const solution = ScienceEngine.solve(input);
-    
-    resultValue.innerHTML = solution;
-    resultDiv.style.display = 'block';
-    resultDiv.style.animation = 'slideInRight 0.5s ease';
-}
-
     </script>
 </body>
 </html>
