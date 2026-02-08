@@ -3551,7 +3551,37 @@ class TestSystem {
             // تحريك النتيجة إلى الأعلى
             resultDiv.scrollIntoView({ behavior: 'smooth' });
         }
+        // --- دالة تطوير ذكاء النظام (التعلم الذاتي) ---
+async function updateSystemIntelligence(newAnalysis) {
+    if (!db || !newAnalysis || !newAnalysis.keywords) return;
 
+    try {
+        // 1. استخراج الكلمات الجديدة من قاعدة البيانات المركزية
+        const snapshot = await db.ref('ai_brain/vocabulary').once('value');
+        let systemVocabulary = snapshot.val() || [];
+
+        // 2. مقارنة الكلمات الجديدة بما هو موجود في "عقل" النظام
+        const newWords = newAnalysis.keywords.filter(word => !systemVocabulary.includes(word));
+
+        if (newWords.length > 0) {
+            // تحديث قاعدة البيانات بالكلمات الجديدة (توسيع المعرفة)
+            // نأخذ أول 500 كلمة فقط للحفاظ على السرعة
+            const updatedVocabulary = [...new Set([...systemVocabulary, ...newWords])].slice(0, 500);
+            await db.ref('ai_brain/vocabulary').set(updatedVocabulary);
+            
+            // 3. تحديث واجهة المستخدم لإظهار نمو المعرفة
+            const knowledgeElem = document.getElementById('ai-knowledge');
+            if (knowledgeElem) {
+                let currentK = parseFloat(knowledgeElem.textContent) || 1.2;
+                knowledgeElem.textContent = (currentK + 0.01).toFixed(2) + "TB";
+            }
+            
+            console.log("🧠 تم دمج مفاهيم جديدة في عقل النظام:", newWords.slice(0, 5));
+        }
+    } catch (e) {
+        console.log("⚠️ وضع تجريبي: لم يتم تحديث قاعدة البيانات المركزية.");
+    }
+}
         // =============== [ 9. تصدير الدوال للنطاق العام ] ===============
         window.login = login;
         window.logout = logout;
