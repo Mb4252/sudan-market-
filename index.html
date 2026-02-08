@@ -24,6 +24,9 @@
             --grad: linear-gradient(45deg, var(--neon-blue), var(--neon-purple));
         }
 
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
         * { box-sizing: border-box; font-family: 'Tajawal', sans-serif; }
         body { background: var(--bg); color: white; margin: 0; height: 100vh; overflow: hidden; }
 
@@ -31,26 +34,30 @@
         .screen { display: none; height: 100vh; flex-direction: column; align-items: center; justify-content: center; opacity: 0; transition: 0.5s; }
         .screen.active { display: flex; opacity: 1; }
 
+        /* شاشة التحميل */
+        #loader { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: var(--bg); z-index: 9999; display: flex; 
+            flex-direction: column; align-items: center; justify-content: center; 
+        }
+        .spinner { 
+            width: 80px; height: 80px; border: 5px solid var(--glass); 
+            border-top-color: var(--neon-blue); border-radius: 50%; 
+            animation: spin 1s linear infinite; 
+        }
+
         /* شاشة الدخول الزجاجية */
         .auth-card {
-            background: var(--glass);
-            padding: 40px;
-            border-radius: 30px;
-            border: 1px solid rgba(0, 245, 255, 0.3);
-            backdrop-filter: blur(20px);
-            width: 90%;
-            max-width: 400px;
-            text-align: center;
-            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            background: var(--glass); padding: 40px; border-radius: 30px;
+            border: 1px solid rgba(0, 245, 255, 0.3); backdrop-filter: blur(20px);
+            width: 90%; max-width: 400px; text-align: center;
         }
 
         .auth-card input {
             width: 100%; padding: 15px; margin: 10px 0; border-radius: 12px;
             border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2);
-            color: white; outline: none; transition: 0.3s;
+            color: white; outline: none;
         }
-
-        .auth-card input:focus { border-color: var(--neon-blue); box-shadow: 0 0 10px var(--neon-blue); }
 
         .btn {
             width: 100%; padding: 15px; border-radius: 12px; border: none;
@@ -58,40 +65,24 @@
             cursor: pointer; transition: 0.3s; margin-top: 10px;
         }
 
-        .btn:hover { transform: scale(1.05); filter: brightness(1.2); }
-
-        /* الواجهة الرئيسية (Chat) */
+        /* الواجهة الرئيسية */
         .app-container { width: 100%; height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
-
-        header {
-            padding: 20px 30px; background: rgba(0,0,0,0.4);
-            backdrop-filter: blur(10px); border-bottom: 1px solid var(--glass);
-            display: flex; justify-content: space-between; align-items: center;
-        }
-
-        .chat-box { padding: 30px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
-
-        .msg { padding: 18px 25px; border-radius: 20px; max-width: 80%; line-height: 1.7; position: relative; animation: slideUp 0.4s ease; }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-
-        .ai-msg { align-self: flex-start; background: rgba(157, 78, 221, 0.1); border: 1px solid var(--neon-purple); border-bottom-left-radius: 2px; }
-        .user-msg { align-self: flex-end; background: rgba(0, 245, 255, 0.1); border: 1px solid var(--neon-blue); border-bottom-right-radius: 2px; }
-
-        .input-area { padding: 25px; background: rgba(0,0,0,0.3); display: flex; gap: 15px; align-items: center; }
-        .input-wrapper { flex: 1; background: var(--glass); border-radius: 15px; border: 1px solid rgba(0, 245, 255, 0.2); display: flex; padding: 5px 15px; }
-        
-        #user-input { flex: 1; background: none; border: none; color: white; padding: 12px; font-size: 16px; outline: none; resize: none; }
-        
-        .send-btn { width: 50px; height: 50px; border-radius: 12px; border: none; background: var(--grad); color: white; cursor: pointer; transition: 0.3s; }
-
-        .badge { font-size: 10px; padding: 3px 8px; border-radius: 5px; background: var(--neon-blue); color: #000; margin-bottom: 10px; display: inline-block; }
+        header { padding: 20px; background: rgba(0,0,0,0.4); backdrop-filter: blur(10px); border-bottom: 1px solid var(--glass); display: flex; justify-content: space-between; }
+        .chat-box { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+        .msg { padding: 15px; border-radius: 15px; max-width: 85%; line-height: 1.6; animation: slideUp 0.3s ease; }
+        .ai-msg { align-self: flex-start; background: rgba(157, 78, 221, 0.1); border: 1px solid var(--neon-purple); }
+        .user-msg { align-self: flex-end; background: rgba(0, 245, 255, 0.1); border: 1px solid var(--neon-blue); }
+        .input-area { padding: 20px; background: rgba(0,0,0,0.3); display: flex; gap: 10px; }
+        #user-input { flex: 1; background: var(--glass); border: 1px solid var(--glass); border-radius: 10px; color: white; padding: 12px; outline: none; resize: none; }
+        .send-btn { width: 50px; background: var(--grad); border: none; border-radius: 10px; color: white; cursor: pointer; }
+        .badge { font-size: 10px; background: var(--neon-blue); color: black; padding: 2px 6px; border-radius: 4px; margin-bottom: 5px; display: inline-block; }
     </style>
 </head>
 <body>
 
     <!-- شاشة التحميل -->
-    <div id="loader" class="screen active" style="background: var(--bg); z-index: 1000;">
-        <div style="width: 80px; height: 80px; border: 5px solid var(--glass); border-top-color: var(--neon-blue); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+    <div id="loader">
+        <div class="spinner"></div>
         <h2 style="margin-top: 20px; font-family: 'Orbitron'; color: var(--neon-blue); letter-spacing: 5px;">CORE LOADING</h2>
     </div>
 
@@ -104,7 +95,6 @@
             <input type="password" id="pass" placeholder="كلمة المرور">
             <button class="btn" onclick="App.login()">تسجيل الدخول</button>
             <button class="btn" style="background: var(--glass); border: 1px solid var(--neon-blue);" onclick="App.guest()">الدخول كضيف</button>
-            <p style="font-size: 12px; color: #666; margin-top: 20px;">نظام الاستدلال العلمي الشامل v6.0</p>
         </div>
     </div>
 
@@ -113,23 +103,19 @@
         <div class="app-container">
             <header>
                 <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="width: 40px; height: 40px; background: var(--grad); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-                        <i class="fas fa-brain" style="color: white;"></i>
-                    </div>
+                    <i class="fas fa-brain" style="color: var(--neon-blue); font-size: 24px;"></i>
                     <div>
-                        <h4 style="margin: 0; font-family: 'Orbitron';">MASTER CORE</h4>
-                        <small id="status" style="color: var(--neon-blue); font-size: 10px;">● متصل بالقواعد</small>
+                        <h4 style="margin: 0; font-family: 'Orbitron'; font-size: 14px;">MASTER CORE</h4>
+                        <small id="status" style="color: var(--neon-blue); font-size: 9px;">● متصل بالنظام</small>
                     </div>
                 </div>
-                <button onclick="App.logout()" style="background:none; border:none; color:#ff4757; cursor:pointer; font-size: 20px;"><i class="fas fa-power-off"></i></button>
+                <button onclick="App.logout()" style="background:none; border:none; color:#ff4757; cursor:pointer; font-size: 18px;"><i class="fas fa-power-off"></i></button>
             </header>
             
             <div class="chat-box" id="chat"></div>
 
             <div class="input-area">
-                <div class="input-wrapper">
-                    <textarea id="user-input" placeholder="ادخل مسألة كيمياء، فيزياء أو معادلة رياضية..." rows="1"></textarea>
-                </div>
+                <textarea id="user-input" placeholder="اكتب مسألتك هنا..." rows="1"></textarea>
                 <button class="send-btn" onclick="App.sendMessage()"><i class="fas fa-paper-plane"></i></button>
             </div>
         </div>
@@ -147,7 +133,10 @@
             appId: "1:66729481566:web:93393f28dc22d32cceebcf"
         };
 
-        firebase.initializeApp(firebaseConfig);
+        // تهيئة Firebase بأمان
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
         const auth = firebase.auth();
         const db = firebase.database();
 
@@ -155,8 +144,9 @@
             user: null,
 
             init() {
+                // مراقبة حالة تسجيل الدخول
                 auth.onAuthStateChanged(user => {
-                    document.getElementById('loader').classList.remove('active');
+                    this.hideLoader();
                     if (user) {
                         this.user = user;
                         this.showScreen('app-screen');
@@ -165,27 +155,41 @@
                         this.showScreen('login-screen');
                     }
                 });
+
+                // أمان: إذا فشل تحميل Firebase أو تأخر، أغلق شاشة التحميل بعد 5 ثوانٍ
+                setTimeout(() => this.hideLoader(), 5000);
+            },
+
+            hideLoader() {
+                const loader = document.getElementById('loader');
+                if(loader) loader.style.display = 'none';
+            },
+
+            showScreen(id) {
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                document.getElementById(id).classList.add('active');
             },
 
             async login() {
                 const e = document.getElementById('email').value;
                 const p = document.getElementById('pass').value;
                 if(!e || !p) return alert("يرجى ملء البيانات");
-                try { await auth.signInWithEmailAndPassword(e, p); } 
-                catch (err) { alert("خطأ: " + err.message); }
+                try { 
+                    await auth.signInWithEmailAndPassword(e, p); 
+                } catch (err) { 
+                    alert("خطأ: " + err.message); 
+                }
             },
 
             guest() {
                 this.user = { uid: "guest", email: "ضيف" };
+                this.hideLoader();
                 this.showScreen('app-screen');
-                this.appendMsg("تم تفعيل وضع الضيف. المحادثات لن تحفظ في السحاب.", "ai");
+                this.appendMsg("تم تفعيل وضع الضيف (بدون حفظ سحابي).", "ai");
             },
 
-            logout() { auth.signOut().then(() => location.reload()); },
-
-            showScreen(id) {
-                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-                document.getElementById(id).classList.add('active');
+            logout() { 
+                auth.signOut().then(() => location.reload()); 
             },
 
             sendMessage() {
@@ -196,13 +200,11 @@
                 this.appendMsg(text, 'user');
                 input.value = '';
 
-                // تشغيل العقل الاصطناعي الشامل
                 const answer = Brain.solve(text);
-                
                 setTimeout(() => {
                     this.appendMsg(answer, 'ai');
                     this.saveToDB(text, answer);
-                }, 800);
+                }, 600);
             },
 
             appendMsg(text, type) {
@@ -221,8 +223,8 @@
             },
 
             loadHistory() {
-                if (this.user.uid === "guest") return;
-                db.ref('chats/' + this.user.uid).limitToLast(15).once('value', snap => {
+                if (!this.user || this.user.uid === "guest") return;
+                db.ref('chats/' + this.user.uid).limitToLast(10).once('value', snap => {
                     snap.forEach(child => {
                         const data = child.val();
                         this.appendMsg(data.q, 'user');
@@ -232,78 +234,46 @@
             }
         };
 
-        // --- محرك الاستدلال العلمي الخارق (The Scientific Brain) ---
         const Brain = {
-            // الجدول الدوري المدمج (أوزان ذرية)
             periodicTable: {
-                "هيدروجين": 1.008, "هيليوم": 4.002, "ليثيوم": 6.941, "كربون": 12.011,
-                "نيتروجين": 14.007, "أكسجين": 15.999, "فلور": 18.998, "صوديوم": 22.99,
-                "مغنيسيوم": 24.305, "ألومنيوم": 26.982, "فسفور": 30.974, "كبريت": 32.06,
-                "كلور": 35.45, "بوتاسيوم": 39.098, "كالسيوم": 40.078, "حديد": 55.845,
-                "نحاس": 63.546, "ذهب": 196.967, "فضة": 107.868
+                "هيدروجين": 1.008, "كربون": 12.011, "أكسجين": 15.999, "صوديوم": 22.99, "حديد": 55.845
             },
-
             solve(query) {
-                const data = (query.match(/\d+(\.\d+)?/g) || []).map(Number);
+                const nums = (query.match(/\d+(\.\d+)?/g) || []).map(Number);
                 
-                // 1. الكيمياء: حساب المولات والكتلة المولية
-                if (query.includes("مول") || query.includes("جرام") || query.includes("كيمياء")) {
+                if (query.includes("مول") || query.includes("جرام")) {
                     for (let el in this.periodicTable) {
                         if (query.includes(el)) {
-                            const mass = data[0] || 0;
-                            const weight = this.periodicTable[el];
-                            const moles = mass / weight;
-                            return `🔍 **التحليل الكيميائي لـ (${el}):**\n- الوزن الذري: ${weight} u\n- الكتلة المعطاة: ${mass} جرام\n- النتيجة: عدد المولات = **${moles.toFixed(4)} مول**.`;
+                            const mass = nums[0] || 0;
+                            const res = mass / this.periodicTable[el];
+                            return `🧪 **كيمياء:** عدد مولات ${el} في ${mass} جرام هو **${res.toFixed(3)} مول**.`;
                         }
                     }
                 }
 
-                // 2. الفيزياء: المقذوفات (المسألة المعقدة)
-                if (query.includes("قذيفة") || (query.includes("زاوية") && query.includes("سرعة"))) {
-                    if (data.length >= 3) {
-                        const h = data[0], v0 = data[1], ang = data[2], g = 9.81;
-                        const rad = ang * (Math.PI / 180);
-                        const v0y = v0 * Math.sin(rad), v0x = v0 * Math.cos(rad);
-                        // المعادلة التربيعية للزمن
-                        const t = (v0y + Math.sqrt(Math.pow(v0y, 2) + 2 * g * h)) / g;
-                        const range = v0x * t;
-                        const vfy = v0y - (g * t);
-                        const vf = Math.sqrt(Math.pow(v0x, 2) + Math.pow(vfy, 2));
-
-                        return `🚀 **تحليل المقذوفات المتقدم:**\n- تحليل السرعة: (Vy=${v0y.toFixed(2)}, Vx=${v0x.toFixed(2)})\n- زمن التحليق: **${t.toFixed(3)} ثانية**\n- المدى الأفقي الكلي: **${range.toFixed(2)} متر**\n- السرعة لحظة الاصطدام: **${vf.toFixed(2)} م/ث**.`;
-                    }
+                if (query.includes("قوة") || query.includes("تسارع")) {
+                    if (nums.length >= 2) return `⚙️ **فيزياء:** القوة (F=ma) تساوي **${(nums[0]*nums[1]).toFixed(2)} نيوتن**.`;
                 }
 
-                // 3. الفيزياء: قوانين نيوتن F=ma
-                if (query.includes("قوة") || query.includes("نيوتن")) {
-                    if (data.length >= 2) {
-                        return `🍎 **قانون نيوتن الثاني:**\nبناءً على المعطيات (F = m × a)، النتيجة هي: **${(data[0] * data[1]).toFixed(2)} نيوتن**.`;
-                    }
-                }
-
-                // 4. الرياضيات: محرك الحساب الشامل
                 try {
                     const mathRes = math.evaluate(query.replace(/[أ-ي]/g, ''));
-                    if (mathRes !== undefined && !isNaN(mathRes)) {
-                        return `📐 **النتيجة الرياضية:**\nالمعادلة: ${query.replace(/[أ-ي]/g, '')}\nالناتج: **${mathRes}**`;
-                    }
+                    if (mathRes !== undefined) return `📐 **رياضيات:** الناتج هو **${mathRes}**`;
                 } catch(e) {}
 
-                return "النظام استلم بياناتك. لمطابقة المسألة مع محرك الاستدلال، يرجى كتابة الأرقام ونوع العلم (كيمياء، فيزياء، رياضيات) بوضوح.";
+                return "لم أفهم المسألة تماماً. حاول كتابة الأرقام والنوع (كيمياء/فيزياء).";
             }
         };
 
-        App.init();
+        // بدء التشغيل
+        window.onload = () => App.init();
 
-        // مستمع الإدخال (Enter للإرسال)
+        // إرسال بالضغط على Enter
         document.getElementById('user-input').addEventListener('keypress', (e) => {
             if(e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 App.sendMessage();
             }
         });
-
-        @keyframes spin { 100% { transform: rotate(360deg); } }
     </script>
 </body>
 </html>
