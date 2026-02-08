@@ -1493,44 +1493,53 @@ class TestSystem {
     }
 
     generateSmartTextQuestions(analysis, count) {
-        const questions = [];
-        // نخلط الجمل ونختار الأفضل (التي تحتوي كلمات مفتاحية)
-        const scoredSentences = analysis.sentences.map(s => {
-            let score = 0;
-            analysis.keywords.forEach(k => { if (s.includes(k)) score++; });
-            return { text: s, score: score };
-        }).sort((a, b) => b.score - a.score); // الأفضل أولاً
+    const questions = [];
+    const complexPatterns = [
+        { trigger: /بسبب|لأن|يؤدي إلى/g, type: "سبب ونتيجة" },
+        { trigger: /هو عبارة عن|يُعرف بـ|تعريف/g, type: "مفهوم" },
+        { trigger: /تتكون من|أجزاء|عناصر/g, type: "تحليل" }
+    ];
 
-        for (let item of scoredSentences) {
-            if (questions.length >= count) break;
-            const sentence = item.text;
-            
-            // البحث عن أفضل كلمة مفتاحية داخل الجملة لحذفها
-            const targetWord = analysis.keywords.find(k => sentence.includes(k));
-            
-            if (targetWord) {
-                // إنشاء سؤال "أكمل الفراغ" أو "اختيار متعدد"
-                const distractors = analysis.keywords
-                    .filter(k => k !== targetWord)
-                    .sort(() => 0.5 - Math.random())
-                    .slice(0, 3);
-                
-                if (distractors.length === 3) {
-                    const options = [targetWord, ...distractors].sort(() => 0.5 - Math.random());
-                    questions.push({
-                        type: 'multiple_choice',
-                        text: `أكمل الجملة: "${sentence.replace(targetWord, '.......')}"`,
-                        options: options,
-                        correctAnswer: options.indexOf(targetWord),
-                        points: 2,
-                        explanation: `الكلمة الصحيحة هي "${targetWord}".`
-                    });
-                }
+    for (let sentence of analysis.sentences) {
+        if (questions.length >= count) break;
+
+        // البحث عن الجمل التي تحتوي على علاقات منطقية (Deep Logic)
+        let foundPattern = complexPatterns.find(p => p.trigger.test(sentence));
+        
+        if (foundPattern) {
+            let keyTerm = this.extractMainConcept(sentence);
+            if (keyTerm && keyTerm.length > 2) {
+                questions.push({
+                    type: 'multiple_choice',
+                    text: `بناءً على فهمك للنص، ما هو التفسير العلمي الصحيح لـ (${keyTerm})؟`,
+                    options: this.generateLogicalDistractors(keyTerm, analysis.keywords),
+                    correctAnswer: 0,
+                    points: 5,
+                    explanation: `هذا السؤال يقيس فهمك لـ ${foundPattern.type} كما ورد في النص.`
+                });
             }
         }
-        return questions;
     }
+    return questions;
+}
 
+// استخراج المفهوم الرئيسي من الجملة (بدلاً من مجرد حذف كلمة)
+extractMainConcept(sentence) {
+    let cleaned = sentence.replace(/[0-9]|من|في|على|إلى|أن|كان/g, '').trim();
+    let words = cleaned.split(' ');
+    return words.length > 2 ? words.slice(0, 3).join(' ') : words[0];
+}
+
+// توليد خيارات خاطئة "ذكية" (ليست عشوائية)
+generateLogicalDistractors(correct, keywords) {
+    let distractors = keywords
+        .filter(k => k !== correct && k.length > 3)
+        .sort(() => 0.5 - Math.random())
+        .slice(0, 3);
+    
+    // وضع الإجابة الصحيحة في مكان عشوائي سيتم خلطه لاحقاً
+    return [correct, ...distractors];
+}
     async evaluateTest(testId, answers) {
         const test = this.tests.get(testId);
         let correctCount = 0;
