@@ -3,14 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>العقل العلمي الخارق | الإصدار الشامل</title>
+    <title>MASTER CORE v2 | العقل العلمي الخارق</title>
     
-    <!-- الخطوط والمكتبات -->
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Tajawal:wght@300;500;800&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Firebase SDKs -->
+    <!-- Firebase (اختياري - سيعمل النظام بدونه في وضع الضيف) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -30,139 +29,78 @@
         * { box-sizing: border-box; font-family: 'Tajawal', sans-serif; }
         body { background: var(--bg); color: white; margin: 0; height: 100vh; overflow: hidden; }
 
-        /* شاشات النظام */
         .screen { display: none; height: 100vh; flex-direction: column; align-items: center; justify-content: center; opacity: 0; transition: 0.5s; }
         .screen.active { display: flex; opacity: 1; }
 
-        /* شاشة التحميل */
-        #loader { 
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: var(--bg); z-index: 9999; display: flex; 
-            flex-direction: column; align-items: center; justify-content: center; 
-        }
-        .spinner { 
-            width: 80px; height: 80px; border: 5px solid var(--glass); 
-            border-top-color: var(--neon-blue); border-radius: 50%; 
-            animation: spin 1s linear infinite; 
-        }
+        #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .spinner { width: 60px; height: 60px; border: 4px solid var(--glass); border-top-color: var(--neon-blue); border-radius: 50%; animation: spin 1s linear infinite; }
 
-        /* شاشة الدخول الزجاجية */
-        .auth-card {
-            background: var(--glass); padding: 40px; border-radius: 30px;
-            border: 1px solid rgba(0, 245, 255, 0.3); backdrop-filter: blur(20px);
-            width: 90%; max-width: 400px; text-align: center;
-        }
+        .auth-card { background: var(--glass); padding: 40px; border-radius: 30px; border: 1px solid rgba(0, 245, 255, 0.3); backdrop-filter: blur(20px); width: 90%; max-width: 400px; text-align: center; }
+        .auth-card input { width: 100%; padding: 15px; margin: 10px 0; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: white; outline: none; }
+        .btn { width: 100%; padding: 15px; border-radius: 12px; border: none; background: var(--grad); color: white; font-weight: 800; cursor: pointer; transition: 0.3s; margin-top: 10px; }
 
-        .auth-card input {
-            width: 100%; padding: 15px; margin: 10px 0; border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2);
-            color: white; outline: none;
-        }
-
-        .btn {
-            width: 100%; padding: 15px; border-radius: 12px; border: none;
-            background: var(--grad); color: white; font-weight: 800;
-            cursor: pointer; transition: 0.3s; margin-top: 10px;
-        }
-
-        /* الواجهة الرئيسية */
         .app-container { width: 100%; height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
-        header { padding: 20px; background: rgba(0,0,0,0.4); backdrop-filter: blur(10px); border-bottom: 1px solid var(--glass); display: flex; justify-content: space-between; }
-        .chat-box { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
-        .msg { padding: 15px; border-radius: 15px; max-width: 85%; line-height: 1.6; animation: slideUp 0.3s ease; }
-        .ai-msg { align-self: flex-start; background: rgba(157, 78, 221, 0.1); border: 1px solid var(--neon-purple); }
-        .user-msg { align-self: flex-end; background: rgba(0, 245, 255, 0.1); border: 1px solid var(--neon-blue); }
-        .input-area { padding: 20px; background: rgba(0,0,0,0.3); display: flex; gap: 10px; }
-        #user-input { flex: 1; background: var(--glass); border: 1px solid var(--glass); border-radius: 10px; color: white; padding: 12px; outline: none; resize: none; }
-        .send-btn { width: 50px; background: var(--grad); border: none; border-radius: 10px; color: white; cursor: pointer; }
-        .badge { font-size: 10px; background: var(--neon-blue); color: black; padding: 2px 6px; border-radius: 4px; margin-bottom: 5px; display: inline-block; }
+        header { padding: 15px 20px; background: rgba(0,0,0,0.6); border-bottom: 1px solid var(--glass); display: flex; justify-content: space-between; align-items: center; }
+        .chat-box { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; scroll-behavior: smooth; }
+        
+        .msg { padding: 15px; border-radius: 18px; max-width: 85%; line-height: 1.6; animation: slideUp 0.3s ease; position: relative; }
+        .ai-msg { align-self: flex-start; background: rgba(157, 78, 221, 0.1); border: 1px solid var(--neon-purple); border-bottom-right-radius: 2px; }
+        .user-msg { align-self: flex-end; background: rgba(0, 245, 255, 0.1); border: 1px solid var(--neon-blue); border-bottom-left-radius: 2px; }
+        
+        .input-area { padding: 15px; background: #0a0a1a; display: flex; gap: 10px; border-top: 1px solid var(--glass); }
+        #user-input { flex: 1; background: var(--glass); border: 1px solid rgba(0, 245, 255, 0.2); border-radius: 15px; color: white; padding: 12px 20px; outline: none; resize: none; font-size: 15px; }
+        .send-btn { width: 55px; height: 55px; background: var(--grad); border: none; border-radius: 15px; color: white; cursor: pointer; font-size: 20px; }
+        
+        .badge { font-size: 11px; font-weight: bold; background: var(--grad); color: white; padding: 3px 8px; border-radius: 5px; margin-bottom: 8px; display: inline-block; }
+        .solution-step { border-right: 2px solid var(--neon-blue); padding-right: 10px; margin: 5px 0; font-size: 14px; color: #ddd; }
+        .final-res { font-size: 18px; color: var(--neon-blue); font-weight: 800; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-    <!-- شاشة التحميل -->
     <div id="loader">
         <div class="spinner"></div>
-        <h2 style="margin-top: 20px; font-family: 'Orbitron'; color: var(--neon-blue); letter-spacing: 5px;">CORE LOADING</h2>
+        <h2 style="margin-top: 20px; font-family: 'Orbitron'; color: var(--neon-blue); letter-spacing: 3px;">INITIALIZING BRAIN</h2>
     </div>
 
-    <!-- شاشة الدخول -->
     <div id="login-screen" class="screen">
         <div class="auth-card">
-            <i class="fas fa-atom" style="font-size: 50px; color: var(--neon-blue); margin-bottom: 20px;"></i>
-            <h2 style="font-family: 'Orbitron';">SCIENTIFIC AI</h2>
-            <input type="email" id="email" placeholder="البريد الإلكتروني">
-            <input type="password" id="pass" placeholder="كلمة المرور">
-            <button class="btn" onclick="App.login()">تسجيل الدخول</button>
-            <button class="btn" style="background: var(--glass); border: 1px solid var(--neon-blue);" onclick="App.guest()">الدخول كضيف</button>
+            <i class="fas fa-brain" style="font-size: 50px; color: var(--neon-blue); margin-bottom: 20px;"></i>
+            <h2 style="font-family: 'Orbitron';">MASTER CORE AI</h2>
+            <button class="btn" onclick="App.guest()">ابدأ التحليل العلمي المباشر</button>
+            <p style="font-size: 12px; color: #777; margin-top: 15px;">النظام يعمل الآن بمعالجة منطقية محلية (Offline Brain)</p>
         </div>
     </div>
 
-    <!-- شاشة التطبيق الرئيسية -->
     <div id="app-screen" class="screen">
         <div class="app-container">
             <header>
                 <div style="display: flex; align-items: center; gap: 12px;">
-                    <i class="fas fa-brain" style="color: var(--neon-blue); font-size: 24px;"></i>
+                    <i class="fas fa-atom" style="color: var(--neon-blue); font-size: 22px;"></i>
                     <div>
-                        <h4 style="margin: 0; font-family: 'Orbitron'; font-size: 14px;">MASTER CORE</h4>
-                        <small id="status" style="color: var(--neon-blue); font-size: 9px;">● متصل بالنظام</small>
+                        <h4 style="margin: 0; font-family: 'Orbitron'; font-size: 14px; letter-spacing: 1px;">MASTER CORE <span style="color:var(--neon-purple)">V2</span></h4>
+                        <small id="status" style="color: var(--neon-blue); font-size: 9px;">● العقل العلمي نشط</small>
                     </div>
                 </div>
-                <button onclick="App.logout()" style="background:none; border:none; color:#ff4757; cursor:pointer; font-size: 18px;"><i class="fas fa-power-off"></i></button>
+                <button onclick="location.reload()" style="background:none; border:none; color:#ff4757; cursor:pointer;"><i class="fas fa-power-off"></i></button>
             </header>
             
             <div class="chat-box" id="chat"></div>
 
             <div class="input-area">
-                <textarea id="user-input" placeholder="اكتب مسألتك هنا..." rows="1"></textarea>
+                <textarea id="user-input" placeholder="اكتب مسألتك الفيزيائية أو الرياضية هنا..." rows="1"></textarea>
                 <button class="send-btn" onclick="App.sendMessage()"><i class="fas fa-paper-plane"></i></button>
             </div>
         </div>
     </div>
 
     <script>
-        // تكوين Firebase
-        const firebaseConfig = {
-            apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
-            authDomain: "sudan-market-6b122.firebaseapp.com",
-            databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
-            projectId: "sudan-market-6b122",
-            storageBucket: "sudan-market-6b122.appspot.com",
-            messagingSenderId: "66729481566",
-            appId: "1:66729481566:web:93393f28dc22d32cceebcf"
-        };
-
-        // تهيئة Firebase بأمان
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        const auth = firebase.auth();
-        const db = firebase.database();
-
         const App = {
-            user: null,
-
             init() {
-                // مراقبة حالة تسجيل الدخول
-                auth.onAuthStateChanged(user => {
-                    this.hideLoader();
-                    if (user) {
-                        this.user = user;
-                        this.showScreen('app-screen');
-                        this.loadHistory();
-                    } else {
-                        this.showScreen('login-screen');
-                    }
-                });
-
-                // أمان: إذا فشل تحميل Firebase أو تأخر، أغلق شاشة التحميل بعد 5 ثوانٍ
-                setTimeout(() => this.hideLoader(), 5000);
-            },
-
-            hideLoader() {
-                const loader = document.getElementById('loader');
-                if(loader) loader.style.display = 'none';
+                setTimeout(() => {
+                    document.getElementById('loader').style.display = 'none';
+                    this.showScreen('login-screen');
+                }, 2000);
             },
 
             showScreen(id) {
@@ -170,26 +108,9 @@
                 document.getElementById(id).classList.add('active');
             },
 
-            async login() {
-                const e = document.getElementById('email').value;
-                const p = document.getElementById('pass').value;
-                if(!e || !p) return alert("يرجى ملء البيانات");
-                try { 
-                    await auth.signInWithEmailAndPassword(e, p); 
-                } catch (err) { 
-                    alert("خطأ: " + err.message); 
-                }
-            },
-
             guest() {
-                this.user = { uid: "guest", email: "ضيف" };
-                this.hideLoader();
                 this.showScreen('app-screen');
-                this.appendMsg("تم تفعيل وضع الضيف (بدون حفظ سحابي).", "ai");
-            },
-
-            logout() { 
-                auth.signOut().then(() => location.reload()); 
+                this.appendMsg("أهلاً بك في الإصدار المطور. أنا جاهز لحل أعقد مسائل المقذوفات، الميكانيكا، الكيمياء، والرياضيات. كيف يمكنني مساعدتك؟", "ai");
             },
 
             sendMessage() {
@@ -200,74 +121,132 @@
                 this.appendMsg(text, 'user');
                 input.value = '';
 
-                const answer = Brain.solve(text);
+                // محاكاة التفكير
                 setTimeout(() => {
-                    this.appendMsg(answer, 'ai');
-                    this.saveToDB(text, answer);
-                }, 600);
+                    const result = ScientificBrain.process(text);
+                    this.appendMsg(result, 'ai');
+                }, 800);
             },
 
             appendMsg(text, type) {
                 const chat = document.getElementById('chat');
                 const div = document.createElement('div');
                 div.className = `msg ${type}-msg`;
-                div.innerHTML = (type === 'ai' ? `<span class="badge">التحليل العلمي</span><br>` : '') + text.replace(/\n/g, '<br>');
+                
+                let content = text;
+                if (type === 'ai') {
+                    content = `<span class="badge">تحليل النواة العلمية</span><br>${text}`;
+                }
+                
+                div.innerHTML = content;
                 chat.appendChild(div);
                 chat.scrollTop = chat.scrollHeight;
-            },
-
-            saveToDB(q, a) {
-                if (this.user && this.user.uid !== "guest") {
-                    db.ref('chats/' + this.user.uid).push({ q, a, t: Date.now() });
-                }
-            },
-
-            loadHistory() {
-                if (!this.user || this.user.uid === "guest") return;
-                db.ref('chats/' + this.user.uid).limitToLast(10).once('value', snap => {
-                    snap.forEach(child => {
-                        const data = child.val();
-                        this.appendMsg(data.q, 'user');
-                        this.appendMsg(data.a, 'ai');
-                    });
-                });
             }
         };
 
-        const Brain = {
-            periodicTable: {
-                "هيدروجين": 1.008, "كربون": 12.011, "أكسجين": 15.999, "صوديوم": 22.99, "حديد": 55.845
+        const ScientificBrain = {
+            g: 9.81, // تسارع الجاذبية
+
+            // قاعدة بيانات كيميائية مصغرة
+            elements: {
+                "هيدروجين": 1.008, "كربون": 12.01, "أكسجين": 16.00, "صوديوم": 22.99, "كلور": 35.45,
+                "حديد": 55.85, "نحاس": 63.55, "نيتروجين": 14.01, "ماغنيسيوم": 24.31, "المنيوم": 26.98
             },
-            solve(query) {
+
+            process(query) {
                 const nums = (query.match(/\d+(\.\d+)?/g) || []).map(Number);
-                
-                if (query.includes("مول") || query.includes("جرام")) {
-                    for (let el in this.periodicTable) {
-                        if (query.includes(el)) {
-                            const mass = nums[0] || 0;
-                            const res = mass / this.periodicTable[el];
-                            return `🧪 **كيمياء:** عدد مولات ${el} في ${mass} جرام هو **${res.toFixed(3)} مول**.`;
-                        }
-                    }
+                const text = query.toLowerCase();
+
+                // 1. منطق المقذوفات (Projectile Motion) - المسألة التي فشل فيها النظام السابق
+                if (text.includes("قذيفة") || (text.includes("بزاوية") && text.includes("سرعة"))) {
+                    return this.solveProjectile(nums, text);
                 }
 
-                if (query.includes("قوة") || query.includes("تسارع")) {
-                    if (nums.length >= 2) return `⚙️ **فيزياء:** القوة (F=ma) تساوي **${(nums[0]*nums[1]).toFixed(2)} نيوتن**.`;
+                // 2. منطق الكيمياء (Moles and Mass)
+                if (text.includes("مول") || text.includes("كتلة") || text.includes("جرام")) {
+                    return this.solveChemistry(nums, text);
                 }
 
+                // 3. قوانين نيوتن والحركة (Dynamics)
+                if (text.includes("قوة") || text.includes("تسارع") || text.includes("نيوتن")) {
+                    return this.solvePhysics(nums, text);
+                }
+
+                // 4. الرياضيات (Algebra/Arithmetic)
                 try {
-                    const mathRes = math.evaluate(query.replace(/[أ-ي]/g, ''));
-                    if (mathRes !== undefined) return `📐 **رياضيات:** الناتج هو **${mathRes}**`;
+                    // تنظيف النص من الكلمات العربية لإبقاء العملية الحسابية فقط
+                    let mathQuery = query.replace(/[أ-ي]/g, '').replace(/=/g, '').trim();
+                    if (mathQuery.length > 0) {
+                        const res = math.evaluate(mathQuery);
+                        return `📐 **النتيجة الرياضية:**<br><div class="final-res">${res}</div>`;
+                    }
                 } catch(e) {}
 
-                return "لم أفهم المسألة تماماً. حاول كتابة الأرقام والنوع (كيمياء/فيزياء).";
+                return "عذراً، لم أستطع تحديد القوانين المطلوبة بدقة. يرجى التأكد من ذكر المعطيات (مثل: السرعة، الكتلة، الزاوية) بوضوح.";
+            },
+
+            solveProjectile(nums, text) {
+                if (nums.length < 2) return "لحل مسألة المقذوفات أحتاج إلى (السرعة الابتدائية، الزاوية، والارتفاع إن وجد).";
+
+                // محاولة استخراج المعطيات بذكاء من ترتيبها أو النص
+                let v0 = nums.find(n => n > 10 && n < 1000) || nums[0]; // غالباً السرعة تكون بين 10 و 1000
+                let theta = nums.find(n => n > 0 && n <= 90) || (nums[1] < 90 ? nums[1] : 45);
+                let h0 = nums.find((n, i) => n >= 0 && i !== nums.indexOf(v0) && i !== nums.indexOf(theta)) || 0;
+
+                const rad = theta * (Math.PI / 180);
+                const vox = v0 * Math.cos(rad);
+                const voy = v0 * Math.sin(rad);
+
+                // حساب الزمن حتى لمس الأرض (حل المعادلة التربيعية: -0.5*g*t^2 + voy*t + h0 = 0)
+                const a = -0.5 * this.g;
+                const b = voy;
+                const c = h0;
+                const discriminant = Math.sqrt(b*b - 4*a*c);
+                const t = (-b - discriminant) / (2*a); // الزمن الكلي
+
+                const range = vox * t; // المدى الأفقي
+                const hMax = h0 + (voy * voy) / (2 * this.g); // أقصى ارتفاع
+
+                return `🚀 **تحليل حركة المقذوف:**<br>
+                        <div class="solution-step">1. تحليل السرعة: Vx = ${vox.toFixed(2)} م/ث ، Vy = ${voy.toFixed(2)} م/ث</div>
+                        <div class="solution-step">2. زمن التحليق الكلي: t = ${t.toFixed(2)} ثانية</div>
+                        <div class="solution-step">3. أقصى ارتفاع يصل إليه: H = ${hMax.toFixed(2)} متر</div>
+                        <div class="final-res">المدى الأفقي (R): ${range.toFixed(2)} متر</div>`;
+            },
+
+            solveChemistry(nums, text) {
+                let element = null;
+                for (let el in this.elements) {
+                    if (text.includes(el)) { element = el; break; }
+                }
+
+                if (element && nums.length > 0) {
+                    const mass = nums[0];
+                    const molarMass = this.elements[element];
+                    const moles = mass / molarMass;
+                    return `🧪 **التحليل الكيميائي لـ (${element}):**<br>
+                            <div class="solution-step">الكتلة المولية: ${molarMass} جم/مول</div>
+                            <div class="solution-step">القانون: عدد المولات = الكتلة / الكتلة المولية</div>
+                            <div class="final-res">النتيجة: ${moles.toFixed(4)} مول</div>`;
+                }
+                return "يرجى ذكر اسم العنصر (مثل: كربون، صوديوم) والكتلة بالجرام.";
+            },
+
+            solvePhysics(nums, text) {
+                if (nums.length >= 2) {
+                    if (text.includes("قوة") || text.includes("نيوتن")) {
+                        const f = nums[0] * nums[1];
+                        return `⚙️ **قانون نيوتن الثاني (F=ma):**<br>
+                                <div class="solution-step">بفرض أن المعطيات هي الكتلة والتسارع.</div>
+                                <div class="final-res">القوة المحصلة = ${f.toFixed(2)} نيوتن</div>`;
+                    }
+                }
+                return "أحتاج إلى رقمين على الأقل (مثل الكتلة والتسارع) لحساب القوة.";
             }
         };
 
-        // بدء التشغيل
         window.onload = () => App.init();
 
-        // إرسال بالضغط على Enter
         document.getElementById('user-input').addEventListener('keypress', (e) => {
             if(e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
