@@ -1115,11 +1115,17 @@ const ScienceEngine = {
         }
 
         function initializeUI() {
-            createParticles();
-            setupKeyboardShortcuts();
-            testSystem = new TestSystem();
+    createParticles();
+    setupKeyboardShortcuts();
+    testSystem = new TestSystem();
+    
+    // إضافة حدث لزر الرجوع في لوحة المفاتيح (Esc)
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && navigationHistory.length > 0) {
+            goBack();
         }
-
+    });
+}
         // =============== [ 2. نظام إدارة المستخدمين ] ===============
         async function loadUserData() {
             if (!currentUser) return;
@@ -1260,17 +1266,24 @@ const ScienceEngine = {
         }
 
         async function logout() {
-            try {
-                await auth.signOut();
-                showNotification('تم تسجيل الخروج بنجاح', 'success');
-                showLoginScreen();
-            } catch (error) {
-                console.error('❌ خطأ في تسجيل الخروج:', error);
-                currentUser = null;
-                userData = {};
-                showLoginScreen();
-            }
-        }
+    try {
+        await auth.signOut();
+        showNotification('تم تسجيل الخروج بنجاح', 'success');
+        
+        // تنظيف بيانات الجلسة
+        localStorage.removeItem('session_active');
+        localStorage.removeItem('navigation_history');
+        localStorage.removeItem('last_active_page');
+        
+        navigationHistory = [];
+        showLoginScreen();
+    } catch (error) {
+        console.error('❌ خطأ في تسجيل الخروج:', error);
+        currentUser = null;
+        userData = {};
+        showLoginScreen();
+    }
+}
 
         function showRegister() {
             Swal.fire({
@@ -3157,23 +3170,35 @@ class TestSystem {
                 }
             });
         }
-
-        function checkUserSession() {
-            const savedEmail = localStorage.getItem('ai_system_email');
-            if (savedEmail) {
-                document.getElementById('login-email').value = savedEmail;
-                document.getElementById('login-password').focus();
-            }
-            
-            // التحقق من حالة المستخدم بعد التهيئة
-            setTimeout(() => {
-                const lastPage = localStorage.getItem('last_active_page') || 'dashboard';
-                if (document.getElementById('app-screen') && !document.getElementById('app-screen').classList.contains('hidden')) {
-                    navigateTo(lastPage, false);
-                }
-            }, 100);
+       function checkUserSession() {
+    const savedEmail = localStorage.getItem('ai_system_email');
+    if (savedEmail) {
+        document.getElementById('login-email').value = savedEmail;
+        document.getElementById('login-password').focus();
+    }
+    
+    // استعادة سجل التنقل من localStorage
+    navigationHistory = JSON.parse(localStorage.getItem('navigation_history')) || [];
+    
+    // عند إعادة فتح التطبيق بعد إغلاقه، ابدأ من الرئيسية إذا كانت جلسة جديدة
+    const isNewSession = !localStorage.getItem('session_active');
+    if (isNewSession) {
+        localStorage.setItem('session_active', 'true');
+        navigationHistory = []; // تصفير السجل
+        localStorage.setItem('navigation_history', JSON.stringify(navigationHistory));
+        localStorage.setItem('last_active_page', 'dashboard');
+    }
+    
+    // تحديث زر الرجوع بعد تحميل الواجهة
+    setTimeout(() => {
+        updateBackButton();
+        const lastPage = localStorage.getItem('last_active_page') || 'dashboard';
+        if (document.getElementById('app-screen') && !document.getElementById('app-screen').classList.contains('hidden')) {
+            navigateTo(lastPage, false);
         }
-
+    }, 100);
+}
+        
         function checkChaosWord(text) {
             if (!text) return false;
             
@@ -3319,39 +3344,53 @@ class TestSystem {
         }
 
         // =============== [ 7. نظام التنقل والذاكرة ] ===============
-        let navigationHistory = []; 
-        let currentPage = localStorage.getItem('last_active_page') || 'dashboard'; 
+        // =============== [ 7. نظام التنقل والذاكرة ] ===============
+let navigationHistory = JSON.parse(localStorage.getItem('navigation_history')) || []; 
+let currentPage = localStorage.getItem('last_active_page') || 'dashboard';
 
-        async function navigateTo(pageName, saveToHistory = true) {
-            if (saveToHistory && currentPage !== pageName) {
-                navigationHistory.push(currentPage);
-            }
-            currentPage = pageName;
-            localStorage.setItem('last_active_page', pageName); 
+async function navigateTo(pageName, saveToHistory = true) {
+    if (saveToHistory && currentPage !== pageName) {
+        navigationHistory.push(currentPage);
+        localStorage.setItem('navigation_history', JSON.stringify(navigationHistory));
+    }
+    
+    currentPage = pageName;
+    localStorage.setItem('last_active_page', pageName);
 
-            // إظهار سهم الرجوع في الهيدر
-            const backBtn = document.getElementById('back-button');
-            if (backBtn) {
-                if (navigationHistory.length > 0) backBtn.classList.remove('hidden');
-                else backBtn.classList.add('hidden');
-            }
+    // إظهار/إخفاء زر الرجوع
+    updateBackButton();
 
-            // نداء الدوال الأصلية لفتح الصفحات
-            if (pageName === 'dashboard') loadDashboard();
-            else if (pageName === 'generator') loadTestGenerator();
-            else if (pageName === 'history') loadTestHistory();
-            else if (pageName === 'library') loadTestLibrary();
-            else if (pageName === 'progress') loadProgress();
-            else if (pageName === 'settings') loadSettings();
-            else if (pageName === 'solver') loadSolver();
+    // تحميل المحتوى المناسب
+    if (pageName === 'dashboard') loadDashboard();
+    else if (pageName === 'generator') loadTestGenerator();
+    else if (pageName === 'history') loadTestHistory();
+    else if (pageName === 'library') loadTestLibrary();
+    else if (pageName === 'progress') loadProgress();
+    else if (pageName === 'settings') loadSettings();
+    else if (pageName === 'solver') loadSolver();
+}
+
+function updateBackButton() {
+    const backBtn = document.getElementById('back-button');
+    if (backBtn) {
+        if (navigationHistory.length > 0) {
+            backBtn.classList.remove('hidden');
+        } else {
+            backBtn.classList.add('hidden');
         }
+    }
+}
 
-        function goBack() {
-            if (navigationHistory.length > 0) {
-                const previousPage = navigationHistory.pop();
-                navigateTo(previousPage, false);
-            }
-        }
+function goBack() {
+    if (navigationHistory.length > 0) {
+        const previousPage = navigationHistory.pop();
+        localStorage.setItem('navigation_history', JSON.stringify(navigationHistory));
+        navigateTo(previousPage, false);
+    } else {
+        // إذا لم يكن هناك سجل، ارجع للرئيسية
+        navigateTo('dashboard', false);
+    }
+}
 
         async function handleUserProgress(evaluation) {
             if (!userData.stats) userData.stats = { totalXP: 0, level: 1, testsTaken: 0, averageScore: 0, bestScore: 0 };
