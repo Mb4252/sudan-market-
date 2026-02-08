@@ -3,15 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>العقل العلمي الخارق | القمة في الذكاء الاصطناعي</title>
+    <title>العقل العلمي الخارق | الإصدار الشامل</title>
     
-    <!-- الخطوط والمكتبات الأساسية -->
+    <!-- الخطوط والمكتبات -->
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Tajawal:wght@300;500;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Firebase -->
+    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -20,309 +19,124 @@
         :root {
             --neon-blue: #00f5ff;
             --neon-purple: #9d4edd;
-            --deep-space: #050510;
-            --glass: rgba(255, 255, 255, 0.05);
-            --text-main: #e0e0ff;
+            --bg: #050510;
+            --glass: rgba(255, 255, 255, 0.08);
+            --grad: linear-gradient(45deg, var(--neon-blue), var(--neon-purple));
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Tajawal', sans-serif; }
+        * { box-sizing: border-box; font-family: 'Tajawal', sans-serif; }
+        body { background: var(--bg); color: white; margin: 0; height: 100vh; overflow: hidden; }
 
-        body {
-            background: var(--deep-space);
-            color: var(--text-main);
-            overflow: hidden;
-            height: 100vh;
-        }
+        /* شاشات النظام */
+        .screen { display: none; height: 100vh; flex-direction: column; align-items: center; justify-content: center; opacity: 0; transition: 0.5s; }
+        .screen.active { display: flex; opacity: 1; }
 
-        /* خلفية الجسيمات المتحركة */
-        #bg-canvas {
-            position: fixed;
-            top: 0;
-            left: 0;
-            z-index: -1;
-        }
-
-        /* شاشة التحميل */
-        .loader-overlay {
-            position: fixed;
-            inset: 0;
-            background: var(--deep-space);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 10000;
-            transition: 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .loader-circle {
-            width: 100px;
-            height: 100px;
-            border: 4px solid var(--glass);
-            border-top: 4px solid var(--neon-blue);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            filter: drop-shadow(0 0 15px var(--neon-blue));
-        }
-
-        @keyframes spin { 100% { transform: rotate(360deg); } }
-
-        /* شاشة تسجيل الدخول */
-        #login-screen {
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-
-        .glass-card {
-            background: rgba(15, 15, 35, 0.8);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(0, 245, 255, 0.2);
-            border-radius: 30px;
-            padding: 40px;
-            width: 100%;
-            max-width: 450px;
-            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
-            text-align: center;
-        }
-
-        .input-group {
-            margin-bottom: 20px;
-            position: relative;
-        }
-
-        .input-group i {
-            position: absolute;
-            right: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--neon-blue);
-        }
-
-        .modern-input {
-            width: 100%;
-            padding: 15px 45px 15px 15px;
+        /* شاشة الدخول الزجاجية */
+        .auth-card {
             background: var(--glass);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 12px;
-            color: white;
-            outline: none;
-            transition: 0.3s;
+            padding: 40px;
+            border-radius: 30px;
+            border: 1px solid rgba(0, 245, 255, 0.3);
+            backdrop-filter: blur(20px);
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
         }
 
-        .modern-input:focus { border-color: var(--neon-blue); box-shadow: 0 0 15px rgba(0,245,255,0.2); }
-
-        .btn-glow {
-            width: 100%;
-            padding: 15px;
-            border-radius: 12px;
-            border: none;
-            background: linear-gradient(45deg, var(--neon-blue), var(--neon-purple));
-            color: white;
-            font-weight: bold;
-            cursor: pointer;
-            transition: 0.3s;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+        .auth-card input {
+            width: 100%; padding: 15px; margin: 10px 0; border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2);
+            color: white; outline: none; transition: 0.3s;
         }
 
-        .btn-glow:hover { transform: scale(1.02); filter: brightness(1.2); }
+        .auth-card input:focus { border-color: var(--neon-blue); box-shadow: 0 0 10px var(--neon-blue); }
 
-        /* الواجهة الرئيسية */
-        #app-screen {
-            display: none;
-            height: 100vh;
-            grid-template-rows: auto 1fr auto;
+        .btn {
+            width: 100%; padding: 15px; border-radius: 12px; border: none;
+            background: var(--grad); color: white; font-weight: 800;
+            cursor: pointer; transition: 0.3s; margin-top: 10px;
         }
+
+        .btn:hover { transform: scale(1.05); filter: brightness(1.2); }
+
+        /* الواجهة الرئيسية (Chat) */
+        .app-container { width: 100%; height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
 
         header {
-            padding: 20px 40px;
-            background: rgba(0,0,0,0.3);
-            backdrop-filter: blur(10px);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid var(--glass);
+            padding: 20px 30px; background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(10px); border-bottom: 1px solid var(--glass);
+            display: flex; justify-content: space-between; align-items: center;
         }
 
-        .chat-area {
-            overflow-y: auto;
-            padding: 30px;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            max-width: 1000px;
-            margin: 0 auto;
-            width: 100%;
-        }
+        .chat-box { padding: 30px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
 
-        .message {
-            max-width: 85%;
-            padding: 18px 25px;
-            border-radius: 20px;
-            line-height: 1.7;
-            position: relative;
-            animation: slideIn 0.4s ease-out forwards;
-        }
+        .msg { padding: 18px 25px; border-radius: 20px; max-width: 80%; line-height: 1.7; position: relative; animation: slideUp 0.4s ease; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
-        @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .ai-msg { align-self: flex-start; background: rgba(157, 78, 221, 0.1); border: 1px solid var(--neon-purple); border-bottom-left-radius: 2px; }
+        .user-msg { align-self: flex-end; background: rgba(0, 245, 255, 0.1); border: 1px solid var(--neon-blue); border-bottom-right-radius: 2px; }
 
-        .user-msg {
-            align-self: flex-end;
-            background: linear-gradient(135deg, #2d3436 0%, #000000 100%);
-            border: 1px solid var(--neon-blue);
-            border-bottom-right-radius: 2px;
-        }
+        .input-area { padding: 25px; background: rgba(0,0,0,0.3); display: flex; gap: 15px; align-items: center; }
+        .input-wrapper { flex: 1; background: var(--glass); border-radius: 15px; border: 1px solid rgba(0, 245, 255, 0.2); display: flex; padding: 5px 15px; }
+        
+        #user-input { flex: 1; background: none; border: none; color: white; padding: 12px; font-size: 16px; outline: none; resize: none; }
+        
+        .send-btn { width: 50px; height: 50px; border-radius: 12px; border: none; background: var(--grad); color: white; cursor: pointer; transition: 0.3s; }
 
-        .ai-msg {
-            align-self: flex-start;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid var(--neon-purple);
-            border-bottom-left-radius: 2px;
-        }
-
-        .input-container {
-            padding: 25px 40px;
-            background: rgba(0,0,0,0.5);
-        }
-
-        .input-wrapper {
-            max-width: 1000px;
-            margin: 0 auto;
-            display: flex;
-            gap: 15px;
-            background: var(--glass);
-            padding: 10px;
-            border-radius: 20px;
-            border: 1px solid rgba(0,245,255,0.2);
-        }
-
-        #user-input {
-            flex: 1;
-            background: transparent;
-            border: none;
-            color: white;
-            padding: 10px;
-            font-size: 16px;
-            resize: none;
-            max-height: 150px;
-            outline: none;
-        }
-
-        .action-btn {
-            width: 50px;
-            height: 50px;
-            border-radius: 15px;
-            border: none;
-            background: var(--neon-blue);
-            color: var(--deep-space);
-            cursor: pointer;
-            transition: 0.3s;
-        }
-
-        .action-btn:hover { transform: rotate(-10deg) scale(1.1); }
-
-        .hidden { display: none !important; }
-
-        /* ذكاء مضاف: شريط تحليل */
-        .thinking-process {
-            font-size: 12px;
-            color: var(--neon-blue);
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .pulse {
-            width: 8px;
-            height: 8px;
-            background: var(--neon-blue);
-            border-radius: 50%;
-            animation: pulse 1s infinite;
-        }
-
-        @keyframes pulse { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
+        .badge { font-size: 10px; padding: 3px 8px; border-radius: 5px; background: var(--neon-blue); color: #000; margin-bottom: 10px; display: inline-block; }
     </style>
 </head>
 <body>
 
-    <canvas id="bg-canvas"></canvas>
-
     <!-- شاشة التحميل -->
-    <div class="loader-overlay" id="loader">
-        <div class="loader-circle"></div>
-        <h2 style="margin-top: 25px; font-family: 'Orbitron'; letter-spacing: 5px; color: var(--neon-blue);">NEURAL CORE</h2>
-        <p style="color: var(--glass); margin-top: 10px;">جاري مزامنة الوعي الاصطناعي...</p>
+    <div id="loader" class="screen active" style="background: var(--bg); z-index: 1000;">
+        <div style="width: 80px; height: 80px; border: 5px solid var(--glass); border-top-color: var(--neon-blue); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        <h2 style="margin-top: 20px; font-family: 'Orbitron'; color: var(--neon-blue); letter-spacing: 5px;">CORE LOADING</h2>
     </div>
 
     <!-- شاشة الدخول -->
-    <div id="login-screen">
-        <div class="glass-card">
-            <i class="fas fa-brain" style="font-size: 60px; color: var(--neon-blue); margin-bottom: 20px;"></i>
-            <h1 style="margin-bottom: 10px;">العقل العلمي المتطور</h1>
-            <p style="color: #888; margin-bottom: 30px;">نظام الإدراك الفائق v5.0</p>
-            
-            <div class="input-group">
-                <i class="fas fa-envelope"></i>
-                <input type="email" id="email" class="modern-input" placeholder="البريد الإلكتروني">
-            </div>
-            
-            <div class="input-group">
-                <i class="fas fa-lock"></i>
-                <input type="password" id="pass" class="modern-input" placeholder="كلمة المرور">
-            </div>
-            
-            <button class="btn-glow" onclick="Auth.login()" style="margin-bottom: 15px;">تسجيل الدخول</button>
-            <button class="btn-glow" style="background: var(--glass); border: 1px solid var(--neon-blue);" onclick="Auth.guestMode()">الدخول كضيف</button>
-            
-            <p style="margin-top: 20px; font-size: 13px; color: #666;">نسيت كلمة المرور؟ اتصل بالنظام المركزي</p>
+    <div id="login-screen" class="screen">
+        <div class="auth-card">
+            <i class="fas fa-atom" style="font-size: 50px; color: var(--neon-blue); margin-bottom: 20px;"></i>
+            <h2 style="font-family: 'Orbitron';">SCIENTIFIC AI</h2>
+            <input type="email" id="email" placeholder="البريد الإلكتروني">
+            <input type="password" id="pass" placeholder="كلمة المرور">
+            <button class="btn" onclick="App.login()">تسجيل الدخول</button>
+            <button class="btn" style="background: var(--glass); border: 1px solid var(--neon-blue);" onclick="App.guest()">الدخول كضيف</button>
+            <p style="font-size: 12px; color: #666; margin-top: 20px;">نظام الاستدلال العلمي الشامل v6.0</p>
         </div>
     </div>
 
-    <!-- واجهة التطبيق -->
-    <div id="app-screen">
-        <header>
-            <div style="display: flex; align-items: center; gap: 15px;">
-                <div style="padding: 10px; background: var(--neon-blue); color: #000; border-radius: 10px;">
-                    <i class="fas fa-microchip"></i>
+    <!-- شاشة التطبيق الرئيسية -->
+    <div id="app-screen" class="screen">
+        <div class="app-container">
+            <header>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 40px; height: 40px; background: var(--grad); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-brain" style="color: white;"></i>
+                    </div>
+                    <div>
+                        <h4 style="margin: 0; font-family: 'Orbitron';">MASTER CORE</h4>
+                        <small id="status" style="color: var(--neon-blue); font-size: 10px;">● متصل بالقواعد</small>
+                    </div>
                 </div>
-                <div>
-                    <h3 style="font-family: 'Orbitron';">SCIENTIFIC MIND AI</h3>
-                    <span id="status" style="font-size: 12px; color: var(--neon-blue);">● متصل بالنواة</span>
+                <button onclick="App.logout()" style="background:none; border:none; color:#ff4757; cursor:pointer; font-size: 20px;"><i class="fas fa-power-off"></i></button>
+            </header>
+            
+            <div class="chat-box" id="chat"></div>
+
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <textarea id="user-input" placeholder="ادخل مسألة كيمياء، فيزياء أو معادلة رياضية..." rows="1"></textarea>
                 </div>
+                <button class="send-btn" onclick="App.sendMessage()"><i class="fas fa-paper-plane"></i></button>
             </div>
-            <div style="display: flex; gap: 15px;">
-                <button class="action-btn" style="background: var(--glass); color: white;" onclick="UI.clearChat()">
-                    <i class="fas fa-trash"></i>
-                </button>
-                <button class="action-btn" style="background: #ff4757; color: white;" onclick="Auth.logout()">
-                    <i class="fas fa-power-off"></i>
-                </button>
-            </div>
-        </header>
-
-        <div class="chat-area" id="chat-box">
-            <!-- الرسائل ستظهر هنا -->
-        </div>
-
-        <div class="input-container">
-            <div class="input-wrapper">
-                <textarea id="user-input" placeholder="اسأل عن أي معضلة علمية، رياضية أو فيزيائية..." rows="1"></textarea>
-                <button class="action-btn" id="send-btn" onclick="Core.handleMessage()">
-                    <i class="fas fa-paper-plane"></i>
-                </button>
-            </div>
-            <p style="text-align: center; font-size: 11px; color: #555; margin-top: 10px;">
-                النظام مدعوم بمحرك معالجة منطقية متطور يحلل ملايين الاحتمالات في الثانية
-            </p>
         </div>
     </div>
 
     <script>
-        // تكوين Firebase (استخدم بياناتك الحقيقية هنا)
+        // تكوين Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
             authDomain: "sudan-market-6b122.firebaseapp.com",
@@ -334,200 +148,162 @@
         };
 
         firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.database();
 
-        // --- محرك الأمان والمصادقة ---
-        const Auth = {
+        const App = {
+            user: null,
+
             init() {
-                firebase.auth().onAuthStateChanged(user => {
-                    UI.toggleLoader(false);
+                auth.onAuthStateChanged(user => {
+                    document.getElementById('loader').classList.remove('active');
                     if (user) {
-                        this.launchApp(user);
+                        this.user = user;
+                        this.showScreen('app-screen');
+                        this.loadHistory();
                     } else {
-                        document.getElementById('login-screen').style.display = 'flex';
-                        document.getElementById('app-screen').style.display = 'none';
+                        this.showScreen('login-screen');
                     }
                 });
             },
+
             async login() {
-                const email = document.getElementById('email').value;
-                const pass = document.getElementById('pass').value;
-                if(!email || !pass) return UI.notify("يرجى إدخال البيانات", "error");
+                const e = document.getElementById('email').value;
+                const p = document.getElementById('pass').value;
+                if(!e || !p) return alert("يرجى ملء البيانات");
+                try { await auth.signInWithEmailAndPassword(e, p); } 
+                catch (err) { alert("خطأ: " + err.message); }
+            },
+
+            guest() {
+                this.user = { uid: "guest", email: "ضيف" };
+                this.showScreen('app-screen');
+                this.appendMsg("تم تفعيل وضع الضيف. المحادثات لن تحفظ في السحاب.", "ai");
+            },
+
+            logout() { auth.signOut().then(() => location.reload()); },
+
+            showScreen(id) {
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                document.getElementById(id).classList.add('active');
+            },
+
+            sendMessage() {
+                const input = document.getElementById('user-input');
+                const text = input.value.trim();
+                if (!text) return;
+
+                this.appendMsg(text, 'user');
+                input.value = '';
+
+                // تشغيل العقل الاصطناعي الشامل
+                const answer = Brain.solve(text);
                 
-                try {
-                    UI.toggleLoader(true);
-                    await firebase.auth().signInWithEmailAndPassword(email, pass);
-                } catch (e) {
-                    UI.toggleLoader(false);
-                    UI.notify("خطأ في تسجيل الدخول: " + e.message, "error");
+                setTimeout(() => {
+                    this.appendMsg(answer, 'ai');
+                    this.saveToDB(text, answer);
+                }, 800);
+            },
+
+            appendMsg(text, type) {
+                const chat = document.getElementById('chat');
+                const div = document.createElement('div');
+                div.className = `msg ${type}-msg`;
+                div.innerHTML = (type === 'ai' ? `<span class="badge">التحليل العلمي</span><br>` : '') + text.replace(/\n/g, '<br>');
+                chat.appendChild(div);
+                chat.scrollTop = chat.scrollHeight;
+            },
+
+            saveToDB(q, a) {
+                if (this.user && this.user.uid !== "guest") {
+                    db.ref('chats/' + this.user.uid).push({ q, a, t: Date.now() });
                 }
             },
-            guestMode() {
-                UI.notify("تم الدخول بوضع الضيف (لن يتم حفظ البيانات)");
-                this.launchApp({ email: 'Guest User', displayName: 'ضيف' });
-            },
-            launchApp(user) {
-                document.getElementById('login-screen').style.display = 'none';
-                document.getElementById('app-screen').style.display = 'grid';
-                Core.welcome(user);
-            },
-            logout() {
-                firebase.auth().signOut().then(() => location.reload());
+
+            loadHistory() {
+                if (this.user.uid === "guest") return;
+                db.ref('chats/' + this.user.uid).limitToLast(15).once('value', snap => {
+                    snap.forEach(child => {
+                        const data = child.val();
+                        this.appendMsg(data.q, 'user');
+                        this.appendMsg(data.a, 'ai');
+                    });
+                });
             }
         };
 
-        // --- النواة الذكية (الذكاء الاصطناعي) ---
-        const Core = {
-            isThinking: false,
-
-            async handleMessage() {
-                const input = document.getElementById('user-input');
-                const text = input.value.trim();
-                
-                if (!text || this.isThinking) return;
-
-                UI.addMessage(text, 'user');
-                input.value = '';
-                this.isThinking = true;
-
-                // محاكاة التفكير العميق
-                const thinkingMsg = UI.addThinking();
-                
-                try {
-                    const response = await this.processLogic(text);
-                    UI.removeThinking(thinkingMsg);
-                    UI.addMessage(response, 'ai');
-                } catch (e) {
-                    UI.removeThinking(thinkingMsg);
-                    UI.addMessage("حدث خلل في معالجة النواة. يرجى المحاولة لاحقاً.", 'ai');
-                } finally {
-                    this.isThinking = false;
-                }
+        // --- محرك الاستدلال العلمي الخارق (The Scientific Brain) ---
+        const Brain = {
+            // الجدول الدوري المدمج (أوزان ذرية)
+            periodicTable: {
+                "هيدروجين": 1.008, "هيليوم": 4.002, "ليثيوم": 6.941, "كربون": 12.011,
+                "نيتروجين": 14.007, "أكسجين": 15.999, "فلور": 18.998, "صوديوم": 22.99,
+                "مغنيسيوم": 24.305, "ألومنيوم": 26.982, "فسفور": 30.974, "كبريت": 32.06,
+                "كلور": 35.45, "بوتاسيوم": 39.098, "كالسيوم": 40.078, "حديد": 55.845,
+                "نحاس": 63.546, "ذهب": 196.967, "فضة": 107.868
             },
 
-            async processLogic(query) {
-                // محاكي للذكاء الاصطناعي العلمي المتطور
-                await new Promise(r => setTimeout(r, 1500)); // وقت للتفكير
+            solve(query) {
+                const data = (query.match(/\d+(\.\d+)?/g) || []).map(Number);
+                
+                // 1. الكيمياء: حساب المولات والكتلة المولية
+                if (query.includes("مول") || query.includes("جرام") || query.includes("كيمياء")) {
+                    for (let el in this.periodicTable) {
+                        if (query.includes(el)) {
+                            const mass = data[0] || 0;
+                            const weight = this.periodicTable[el];
+                            const moles = mass / weight;
+                            return `🔍 **التحليل الكيميائي لـ (${el}):**\n- الوزن الذري: ${weight} u\n- الكتلة المعطاة: ${mass} جرام\n- النتيجة: عدد المولات = **${moles.toFixed(4)} مول**.`;
+                        }
+                    }
+                }
 
-                // معالجة رياضية إذا وجد تعبير
+                // 2. الفيزياء: المقذوفات (المسألة المعقدة)
+                if (query.includes("قذيفة") || (query.includes("زاوية") && query.includes("سرعة"))) {
+                    if (data.length >= 3) {
+                        const h = data[0], v0 = data[1], ang = data[2], g = 9.81;
+                        const rad = ang * (Math.PI / 180);
+                        const v0y = v0 * Math.sin(rad), v0x = v0 * Math.cos(rad);
+                        // المعادلة التربيعية للزمن
+                        const t = (v0y + Math.sqrt(Math.pow(v0y, 2) + 2 * g * h)) / g;
+                        const range = v0x * t;
+                        const vfy = v0y - (g * t);
+                        const vf = Math.sqrt(Math.pow(v0x, 2) + Math.pow(vfy, 2));
+
+                        return `🚀 **تحليل المقذوفات المتقدم:**\n- تحليل السرعة: (Vy=${v0y.toFixed(2)}, Vx=${v0x.toFixed(2)})\n- زمن التحليق: **${t.toFixed(3)} ثانية**\n- المدى الأفقي الكلي: **${range.toFixed(2)} متر**\n- السرعة لحظة الاصطدام: **${vf.toFixed(2)} م/ث**.`;
+                    }
+                }
+
+                // 3. الفيزياء: قوانين نيوتن F=ma
+                if (query.includes("قوة") || query.includes("نيوتن")) {
+                    if (data.length >= 2) {
+                        return `🍎 **قانون نيوتن الثاني:**\nبناءً على المعطيات (F = m × a)، النتيجة هي: **${(data[0] * data[1]).toFixed(2)} نيوتن**.`;
+                    }
+                }
+
+                // 4. الرياضيات: محرك الحساب الشامل
                 try {
-                    if (/[0-9+\-*/^()]/.test(query)) {
-                        const cleanQuery = query.replace(/[أ-ي]/g, '').trim();
-                        const result = math.evaluate(cleanQuery);
-                        return `بناءً على التحليل الرياضي:\n\nالمعادلة: \`${cleanQuery}\`\nالنتيجة: **${result}**\n\nهل تود استخراج المشتقة أو التكامل لهذه الدالة؟`;
+                    const mathRes = math.evaluate(query.replace(/[أ-ي]/g, ''));
+                    if (mathRes !== undefined && !isNaN(mathRes)) {
+                        return `📐 **النتيجة الرياضية:**\nالمعادلة: ${query.replace(/[أ-ي]/g, '')}\nالناتج: **${mathRes}**`;
                     }
                 } catch(e) {}
 
-                // ردود ذكية علمية
-                if (query.includes("جاذبية")) return "الجاذبية حسب النسبية العامة هي انحناء في الزمكان تسببه الكتلة. القانون التقليدي: F = G(m1m2)/r².";
-                if (query.includes("من أنت")) return "أنا 'العقل العلمي المتطور'، واجهة ذكاء اصطناعي مصممة لحل المسائل المعقدة وتقديم الدعم البحثي المتقدم.";
-                
-                return `تم استقبال استفسارك: "${query}". \n\nالنظام يحلل حالياً المعطيات في قاعدة البيانات العلمية. يبدو أنك مهتم بـ (العلوم المتقدمة). هل يمكنك تقديم تفاصيل أكثر لأتمكن من بناء نموذج حل دقيق؟`;
-            },
-
-            welcome(user) {
-                setTimeout(() => {
-                    UI.addMessage(`مرحباً بك أيها العقل الراقي (${user.displayName || user.email}). تم تفعيل النواة المركزية بنجاح. أنا جاهز لمعالجة بياناتك.`, 'ai');
-                }, 500);
+                return "النظام استلم بياناتك. لمطابقة المسألة مع محرك الاستدلال، يرجى كتابة الأرقام ونوع العلم (كيمياء، فيزياء، رياضيات) بوضوح.";
             }
         };
 
-        // --- واجهة المستخدم والتأثيرات ---
-        const UI = {
-            toggleLoader(show) {
-                document.getElementById('loader').classList.toggle('hidden', !show);
-            },
-            addMessage(text, side) {
-                const box = document.getElementById('chat-box');
-                const div = document.createElement('div');
-                div.className = `message ${side === 'user' ? 'user-msg' : 'ai-msg'}`;
-                
-                if(side === 'ai') {
-                    div.innerHTML = `<div class="thinking-process"><div class="pulse"></div> تحليل البيانات مكتمل</div>` + text.replace(/\n/g, '<br>');
-                } else {
-                    div.textContent = text;
-                }
-                
-                box.appendChild(div);
-                box.scrollTop = box.scrollHeight;
-                return div;
-            },
-            addThinking() {
-                const box = document.getElementById('chat-box');
-                const div = document.createElement('div');
-                div.className = 'message ai-msg';
-                div.innerHTML = `<div class="thinking-process"><div class="pulse"></div> جاري التفكير العميق وتحليل الاحتمالات...</div>`;
-                box.appendChild(div);
-                box.scrollTop = box.scrollHeight;
-                return div;
-            },
-            removeThinking(el) { el.remove(); },
-            notify(msg, icon = 'success') {
-                Swal.fire({ icon, title: msg, toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
-            },
-            clearChat() {
-                document.getElementById('chat-box').innerHTML = '';
-                this.notify("تم مسح السجل المؤقت");
-            }
-        };
+        App.init();
 
-        // --- نظام الجسيمات الخلفية ---
-        const canvas = document.getElementById('bg-canvas');
-        const ctx = canvas.getContext('2d');
-        let particles = [];
-
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-
-        class Particle {
-            constructor() {
-                this.x = Math.random() * canvas.width;
-                this.y = Math.random() * canvas.height;
-                this.size = Math.random() * 2;
-                this.speedX = Math.random() * 0.5 - 0.25;
-                this.speedY = Math.random() * 0.5 - 0.25;
-            }
-            update() {
-                this.x += this.speedX;
-                this.y += this.speedY;
-                if(this.x > canvas.width) this.x = 0;
-                if(this.x < 0) this.x = canvas.width;
-                if(this.y > canvas.height) this.y = 0;
-                if(this.y < 0) this.y = canvas.height;
-            }
-            draw() {
-                ctx.fillStyle = 'rgba(0, 245, 255, 0.2)';
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        }
-
-        function initParticles() {
-            for(let i=0; i<100; i++) particles.push(new Particle());
-        }
-
-        function animate() {
-            ctx.clearRect(0,0,canvas.width, canvas.height);
-            particles.forEach(p => { p.update(); p.draw(); });
-            requestAnimationFrame(animate);
-        }
-
-        // إطلاق كل شيء
-        window.addEventListener('resize', resize);
-        resize();
-        initParticles();
-        animate();
-        Auth.init();
-
-        // مستمع لزر Enter للإرسال بسلاسة
-        document.getElementById('user-input').addEventListener('keydown', (e) => {
+        // مستمع الإدخال (Enter للإرسال)
+        document.getElementById('user-input').addEventListener('keypress', (e) => {
             if(e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                Core.handleMessage();
+                App.sendMessage();
             }
         });
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
     </script>
 </body>
 </html>
