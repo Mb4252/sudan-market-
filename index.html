@@ -1922,40 +1922,37 @@ class TestSystem {
             else if (tabName === 'manual') loadManualTabContent().then(c => tabContent.innerHTML = c);
         }
         async function generateTestFromText() {
-            const text = document.getElementById('input-text')?.value;
-            const questionCount = parseInt(document.getElementById('question-count')?.value || 15);
-            const difficulty = document.getElementById('difficulty')?.value;
-            
-            // التحقق من كلمة "خلطة"
-            if (checkChaosWord(text)) {
-                showChaosWarning();
-                return;
-            }
-            
-            if (!text || text.length < 100) {
-                showNotification('الرجاء إدخال نص يتكون من 100 حرف على الأقل', 'error');
-                return;
-            }
-            
-            try {
-                const test = await testSystem.generateTestFromText(text, {
-                    count: questionCount,
-                    difficulty: difficulty,
-                    title: 'اختبار ذكي مولد',
-                    description: 'تم إنشاء هذا الاختبار باستخدام الذكاء الاصطناعي المتقدم من النص المدخل'
-                });
-                
-                currentTest = test;
-                currentAnswers = new Array(test.questions.length).fill(null);
-                
-                displayTest(test);
-                showNotification('تم إنشاء الاختبار بنجاح!', 'success');
-                
-            } catch (error) {
-                console.error('❌ خطأ في إنشاء الاختبار:', error);
-                showNotification('حدث خطأ في إنشاء الاختبار', 'error');
-            }
+    const text = document.getElementById('input-text')?.value;
+    const questionCount = parseInt(document.getElementById('question-count')?.value || 15);
+    const difficulty = document.getElementById('difficulty')?.value;
+    
+    if (checkChaosWord(text)) { showChaosWarning(); return; }
+    if (!text || text.length < 100) {
+        showNotification('الرجاء إدخال نص كافي', 'error');
+        return;
+    }
+    
+    try {
+        const test = await testSystem.generateTestFromText(text, {
+            count: questionCount,
+            difficulty: difficulty,
+            title: 'اختبار ذكي مولد'
+        });
+
+        // ⭐ السطر المطلوب إضافته هنا لتفعيل التعلم الذاتي ⭐
+        if (test.analysis) {
+            updateSystemIntelligence(test.analysis); 
         }
+
+        currentTest = test;
+        currentAnswers = new Array(test.questions.length).fill(null);
+        displayTest(test);
+        showNotification('تم إنشاء الاختبار بنجاح!', 'success');
+        
+    } catch (error) {
+        console.error('❌ خطأ:', error);
+    }
+}
         
         async function generateTestFromImage() {
             const fileInput = document.getElementById('image-file-input');
