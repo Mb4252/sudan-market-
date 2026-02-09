@@ -175,22 +175,21 @@
 
     <script>
         // ========== تهيئة Firebase الإصدار المتوافق ==========
-        const firebaseConfig = {
-            apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
-            authDomain: "sudan-market-6b122.firebaseapp.com",
-            databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
-            projectId: "sudan-market-6b122",
-            storageBucket: "sudan-market-6b122.firebasestorage.app",
-            messagingSenderId: "66729481566",
-            appId: "1:66729481566:web:93393f28dc22d32cceebcf"
-        };
-        
-        firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
+        // ========== تهيئة Firebase الإصدار المتوافق ==========
+const firebaseConfig = {
+    apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
+    authDomain: "sudan-market-6b122.firebaseapp.com",
+    databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
+    projectId: "sudan-market-6b122",
+    storageBucket: "sudan-market-6b122.firebasestorage.app",
+    messagingSenderId: "66729481566",
+    appId: "1:66729481566:web:93393f28dc22d32cceebcf"
+};
 
-        const ScientificAI = {
-            constants: { g: 9.80665, R: 8.314, c: 299792458 },
-            const ScientificAI = {
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
+const ScientificAI = {
     constants: { g: 9.80665, R: 8.314, c: 299792458 },
 
     // ========== الدوال الجديدة هنا ==========
@@ -229,7 +228,7 @@
             
             // محاولة حل المسألة
             try {
-                const solved = this.solveMathWithSymbols(q);
+                const solved = this.solveMath(q);
                 response += `<span class="math-res">${solved}</span>`;
             } catch {
                 response += `لم أستطع حل المسألة تلقائياً، لكني أعرف القوانين المطلوبة.`;
@@ -240,24 +239,6 @@
         // 4. إذا لم توجد قوانين ذات صلة، نعود للتحليل العادي
         return null;
     },
-    
-    // دالة حل الرياضيات مع تحويل الرموز
-     solveMath(q) {
-    try {
-        // تحويل الرموز العربية إلى رموز mathjs
-        let equation = q
-            .replace(/√/g, 'sqrt')
-            .replace(/π/g, 'pi')
-            .replace(/÷/g, '/')
-            .replace(/×/g, '*')
-            .replace(/أوجد|ما هو|قيمة|احسب|ما/g, '');
-            
-        const result = math.evaluate(equation);
-        return `📝 **التحليل الرياضي:**<br><span class="math-res">${q} = ${result}</span>`;
-    } catch (e) {
-        return "لم أستطع معالجة المعادلة، تأكد من كتابة الرموز الرياضية بشكل صحيح.";
-    }
-},
 
     // ========== الدالة الرئيسية analyze المعدلة ==========
     async analyze(input) {
@@ -291,96 +272,78 @@
         // 6. المنطق
         return this.logicalReasoning(cleanInput);
     },
-    
-    // بقية الدوال تبقى كما هي (saveToBrain, searchBrain, etc.)
-    // ...
-            async analyze(input) {
-                const cleanInput = input.toLowerCase().trim();
-                
-                if (cleanInput.startsWith('احفظ') && cleanInput.includes('جواب')) {
-                    return await this.saveToBrain(cleanInput);
-                }
 
-                const storedResponse = await this.searchBrain(cleanInput);
-                if (storedResponse) return storedResponse;
+    async saveToBrain(input) {
+        try {
+            const parts = input.split('جواب');
+            if (parts.length < 2) return "⚠️ الصيغة غير مكتملة. استخدم: احفظ [سؤال] جواب [إجابة]";
+            
+            const question = parts[0].replace('احفظ', '').trim();
+            const answer = parts[1].trim();
+            
+            if (!question || !answer) return "⚠️ لا يمكن حفظ بيانات فارغة.";
 
-                if (/[0-9]/.test(cleanInput) && (cleanInput.includes('=') || cleanInput.includes('^') || cleanInput.includes('sqrt'))) {
-                    return this.solveMath(cleanInput);
-                }
+            const dbKey = question.replace(/[.#$\[\]]/g, "_");
 
-                if (cleanInput.includes('سرعة') || cleanInput.includes('قوة') || cleanInput.includes('تسارع')) {
-                    return this.solvePhysics(cleanInput);
-                }
+            await database.ref('brain/' + dbKey).set({
+                ans: answer,
+                time: new Date().toISOString()
+            });
 
-                return this.logicalReasoning(cleanInput);
-            },
+            return `✅ تم الحفظ بنجاح في الذاكرة المركزية.<br>السؤال: <b>${question}</b><br>الإجابة: <b>${answer}</b>`;
+        } catch (e) {
+            console.error(e);
+            return "❌ فشل الحفظ. تأكد من إعدادات قاعدة البيانات.";
+        }
+    },
 
-            async saveToBrain(input) {
-                try {
-                    const parts = input.split('جواب');
-                    if (parts.length < 2) return "⚠️ الصيغة غير مكتملة. استخدم: احفظ [سؤال] جواب [إجابة]";
-                    
-                    const question = parts[0].replace('احفظ', '').trim();
-                    const answer = parts[1].trim();
-                    
-                    if (!question || !answer) return "⚠️ لا يمكن حفظ بيانات فارغة.";
-
-                    const dbKey = question.replace(/[.#$\[\]]/g, "_");
-
-                    await database.ref('brain/' + dbKey).set({
-                        ans: answer,
-                        time: new Date().toISOString()
-                    });
-
-                    return `✅ تم الحفظ بنجاح في الذاكرة المركزية.<br>السؤال: <b>${question}</b><br>الإجابة: <b>${answer}</b>`;
-                } catch (e) {
-                    console.error(e);
-                    return "❌ فشل الحفظ. تأكد من إعدادات قاعدة البيانات.";
-                }
-            },
-
-            async searchBrain(query) {
-                try {
-                    const dbKey = query.replace(/[.#$\[\]]/g, "_");
-                    const snapshot = await database.ref('brain/' + dbKey).once('value');
-                    if (snapshot.exists()) {
-                        return snapshot.val().ans;
-                    }
-                    return null;
-                } catch (e) {
-                    return null;
-                }
-            },
-
-            solveMath(q) {
-                try {
-                    let equation = q.replace(/حل|أوجد|قيمة/g, '').replace(/=/g, '-(') + ')';
-                    if (!q.includes('=')) equation = q.replace(/أحسب|ما هو/g, '');
-                    const result = math.evaluate(equation);
-                    return `📝 **التحليل الرياضي:**<br><span class="math-res">الناتج: ${result}</span>`;
-                } catch (e) {
-                    return "لم أستطع معالجة المعادلة، تأكد من كتابة الرموز الرياضية بشكل صحيح.";
-                }
-            },
-
-            solvePhysics(q) {
-                const nums = q.match(/\d+(\.\d+)?/g)?.map(Number) || [];
-                if (q.includes('سرعة') && nums.length >= 2) {
-                    return `🚀 **حل الفيزياء:**<br>السرعة = المسافة (${nums[0]}) ÷ الزمن (${nums[1]})<br><span class="math-res">الناتج = ${(nums[0]/nums[1]).toFixed(2)} م/ث</span>`;
-                }
-                return "يرجى تزويدي بالأرقام لحل المسألة الفيزيائية.";
-            },
-
-            logicalReasoning(q) {
-                const responses = {
-                    "مرحبا": "أهلاً بك في وحدة المعالجة المركزية. كيف يمكنني خدمتك؟",
-                    "من انت": "أنا Quantum AI، نظام استدلال منطقي متطور متصل بقاعدة بيانات سحابية.",
-                    "شكرا": "في الخدمة دائماً."
-                };
-                return responses[q] || "لم أجد إجابة مخزنة لهذه العبارة. يمكنك تعليمي إياها باستخدام أمر 'احفظ'.";
+    async searchBrain(query) {
+        try {
+            const dbKey = query.replace(/[.#$\[\]]/g, "_");
+            const snapshot = await database.ref('brain/' + dbKey).once('value');
+            if (snapshot.exists()) {
+                return snapshot.val().ans;
             }
-        };
+            return null;
+        } catch (e) {
+            return null;
+        }
+    },
 
+    solveMath(q) {
+        try {
+            let equation = q
+                .replace(/√/g, 'sqrt')
+                .replace(/π/g, 'pi')
+                .replace(/÷/g, '/')
+                .replace(/×/g, '*')
+                .replace(/أوجد|ما هو|قيمة|احسب|ما/g, '')
+                .trim();
+                
+            const result = math.evaluate(equation);
+            return `📝 **التحليل الرياضي:**<br><span class="math-res">${q} = ${result}</span>`;
+        } catch (e) {
+            return "لم أستطع معالجة المعادلة، تأكد من كتابة الرموز الرياضية بشكل صحيح.";
+        }
+    },
+
+    solvePhysics(q) {
+        const nums = q.match(/\d+(\.\d+)?/g)?.map(Number) || [];
+        if (q.includes('سرعة') && nums.length >= 2) {
+            return `🚀 **حل الفيزياء:**<br>السرعة = المسافة (${nums[0]}) ÷ الزمن (${nums[1]})<br><span class="math-res">الناتج = ${(nums[0]/nums[1]).toFixed(2)} م/ث</span>`;
+        }
+        return "يرجى تزويدي بالأرقام لحل المسألة الفيزيائية.";
+    },
+
+    logicalReasoning(q) {
+        const responses = {
+            "مرحبا": "أهلاً بك في وحدة المعالجة المركزية. كيف يمكنني خدمتك؟",
+            "من انت": "أنا Quantum AI، نظام استدلال منطقي متطور متصل بقاعدة بيانات سحابية.",
+            "شكرا": "في الخدمة دائماً."
+        };
+        return responses[q] || "لم أجد إجابة مخزنة لهذه العبارة. يمكنك تعليمي إياها باستخدام أمر 'احفظ'.";
+    }
+};
         function appendMsg(text, type, id = null) {
             const chat = document.getElementById('chat');
             const div = document.createElement('div');
