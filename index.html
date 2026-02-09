@@ -187,89 +187,108 @@
         
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
+            const ScientificAI = {
+    constants: { g: 9.80665, R: 8.314, c: 299792458 },
 
-        const ScientificAI = {
-            constants: { g: 9.80665, R: 8.314, c: 299792458 },
-
-            // دالة التحليل المتقدم
-            async advancedAnalyze(q) {
-                // 1. تحليل الرموز الرياضية
-                const mathSymbols = {
-                    '^': 'قانون الأسس',
-                    '√': 'قانون الجذر التربيعي',
-                    '/': 'قانون القسمة',
-                    '×': 'قانون الضرب',
-                    '*': 'قانون الضرب',
-                    '+': 'قانون الجمع',
-                    '-': 'قانون الطرح',
-                    '=': 'قانون المساواة',
-                    'π': 'قانون باي'
-                };
-                
-                // 2. البحث عن القوانين ذات الصلة
-                let relatedLaws = [];
-                for (const [symbol, law] of Object.entries(mathSymbols)) {
-                    if (q.includes(symbol)) {
-                        const foundLaw = await this.searchBrain(law);
-                        if (foundLaw) {
-                            relatedLaws.push(`📌 ${law}: ${foundLaw}`);
-                        }
-                    }
+    // ========== الدوال الجديدة هنا ==========
+    
+    // دالة التحليل المتقدم
+    advancedAnalyze(q) {
+        // 1. تحليل الرموز الرياضية
+        const mathSymbols = {
+            '^': 'قانون الأسس',
+            '√': 'قانون الجذر التربيعي',
+            '/': 'قانون القسمة',
+            '×': 'قانون الضرب',
+            '*': 'قانون الضرب',
+            '+': 'قانون الجمع',
+            '-': 'قانون الطرح',
+            '=': 'قانون المساواة',
+            'π': 'قانون باي'
+        };
+        
+        // 2. البحث عن القوانين ذات الصلة
+        let relatedLaws = [];
+        for (const [symbol, law] of Object.entries(mathSymbols)) {
+            if (q.includes(symbol)) {
+                const foundLaw = this.searchBrain(law);
+                if (foundLaw) {
+                    relatedLaws.push(`📌 ${law}: ${foundLaw}`);
                 }
-                
-                // 3. إذا وجدنا قوانين ذات صلة
-                if (relatedLaws.length > 0) {
-                    let response = `🔍 **المسألة تستخدم:**<br>`;
-                    response += relatedLaws.join('<br>');
-                    response += `<br><br>🎯 **الحل العملي:**<br>`;
-                    
-                    // محاولة حل المسألة
-                    try {
-                        const solved = this.solveMath(q);
-                        response += `<span class="math-res">${solved}</span>`;
-                    } catch {
-                        response += `لم أستطع حل المسألة تلقائياً، لكني أعرف القوانين المطلوبة.`;
-                    }
-                    return response;
-                }
-                
-                // 4. إذا لم توجد قوانين ذات صلة، نعود للتحليل العادي
-                return null;
-            },
+            }
+        }
+        
+        // 3. إذا وجدنا قوانين ذات صلة
+        if (relatedLaws.length > 0) {
+            let response = `🔍 **المسألة تستخدم:**<br>`;
+            response += relatedLaws.join('<br>');
+            response += `<br><br>🎯 **الحل العملي:**<br>`;
+            
+            // محاولة حل المسألة
+            try {
+                const solved = this.solveMathWithSymbols(q);
+                response += `<span class="math-res">${solved}</span>`;
+            } catch {
+                response += `لم أستطع حل المسألة تلقائياً، لكني أعرف القوانين المطلوبة.`;
+            }
+            return response;
+        }
+        
+        // 4. إذا لم توجد قوانين ذات صلة، نعود للتحليل العادي
+        return null;
+    },
+    
+    // دالة حل الرياضيات مع تحويل الرموز
+    solveMathWithSymbols(q) {
+        // تحويل الرموز العربية إلى رموز mathjs
+        const converted = q
+            .replace(/√/g, 'sqrt')
+            .replace(/π/g, 'pi')
+            .replace(/÷/g, '/')
+            .replace(/×/g, '*')
+            .replace(/أوجد|ما هو|قيمة|احسب|ما/g, '')
+            .replace(/\s+/g, '');
+        
+        const result = math.evaluate(converted);
+        return `${q} = ${result}`;
+    },
 
-            // الدالة الرئيسية analyze
-            async analyze(input) {
-                const cleanInput = input.toLowerCase().trim();
-                
-                // 1. الحفظ (يظل أولاً)
-                if (cleanInput.startsWith('احفظ') && cleanInput.includes('جواب')) {
-                    return await this.saveToBrain(cleanInput);
-                }
+    // ========== الدالة الرئيسية analyze المعدلة ==========
+    async analyze(input) {
+        const cleanInput = input.toLowerCase().trim();
+        
+        // 1. الحفظ (يظل أولاً)
+        if (cleanInput.startsWith('احفظ') && cleanInput.includes('جواب')) {
+            return await this.saveToBrain(cleanInput);
+        }
 
-                // 2. التحليل المتقدم للمسائل الرياضية
-                if (/[0-9]/.test(cleanInput) && /[\^√\+\-\*\/=]/.test(cleanInput)) {
-                    const advancedResult = await this.advancedAnalyze(cleanInput);
-                    if (advancedResult) return advancedResult;
-                }
+        // 2. التحليل المتقدم للمسائل الرياضية
+        if (/[0-9]/.test(cleanInput) && /[\^√\+\-\*\/=]/.test(cleanInput)) {
+            const advancedResult = this.advancedAnalyze(cleanInput);
+            if (advancedResult) return advancedResult;
+        }
 
-                // 3. البحث في قاعدة البيانات
-                const storedResponse = await this.searchBrain(cleanInput);
-                if (storedResponse) return storedResponse;
+        // 3. البحث في قاعدة البيانات
+        const storedResponse = await this.searchBrain(cleanInput);
+        if (storedResponse) return storedResponse;
 
-                // 4. الرياضيات الأساسية
-                if (/[0-9]/.test(cleanInput) && (cleanInput.includes('=') || cleanInput.includes('^') || cleanInput.includes('sqrt'))) {
-                    return this.solveMath(cleanInput);
-                }
+        // 4. الرياضيات الأساسية
+        if (/[0-9]/.test(cleanInput) && (cleanInput.includes('=') || cleanInput.includes('^') || cleanInput.includes('sqrt'))) {
+            return this.solveMath(cleanInput);
+        }
 
-                // 5. الفيزياء
-                if (cleanInput.includes('سرعة') || cleanInput.includes('قوة') || cleanInput.includes('تسارع')) {
-                    return this.solvePhysics(cleanInput);
-                }
+        // 5. الفيزياء
+        if (cleanInput.includes('سرعة') || cleanInput.includes('قوة') || cleanInput.includes('تسارع')) {
+            return this.solvePhysics(cleanInput);
+        }
 
-                // 6. المنطق
-                return this.logicalReasoning(cleanInput);
-            },
-
+        // 6. المنطق
+        return this.logicalReasoning(cleanInput);
+    },
+    
+    // بقية الدوال تبقى كما هي (saveToBrain, searchBrain, etc.)
+    // ...
+        
             async saveToBrain(input) {
                 try {
                     const parts = input.split('جواب');
