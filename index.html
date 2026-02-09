@@ -31,7 +31,6 @@
             overflow: hidden;
         }
 
-        /* تأثير الخلفية المتحركة (الشبكة العصبية) */
         #bg-canvas { position: fixed; top: 0; left: 0; z-index: -1; }
 
         .app-wrapper {
@@ -139,7 +138,6 @@
 
         .send-btn:hover { transform: scale(1.05); filter: brightness(1.2); }
 
-        /* تجميل المعادلات */
         .math-res {
             color: var(--neon-cyan);
             font-family: 'Courier New', monospace;
@@ -151,10 +149,9 @@
             border-radius: 5px;
         }
         
-        /* تخصيص للإشعارات */
         .storage-notification {
             font-size: 0.8rem;
-            color: #888;
+            color: var(--neon-cyan);
             margin-top: 5px;
             font-style: italic;
         }
@@ -172,18 +169,18 @@
 
         <div class="chat-container" id="chat">
             <div class="message ai-msg">
-                مرحباً بك في النواة المركزية. أنا الآن جاهز لحل أعقد المسائل في الفيزياء، الكيمياء، والرياضيات. لقد تم تطوير منطقي ليفهم الخدع والأسئلة السياقية. كيف يمكنني مساعدتك؟
+                النظام مفعل. يمكنك الآن تعليمي أي شيء باستخدام صيغة: "احفظ [السؤال] جواب [الإجابة]".. أو طرح مسائل في الفيزياء والرياضيات مباشرة.
             </div>
         </div>
 
         <div class="input-box">
-            <input type="text" id="user-input" placeholder="اكتب المسألة هنا (مثلاً: حل معادلة x^2 + 5x + 6 = 0)..." autocomplete="off">
+            <input type="text" id="user-input" placeholder="مثلاً: احفظ قانون السرعة جواب المسافة تقسيم الزمن..." autocomplete="off">
             <button class="send-btn" onclick="processInput()"><i class="fas fa-microchip"></i></button>
         </div>
     </div>
 
     <script>
-        // ========== إضافة: تهيئة Firebase ==========
+        // ========== تهيئة Firebase ==========
         const firebaseConfig = {
             apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
             authDomain: "sudan-market-6b122.firebaseapp.com",
@@ -194,327 +191,118 @@
             appId: "1:66729481566:web:93393f28dc22d32cceebcf"
         };
         
-        // تهيئة Firebase
-        const app = firebase.initializeApp(firebaseConfig);
+        firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
 
-        // الذاكرة البسيطة - مضافة فقط
-        const SimpleMemory = {
-            memory: {},
-            
-            add(key, value) {
-                this.memory[key] = value;
-                return `تم حفظ "${key}" في الذاكرة`;
-            },
-            
-            find(query) {
-                return this.memory[query];
-            }
-        };
-
-        // ========== إضافة: نظام التخزين المزدوج ==========
-        const StorageSystem = {
-            // حفظ قانون/قاعدة في Firebase (القواعد العلمية)
-            async saveLaw(lawName, lawContent) {
-                try {
-                    await database.ref('laws/' + lawName.replace(/\s+/g, '_')).set({
-                        content: lawContent,
-                        type: 'law',
-                        timestamp: firebase.database.ServerValue.TIMESTAMP,
-                        created: new Date().toISOString()
-                    });
-                    return `📚 تم حفظ القانون "${lawName}" في قاعدة البيانات الدائمة`;
-                } catch (error) {
-                    console.error("خطأ في حفظ القانون:", error);
-                    return "❌ حدث خطأ أثناء حفظ القانون في قاعدة البيانات";
-                }
-            },
-            
-            // استرجاع قانون من Firebase
-            async getLaw(lawName) {
-                try {
-                    const snapshot = await database.ref('laws/' + lawName.replace(/\s+/g, '_')).once('value');
-                    if (snapshot.exists()) {
-                        const data = snapshot.val();
-                        return `📖 القانون: ${lawName}\n📝 المحتوى: ${data.content}\n🕐 تم الحفظ في: ${new Date(data.created).toLocaleString('ar-SA')}`;
-                    }
-                    return null;
-                } catch (error) {
-                    console.error("خطأ في استرجاع القانون:", error);
-                    return null;
-                }
-            },
-            
-            // حفظ محادثة في LocalStorage (المتصفح)
-            saveChatInBrowser(userQuery, aiResponse) {
-                try {
-                    // إنشاء كائن المحادثة
-                    const chatRecord = {
-                        user: userQuery,
-                        ai: aiResponse,
-                        timestamp: new Date().toISOString(),
-                        date: new Date().toLocaleString('ar-SA')
-                    };
-                    
-                    // استرجاع المحادثات القديمة
-                    let allChats = localStorage.getItem('quantum_ai_chats');
-                    if (!allChats) {
-                        allChats = [];
-                    } else {
-                        allChats = JSON.parse(allChats);
-                    }
-                    
-                    // إضافة المحادثة الجديدة
-                    allChats.push(chatRecord);
-                    
-                    // حفظ فقط آخر 50 محادثة
-                    if (allChats.length > 50) {
-                        allChats = allChats.slice(-50);
-                    }
-                    
-                    // الحفظ في LocalStorage
-                    localStorage.setItem('quantum_ai_chats', JSON.stringify(allChats));
-                    
-                    return true;
-                } catch (error) {
-                    console.error("خطأ في حفظ المحادثة:", error);
-                    return false;
-                }
-            },
-            
-            // استرجاع جميع المحادثات من المتصفح
-            getAllChatsFromBrowser() {
-                try {
-                    const chats = localStorage.getItem('quantum_ai_chats');
-                    if (!chats) return [];
-                    return JSON.parse(chats);
-                } catch (error) {
-                    return [];
-                }
-            }
-        };
-
-        // محرك الاستدلال العلمي المتقدم - مع إصلاح دالة الفيزياء فقط
+        // محرك الاستدلال العلمي والذاكرة الموحدة
         const ScientificAI = {
             constants: {
-                g: 9.80665, // الجاذبية
-                R: 8.314,   // ثابت الغازات
-                c: 299792458, // سرعة الضوء
-                h: 6.626e-34 // ثابت بلانك
+                g: 9.80665,
+                R: 8.314,
+                c: 299792458
             },
 
-            // تحليل السياق وفهم النوع (رياضيات، كيمياء، فيزياء، منطق)
-            analyze(input) {
-                input = input.toLowerCase();
+            // تحليل السياق (Async)
+            async analyze(input) {
+                const cleanInput = input.toLowerCase().trim();
                 
-                // 1. التحقق من وجود أمر "احفظ" و "جواب"
-                if (input.includes('احفظ') && input.includes('جواب')) {
-                    return this.saveMemory(input);
-                }
-                
-                // ========== إضافة: اكتشاف وحفظ القوانين ==========
-                // إذا كان المستخدم يريد حفظ قانون (يحتوي على كلمات مثل قانون، قاعدة، نظرية، معادلة)
-                if (input.includes('احفظ قانون') || input.includes('اضف قانون') || 
-                    input.includes('احفظ قاعدة') || input.includes('اضف نظرية')) {
-                    return this.saveScientificLaw(input);
-                }
-                
-                // ========== إضافة: البحث عن قانون في قاعدة البيانات ==========
-                if (input.includes('قانون ') || input.includes('نظرية ') || 
-                    input.includes('قاعدة ') || input.includes('استرجع قانون')) {
-                    const lawName = this.extractLawName(input);
-                    if (lawName) {
-                        const lawResult = StorageSystem.getLaw(lawName);
-                        if (lawResult) return lawResult;
-                    }
-                }
-                
-                // 2. البحث في الذاكرة أولاً
-                const memoryResult = SimpleMemory.find(input);
-                if (memoryResult) {
-                    // ========== إضافة: حفظ المحادثة العادية في المتصفح ==========
-                    StorageSystem.saveChatInBrowser(input, memoryResult);
-                    return memoryResult; // إجابة مختصرة مباشرة
-                }
-                
-                // 3. التعامل مع المعادلات الرياضية المعقدة
-                if (/[0-9]/.test(input) && (input.includes('=') || input.includes('^') || input.includes('sqrt') || input.includes('x'))) {
-                    const mathResult = this.solveMath(input);
-                    // ========== إضافة: حفظ المحادثة العادية في المتصفح ==========
-                    StorageSystem.saveChatInBrowser(input, mathResult);
-                    return mathResult;
+                // 1. منطق الحفظ الموحد (احفظ X جواب Y)
+                if (cleanInput.startsWith('احفظ') && cleanInput.includes('جواب')) {
+                    return await this.saveToBrain(cleanInput);
                 }
 
-                // 4. تحليل المسائل الفيزيائية (السرعة، القوة، الطاقة)
-                if (input.includes('سرعة') || input.includes('زمن') || input.includes('قوة') || input.includes('جول')) {
-                    const physicsResult = this.solvePhysics(input);
-                    // ========== إضافة: حفظ المحادثة العادية في المتصفح ==========
-                    StorageSystem.saveChatInBrowser(input, physicsResult);
-                    return physicsResult;
+                // 2. البحث في الذاكرة السحابية (Firebase)
+                const storedResponse = await this.searchBrain(cleanInput);
+                if (storedResponse) return storedResponse;
+
+                // 3. تحليل المسائل الرياضية
+                if (/[0-9]/.test(cleanInput) && (cleanInput.includes('=') || cleanInput.includes('^') || cleanInput.includes('sqrt'))) {
+                    return this.solveMath(cleanInput);
                 }
 
-                // 5. الكيمياء والكتلة المولية
-                if (input.includes('كتلة') || input.includes('مول') || input.includes('عنصر')) {
-                    const chemistryResult = this.solveChemistry(input);
-                    // ========== إضافة: حفظ المحادثة العادية في المتصفح ==========
-                    StorageSystem.saveChatInBrowser(input, chemistryResult);
-                    return chemistryResult;
+                // 4. تحليل المسائل الفيزيائية
+                if (cleanInput.includes('سرعة') || cleanInput.includes('قوة') || cleanInput.includes('تسارع')) {
+                    return this.solvePhysics(cleanInput);
                 }
 
-                // 6. إذا كان سؤالاً ذكياً أو مخادعاً
-                const logicResult = this.logicalReasoning(input);
-                // ========== إضافة: حفظ المحادثة العادية في المتصفح ==========
-                StorageSystem.saveChatInBrowser(input, logicResult);
-                return logicResult;
+                // 5. الاستدلال المنطقي
+                return this.logicalReasoning(cleanInput);
             },
 
-            // ========== إضافة: دالة لحفظ القوانين العلمية في Firebase ==========
-            async saveScientificLaw(input) {
+            // دالة الحفظ في Firebase
+            async saveToBrain(input) {
                 try {
-                    // استخراج اسم القانون ومحتواه
-                    const lawMatch = input.match(/احفظ (قانون|قاعدة|نظرية) (.+?) كـ (.+)/i) || 
-                                     input.match(/اضف (قانون|قاعدة|نظرية) (.+?) وهي (.+)/i);
-                    
-                    if (lawMatch) {
-                        const lawName = lawMatch[2].trim();
-                        const lawContent = lawMatch[3].trim();
-                        
-                        const result = await StorageSystem.saveLaw(lawName, lawContent);
-                        return result + "<div class='storage-notification'>💾 تم الحفظ في قاعدة البيانات الدائمة (Firebase)</div>";
-                    } else {
-                        return "📝 صيغة غير صحيحة. استخدم: 'احفظ قانون [اسم القانون] كـ [محتوى القانون]'";
-                    }
-                } catch (error) {
-                    return "❌ حدث خطأ أثناء حفظ القانون في قاعدة البيانات";
-                }
-            },
-            
-            // ========== إضافة: دالة لاستخراج اسم القانون ==========
-            extractLawName(input) {
-                const matches = input.match(/قانون (.+?)(?=\s|$)/) || 
-                                input.match(/نظرية (.+?)(?=\s|$)/) || 
-                                input.match(/قاعدة (.+?)(?=\s|$)/);
-                return matches ? matches[1].trim() : null;
-            },
-
-            // حفظ في الذاكرة باستخدام "احفظ" و "جواب"
-            saveMemory(input) {
-                try {
-                    // استخراج السؤال والجواب من النص
                     const parts = input.split('جواب');
-                    if (parts.length < 2) return "صيغة غير صحيحة. استخدم: احفظ [السؤال] جواب [الإجابة]";
+                    if (parts.length < 2) return "⚠️ الصيغة غير مكتملة. استخدم: احفظ [سؤال] جواب [إجابة]";
                     
-                    const questionPart = parts[0].replace('احفظ', '').trim();
-                    const answerPart = parts[1].trim();
+                    const question = parts[0].replace('احفظ', '').trim();
+                    const answer = parts[1].trim();
                     
-                    if (!questionPart || !answerPart) {
-                        return "يجب أن تحتوي على سؤال وجواب";
-                    }
-                    
-                    const result = SimpleMemory.add(questionPart, answerPart);
-                    return result;
+                    if (!question || !answer) return "⚠️ لا يمكن حفظ بيانات فارغة.";
+
+                    // تنظيف المفتاح ليناسب Firebase
+                    const dbKey = question.replace(/[.#$\[\]]/g, "_");
+
+                    await database.ref('brain/' + dbKey).set({
+                        ans: answer,
+                        time: new Date().toISOString()
+                    });
+
+                    return `✅ تم الحفظ بنجاح في الذاكرة المركزية.<br>السؤال: <b>${question}</b><br>الإجابة: <b>${answer}</b>`;
                 } catch (e) {
-                    return "خطأ في حفظ الذاكرة. تأكد من الصيغة: احفظ [السؤال] جواب [الإجابة]";
+                    return "❌ فشل الحفظ. تأكد من إعدادات قاعدة البيانات.";
+                }
+            },
+
+            // دالة البحث في Firebase
+            async searchBrain(query) {
+                try {
+                    const dbKey = query.replace(/[.#$\[\]]/g, "_");
+                    const snapshot = await database.ref('brain/' + dbKey).once('value');
+                    if (snapshot.exists()) {
+                        return snapshot.val().ans;
+                    }
+                    return null;
+                } catch (e) {
+                    return null;
                 }
             },
 
             solveMath(q) {
                 try {
-                    // تنظيف النص لاستخراج المعادلة فقط
-                    let equation = q.replace(/حل|المعادلة|أوجد|قيمة/g, '').replace(/=/g, '-(') + ')';
-                    if (!q.includes('=')) equation = q.replace(/أحسب|ما هو|ناتج/g, '');
-
+                    let equation = q.replace(/حل|أوجد|قيمة/g, '').replace(/=/g, '-(') + ')';
+                    if (!q.includes('=')) equation = q.replace(/أحسب|ما هو/g, '');
                     const result = math.evaluate(equation);
-                    return `📝 **التحليل الرياضي:**<br>المسألة المعالجة: \`${q}\`<br><span class="math-res">الناتج النهائي: ${result}</span>`;
+                    return `📝 **التحليل الرياضي:**<br><span class="math-res">الناتج: ${result}</span>`;
                 } catch (e) {
-                    try {
-                        // محاولة ثانية لحل المعادلات الجبرية
-                        const simplified = math.simplify(q.split('=')[0]).toString();
-                        return `📝 **تبسيط جبري:**<br>التعبير المبسط هو: <span class="math-res">${simplified}</span>`;
-                    } catch (err) {
-                        return "يبدو أن المعادلة معقدة برمجياً. تأكد من كتابة الرموز بشكل صحيح مثل (x^2) بدلاً من (س تربيع).";
-                    }
+                    return "لم أستطع معالجة المعادلة، تأكد من كتابة الرموز مثل x^2.";
                 }
             },
 
-            // دالة الفيزياء المصلحة
             solvePhysics(q) {
                 const nums = q.match(/\d+(\.\d+)?/g)?.map(Number) || [];
-                
-                // 1. مسائل السرعة - الإصلاح هنا: استخدم القسمة بدلاً من الضرب
                 if (q.includes('سرعة') && nums.length >= 2) {
-                    // الإصلاح: السرعة = المسافة ÷ الزمن (القسمة، ليس الضرب)
-                    const speed = nums[0] / nums[1];
-                    return `🚀 **حل مسألة السرعة:**<br>
-                    القانون: <strong>السرعة = المسافة ÷ الزمن</strong><br>
-                    الحساب: ${nums[0]} متر ÷ ${nums[1]} ثانية<br>
-                    <span class="math-res">السرعة = ${speed.toFixed(2)} متر/ثانية</span><br>
-                    <small>(${(speed * 3.6).toFixed(2)} كم/ساعة تقريباً)</small>`;
+                    return `🚀 **حل الفيزياء:**<br>السرعة = المسافة (${nums[0]}) ÷ الزمن (${nums[1]})<br><span class="math-res">الناتج = ${(nums[0]/nums[1]).toFixed(2)} م/ث</span>`;
                 }
-
-                // 2. مسائل القوة - هذا صحيح (القوة = الكتلة × التسارع)
-                if (q.includes('قوة') && nums.length >= 2) {
-                    const force = nums[0] * nums[1];
-                    return `⚡ **حل مسألة القوة:**<br>
-                    القانون: <strong>القوة = الكتلة × التسارع</strong> (F = m × a)<br>
-                    الحساب: ${nums[0]} × ${nums[1]}<br>
-                    <span class="math-res">القوة = ${force} نيوتن</span>`;
-                }
-
-                // 3. مسائل الطاقة
-                if (q.includes('طاقة') || q.includes('جول')) {
-                    if (nums.length >= 2) {
-                        const energy = nums[0] * nums[1];
-                        return `⚡ **حل مسألة الطاقة:**<br>
-                        القانون: <strong>الطاقة = القدرة × الزمن</strong><br>
-                        الحساب: ${nums[0]} × ${nums[1]}<br>
-                        <span class="math-res">الطاقة = ${energy} جول</span>`;
-                    }
-                }
-
-                // 4. مسائل التسارع
-                if (q.includes('تسارع') && nums.length >= 2) {
-                    const acceleration = (nums[1] - nums[0]) / (nums[2] || 1); // افتراض زمن = 1 إذا لم يعط
-                    return `⚡ **حل مسألة التسارع:**<br>
-                    القانون: <strong>التسارع = (السرعة النهائية - السرعة الابتدائية) ÷ الزمن</strong><br>
-                    <span class="math-res">التسارع ≈ ${acceleration.toFixed(2)} متر/ثانية²</span>`;
-                }
-
-                return "لقد رصدت مسألة فيزياء. يرجى تزويدي بالمعطيات (الأرقام والوحدات) لأقوم بتطبيق القانون المناسب (نيوتن، أينشتاين، أو قوانين الحركة).";
-            },
-
-            solveChemistry(q) {
-                // محاكاة قاعدة بيانات لبعض العناصر
-                const elements = {"هيدروجين": 1.008, "أكسجين": 16, "كربون": 12.01, "نيتروجين": 14.01};
-                for (let el in elements) {
-                    if (q.includes(el)) {
-                        return `🧪 **تحليل كيميائي:**<br>العنصر: ${el}<br>الكتلة الذرية: ${elements[el]} g/mol.<br>إذا أعطيتني الكتلة بالجرام، يمكنني حساب المولات فوراً.`;
-                    }
-                }
-                return "كيمياء: يرجى كتابة الصيغة الكيميائية (مثال: H2O) أو اسم العنصر بوضوح.";
+                return "يرجى تزويدي بالأرقام لحل المسألة الفيزيائية.";
             },
 
             logicalReasoning(q) {
-                // هنا يتم التعامل مع الأسئلة المخادعة
-                const tricks = {
-                    "أيهما أثقل كيلو حديد أم كيلو قطن": "كلاهما متساويان في الكتلة (1 كيلو جرام)، ولكن الفرق في الحجم والكثافة.",
-                    "من هو مخترع": "يرجى تحديد الاختراع الذي تقصده لأعطيك تفاصيل دقيقة عن العالم المخترع.",
-                    "كم يساوي": "يرجى إدخال أرقام محددة لإجراء العملية الحسابية."
+                const responses = {
+                    "مرحبا": "أهلاً بك في وحدة المعالجة المركزية. كيف يمكنني خدمتك؟",
+                    "من انت": "أنا Quantum AI، نظام استدلال منطقي متطور متصل بقاعدة بيانات سحابية.",
+                    "شكرا": "في الخدمة دائماً."
                 };
-
-                for (let key in tricks) {
-                    if (q.includes(key)) return `🧠 **تحليل منطقي:**<br>${tricks[key]}`;
-                }
-
-                return "أنا أفهم سياقك. كوني عقلاً علمياً، أحتاج لمعطيات أكثر دقيقة للإجابة على هذا السؤال بشكل لا يحتمل الخطأ.";
+                return responses[q] || "لم أجد إجابة مخزنة لهذه العبارة. يمكنك تعليمي إياها باستخدام أمر 'احفظ'.";
             }
         };
 
-        // وظائف الواجهة - الأصلية تماماً
-        function appendMsg(text, type) {
+        // إدارة الواجهة
+        function appendMsg(text, type, id = null) {
             const chat = document.getElementById('chat');
             const div = document.createElement('div');
             div.className = `message ${type}-msg`;
+            if (id) div.id = id;
             div.innerHTML = text;
             chat.appendChild(div);
             chat.scrollTop = chat.scrollHeight;
@@ -528,19 +316,24 @@
             appendMsg(query, 'user');
             inputField.value = '';
 
-            // محاكاة تفكير النواة
-            setTimeout(async () => {
+            // تأثير جاري التفكير
+            const thinkingId = "think_" + Date.now();
+            appendMsg("<i class='fas fa-sync fa-spin'></i> جاري استرجاع البيانات من النواة...", 'ai', thinkingId);
+
+            try {
                 const response = await ScientificAI.analyze(query);
-                appendMsg(response, 'ai');
-            }, 600);
+                document.getElementById(thinkingId).innerHTML = response;
+            } catch (error) {
+                document.getElementById(thinkingId).innerHTML = "حدث خطأ غير متوقع في المصفوفة.";
+            }
         }
 
-        // تحسين الإدخال - الأصلية
+        // تحسين تجربة المستخدم
         document.getElementById('user-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') processInput();
         });
 
-        // تأثير خلفية Matrix/Neural - الأصلية
+        // تأثير الخلفية
         const canvas = document.getElementById('bg-canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = window.innerWidth;
@@ -550,22 +343,12 @@
             ctx.fillStyle = 'rgba(2, 2, 5, 0.1)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#00f5ff11';
-            for(let i=0; i<20; i++) {
+            for(let i=0; i<15; i++) {
                 ctx.fillRect(Math.random()*canvas.width, Math.random()*canvas.height, 2, 2);
             }
             requestAnimationFrame(drawBg);
         }
         drawBg();
-        
-        // ========== إضافة: إظهار عدد المحادثات المحفوظة عند التحميل ==========
-        window.addEventListener('load', () => {
-            const savedChats = StorageSystem.getAllChatsFromBrowser();
-            if (savedChats.length > 0) {
-                setTimeout(() => {
-                    appendMsg(`💾 تم تحميل ${savedChats.length} محادثة محفوظة مسبقاً في المتصفح.<br>🔍 يمكنك البحث في القوانين باستخدام: "قانون [اسم القانون]"`, 'ai');
-                }, 1000);
-            }
-        });
     </script>
 </body>
 </html>
