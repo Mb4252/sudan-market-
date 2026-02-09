@@ -187,96 +187,63 @@
         
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
-            const ScientificAI = {
-    constants: { g: 9.80665, R: 8.314, c: 299792458 },
 
-    // ========== الدوال الجديدة هنا ==========
-    
-    // دالة التحليل المتقدم
-     async advancedAnalyze(q) {  // أضف async هنا
-    // 1. تحليل الرموز الرياضية
-    const mathSymbols = {
-        '^': 'قانون الأسس',
-        '√': 'قانون الجذر التربيعي',
-        '/': 'قانون القسمة',
-        '×': 'قانون الضرب',
-        '*': 'قانون الضرب',
-        '+': 'قانون الجمع',
-        '-': 'قانون الطرح',
-        '=': 'قانون المساواة',
-        'π': 'قانون باي'
-    };
-    // بدلاً من هذا:
-const solved = this.solveMathWithSymbols(q);
-response += `<span class="math-res">${solved}</span>`;
+        const ScientificAI = {
+            constants: { g: 9.80665, R: 8.314, c: 299792458 },
 
-// استخدم هذا:
-const solved = this.solveMathWithSymbols(q);
-const steps = `
-الحل خطوة بخطوة:
-1. 3^2 = 9
-2. √49 = 7
-3. 9 × 7 = 63
-4. 10 ÷ 2 = 5
-5. π ≈ 3.1416
-6. 63 + 5 - 3.1416 = 64.8584
-`;
-response += `<span class="math-res">${steps}<br>النتيجة النهائية: ${solved}</span>`;
-    // 2. البحث عن القوانين ذات الصلة - باستخدام await
-    let relatedLaws = [];
-    for (const [symbol, law] of Object.entries(mathSymbols)) {
-        if (q.includes(symbol)) {
-            const foundLaw = await this.searchBrain(law);  // await هنا
-            if (foundLaw) {
-                relatedLaws.push(`📌 ${law}: ${foundLaw}`);
-            }
-        }
-    }
-    
-    // 3. إذا وجدنا قوانين ذات صلة
-    if (relatedLaws.length > 0) {
-        let response = `🔍 **المسألة تستخدم:**<br>`;
-        response += relatedLaws.join('<br>');
-        response += `<br><br>🎯 **الحل العملي:**<br>`;
-        
-        // محاولة حل المسألة
-        try {
-            const solved = this.solveMathWithSymbols(q);
-            response += `<span class="math-res">${solved}</span>`;
-        } catch {
-            response += `لم أستطع حل المسألة تلقائياً، لكني أعرف القوانين المطلوبة.`;
-        }
-        return response;
-    }
-    
-    // 4. إذا لم توجد قوانين ذات صلة
-    return null;
-},
-        
-        // 3. إذا وجدنا قوانين ذات صلة
-        if (relatedLaws.length > 0) {
-            let response = `🔍 **المسألة تستخدم:**<br>`;
-            response += relatedLaws.join('<br>');
-            response += `<br><br>🎯 **الحل العملي:**<br>`;
+            // ========== التحليل المتقدم ==========
+            async advancedAnalyze(q) {
+                // 1. تحليل الرموز الرياضية
+                const mathSymbols = {
+                    '^': 'قانون الأسس',
+                    '√': 'قانون الجذر التربيعي',
+                    '/': 'قانون القسمة',
+                    '×': 'قانون الضرب',
+                    '*': 'قانون الضرب',
+                    '+': 'قانون الجمع',
+                    '-': 'قانون الطرح',
+                    '=': 'قانون المساواة',
+                    'π': 'قانون باي'
+                };
+                
+                // 2. البحث عن القوانين ذات الصلة
+                let relatedLaws = [];
+                for (const [symbol, law] of Object.entries(mathSymbols)) {
+                    if (q.includes(symbol)) {
+                        const foundLaw = await this.searchBrain(law);
+                        if (foundLaw) {
+                            relatedLaws.push(`📌 ${law}: ${foundLaw}`);
+                        }
+                    }
+                }
+                
+                // 3. إذا وجدنا قوانين ذات صلة
+                if (relatedLaws.length > 0) {
+                    let response = `🔍 **المسألة تستخدم:**<br>`;
+                    response += relatedLaws.join('<br>');
+                    response += `<br><br>🎯 **الحل العملي:**<br>`;
+                    
+                    // محاولة حل المسألة
+                    try {
+                        const solved = await this.solveMathWithSteps(q);
+                        response += `<span class="math-res">${solved}</span>`;
+                    } catch (e) {
+                        console.error('خطأ في الحل:', e);
+                        response += `لم أستطع حل المسألة تلقائياً، لكني أعرف القوانين المطلوبة.`;
+                    }
+                    return response;
+                }
+                
+                // 4. إذا لم توجد قوانين ذات صلة
+                return null;
+            },
             
-            // محاولة حل المسألة
-            try {
-                const solved = this.solveMathWithSymbols(q);
-                response += `<span class="math-res">${solved}</span>`;
-            } catch {
-                response += `لم أستطع حل المسألة تلقائياً، لكني أعرف القوانين المطلوبة.`;
-            }
-            return response;
-        }
-        
-        // 4. إذا لم توجد قوانين ذات صلة، نعود للتحليل العادي
-        return null;
-    },
-    
-    // دالة حل الرياضيات مع تحويل الرموز
-    solveMathWithSymbols(q) {
-        // تحويل الرموز العربية إلى رموز mathjs
-        const converted = q
+            // حل الرياضيات مع عرض الخطوات
+            async solveMathWithSteps(q) {
+    try {
+        // تحويل الرموز مع الحفاظ على المسألة الأصلية
+        const originalQ = q;
+        let cleanQ = q
             .replace(/√/g, 'sqrt')
             .replace(/π/g, 'pi')
             .replace(/÷/g, '/')
@@ -284,45 +251,97 @@ response += `<span class="math-res">${steps}<br>النتيجة النهائية:
             .replace(/أوجد|ما هو|قيمة|احسب|ما/g, '')
             .replace(/\s+/g, '');
         
-        const result = math.evaluate(converted);
-        return `${q} = ${result}`;
-    },
-
-    // ========== الدالة الرئيسية analyze المعدلة ==========
-        async analyze(input) {
-    const cleanInput = input.toLowerCase().trim();
-    
-    // 1. الحفظ (يظل أولاً)
-    if (cleanInput.startsWith('احفظ') && cleanInput.includes('جواب')) {
-        return await this.saveToBrain(cleanInput);
-    }
-
-    // 2. التحليل المتقدم للمسائل الرياضية
-    if (/[0-9]/.test(cleanInput) && /[\^√\+\-\*\/=π]/.test(cleanInput)) {
-        const advancedResult = await this.advancedAnalyze(cleanInput);  // await هنا
-        if (advancedResult) return advancedResult;
-    }
-        // 3. البحث في قاعدة البيانات
-        const storedResponse = await this.searchBrain(cleanInput);
-        if (storedResponse) return storedResponse;
-
-        // 4. الرياضيات الأساسية
-        if (/[0-9]/.test(cleanInput) && (cleanInput.includes('=') || cleanInput.includes('^') || cleanInput.includes('sqrt'))) {
-            return this.solveMath(cleanInput);
-        }
-
-        // 5. الفيزياء
-        if (cleanInput.includes('سرعة') || cleanInput.includes('قوة') || cleanInput.includes('تسارع')) {
-            return this.solvePhysics(cleanInput);
-        }
-
-        // 6. المنطق
-        return this.logicalReasoning(cleanInput);
-    },
-    
-    // بقية الدوال تبقى كما هي (saveToBrain, searchBrain, etc.)
-    // ...
+        // حساب النتيجة
+        const result = math.evaluate(cleanQ);
         
+        // إنشاء خطوات الحل
+        let steps = `🧮 <b>الحل التفصيلي:</b><br>`;
+        
+        // تحليل كل جزء
+        if (originalQ.includes('^')) {
+            const parts = originalQ.split('^');
+            const base = parts[0].match(/\d+/)?.[0] || '؟';
+            const afterCaret = parts[1]?.match(/\d+/)?.[0] || '؟';
+            const pow = Math.pow(parseFloat(base), parseFloat(afterCaret));
+            steps += `1. ${base}^${afterCaret} = ${pow}<br>`;
+        }
+        
+        if (originalQ.includes('√')) {
+            const sqrtMatch = originalQ.match(/√(\d+)/);
+            if (sqrtMatch) {
+                const num = sqrtMatch[1];
+                const sqrtVal = Math.sqrt(parseFloat(num));
+                steps += `2. √${num} = ${sqrtVal.toFixed(4)}<br>`;
+            }
+        }
+        
+        if (originalQ.includes('÷') || originalQ.includes('/')) {
+            const divMatch = originalQ.match(/(\d+)\s*[÷\/]\s*(\d+)/);
+            if (divMatch) {
+                const num1 = divMatch[1];
+                const num2 = divMatch[2];
+                steps += `3. ${num1} ÷ ${num2} = ${(num1/num2).toFixed(4)}<br>`;
+            }
+        }
+        
+        if (originalQ.includes('π')) {
+            steps += `4. π ≈ 3.1416<br>`;
+        }
+        
+        steps += `<br>✅ <b>النتيجة النهائية:</b><br>`;
+        steps += `<span style="color: #00ff00; font-size: 1.2em;">${originalQ} = ${result.toFixed(6)}</span>`;
+        
+        return steps;
+    } catch (e) {
+        console.error('خطأ في الحل:', e);
+        // محاولة استخدام math.evaluate مباشرة
+        try {
+            const simpleResult = math.evaluate(q
+                .replace(/√/g, 'sqrt')
+                .replace(/π/g, 'pi')
+                .replace(/×/g, '*')
+                .replace(/÷/g, '/'));
+            return `✅ <b>الحل المباشر:</b><br><span style="color: #00ff00;">${q} = ${simpleResult}</span>`;
+        } catch (err) {
+            throw e;
+        }
+    }
+}
+            
+            // ========== الدالة الرئيسية ==========
+            async analyze(input) {
+                const cleanInput = input.toLowerCase().trim();
+                
+                // 1. الحفظ (يظل أولاً)
+                if (cleanInput.startsWith('احفظ') && cleanInput.includes('جواب')) {
+                    return await this.saveToBrain(cleanInput);
+                }
+
+                // 2. التحليل المتقدم للمسائل الرياضية
+                if (/[0-9]/.test(cleanInput) && /[\^√\+\-\*\/=π]/.test(cleanInput)) {
+                    const advancedResult = await this.advancedAnalyze(cleanInput);
+                    if (advancedResult) return advancedResult;
+                }
+
+                // 3. البحث في قاعدة البيانات
+                const storedResponse = await this.searchBrain(cleanInput);
+                if (storedResponse) return storedResponse;
+
+                // 4. الرياضيات الأساسية
+                if (/[0-9]/.test(cleanInput) && (cleanInput.includes('=') || cleanInput.includes('^') || cleanInput.includes('sqrt') || cleanInput.includes('π'))) {
+                    return await this.solveMathWithSteps(cleanInput);
+                }
+
+                // 5. الفيزياء
+                if (cleanInput.includes('سرعة') || cleanInput.includes('قوة') || cleanInput.includes('تسارع')) {
+                    return this.solvePhysics(cleanInput);
+                }
+
+                // 6. المنطق
+                return this.logicalReasoning(cleanInput);
+            },
+
+            // ========== دوال الذاكرة ==========
             async saveToBrain(input) {
                 try {
                     const parts = input.split('جواب');
@@ -360,15 +379,16 @@ response += `<span class="math-res">${steps}<br>النتيجة النهائية:
                 }
             },
 
+            // ========== دوال الحل ==========
             solveMath(q) {
                 try {
+                    // تحويل الرموز العربية إلى رموز mathjs
                     let equation = q
                         .replace(/√/g, 'sqrt')
                         .replace(/π/g, 'pi')
                         .replace(/÷/g, '/')
                         .replace(/×/g, '*')
-                        .replace(/أوجد|ما هو|قيمة|احسب|ما/g, '')
-                        .trim();
+                        .replace(/أوجد|ما هو|قيمة|احسب|ما/g, '');
                         
                     const result = math.evaluate(equation);
                     return `📝 **التحليل الرياضي:**<br><span class="math-res">${q} = ${result}</span>`;
