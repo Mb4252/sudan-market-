@@ -7,9 +7,10 @@
     
     <!-- مكتبات المعالجة الرياضية والعلمية -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
-    <!-- إضافة مكتبة Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"></script>
+    
+    <!-- إصلاح روابط Firebase: إضافة -compat لتعمل مع الكود الحالي -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
     
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Cairo:wght@300;600;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -148,13 +149,6 @@
             background: rgba(0,0,0,0.3);
             border-radius: 5px;
         }
-        
-        .storage-notification {
-            font-size: 0.8rem;
-            color: var(--neon-cyan);
-            margin-top: 5px;
-            font-style: italic;
-        }
     </style>
 </head>
 <body>
@@ -180,7 +174,7 @@
     </div>
 
     <script>
-        // ========== تهيئة Firebase ==========
+        // ========== تهيئة Firebase الإصدار المتوافق ==========
         const firebaseConfig = {
             apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
             authDomain: "sudan-market-6b122.firebaseapp.com",
@@ -194,42 +188,30 @@
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
 
-        // محرك الاستدلال العلمي والذاكرة الموحدة
         const ScientificAI = {
-            constants: {
-                g: 9.80665,
-                R: 8.314,
-                c: 299792458
-            },
+            constants: { g: 9.80665, R: 8.314, c: 299792458 },
 
-            // تحليل السياق (Async)
             async analyze(input) {
                 const cleanInput = input.toLowerCase().trim();
                 
-                // 1. منطق الحفظ الموحد (احفظ X جواب Y)
                 if (cleanInput.startsWith('احفظ') && cleanInput.includes('جواب')) {
                     return await this.saveToBrain(cleanInput);
                 }
 
-                // 2. البحث في الذاكرة السحابية (Firebase)
                 const storedResponse = await this.searchBrain(cleanInput);
                 if (storedResponse) return storedResponse;
 
-                // 3. تحليل المسائل الرياضية
                 if (/[0-9]/.test(cleanInput) && (cleanInput.includes('=') || cleanInput.includes('^') || cleanInput.includes('sqrt'))) {
                     return this.solveMath(cleanInput);
                 }
 
-                // 4. تحليل المسائل الفيزيائية
                 if (cleanInput.includes('سرعة') || cleanInput.includes('قوة') || cleanInput.includes('تسارع')) {
                     return this.solvePhysics(cleanInput);
                 }
 
-                // 5. الاستدلال المنطقي
                 return this.logicalReasoning(cleanInput);
             },
 
-            // دالة الحفظ في Firebase
             async saveToBrain(input) {
                 try {
                     const parts = input.split('جواب');
@@ -240,7 +222,6 @@
                     
                     if (!question || !answer) return "⚠️ لا يمكن حفظ بيانات فارغة.";
 
-                    // تنظيف المفتاح ليناسب Firebase
                     const dbKey = question.replace(/[.#$\[\]]/g, "_");
 
                     await database.ref('brain/' + dbKey).set({
@@ -250,11 +231,11 @@
 
                     return `✅ تم الحفظ بنجاح في الذاكرة المركزية.<br>السؤال: <b>${question}</b><br>الإجابة: <b>${answer}</b>`;
                 } catch (e) {
+                    console.error(e);
                     return "❌ فشل الحفظ. تأكد من إعدادات قاعدة البيانات.";
                 }
             },
 
-            // دالة البحث في Firebase
             async searchBrain(query) {
                 try {
                     const dbKey = query.replace(/[.#$\[\]]/g, "_");
@@ -275,7 +256,7 @@
                     const result = math.evaluate(equation);
                     return `📝 **التحليل الرياضي:**<br><span class="math-res">الناتج: ${result}</span>`;
                 } catch (e) {
-                    return "لم أستطع معالجة المعادلة، تأكد من كتابة الرموز مثل x^2.";
+                    return "لم أستطع معالجة المعادلة، تأكد من كتابة الرموز الرياضية بشكل صحيح.";
                 }
             },
 
@@ -297,7 +278,6 @@
             }
         };
 
-        // إدارة الواجهة
         function appendMsg(text, type, id = null) {
             const chat = document.getElementById('chat');
             const div = document.createElement('div');
@@ -316,24 +296,24 @@
             appendMsg(query, 'user');
             inputField.value = '';
 
-            // تأثير جاري التفكير
             const thinkingId = "think_" + Date.now();
             appendMsg("<i class='fas fa-sync fa-spin'></i> جاري استرجاع البيانات من النواة...", 'ai', thinkingId);
 
             try {
                 const response = await ScientificAI.analyze(query);
-                document.getElementById(thinkingId).innerHTML = response;
+                const thinkElem = document.getElementById(thinkingId);
+                if(thinkElem) thinkElem.innerHTML = response;
             } catch (error) {
-                document.getElementById(thinkingId).innerHTML = "حدث خطأ غير متوقع في المصفوفة.";
+                console.error(error);
+                const thinkElem = document.getElementById(thinkingId);
+                if(thinkElem) thinkElem.innerHTML = "حدث خطأ غير متوقع في المصفوفة.";
             }
         }
 
-        // تحسين تجربة المستخدم
         document.getElementById('user-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') processInput();
         });
 
-        // تأثير الخلفية
         const canvas = document.getElementById('bg-canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = window.innerWidth;
