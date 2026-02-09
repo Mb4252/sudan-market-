@@ -7,6 +7,10 @@
     
     <!-- مكتبات المعالجة الرياضية والعلمية -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
+    <!-- إضافة مكتبة Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Cairo:wght@300;600;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -146,6 +150,14 @@
             background: rgba(0,0,0,0.3);
             border-radius: 5px;
         }
+        
+        /* تخصيص للإشعارات */
+        .storage-notification {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 5px;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -171,6 +183,21 @@
     </div>
 
     <script>
+        // ========== إضافة: تهيئة Firebase ==========
+        const firebaseConfig = {
+            apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
+            authDomain: "sudan-market-6b122.firebaseapp.com",
+            databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
+            projectId: "sudan-market-6b122",
+            storageBucket: "sudan-market-6b122.firebasestorage.app",
+            messagingSenderId: "66729481566",
+            appId: "1:66729481566:web:93393f28dc22d32cceebcf"
+        };
+        
+        // تهيئة Firebase
+        const app = firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
         // الذاكرة البسيطة - مضافة فقط
         const SimpleMemory = {
             memory: {},
@@ -182,6 +209,88 @@
             
             find(query) {
                 return this.memory[query];
+            }
+        };
+
+        // ========== إضافة: نظام التخزين المزدوج ==========
+        const StorageSystem = {
+            // حفظ قانون/قاعدة في Firebase (القواعد العلمية)
+            async saveLaw(lawName, lawContent) {
+                try {
+                    await database.ref('laws/' + lawName.replace(/\s+/g, '_')).set({
+                        content: lawContent,
+                        type: 'law',
+                        timestamp: firebase.database.ServerValue.TIMESTAMP,
+                        created: new Date().toISOString()
+                    });
+                    return `📚 تم حفظ القانون "${lawName}" في قاعدة البيانات الدائمة`;
+                } catch (error) {
+                    console.error("خطأ في حفظ القانون:", error);
+                    return "❌ حدث خطأ أثناء حفظ القانون في قاعدة البيانات";
+                }
+            },
+            
+            // استرجاع قانون من Firebase
+            async getLaw(lawName) {
+                try {
+                    const snapshot = await database.ref('laws/' + lawName.replace(/\s+/g, '_')).once('value');
+                    if (snapshot.exists()) {
+                        const data = snapshot.val();
+                        return `📖 القانون: ${lawName}\n📝 المحتوى: ${data.content}\n🕐 تم الحفظ في: ${new Date(data.created).toLocaleString('ar-SA')}`;
+                    }
+                    return null;
+                } catch (error) {
+                    console.error("خطأ في استرجاع القانون:", error);
+                    return null;
+                }
+            },
+            
+            // حفظ محادثة في LocalStorage (المتصفح)
+            saveChatInBrowser(userQuery, aiResponse) {
+                try {
+                    // إنشاء كائن المحادثة
+                    const chatRecord = {
+                        user: userQuery,
+                        ai: aiResponse,
+                        timestamp: new Date().toISOString(),
+                        date: new Date().toLocaleString('ar-SA')
+                    };
+                    
+                    // استرجاع المحادثات القديمة
+                    let allChats = localStorage.getItem('quantum_ai_chats');
+                    if (!allChats) {
+                        allChats = [];
+                    } else {
+                        allChats = JSON.parse(allChats);
+                    }
+                    
+                    // إضافة المحادثة الجديدة
+                    allChats.push(chatRecord);
+                    
+                    // حفظ فقط آخر 50 محادثة
+                    if (allChats.length > 50) {
+                        allChats = allChats.slice(-50);
+                    }
+                    
+                    // الحفظ في LocalStorage
+                    localStorage.setItem('quantum_ai_chats', JSON.stringify(allChats));
+                    
+                    return true;
+                } catch (error) {
+                    console.error("خطأ في حفظ المحادثة:", error);
+                    return false;
+                }
+            },
+            
+            // استرجاع جميع المحادثات من المتصفح
+            getAllChatsFromBrowser() {
+                try {
+                    const chats = localStorage.getItem('quantum_ai_chats');
+                    if (!chats) return [];
+                    return JSON.parse(chats);
+                } catch (error) {
+                    return [];
+                }
             }
         };
 
@@ -203,29 +312,89 @@
                     return this.saveMemory(input);
                 }
                 
+                // ========== إضافة: اكتشاف وحفظ القوانين ==========
+                // إذا كان المستخدم يريد حفظ قانون (يحتوي على كلمات مثل قانون، قاعدة، نظرية، معادلة)
+                if (input.includes('احفظ قانون') || input.includes('اضف قانون') || 
+                    input.includes('احفظ قاعدة') || input.includes('اضف نظرية')) {
+                    return this.saveScientificLaw(input);
+                }
+                
+                // ========== إضافة: البحث عن قانون في قاعدة البيانات ==========
+                if (input.includes('قانون ') || input.includes('نظرية ') || 
+                    input.includes('قاعدة ') || input.includes('استرجع قانون')) {
+                    const lawName = this.extractLawName(input);
+                    if (lawName) {
+                        const lawResult = StorageSystem.getLaw(lawName);
+                        if (lawResult) return lawResult;
+                    }
+                }
+                
                 // 2. البحث في الذاكرة أولاً
                 const memoryResult = SimpleMemory.find(input);
                 if (memoryResult) {
+                    // ========== إضافة: حفظ المحادثة العادية في المتصفح ==========
+                    StorageSystem.saveChatInBrowser(input, memoryResult);
                     return memoryResult; // إجابة مختصرة مباشرة
                 }
                 
                 // 3. التعامل مع المعادلات الرياضية المعقدة
                 if (/[0-9]/.test(input) && (input.includes('=') || input.includes('^') || input.includes('sqrt') || input.includes('x'))) {
-                    return this.solveMath(input);
+                    const mathResult = this.solveMath(input);
+                    // ========== إضافة: حفظ المحادثة العادية في المتصفح ==========
+                    StorageSystem.saveChatInBrowser(input, mathResult);
+                    return mathResult;
                 }
 
                 // 4. تحليل المسائل الفيزيائية (السرعة، القوة، الطاقة)
                 if (input.includes('سرعة') || input.includes('زمن') || input.includes('قوة') || input.includes('جول')) {
-                    return this.solvePhysics(input);
+                    const physicsResult = this.solvePhysics(input);
+                    // ========== إضافة: حفظ المحادثة العادية في المتصفح ==========
+                    StorageSystem.saveChatInBrowser(input, physicsResult);
+                    return physicsResult;
                 }
 
                 // 5. الكيمياء والكتلة المولية
                 if (input.includes('كتلة') || input.includes('مول') || input.includes('عنصر')) {
-                    return this.solveChemistry(input);
+                    const chemistryResult = this.solveChemistry(input);
+                    // ========== إضافة: حفظ المحادثة العادية في المتصفح ==========
+                    StorageSystem.saveChatInBrowser(input, chemistryResult);
+                    return chemistryResult;
                 }
 
                 // 6. إذا كان سؤالاً ذكياً أو مخادعاً
-                return this.logicalReasoning(input);
+                const logicResult = this.logicalReasoning(input);
+                // ========== إضافة: حفظ المحادثة العادية في المتصفح ==========
+                StorageSystem.saveChatInBrowser(input, logicResult);
+                return logicResult;
+            },
+
+            // ========== إضافة: دالة لحفظ القوانين العلمية في Firebase ==========
+            async saveScientificLaw(input) {
+                try {
+                    // استخراج اسم القانون ومحتواه
+                    const lawMatch = input.match(/احفظ (قانون|قاعدة|نظرية) (.+?) كـ (.+)/i) || 
+                                     input.match(/اضف (قانون|قاعدة|نظرية) (.+?) وهي (.+)/i);
+                    
+                    if (lawMatch) {
+                        const lawName = lawMatch[2].trim();
+                        const lawContent = lawMatch[3].trim();
+                        
+                        const result = await StorageSystem.saveLaw(lawName, lawContent);
+                        return result + "<div class='storage-notification'>💾 تم الحفظ في قاعدة البيانات الدائمة (Firebase)</div>";
+                    } else {
+                        return "📝 صيغة غير صحيحة. استخدم: 'احفظ قانون [اسم القانون] كـ [محتوى القانون]'";
+                    }
+                } catch (error) {
+                    return "❌ حدث خطأ أثناء حفظ القانون في قاعدة البيانات";
+                }
+            },
+            
+            // ========== إضافة: دالة لاستخراج اسم القانون ==========
+            extractLawName(input) {
+                const matches = input.match(/قانون (.+?)(?=\s|$)/) || 
+                                input.match(/نظرية (.+?)(?=\s|$)/) || 
+                                input.match(/قاعدة (.+?)(?=\s|$)/);
+                return matches ? matches[1].trim() : null;
             },
 
             // حفظ في الذاكرة باستخدام "احفظ" و "جواب"
@@ -360,8 +529,8 @@
             inputField.value = '';
 
             // محاكاة تفكير النواة
-            setTimeout(() => {
-                const response = ScientificAI.analyze(query);
+            setTimeout(async () => {
+                const response = await ScientificAI.analyze(query);
                 appendMsg(response, 'ai');
             }, 600);
         }
@@ -387,6 +556,16 @@
             requestAnimationFrame(drawBg);
         }
         drawBg();
+        
+        // ========== إضافة: إظهار عدد المحادثات المحفوظة عند التحميل ==========
+        window.addEventListener('load', () => {
+            const savedChats = StorageSystem.getAllChatsFromBrowser();
+            if (savedChats.length > 0) {
+                setTimeout(() => {
+                    appendMsg(`💾 تم تحميل ${savedChats.length} محادثة محفوظة مسبقاً في المتصفح.<br>🔍 يمكنك البحث في القوانين باستخدام: "قانون [اسم القانون]"`, 'ai');
+                }, 1000);
+            }
+        });
     </script>
 </body>
 </html>
