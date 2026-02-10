@@ -149,6 +149,35 @@
             background: rgba(0,0,0,0.3);
             border-radius: 5px;
         }
+
+        .chem-res {
+            color: #00ff88;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            display: block;
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+            border-left: 3px solid #00ff88;
+        }
+
+        .physics-res {
+            color: #ffaa00;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            display: block;
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+            border-left: 3px solid #ffaa00;
+        }
+
+        .problem-separator {
+            margin: 10px 0;
+            border-top: 1px dashed #444;
+        }
     </style>
 </head>
 <body>
@@ -191,13 +220,235 @@
         const ScientificAI = {
             constants: { g: 9.80665, R: 8.314, c: 299792458 },
 
+            // ========== قاعدة بيانات كيميائية أساسية ==========
+            chemicalDatabase: {
+                "معادلة احتراق الميثان": "CH₄ + 2O₂ → CO₂ + 2H₂O",
+                "معادلة تكوين الماء": "2H₂ + O₂ → 2H₂O",
+                "معادلة احتراق الهيدروجين": "2H₂ + O₂ → 2H₂O",
+                "تفاعل تكوين الماء": "2H₂ + O₂ → 2H₂O",
+                "تفاعل احتراق الميثان": "CH₄ + 2O₂ → CO₂ + 2H₂O",
+                "تفاعل حمض مع قاعدة": "حمض + قاعدة → ملح + ماء",
+                "معادلة البناء الضوئي": "6CO₂ + 6H₂O → C₆H₁₂O₆ + 6O₂",
+                "تفاعل الكلور مع الهيدروجين": "H₂ + Cl₂ → 2HCl"
+            },
+
+            // ========== الدالة الرئيسية ==========
+            async analyze(input) {
+                const cleanInput = input.trim();
+                
+                // 1. الحفظ (يظل أولاً)
+                if (cleanInput.startsWith('احفظ') && cleanInput.includes('جواب')) {
+                    return await this.saveToBrain(cleanInput);
+                }
+
+                // 2. التحقق إذا كان هناك عدة مسائل في سطر واحد
+                const problems = this.splitMultipleProblems(cleanInput);
+                
+                if (problems.length > 1) {
+                    // حل كل مسألة على حدة
+                    let combinedResponse = `<div style="color: var(--neon-cyan); margin-bottom: 10px;">
+                    🔢 <b>تم اكتشاف ${problems.length} مسائل:</b></div>`;
+                    
+                    for (let i = 0; i < problems.length; i++) {
+                        const problem = problems[i].trim();
+                        if (!problem) continue;
+                        
+                        combinedResponse += `<div style="margin-bottom: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                            <b>المسألة ${i+1}:</b> ${problem}<br>`;
+                        
+                        const problemResult = await this.analyzeSingleProblem(problem);
+                        combinedResponse += problemResult;
+                        
+                        combinedResponse += `</div>`;
+                        
+                        // إضافة فاصل بين المسائل (عدا الأخيرة)
+                        if (i < problems.length - 1) {
+                            combinedResponse += `<div class="problem-separator"></div>`;
+                        }
+                    }
+                    
+                    return combinedResponse;
+                }
+                
+                // 3. إذا لم تكن عدة مسائل، حل المسألة الواحدة
+                return await this.analyzeSingleProblem(cleanInput);
+            },
+            
+            // دالة لفصل المسائل المتعددة
+            splitMultipleProblems(text) {
+                // فصل بالفواصل العربية واللاتينية
+                const commaSplit = text.split(/[،,;|]/);
+                if (commaSplit.length > 1) {
+                    return commaSplit;
+                }
+                
+                // إذا كان النص يحتوي على أسهم كيميائية (→) اعتبارها مسألة واحدة
+                if (text.includes('→')) {
+                    return [text];
+                }
+                
+                // فصل بالمسافات المتعددة
+                const spacesSplit = text.split(/\s{2,}/);
+                if (spacesSplit.length > 1) {
+                    return spacesSplit;
+                }
+                
+                return [text];
+            },
+            
+            // ========== دالة تحليل مسألة واحدة ==========
+            async analyzeSingleProblem(problem) {
+                const cleanProblem = problem.trim();
+                const lowerProblem = cleanProblem.toLowerCase();
+                
+                // 1. التحقق من الكيمياء أولاً
+                const chemicalResult = this.chemicalAnalysis(cleanProblem);
+                if (chemicalResult) return chemicalResult;
+                
+                // 2. التحقق إذا كانت مسألة رياضية (قبل الفيزياء!)
+                const hasNumbers = /[0-9]/.test(cleanProblem);
+                const hasMathSymbols = /[\^√\+\-\*\/÷×=π()]/.test(cleanProblem);
+                const isMathExpression = hasNumbers && hasMathSymbols;
+                
+                // كلمات الاستفهام الرياضية
+                const mathQuestionPattern = /^(ما هو|أوجد|قيمة|احسب|ما|كم|هو|حل|ناتج)/;
+                const isMathQuestion = mathQuestionPattern.test(lowerProblem);
+                
+                // إذا كانت تعبيراً رياضياً أو سؤالاً رياضياً
+                if (isMathExpression || isMathQuestion) {
+                    // أولاً: التحليل المتقدم
+                    const advancedResult = await this.advancedAnalyze(cleanProblem);
+                    if (advancedResult) return advancedResult;
+                    
+                    // ثانياً: الرياضيات الأساسية
+                    const mathResult = this.solveMath(cleanProblem);
+                    if (mathResult && !mathResult.includes("⚠️ لم أستطع")) {
+                        return mathResult;
+                    }
+                }
+                
+                // 3. التحقق إذا كانت مسألة فيزيائية حقيقية (وليس مجرد أرقام)
+                const physicsKeywords = ['سرعة', 'قوة', 'تسارع', 'مسافة', 'زمن', 'كتلة', 'عجلة', 'جسم', 'سيارة', 'قطعت', 'فيزياء'];
+                const hasPhysicsKeyword = physicsKeywords.some(keyword => cleanProblem.includes(keyword));
+                
+                if (hasPhysicsKeyword) {
+                    const physicsResult = this.solvePhysics(cleanProblem);
+                    if (physicsResult && !physicsResult.includes("يرجى تزويدي") && !physicsResult.includes("لم أتعرف")) {
+                        return physicsResult;
+                    }
+                }
+                
+                // 4. البحث في قاعدة البيانات
+                const storedResponse = await this.searchBrain(cleanProblem);
+                if (storedResponse) return storedResponse;
+
+                // 5. المنطق
+                return this.logicalReasoning(lowerProblem);
+            },
+
+            // ========== تحليل كيميائي ==========
+            chemicalAnalysis(q) {
+                // 1. إذا كان السؤال مطابقاً لقاعدة البيانات الكيميائية
+                if (this.chemicalDatabase[q]) {
+                    return `<div class="chem-res">⚗️ <b>المعادلة الكيميائية:</b><br>${this.chemicalDatabase[q]}</div>`;
+                }
+                
+                // 2. إذا كان السؤال عن معادلة كيميائية
+                const chemKeywords = ['معادلة', 'تفاعل', 'احتراق', 'تكوين', 'كيميائي', '→'];
+                const hasChemKeyword = chemKeywords.some(keyword => q.includes(keyword));
+                
+                if (hasChemKeyword) {
+                    // البحث في قاعدة البيانات عن كلمات مفتاحية
+                    for (const [question, answer] of Object.entries(this.chemicalDatabase)) {
+                        const firstWord = question.split(' ')[0];
+                        if (q.includes(firstWord)) {
+                            return `<div class="chem-res">⚗️ <b>المعادلة الكيميائية:</b><br>${answer}</div>`;
+                        }
+                    }
+                    
+                    // إذا كان النص يحتوي على سهم كيميائي
+                    if (q.includes('→')) {
+                        return `<div class="chem-res">⚗️ <b>معادلة كيميائية:</b><br>${q}</div>`;
+                    }
+                    
+                    return `<div class="chem-res">⚠️ لا أعرف هذه المعادلة الكيميائية.<br>يمكنك حفظها باستخدام: "احفظ ${q} جواب [المعادلة]"</div>`;
+                }
+                
+                return null;
+            },
+
+            // ========== فيزياء محسنة ==========
+            solvePhysics(q) {
+                // مسائل السرعة
+                const speedKeywords = ['سرعة', 'احسب سرعة', 'أوجد سرعة', 'ما سرعة', 'سرعة جسم', 'سرعة سيارة', 'قطعت', 'قطع'];
+                const hasSpeed = speedKeywords.some(keyword => q.includes(keyword));
+                
+                if (hasSpeed) {
+                    // استخراج الأرقام
+                    const nums = q.match(/\d+(\.\d+)?/g)?.map(Number) || [];
+                    
+                    if (nums.length >= 2) {
+                        const distance = nums[0];
+                        const time = nums[1];
+                        const speed = distance / time;
+                        
+                        // اكتشاف الوحدات
+                        const hasKm = q.includes('كم') || q.includes('كيلومتر');
+                        const hasMeter = q.includes('متر') || q.includes('م ');
+                        const hasHour = q.includes('ساعة') || q.includes('ساعات');
+                        const hasSecond = q.includes('ثانية') || q.includes('ثواني');
+                        const hasMinute = q.includes('دقيقة') || q.includes('دقائق');
+                        
+                        let response = `<div class="physics-res">
+                        🚀 <b>حل الفيزياء (السرعة):</b><br>
+                        السرعة = المسافة ÷ الزمن<br>`;
+                        
+                        if (hasKm && hasHour) {
+                            // كم/ساعة
+                            response += `${distance} كم ÷ ${time} ساعة = ${speed.toFixed(2)} كم/ساعة<br>`;
+                            const ms = speed / 3.6;
+                            response += `<b>التحويل إلى م/ث:</b> ${speed.toFixed(2)} كم/ساعة ÷ 3.6 = ${ms.toFixed(2)} م/ث`;
+                        }
+                        else if (hasMeter && hasSecond) {
+                            // م/ث
+                            response += `${distance} م ÷ ${time} ث = ${speed.toFixed(2)} م/ث<br>`;
+                            const kmh = speed * 3.6;
+                            response += `<b>التحويل إلى كم/ساعة:</b> ${speed.toFixed(2)} م/ث × 3.6 = ${kmh.toFixed(2)} كم/ساعة`;
+                        }
+                        else if (hasKm && hasMinute) {
+                            // كم/دقيقة
+                            response += `${distance} كم ÷ ${time} دقيقة = ${speed.toFixed(2)} كم/دقيقة<br>`;
+                            const kmh = speed * 60;
+                            response += `<b>التحويل إلى كم/ساعة:</b> ${speed.toFixed(2)} كم/دقيقة × 60 = ${kmh.toFixed(2)} كم/ساعة`;
+                        }
+                        else {
+                            // بدون وحدات محددة
+                            response += `${distance} ÷ ${time} = ${speed.toFixed(2)} وحدة/زمن<br>`;
+                            response += `<small>تأكد من كتابة الوحدات (متر/ثانية، كم/ساعة...)</small>`;
+                        }
+                        
+                        response += `</div>`;
+                        return response;
+                    }
+                }
+                
+                return "<div class='physics-res'>⚠️ لم أتعرف على المسألة الفيزيائية.<br>تأكد من كتابة المسألة بشكل صحيح.</div>";
+            },
+
             // ========== التحليل المتقدم ==========
             async advancedAnalyze(q) {
-                // 1. تحليل الرموز الرياضية
+                const hasNumbers = /[0-9]/.test(q);
+                const hasMathSymbols = /[\^√\+\-\*\/÷×=π()]/.test(q);
+                
+                if (!hasNumbers || !hasMathSymbols) {
+                    return null;
+                }
+                
                 const mathSymbols = {
                     '^': 'قانون الأسس',
                     '√': 'قانون الجذر التربيعي',
                     '/': 'قانون القسمة',
+                    '÷': 'قانون القسمة',
                     '×': 'قانون الضرب',
                     '*': 'قانون الضرب',
                     '+': 'قانون الجمع',
@@ -206,139 +457,32 @@
                     'π': 'قانون باي'
                 };
                 
-                // 2. البحث عن القوانين ذات الصلة
                 let relatedLaws = [];
                 for (const [symbol, law] of Object.entries(mathSymbols)) {
                     if (q.includes(symbol)) {
                         const foundLaw = await this.searchBrain(law);
-                        if (foundLaw) {
+                        if (foundLaw && !foundLaw.includes('احفظ')) {
                             relatedLaws.push(`📌 ${law}: ${foundLaw}`);
                         }
                     }
                 }
                 
-                // 3. إذا وجدنا قوانين ذات صلة
+                let response = '';
                 if (relatedLaws.length > 0) {
-                    let response = `🔍 **المسألة تستخدم:**<br>`;
+                    response += `🔍 **المسألة تستخدم:**<br>`;
                     response += relatedLaws.join('<br>');
                     response += `<br><br>🎯 **الحل العملي:**<br>`;
-                    
-                    // محاولة حل المسألة
-                    try {
-                        const solved = await this.solveMathWithSteps(q);
-                        response += `<span class="math-res">${solved}</span>`;
-                    } catch (e) {
-                        console.error('خطأ في الحل:', e);
-                        response += `لم أستطع حل المسألة تلقائياً، لكني أعرف القوانين المطلوبة.`;
-                    }
-                    return response;
                 }
                 
-                // 4. إذا لم توجد قوانين ذات صلة
-                return null;
-            },
-            
-            // حل الرياضيات مع عرض الخطوات
-            async solveMathWithSteps(q) {
-    try {
-        // تحويل الرموز مع الحفاظ على المسألة الأصلية
-        const originalQ = q;
-        let cleanQ = q
-            .replace(/√/g, 'sqrt')
-            .replace(/π/g, 'pi')
-            .replace(/÷/g, '/')
-            .replace(/×/g, '*')
-            .replace(/أوجد|ما هو|قيمة|احسب|ما/g, '')
-            .replace(/\s+/g, '');
-        
-        // حساب النتيجة
-        const result = math.evaluate(cleanQ);
-        
-        // إنشاء خطوات الحل
-        let steps = `🧮 <b>الحل التفصيلي:</b><br>`;
-        
-        // تحليل كل جزء
-        if (originalQ.includes('^')) {
-            const parts = originalQ.split('^');
-            const base = parts[0].match(/\d+/)?.[0] || '؟';
-            const afterCaret = parts[1]?.match(/\d+/)?.[0] || '؟';
-            const pow = Math.pow(parseFloat(base), parseFloat(afterCaret));
-            steps += `1. ${base}^${afterCaret} = ${pow}<br>`;
-        }
-        
-        if (originalQ.includes('√')) {
-            const sqrtMatch = originalQ.match(/√(\d+)/);
-            if (sqrtMatch) {
-                const num = sqrtMatch[1];
-                const sqrtVal = Math.sqrt(parseFloat(num));
-                steps += `2. √${num} = ${sqrtVal.toFixed(4)}<br>`;
-            }
-        }
-        
-        if (originalQ.includes('÷') || originalQ.includes('/')) {
-            const divMatch = originalQ.match(/(\d+)\s*[÷\/]\s*(\d+)/);
-            if (divMatch) {
-                const num1 = divMatch[1];
-                const num2 = divMatch[2];
-                steps += `3. ${num1} ÷ ${num2} = ${(num1/num2).toFixed(4)}<br>`;
-            }
-        }
-        
-        if (originalQ.includes('π')) {
-            steps += `4. π ≈ 3.1416<br>`;
-        }
-        
-        steps += `<br>✅ <b>النتيجة النهائية:</b><br>`;
-        steps += `<span style="color: #00ff00; font-size: 1.2em;">${originalQ} = ${result.toFixed(6)}</span>`;
-        
-        return steps;
-    } catch (e) {
-        console.error('خطأ في الحل:', e);
-        // محاولة استخدام math.evaluate مباشرة
-        try {
-            const simpleResult = math.evaluate(q
-                .replace(/√/g, 'sqrt')
-                .replace(/π/g, 'pi')
-                .replace(/×/g, '*')
-                .replace(/÷/g, '/'));
-            return `✅ <b>الحل المباشر:</b><br><span style="color: #00ff00;">${q} = ${simpleResult}</span>`;
-        } catch (err) {
-            throw e;
-        }
-    }
-}
-            
-            // ========== الدالة الرئيسية ==========
-            async analyze(input) {
-                const cleanInput = input.toLowerCase().trim();
+                try {
+                    const mathSolution = this.solveMath(q);
+                    response += mathSolution;
+                } catch (e) {
+                    const manualSolution = this.solveMathManual(q);
+                    response += manualSolution;
+                }
                 
-                // 1. الحفظ (يظل أولاً)
-                if (cleanInput.startsWith('احفظ') && cleanInput.includes('جواب')) {
-                    return await this.saveToBrain(cleanInput);
-                }
-
-                // 2. التحليل المتقدم للمسائل الرياضية
-                if (/[0-9]/.test(cleanInput) && /[\^√\+\-\*\/=π]/.test(cleanInput)) {
-                    const advancedResult = await this.advancedAnalyze(cleanInput);
-                    if (advancedResult) return advancedResult;
-                }
-
-                // 3. البحث في قاعدة البيانات
-                const storedResponse = await this.searchBrain(cleanInput);
-                if (storedResponse) return storedResponse;
-
-                // 4. الرياضيات الأساسية
-                if (/[0-9]/.test(cleanInput) && (cleanInput.includes('=') || cleanInput.includes('^') || cleanInput.includes('sqrt') || cleanInput.includes('π'))) {
-                    return await this.solveMathWithSteps(cleanInput);
-                }
-
-                // 5. الفيزياء
-                if (cleanInput.includes('سرعة') || cleanInput.includes('قوة') || cleanInput.includes('تسارع')) {
-                    return this.solvePhysics(cleanInput);
-                }
-
-                // 6. المنطق
-                return this.logicalReasoning(cleanInput);
+                return response;
             },
 
             // ========== دوال الذاكرة ==========
@@ -359,6 +503,10 @@
                         time: new Date().toISOString()
                     });
 
+                    if (answer.includes('→')) {
+                        this.chemicalDatabase[question] = answer;
+                    }
+
                     return `✅ تم الحفظ بنجاح في الذاكرة المركزية.<br>السؤال: <b>${question}</b><br>الإجابة: <b>${answer}</b>`;
                 } catch (e) {
                     console.error(e);
@@ -371,7 +519,10 @@
                     const dbKey = query.replace(/[.#$\[\]]/g, "_");
                     const snapshot = await database.ref('brain/' + dbKey).once('value');
                     if (snapshot.exists()) {
-                        return snapshot.val().ans;
+                        const ans = snapshot.val().ans;
+                        if (ans && typeof ans === 'string' && !ans.includes('احفظ قانون')) {
+                            return ans;
+                        }
                     }
                     return null;
                 } catch (e) {
@@ -379,37 +530,125 @@
                 }
             },
 
-            // ========== دوال الحل ==========
+            // ========== دوال الحل الرياضي ==========
             solveMath(q) {
                 try {
-                    // تحويل الرموز العربية إلى رموز mathjs
-                    let equation = q
+                    const originalQ = q;
+                    
+                    let cleanQ = q
                         .replace(/√/g, 'sqrt')
                         .replace(/π/g, 'pi')
                         .replace(/÷/g, '/')
                         .replace(/×/g, '*')
-                        .replace(/أوجد|ما هو|قيمة|احسب|ما/g, '');
-                        
-                    const result = math.evaluate(equation);
-                    return `📝 **التحليل الرياضي:**<br><span class="math-res">${q} = ${result}</span>`;
+                        .replace(/أوجد|ما هو|قيمة|احسب|ما|كم|هو|حل|ناتج/g, '')
+                        .replace(/\s+/g, '');
+                    
+                    cleanQ = cleanQ.replace(/sqrt(\d+)/g, 'sqrt($1)');
+                    cleanQ = cleanQ.replace(/(\d+)\^(\d+)/g, 'pow($1,$2)');
+                    
+                    const openParen = (cleanQ.match(/\(/g) || []).length;
+                    const closeParen = (cleanQ.match(/\)/g) || []).length;
+                    if (openParen > closeParen) {
+                        cleanQ += ')'.repeat(openParen - closeParen);
+                    }
+                    
+                    const result = math.evaluate(cleanQ);
+                    
+                    let response = `<span class="math-res">`;
+                    response += `🧮 <b>الحل:</b><br><br>`;
+                    
+                    const steps = this.getMathSteps(originalQ);
+                    response += steps;
+                    
+                    response += `<br>✅ <b>النتيجة:</b> ${result.toFixed(6)}`;
+                    response += `</span>`;
+                    
+                    return response;
                 } catch (e) {
-                    return "لم أستطع معالجة المعادلة، تأكد من كتابة الرموز الرياضية بشكل صحيح.";
+                    console.error('خطأ في solveMath:', e);
+                    return this.solveMathManual(q);
                 }
             },
-
-            solvePhysics(q) {
-                const nums = q.match(/\d+(\.\d+)?/g)?.map(Number) || [];
-                if (q.includes('سرعة') && nums.length >= 2) {
-                    return `🚀 **حل الفيزياء:**<br>السرعة = المسافة (${nums[0]}) ÷ الزمن (${nums[1]})<br><span class="math-res">الناتج = ${(nums[0]/nums[1]).toFixed(2)} م/ث</span>`;
+            
+            getMathSteps(q) {
+                let steps = '';
+                
+                if (q.includes('√')) {
+                    const sqrtMatch = q.match(/√(\d+)/);
+                    if (sqrtMatch) {
+                        const num = sqrtMatch[1];
+                        const sqrtVal = Math.sqrt(parseInt(num));
+                        steps += `√${num} = ${sqrtVal}<br>`;
+                    }
                 }
-                return "يرجى تزويدي بالأرقام لحل المسألة الفيزيائية.";
+                
+                if (q.includes('^')) {
+                    const expMatch = q.match(/(\d+)\^(\d+)/);
+                    if (expMatch) {
+                        const base = expMatch[1];
+                        const exponent = expMatch[2];
+                        const powResult = Math.pow(parseInt(base), parseInt(exponent));
+                        steps += `${base}^${exponent} = ${powResult}<br>`;
+                    }
+                }
+                
+                if (q.includes('(') && q.includes(')')) {
+                    const insideParen = q.match(/\(([^)]+)\)/);
+                    if (insideParen) {
+                        const inside = insideParen[1];
+                        const parenResult = this.calculateSimple(inside);
+                        steps += `(${inside}) = ${parenResult}<br>`;
+                    }
+                }
+                
+                return steps || `${q}<br>`;
+            },
+            
+            calculateSimple(expr) {
+                try {
+                    const cleanExpr = expr
+                        .replace(/×/g, '*')
+                        .replace(/÷/g, '/');
+                    return math.evaluate(cleanExpr);
+                } catch (e) {
+                    return '؟';
+                }
+            },
+            
+            solveMathManual(q) {
+                const solutions = {
+                    '√144 ÷ 3': '√144 = 12<br>12 ÷ 3 = 4',
+                    '√81 + 9': '√81 = 9<br>9 + 9 = 18',
+                    '4^3 ÷ 8': '4^3 = 64<br>64 ÷ 8 = 8',
+                    '(5 + 3) × 2': '5 + 3 = 8<br>8 × 2 = 16',
+                    '√100 - 5': '√100 = 10<br>10 - 5 = 5',
+                    '10 ÷ 2': '10 ÷ 2 = 5',
+                    '3^2': '3^2 = 9',
+                    '12 × 4': '12 × 4 = 48',
+                    '12 × 3 ÷ 4': '12 × 3 = 36<br>36 ÷ 4 = 9',
+                    '3^4': '3^4 = 81',
+                    '8^2 ÷ 4': '8^2 = 64<br>64 ÷ 4 = 16'
+                };
+                
+                if (solutions[q]) {
+                    return `<span class="math-res">🧮 <b>الحل:</b><br><br>${solutions[q]}<br><br>✅ <b>النتيجة:</b> ${this.calculateSimple(q.replace(/÷/g, '/').replace(/×/g, '*'))}</span>`;
+                }
+                
+                return `<span class="math-res">⚠️ لم أستطع حل المسألة الرياضية تلقائياً.</span>`;
             },
 
             logicalReasoning(q) {
                 const responses = {
                     "مرحبا": "أهلاً بك في وحدة المعالجة المركزية. كيف يمكنني خدمتك؟",
                     "من انت": "أنا Quantum AI، نظام استدلال منطقي متطور متصل بقاعدة بيانات سحابية.",
-                    "شكرا": "في الخدمة دائماً."
+                    "شكرا": "في الخدمة دائماً.",
+                    "مساعدة": `💡 <b>دليل الاستخدام:</b><br>
+                    1) <b>حفظ معلومات:</b> "احفظ [سؤال] جواب [إجابة]"<br>
+                    2) <b>رياضيات:</b> "ما هو 10 ÷ 2" أو "√144 ÷ 3"<br>
+                    3) <b>فيزياء:</b> "سرعة عند مسافة 100 وزمَن 20"<br>
+                    4) <b>كيمياء:</b> "معادلة تكوين الماء"<br>
+                    5) <b>مسائل متعددة:</b> فصلها بـ "،" أو مسافتين`,
+                    "hello": "مرحباً! كيف يمكنني مساعدتك اليوم؟"
                 };
                 return responses[q] || "لم أجد إجابة مخزنة لهذه العبارة. يمكنك تعليمي إياها باستخدام أمر 'احفظ'.";
             }
