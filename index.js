@@ -7,7 +7,7 @@ const cors = require('cors');
 
 // ==================== 1. تهيئة خادم الويب ====================
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8000;
 
 app.use(cors());
 app.use(express.json());
@@ -121,10 +121,8 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     }
     
     // ========== الرابط الحيوي - غير هذا الرابط ==========
-    const URL = process.env.APP_URL || "http://localhost:8000";
-    // ==================================================
-    
-    console.log(`🔗 رابط الواجهة: ${APP_URL}`);
+    const APP_URL = process.env.APP_URL || "https://clean-fredelia-bot199311-892fd8e8.koyeb.app/";
+console.log(`🔗 رابط الواجهة: ${APP_URL}`);
     
     await bot.sendMessage(chatId, 
         `🎮 *مرحباً ${msg.from.first_name}!*\n\n` +
