@@ -72,8 +72,15 @@ if (!BOT_TOKEN) {
     process.exit(1);
 }
 
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
-console.log('🤖 البوت يعمل...');
+// إيقاف أي نسخة قديمة
+let bot;
+try {
+    bot = new TelegramBot(BOT_TOKEN, { polling: false });
+    console.log('🤖 البوت يعمل...');
+} catch (error) {
+    console.error('خطأ في تهيئة البوت:', error);
+    process.exit(1);
+}
 
 // ==================== 4. قراءة المشرفين ====================
 const ADMIN_IDS = process.env.ADMIN_USER_IDS 
@@ -81,6 +88,9 @@ const ADMIN_IDS = process.env.ADMIN_USER_IDS
     : [];
 
 // ==================== 5. أوامر التليجرام ====================
+// رابط الواجهة - غير هذا الرابط
+const APP_URL = "https://clean-fredelia-bot199311-892fd8e8.koyeb.app/";
+console.log(`🔗 رابط الواجهة: ${APP_URL}`);
 
 bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     const chatId = msg.chat.id;
@@ -119,10 +129,6 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
             await saveData(data);
         }
     }
-    
-    // ========== الرابط الحيوي - غير هذا الرابط ==========
-    const APP_URL = process.env.APP_URL || "https://clean-fredelia-bot199311-892fd8e8.koyeb.app/";
-console.log(`🔗 رابط الواجهة: ${APP_URL}`);
     
     await bot.sendMessage(chatId, 
         `🎮 *مرحباً ${msg.from.first_name}!*\n\n` +
@@ -348,14 +354,18 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
     console.log(`🌐 خادم الويب يعمل على المنفذ: ${PORT}`);
     console.log(`🔗 رابط الواجهة المحلي: http://localhost:${PORT}`);
-    console.log(`⚠️  مهم: غير رابط APP_URL في الكود إلى رابط ngrok أو localtunnel`);
+    console.log(`⚠️  مهم: رابط الواجهة الحالي: ${APP_URL}`);
 });
 
 initializeSystem().catch(console.error);
 
 process.on('SIGINT', () => {
     console.log('\n🛑 إيقاف البوت...');
-    bot.stopPolling();
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('\n🛑 إيقاف البوت...');
     process.exit(0);
 });
 
