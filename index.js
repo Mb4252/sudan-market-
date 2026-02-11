@@ -1,198 +1,15 @@
-const TelegramBot = require('node-telegram-bot-api');
-require('dotenv').config();
-const fs = require('fs').promises;
-const path = require('path');
-const express = require('express');
-const cors = require('cors');
+// ==================== 7. نظام الشراء بالعملات الرقمية ====================
+const CRYPTO_WALLETS = {
+    TON: process.env.TON_WALLET || "UQC8xJ9gQqQ5qQgK9QgQqQ5qQgK9QgQqQ5qQgK9QgQq",
+    USDT: process.env.USDT_WALLET || "0x0000000000000000000000000000000000000000"
+};
 
-// ==================== 1. تهيئة خادم الويب ====================
-const app = express();
-const PORT = process.env.PORT || 8000;
+// طلبات الشراء المعلقة
+let pendingPurchases = {};
 
-app.use(cors());
-app.use(express.json());
-app.use(express.static('public'));
-
-// ==================== 2. نظام التخزين ====================
-const DATA_FILE = path.join(__dirname, 'bot-data.json');
-
-async function readData() {
-    try {
-        const fileContent = await fs.readFile(DATA_FILE, 'utf8');
-        return JSON.parse(fileContent);
-    } catch (error) {
-        const initialData = {
-            users: {},
-            system: {
-                totalTransactions: 0,
-                lastReset: Date.now(),
-                totalInvites: 0,
-                shopRevenue: 0
-            },
-            shopItems: {
-                'energy_boost': {
-                    id: 'energy_boost',
-                    name: '⚡ تعزيز الطاقة',
-                    description: 'يزيد سعة الطاقة إلى 150',
-                    price: 50,
-                    effect: { maxEnergy: 150 },
-                    emoji: '⚡'
-                },
-                'miner_upgrade': {
-                    id: 'miner_upgrade',
-                    name: '⛏️ مُعدِّن محترف',
-                    description: 'يزيد الأرباح 30%',
-                    price: 120,
-                    effect: { miningBonus: 1.3 },
-                    emoji: '⛏️'
-                }
-            }
-        };
-        await saveData(initialData);
-        return initialData;
-    }
-}
-
-async function saveData(data) {
-    await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
-    return true;
-}
-
-async function initializeSystem() {
-    const data = await readData();
-    console.log(`✨ نظام التخزين جاهز | المستخدمون: ${Object.keys(data.users).length}`);
-    console.log(`🛒 عناصر المتجر: ${Object.keys(data.shopItems).length}`);
-    return data;
-}
-
-// ==================== 3. تهيئة بوت تليجرام ====================
-const BOT_TOKEN = process.env.BOT_TOKEN;
-if (!BOT_TOKEN) {
-    console.error('❌ خطأ: BOT_TOKEN غير موجود في ملف .env');
-    process.exit(1);
-}
-
-let bot;
-try {
-    bot = new TelegramBot(BOT_TOKEN, { polling: true });
-    console.log('🤖 البوت يعمل...');
-} catch (error) {
-    console.error('خطأ في تهيئة البوت:', error);
-    process.exit(1);
-}
-
-// ==================== 4. قراءة المشرفين ====================
-const ADMIN_IDS = process.env.ADMIN_USER_IDS 
-    ? process.env.ADMIN_USER_IDS.split(',').map(id => parseInt(id.trim())) 
-    : [];
-
-// ==================== 5. أوامر التليجرام ====================
-const APP_URL = process.env.APP_URL || "https://clean-fredelia-bot199311-892fd8e8.koyeb.app";
-console.log(`🔗 رابط الواجهة: ${APP_URL}`);
-
-bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id.toString();
-    const inviteCode = match[1];
-    
-    console.log(`🔄 فتح Mini App للمستخدم: ${userId}`);
-    
-    const data = await readData();
-    if (!data.users[userId]) {
-        data.users[userId] = {
-            user_id: userId,
-            balance: 0,
-            energy: 100,
-            maxEnergy: 100,
-            username: msg.from.username || msg.from.first_name,
-            first_name: msg.from.first_name,
-            created_at: Date.now(),
-            last_mine: null,
-            total_mined: 0,
-            upgrades: {},
-            daily_streak: 0,
-            total_invites: 0,
-            last_daily: null
-        };
-        await saveData(data);
-    }
-    
-    if (inviteCode && inviteCode.startsWith('invite_')) {
-        const inviterId = inviteCode.replace('invite_', '');
-        if (inviterId !== userId && data.users[inviterId]) {
-            data.users[userId].invited_by = inviterId;
-            data.users[inviterId].balance += 25;
-            data.users[inviterId].total_invites += 1;
-            data.system.totalInvites += 1;
-            await saveData(data);
-        }
-    }
-    
-    await bot.sendMessage(chatId, 
-        `🎮 *مرحباً ${msg.from.first_name}!*\n\n` +
-        `اضغط على الزر أدناه لفتح **منصة التعدين المتكاملة** ⛏️`,
-        {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [[
-                    {
-                        text: '🚀 فتح منصة التعدين',
-                        web_app: { url: APP_URL }
-                    }
-                ]]
-            }
-        }
-    );
-});
-
-// ==================== 6. API للويب ====================
-
-app.get('/api/user/:userId', async (req, res) => {
-    const data = await readData();
-    const user = data.users[req.params.userId];
-    if (user) {
-        res.json({ success: true, user });
-    } else {
-        res.json({ success: false, error: 'مستخدم غير موجود' });
-    }
-});
-
-app.get('/api/user/me', async (req, res) => {
-    res.json({ username: bot.options.username });
-});
-
-app.post('/api/mine', async (req, res) => {
-    const { userId } = req.body;
-    const data = await readData();
-    const user = data.users[userId];
-    
-    if (!user) return res.json({ success: false, error: 'مستخدم غير موجود' });
-    
-    if (user.energy < 10) {
-        return res.json({ success: false, error: 'طاقة غير كافية' });
-    }
-    
-    const miningBonus = user.upgrades?.miner_upgrade ? 1.3 : 1.0;
-    const minedAmount = (5 + Math.random() * 5) * miningBonus;
-    
-    user.balance += minedAmount;
-    user.energy -= 10;
-    user.total_mined += minedAmount;
-    user.last_mine = Date.now();
-    
-    await saveData(data);
-    
-    res.json({
-        success: true,
-        minedAmount: minedAmount.toFixed(2),
-        newBalance: user.balance.toFixed(2),
-        newEnergy: user.energy,
-        maxEnergy: user.maxEnergy || 100
-    });
-});
-
-app.post('/api/buy', async (req, res) => {
-    const { userId, itemId } = req.body;
+// طلب شراء بعملة رقمية
+app.post('/api/crypto-purchase', async (req, res) => {
+    const { userId, itemId, currency } = req.body;
     const data = await readData();
     const user = data.users[userId];
     const item = data.shopItems[itemId];
@@ -201,170 +18,348 @@ app.post('/api/buy', async (req, res) => {
         return res.json({ success: false, error: 'عنصر غير موجود' });
     }
     
-    if (user.balance < item.price) {
-        return res.json({ success: false, error: 'رصيد غير كافي' });
+    const prices = {
+        'energy_boost': { TON: 0.5, USDT: 1.5 },
+        'miner_upgrade': { TON: 1.2, USDT: 3.5 }
+    };
+    
+    const amount = prices[itemId]?.[currency];
+    if (!amount) {
+        return res.json({ success: false, error: 'عملة غير مدعومة' });
     }
     
-    if (user.upgrades?.[itemId]) {
-        return res.json({ success: false, error: 'ممتلك بالفعل' });
+    const paymentId = Date.now().toString() + userId;
+    pendingPurchases[paymentId] = {
+        userId,
+        itemId,
+        currency,
+        amount,
+        timestamp: Date.now(),
+        status: 'pending'
+    };
+    
+    res.json({
+        success: true,
+        paymentId,
+        wallet: CRYPTO_WALLETS[currency],
+        amount,
+        currency,
+        itemName: item.name
+    });
+});
+
+// تأكيد الدفع (للأدمن)
+app.post('/api/admin/confirm-payment', async (req, res) => {
+    const { adminId, paymentId } = req.body;
+    
+    if (!ADMIN_IDS.includes(Number(adminId))) {
+        return res.json({ success: false, error: 'غير مصرح' });
     }
     
-    user.balance -= item.price;
+    const payment = pendingPurchases[paymentId];
+    if (!payment) {
+        return res.json({ success: false, error: 'طلب غير موجود' });
+    }
+    
+    const data = await readData();
+    const user = data.users[payment.userId];
+    const item = data.shopItems[payment.itemId];
+    
     if (!user.upgrades) user.upgrades = {};
-    user.upgrades[itemId] = true;
+    user.upgrades[payment.itemId] = true;
     
     if (item.effect.maxEnergy) {
         user.maxEnergy = item.effect.maxEnergy;
     }
     
-    data.system.shopRevenue += item.price;
+    delete pendingPurchases[paymentId];
     await saveData(data);
     
-    res.json({
-        success: true,
-        newBalance: user.balance.toFixed(2),
-        maxEnergy: user.maxEnergy
-    });
+    // إرسال إشعار للمستخدم
+    try {
+        await bot.sendMessage(payment.userId, 
+            `✅ *تم تأكيد دفعتك!*\n\n` +
+            `🛒 العنصر: ${item.name}\n` +
+            `💰 المبلغ: ${payment.amount} ${payment.currency}\n\n` +
+            `شكراً لشرائك! 🎉`,
+            { parse_mode: 'Markdown' }
+        );
+    } catch (e) {}
+    
+    res.json({ success: true });
 });
 
-app.post('/api/charge', async (req, res) => {
-    const { userId } = req.body;
-    const data = await readData();
-    const user = data.users[userId];
-    
-    if (!user) return res.json({ success: false });
-    
-    const now = Date.now();
-    if (user.last_mine) {
-        const hoursPassed = (now - user.last_mine) / (1000 * 60 * 60);
-        const energyToAdd = Math.floor(hoursPassed * 10);
-        const maxEnergy = user.maxEnergy || 100;
-        user.energy = Math.min(maxEnergy, user.energy + energyToAdd);
-    }
-    
-    await saveData(data);
-    res.json({ success: true, energy: user.energy, maxEnergy: user.maxEnergy || 100 });
-});
+// ==================== 8. نظام لوحة تحكم الأدمن ====================
 
-app.get('/api/top', async (req, res) => {
-    const data = await readData();
-    const topUsers = Object.values(data.users)
-        .sort((a, b) => b.balance - a.balance)
-        .slice(0, 10)
-        .map(u => ({
-            name: u.first_name,
-            balance: u.balance.toFixed(2)
-        }));
-    
-    res.json({ success: true, topUsers });
-});
+// دالة التحقق من الأدمن
+function isAdmin(userId) {
+    return ADMIN_IDS.includes(Number(userId));
+}
 
-app.post('/api/transfer', async (req, res) => {
-    const { fromId, toUsername, amount } = req.body;
+// أمر لوحة التحكم
+bot.onText(/\/admin/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    
+    if (!isAdmin(userId)) {
+        await bot.sendMessage(chatId, '❌ غير مصرح لك باستخدام هذا الأمر');
+        return;
+    }
+    
     const data = await readData();
-    
-    const receiver = Object.values(data.users).find(u => 
-        u.username === toUsername.replace('@', '')
-    );
-    
-    if (!receiver) {
-        return res.json({ success: false, error: 'المستقبل غير موجود' });
-    }
-    
-    const sender = data.users[fromId];
-    if (sender.balance < amount) {
-        return res.json({ success: false, error: 'رصيد غير كافي' });
-    }
-    
-    sender.balance -= amount;
-    receiver.balance += amount;
-    data.system.totalTransactions += 1;
-    
-    await saveData(data);
-    res.json({
-        success: true,
-        newBalance: sender.balance.toFixed(2),
-        receiverName: receiver.first_name
-    });
-});
-
-app.post('/api/daily', async (req, res) => {
-    const { userId } = req.body;
-    const data = await readData();
-    const user = data.users[userId];
-    
-    if (!user) return res.json({ success: false });
-    
-    const today = new Date().toDateString();
-    const lastDaily = user.last_daily ? new Date(user.last_daily).toDateString() : null;
-    
-    if (lastDaily === today) {
-        return res.json({ success: false, error: 'لقد أخذت مكافأتك اليوم' });
-    }
-    
-    if (lastDaily === new Date(Date.now() - 86400000).toDateString()) {
-        user.daily_streak = (user.daily_streak || 0) + 1;
-    } else {
-        user.daily_streak = 1;
-    }
-    
-    const streakBonus = Math.min(user.daily_streak * 5, 50);
-    const reward = 20 + streakBonus;
-    
-    user.balance += reward;
-    user.last_daily = Date.now();
-    
-    await saveData(data);
-    res.json({
-        success: true,
-        reward: reward.toFixed(2),
-        streak: user.daily_streak
-    });
-});
-
-app.get('/api/stats/:userId', async (req, res) => {
-    const data = await readData();
-    const user = data.users[req.params.userId];
-    
-    if (!user) return res.json({ success: false });
-    
+    const pendingCount = Object.keys(pendingPurchases).length;
     const totalUsers = Object.keys(data.users).length;
-    const userRank = Object.values(data.users)
-        .sort((a, b) => b.balance - a.balance)
-        .findIndex(u => u.user_id === req.params.userId) + 1;
+    const totalRevenue = data.system.shopRevenue || 0;
     
-    res.json({
-        success: true,
-        rank: userRank,
-        totalUsers,
-        totalMines: Math.floor(user.total_mined / 7),
-        totalInvites: user.total_invites || 0,
-        upgrades: Object.keys(user.upgrades || {}).length,
-        dailyStreak: user.daily_streak || 0
-    });
+    const keyboard = {
+        inline_keyboard: [
+            [{ text: '📊 إحصائيات البوت', callback_data: 'admin_stats' }],
+            [{ text: '💰 معاملات معلقة', callback_data: `admin_pending_${pendingCount}` }],
+            [{ text: '👥 إدارة المستخدمين', callback_data: 'admin_users' }],
+            [{ text: '🛒 إدارة المتجر', callback_data: 'admin_shop' }],
+            [{ text: '📨 إرسال رسالة', callback_data: 'admin_broadcast' }]
+        ]
+    };
+    
+    await bot.sendMessage(chatId, 
+        `👑 *لوحة تحكم الأدمن*\n\n` +
+        `📊 إحصائيات سريعة:\n` +
+        `• 👥 المستخدمون: ${totalUsers}\n` +
+        `• 💰 إيرادات المتجر: $${totalRevenue.toFixed(2)}\n` +
+        `• ⏳ معاملات معلقة: ${pendingCount}\n\n` +
+        `اختر إجراء من القائمة:`,
+        { parse_mode: 'Markdown', reply_markup: keyboard }
+    );
 });
 
-app.get('/', (req, res) => {
-    res.redirect('/app.html');
+// معالجة أزرار الأدمن
+bot.on('callback_query', async (callbackQuery) => {
+    const message = callbackQuery.message;
+    const data = callbackQuery.data;
+    const userId = callbackQuery.from.id;
+    
+    if (!isAdmin(userId)) {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: '❌ غير مصرح', show_alert: true });
+        return;
+    }
+    
+    await bot.answerCallbackQuery(callbackQuery.id);
+    
+    if (data === 'admin_stats') {
+        const stats = await readData();
+        const users = Object.values(stats.users);
+        const totalBalance = users.reduce((sum, u) => sum + u.balance, 0);
+        const activeToday = users.filter(u => u.last_mine && (Date.now() - u.last_mine) < 86400000).length;
+        
+        await bot.sendMessage(message.chat.id,
+            `📊 *إحصائيات تفصيلية*\n\n` +
+            `👥 إجمالي المستخدمين: ${users.length}\n` +
+            `🟢 نشط اليوم: ${activeToday}\n` +
+            `💰 إجمالي الأرصدة: ${totalBalance.toFixed(2)} 💎\n` +
+            `⛏️ إجمالي التعدين: ${users.reduce((sum, u) => sum + (u.total_mined || 0), 0).toFixed(2)} 💎\n` +
+            `🛒 مبيعات المتجر: $${stats.system.shopRevenue?.toFixed(2) || 0}\n` +
+            `👥 إجمالي الدعوات: ${stats.system.totalInvites || 0}`,
+            { parse_mode: 'Markdown' }
+        );
+    }
+    
+    else if (data.startsWith('admin_pending')) {
+        const pendingList = Object.entries(pendingPurchases);
+        
+        if (pendingList.length === 0) {
+            await bot.sendMessage(message.chat.id, '✅ لا توجد معاملات معلقة');
+            return;
+        }
+        
+        for (const [paymentId, payment] of pendingList) {
+            const user = (await readData()).users[payment.userId];
+            const keyboard = {
+                inline_keyboard: [[
+                    { text: '✅ تأكيد الدفع', callback_data: `confirm_pay_${paymentId}` },
+                    { text: '❌ رفض', callback_data: `reject_pay_${paymentId}` }
+                ]]
+            };
+            
+            await bot.sendMessage(message.chat.id,
+                `💰 *طلب شراء جديد*\n\n` +
+                `👤 المستخدم: ${user?.first_name || 'غير معروف'} (${payment.userId})\n` +
+                `🛒 العنصر: ${payment.itemId}\n` +
+                `💵 المبلغ: ${payment.amount} ${payment.currency}\n` +
+                `⏰ الوقت: ${new Date(payment.timestamp).toLocaleString('ar-EG')}\n\n` +
+                `⚠️ تأكد من استلام التحويل قبل التأكيد`,
+                { parse_mode: 'Markdown', reply_markup: keyboard }
+            );
+        }
+    }
+    
+    else if (data.startsWith('confirm_pay_')) {
+        const paymentId = data.replace('confirm_pay_', '');
+        const payment = pendingPurchases[paymentId];
+        
+        if (!payment) {
+            await bot.sendMessage(message.chat.id, '❌ المعاملة منتهية الصلاحية');
+            return;
+        }
+        
+        const appData = await readData();
+        const user = appData.users[payment.userId];
+        const item = appData.shopItems[payment.itemId];
+        
+        if (!user.upgrades) user.upgrades = {};
+        user.upgrades[payment.itemId] = true;
+        
+        if (item.effect.maxEnergy) {
+            user.maxEnergy = item.effect.maxEnergy;
+        }
+        
+        delete pendingPurchases[paymentId];
+        await saveData(appData);
+        
+        await bot.sendMessage(message.chat.id, '✅ تم تأكيد الدفع وتفعيل العنصر');
+        
+        // إشعار المستخدم
+        try {
+            await bot.sendMessage(payment.userId,
+                `🎉 *تهانينا!*\n\n` +
+                `✅ تم تفعيل ${item.name} بنجاح!\n` +
+                `شكراً لدعمك ❤️`,
+                { parse_mode: 'Markdown' }
+            );
+        } catch (e) {}
+    }
+    
+    else if (data.startsWith('reject_pay_')) {
+        const paymentId = data.replace('reject_pay_', '');
+        delete pendingPurchases[paymentId];
+        await bot.sendMessage(message.chat.id, '❌ تم رفض المعاملة');
+    }
+    
+    else if (data === 'admin_users') {
+        const stats = await readData();
+        const topUsers = Object.values(stats.users)
+            .sort((a, b) => b.balance - a.balance)
+            .slice(0, 5);
+        
+        let usersList = '';
+        topUsers.forEach((u, i) => {
+            usersList += `${i+1}. ${u.first_name} - ${u.balance.toFixed(2)} 💎\n`;
+        });
+        
+        await bot.sendMessage(message.chat.id,
+            `👥 *أفضل 5 مستخدمين*\n\n${usersList}\n` +
+            `للبحث عن مستخدم: /user [معرف]`,
+            { parse_mode: 'Markdown' }
+        );
+    }
+    
+    else if (data === 'admin_shop') {
+        const keyboard = {
+            inline_keyboard: [
+                [{ text: '➕ إضافة عنصر', callback_data: 'shop_add' }],
+                [{ text: '✏️ تعديل سعر', callback_data: 'shop_edit' }],
+                [{ text: '📊 تقرير المبيعات', callback_data: 'shop_report' }]
+            ]
+        };
+        
+        await bot.sendMessage(message.chat.id,
+            '🛒 *إدارة المتجر*\nاختر إجراء:',
+            { parse_mode: 'Markdown', reply_markup: keyboard }
+        );
+    }
+    
+    else if (data === 'admin_broadcast') {
+        await bot.sendMessage(message.chat.id,
+            '📨 *إرسال رسالة جماعية*\n\n' +
+            'أرسل الرسالة التي تريد نشرها لجميع المستخدمين:',
+            { parse_mode: 'Markdown' }
+        );
+        
+        bot.once('message', async (broadcastMsg) => {
+            if (broadcastMsg.chat.id === message.chat.id) {
+                const stats = await readData();
+                const users = Object.keys(stats.users);
+                let sent = 0;
+                
+                await bot.sendMessage(message.chat.id, `⏳ جاري الإرسال لـ ${users.length} مستخدم...`);
+                
+                for (const userId of users) {
+                    try {
+                        await bot.sendMessage(userId, broadcastMsg.text);
+                        sent++;
+                        await new Promise(r => setTimeout(r, 50));
+                    } catch (e) {}
+                }
+                
+                await bot.sendMessage(message.chat.id, `✅ تم الإرسال لـ ${sent} مستخدم`);
+            }
+        });
+    }
 });
 
-// ==================== 7. تشغيل الخادم ====================
-app.listen(PORT, () => {
-    console.log(`🌐 خادم الويب يعمل على المنفذ: ${PORT}`);
-    console.log(`🔗 رابط الواجهة المحلي: http://localhost:${PORT}`);
+// أمر البحث عن مستخدم
+bot.onText(/\/user (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    const searchTerm = match[1];
+    
+    if (!isAdmin(userId)) {
+        await bot.sendMessage(chatId, '❌ غير مصرح');
+        return;
+    }
+    
+    const data = await readData();
+    let targetUser = null;
+    
+    if (data.users[searchTerm]) {
+        targetUser = data.users[searchTerm];
+    } else {
+        targetUser = Object.values(data.users).find(u => 
+            u.username?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }
+    
+    if (!targetUser) {
+        await bot.sendMessage(chatId, '❌ مستخدم غير موجود');
+        return;
+    }
+    
+    const stats = await readData();
+    const rank = Object.values(stats.users)
+        .sort((a, b) => b.balance - a.balance)
+        .findIndex(u => u.user_id === targetUser.user_id) + 1;
+    
+    await bot.sendMessage(chatId,
+        `👤 *معلومات المستخدم*\n\n` +
+        `🆔 المعرف: ${targetUser.user_id}\n` +
+        `📛 الاسم: ${targetUser.first_name}\n` +
+        `👤 اليوزر: @${targetUser.username || 'لا يوجد'}\n` +
+        `💰 الرصيد: ${targetUser.balance.toFixed(2)} 💎\n` +
+        `⚡ الطاقة: ${targetUser.energy}/${targetUser.maxEnergy || 100}\n` +
+        `🏆 الترتيب: #${rank}\n` +
+        `📅 تاريخ الانضمام: ${new Date(targetUser.created_at).toLocaleDateString('ar-EG')}`,
+        { parse_mode: 'Markdown' }
+    );
 });
 
-initializeSystem().catch(console.error);
+// ==================== 9. إضافة خيارات الشراء بالعملات للواجهة ====================
 
-process.on('SIGINT', () => {
-    console.log('\n🛑 إيقاف البوت...');
-    process.exit(0);
+// إضافة نقطة نهاية لعناصر المتجر بالأسعار
+app.get('/api/shop-items', async (req, res) => {
+    const data = await readData();
+    const items = {
+        ...data.shopItems,
+        'energy_boost': {
+            ...data.shopItems['energy_boost'],
+            cryptoPrices: { TON: 0.5, USDT: 1.5 }
+        },
+        'miner_upgrade': {
+            ...data.shopItems['miner_upgrade'],
+            cryptoPrices: { TON: 1.2, USDT: 3.5 }
+        }
+    };
+    
+    res.json({ success: true, items });
 });
 
-process.on('SIGTERM', () => {
-    console.log('\n🛑 إيقاف البوت...');
-    process.exit(0);
-});
-
-console.log('🚀 البوت الإصدار 3.0 - Mini App جاهز!');
-console.log('📱 افتح تليجرام وأرسل /start لتجربة الواجهة الجديدة');
+console.log('💎 نظام الشراء بالعملات الرقمية جاهز');
+console.log('👑 نظام لوحة تحكم الأدمن جاهز');
