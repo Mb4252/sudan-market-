@@ -121,7 +121,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     }
     
     // ========== الرابط الحيوي - غير هذا الرابط ==========
-    const APP_URL = 'https://your-ngrok-url.ngrok.io'; // ⚠️ غير هذا الرابط
+    const APP_URL = 'https://clean-fredelia-bot199311-892fd8e8.koyeb.app';
     // ==================================================
     
     console.log(`🔗 رابط الواجهة: ${APP_URL}`);
