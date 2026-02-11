@@ -1,6 +1,6 @@
 // ==================== 7. نظام الشراء بالعملات الرقمية ====================
 const CRYPTO_WALLETS = {
-    TON: process.env.TON_WALLET || "UQC8xJ9gQqQ5qQgK9QgQqQ5qQgK9QgQqQ5qQgK9QgQq",
+    TON: process.env.TON_WALLET || "UQDYS6gaGrnmfypwhAYk4mI2OBaMU05NBRQpAnv-eGSI_kN1",
     USDT: process.env.USDT_WALLET || "TL5jLrLGprWcit3dEfY4pAgzbiTpRtUK2N"
 };
 
