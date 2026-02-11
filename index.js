@@ -121,7 +121,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     }
     
     // ========== الرابط الحيوي - غير هذا الرابط ==========
-    const APP_URL = 'https://clean-fredelia-bot199311-892fd8e8.koyeb.app';
+    const URL = process.env.APP_URL || "http://localhost:8000";
     // ==================================================
     
     console.log(`🔗 رابط الواجهة: ${APP_URL}`);
