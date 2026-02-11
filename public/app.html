@@ -106,6 +106,11 @@
             opacity: 0.9;
         }
 
+        .button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .modal {
             display: none;
             position: fixed;
@@ -167,6 +172,10 @@
             from { bottom: -100px; }
             to { bottom: 20px; }
         }
+
+        input::placeholder {
+            color: rgba(255,255,255,0.7);
+        }
     </style>
 </head>
 <body>
@@ -218,11 +227,14 @@
 
         <!-- علامات التبويب -->
         <div class="tabs">
-            <div class="tab active" onclick="switchTab('main')">🏠 الرئيسية</div>
-            <div class="tab" onclick="switchTab('top')">🏆 المتصدرون</div>
-            <div class="tab" onclick="switchTab('stats')">📊 إحصائياتي</div>
-            <div class="tab" onclick="switchTab('transfer')">💸 تحويل</div>
+            <div class="tab active" onclick="switchTab(event, 'main')">🏠 الرئيسية</div>
+            <div class="tab" onclick="switchTab(event, 'top')">🏆 المتصدرون</div>
+            <div class="tab" onclick="switchTab(event, 'stats')">📊 إحصائياتي</div>
+            <div class="tab" onclick="switchTab(event, 'transfer')">💸 تحويل</div>
         </div>
+
+        <!-- قسم الرئيسية (فارغ) -->
+        <div id="mainSection"></div>
 
         <!-- قسم المتصدرون -->
         <div id="topSection" class="hidden">
@@ -351,7 +363,7 @@
         // تحديث الواجهة
         function updateUI() {
             if (userData) {
-                document.getElementById('balance').textContent = userData.balance.toFixed(2);
+                document.getElementById('balance').textContent = parseFloat(userData.balance).toFixed(2);
                 document.getElementById('energy').textContent = `${userData.energy}/${userData.maxEnergy || 100}`;
                 
                 const energyPercent = (userData.energy / (userData.maxEnergy || 100)) * 100;
@@ -365,7 +377,7 @@
 
         // عملية التعدين
         async function mine() {
-            if (userData.energy < 10) {
+            if (!userData || userData.energy < 10) {
                 tg.showAlert('❌ الطاقة غير كافية! انتظر حتى تشحن.');
                 return;
             }
@@ -384,7 +396,7 @@
                     userData.energy = data.newEnergy;
                     updateUI();
                     
-                    tg.showAlert(`✅ تم التعدين!\n🪙 +${data.minedAmount} عملة`);
+                    tg.showAlert(`✅ تم التعدين!\n🪙 +${parseFloat(data.minedAmount).toFixed(2)} عملة`);
                 }
             } catch (error) {
                 console.error('خطأ:', error);
@@ -461,6 +473,7 @@
 
         // فتح التحدي اليومي
         function openDaily() {
+            if (!userData) return;
             document.getElementById('dailyModal').style.display = 'flex';
             document.getElementById('modalStreak').textContent = userData.daily_streak || 0;
             
@@ -484,7 +497,7 @@
                     userData.daily_streak = data.streak;
                     updateUI();
                     closeModal('dailyModal');
-                    tg.showAlert(`✅ تم استلام ${data.reward} عملة!\n🔥 السلسلة: ${data.streak} يوم`);
+                    tg.showAlert(`✅ تم استلام ${parseFloat(data.reward).toFixed(2)} عملة!\n🔥 السلسلة: ${data.streak} يوم`);
                 } else {
                     tg.showAlert(`❌ ${data.error || 'لقد استلمت مكافأتك اليوم'}`);
                 }
@@ -495,10 +508,16 @@
 
         // فتح قسم الدعوة
         async function openInvite() {
-            const botUsername = (await fetch('/api/user/me')).username;
-            const inviteLink = `https://t.me/${botUsername}?start=invite_${userId}`;
-            document.getElementById('inviteLink').textContent = inviteLink;
-            document.getElementById('inviteModal').style.display = 'flex';
+            try {
+                const response = await fetch('/api/user/me');
+                const data = await response.json();
+                const botUsername = data.username;
+                const inviteLink = `https://t.me/${botUsername}?start=invite_${userId}`;
+                document.getElementById('inviteLink').textContent = inviteLink;
+                document.getElementById('inviteModal').style.display = 'flex';
+            } catch (error) {
+                console.error('خطأ:', error);
+            }
         }
 
         // نسخ رابط الدعوة
@@ -521,7 +540,7 @@
                         html += `
                             <div style="background: rgba(255,255,255,0.1); border-radius: 10px; padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between;">
                                 <span>${medal} ${user.name}</span>
-                                <span style="font-weight: bold;">💰 ${user.balance}</span>
+                                <span style="font-weight: bold;">💰 ${parseFloat(user.balance).toFixed(2)}</span>
                             </div>
                         `;
                     });
@@ -534,6 +553,7 @@
 
         // تحميل الإحصائيات
         async function loadStats() {
+            if (!userId) return;
             try {
                 const response = await fetch(`/api/stats/${userId}`);
                 const data = await response.json();
@@ -583,13 +603,14 @@
         }
 
         // تبديل التبويبات
-        function switchTab(tab) {
+        function switchTab(event, tab) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             event.target.classList.add('active');
             
-            document.getElementById('topSection').classList.add('hidden');
-            document.getElementById('statsSection').classList.add('hidden');
-            document.getElementById('transferSection').classList.add('hidden');
+            document.getElementById('topSection')?.classList.add('hidden');
+            document.getElementById('statsSection')?.classList.add('hidden');
+            document.getElementById('transferSection')?.classList.add('hidden');
+            document.getElementById('mainSection')?.classList.add('hidden');
             
             if (tab === 'top') {
                 document.getElementById('topSection').classList.remove('hidden');
@@ -599,6 +620,8 @@
                 loadStats();
             } else if (tab === 'transfer') {
                 document.getElementById('transferSection').classList.remove('hidden');
+            } else if (tab === 'main') {
+                document.getElementById('mainSection').classList.remove('hidden');
             }
         }
 
