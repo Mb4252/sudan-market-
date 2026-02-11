@@ -2,709 +2,610 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum AI | العقل العلمي الخارق</title>
-    
-    <!-- مكتبات المعالجة الرياضية والعلمية -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
-    
-    <!-- إصلاح روابط Firebase: إضافة -compat لتعمل مع الكود الحالي -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
-    
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Cairo:wght@300;600;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>⚡ منصة التعدين المتكاملة</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        :root {
-            --neon-cyan: #00f5ff;
-            --neon-magenta: #ff00ff;
-            --deep-space: #020205;
-            --glass: rgba(255, 255, 255, 0.05);
-            --border-glow: rgba(0, 245, 255, 0.3);
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
-        body, html {
-            margin: 0; padding: 0; height: 100%;
-            background: var(--deep-space);
-            color: #e0e0e0;
-            font-family: 'Cairo', sans-serif;
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .balance-card {
+            background: rgba(255,255,255,0.15);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .energy-bar {
+            background: rgba(0,0,0,0.3);
+            height: 10px;
+            border-radius: 10px;
+            margin-top: 10px;
             overflow: hidden;
         }
 
-        #bg-canvas { position: fixed; top: 0; left: 0; z-index: -1; }
-
-        .app-wrapper {
-            display: grid;
-            grid-template-rows: auto 1fr auto;
-            height: 100vh;
-            max-width: 900px;
-            margin: 0 auto;
-            border-left: 1px solid var(--border-glow);
-            border-right: 1px solid var(--border-glow);
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(10px);
+        .energy-fill {
+            background: linear-gradient(90deg, #00f2fe, #4facfe);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s;
         }
 
-        header {
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
             padding: 20px;
             text-align: center;
-            border-bottom: 2px solid var(--neon-cyan);
-            box-shadow: 0 0 20px var(--border-glow);
+            cursor: pointer;
+            transition: transform 0.2s;
         }
 
-        header h1 {
-            font-family: 'Orbitron', sans-serif;
-            margin: 0; font-size: 1.5rem;
-            background: linear-gradient(to right, var(--neon-cyan), var(--neon-magenta));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            letter-spacing: 3px;
+        .card:hover {
+            transform: translateY(-5px);
+            background: rgba(255,255,255,0.2);
         }
 
-        .chat-container {
-            padding: 20px;
-            overflow-y: auto;
-            scroll-behavior: smooth;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        .message {
-            max-width: 85%;
-            padding: 15px 20px;
+        .shop-item {
+            background: rgba(255,255,255,0.1);
             border-radius: 15px;
-            line-height: 1.6;
-            position: relative;
-            animation: fadeIn 0.3s ease;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-        .user-msg {
-            align-self: flex-end;
-            background: linear-gradient(135deg, #1a1a2e, #16213e);
-            border: 1px solid var(--neon-cyan);
-            border-bottom-right-radius: 2px;
+        .button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: opacity 0.2s;
         }
 
-        .ai-msg {
-            align-self: flex-start;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--neon-magenta);
-            border-bottom-left-radius: 2px;
+        .button:hover {
+            opacity: 0.9;
         }
 
-        .ai-msg::before {
-            content: 'CORE ANALYSIS';
-            display: block;
-            font-size: 0.7rem;
-            color: var(--neon-magenta);
-            margin-bottom: 8px;
-            font-family: 'Orbitron';
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(5px);
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
         }
 
-        .input-box {
-            padding: 25px;
-            background: rgba(255, 255, 255, 0.03);
+        .modal-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 400px;
+            width: 100%;
+        }
+
+        .tabs {
             display: flex;
             gap: 10px;
+            margin-bottom: 20px;
         }
 
-        #user-input {
+        .tab {
             flex: 1;
-            background: rgba(0,0,0,0.5);
-            border: 1px solid var(--border-glow);
-            border-radius: 12px;
-            padding: 15px;
-            color: white;
-            font-size: 1rem;
-            outline: none;
-            transition: 0.3s;
-        }
-
-        #user-input:focus { border-color: var(--neon-cyan); box-shadow: 0 0 10px var(--border-glow); }
-
-        .send-btn {
-            background: var(--neon-cyan);
-            border: none;
-            border-radius: 12px;
-            width: 55px;
+            padding: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            text-align: center;
             cursor: pointer;
-            color: black;
-            font-size: 1.2rem;
-            transition: 0.3s;
         }
 
-        .send-btn:hover { transform: scale(1.05); filter: brightness(1.2); }
-
-        .math-res {
-            color: var(--neon-cyan);
-            font-family: 'Courier New', monospace;
-            font-weight: bold;
-            display: block;
-            margin-top: 10px;
-            padding: 10px;
-            background: rgba(0,0,0,0.3);
-            border-radius: 5px;
+        .tab.active {
+            background: rgba(255,255,255,0.3);
         }
 
-        .chem-res {
-            color: #00ff88;
-            font-family: 'Courier New', monospace;
-            font-weight: bold;
-            display: block;
-            margin-top: 10px;
-            padding: 10px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 5px;
-            border-left: 3px solid #00ff88;
+        .hidden {
+            display: none;
         }
 
-        .physics-res {
-            color: #ffaa00;
-            font-family: 'Courier New', monospace;
-            font-weight: bold;
-            display: block;
-            margin-top: 10px;
-            padding: 10px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 5px;
-            border-left: 3px solid #ffaa00;
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 50px;
+            animation: slideUp 0.3s;
         }
 
-        .problem-separator {
-            margin: 10px 0;
-            border-top: 1px dashed #444;
+        @keyframes slideUp {
+            from { bottom: -100px; }
+            to { bottom: 20px; }
         }
     </style>
 </head>
 <body>
+    <div class="container">
+        <!-- الهيدر الرئيسي -->
+        <div class="header">
+            <h1>⛏️ منصة التعدين المتكاملة</h1>
+            <p>مرحباً بك في عالم العملات الافتراضية</p>
+        </div>
 
-    <canvas id="bg-canvas"></canvas>
+        <!-- بطاقة الرصيد والطاقة -->
+        <div class="balance-card">
+            <div>
+                <div style="font-size: 14px; opacity: 0.9;">💰 الرصيد</div>
+                <div style="font-size: 28px; font-weight: bold;" id="balance">0.00</div>
+            </div>
+            <div>
+                <div style="font-size: 14px; opacity: 0.9;">⚡ الطاقة</div>
+                <div style="font-size: 28px; font-weight: bold;" id="energy">100/100</div>
+            </div>
+        </div>
+        <div class="energy-bar">
+            <div class="energy-fill" id="energyBar" style="width: 100%;"></div>
+        </div>
 
-    <div class="app-wrapper">
-        <header>
-            <h1>QUANTUM CORE v7.0</h1>
-            <small style="color: #666;">نظام الاستدلال العلمي والمنطقي المتقدم</small>
-        </header>
-
-        <div class="chat-container" id="chat">
-            <div class="message ai-msg">
-                النظام مفعل. يمكنك الآن تعليمي أي شيء باستخدام صيغة: "احفظ [السؤال] جواب [الإجابة]".. أو طرح مسائل في الفيزياء والرياضيات مباشرة.
+        <!-- الأزرار الرئيسية -->
+        <div class="grid">
+            <div class="card" onclick="mine()">
+                <div style="font-size: 40px; margin-bottom: 10px;">⛏️</div>
+                <div style="font-weight: bold;">تعدين</div>
+                <div style="font-size: 12px; opacity: 0.8;">استهلاك 10 طاقة</div>
+            </div>
+            <div class="card" onclick="openDaily()">
+                <div style="font-size: 40px; margin-bottom: 10px;">🎯</div>
+                <div style="font-weight: bold;">التحدي اليومي</div>
+                <div style="font-size: 12px; opacity: 0.8;">🔥 سلسلة: <span id="streak">0</span></div>
+            </div>
+            <div class="card" onclick="openShop()">
+                <div style="font-size: 40px; margin-bottom: 10px;">🛒</div>
+                <div style="font-weight: bold;">المتجر</div>
+                <div style="font-size: 12px; opacity: 0.8;">ترقيات ومميزات</div>
+            </div>
+            <div class="card" onclick="openInvite()">
+                <div style="font-size: 40px; margin-bottom: 10px;">👥</div>
+                <div style="font-weight: bold;">دعوة أصدقاء</div>
+                <div style="font-size: 12px; opacity: 0.8;">اربح 25 لكل صديق</div>
             </div>
         </div>
 
-        <div class="input-box">
-            <input type="text" id="user-input" placeholder="مثلاً: احفظ قانون السرعة جواب المسافة تقسيم الزمن..." autocomplete="off">
-            <button class="send-btn" onclick="processInput()"><i class="fas fa-microchip"></i></button>
+        <!-- علامات التبويب -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('main')">🏠 الرئيسية</div>
+            <div class="tab" onclick="switchTab('top')">🏆 المتصدرون</div>
+            <div class="tab" onclick="switchTab('stats')">📊 إحصائياتي</div>
+            <div class="tab" onclick="switchTab('transfer')">💸 تحويل</div>
+        </div>
+
+        <!-- قسم المتصدرون -->
+        <div id="topSection" class="hidden">
+            <div class="header">
+                <h3>🏆 أفضل 10 لاعبين</h3>
+            </div>
+            <div id="topList"></div>
+        </div>
+
+        <!-- قسم الإحصائيات -->
+        <div id="statsSection" class="hidden">
+            <div class="header">
+                <h3>📊 إحصائياتي</h3>
+            </div>
+            <div style="background: rgba(255,255,255,0.1); border-radius: 15px; padding: 20px;">
+                <div style="display: grid; gap: 15px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>🏆 الترتيب:</span>
+                        <span id="rank">-</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>⛏️ إجمالي التعدين:</span>
+                        <span id="totalMines">0</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>👥 إجمالي الدعوات:</span>
+                        <span id="totalInvites">0</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>🛒 الترقيات المملوكة:</span>
+                        <span id="ownedUpgrades">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- قسم التحويل -->
+        <div id="transferSection" class="hidden">
+            <div class="header">
+                <h3>💸 تحويل عملات</h3>
+            </div>
+            <div style="background: rgba(255,255,255,0.1); border-radius: 15px; padding: 20px;">
+                <input type="text" id="receiverUsername" placeholder="@username" style="width: 100%; padding: 15px; margin-bottom: 10px; border: none; border-radius: 10px; background: rgba(255,255,255,0.2); color: white;">
+                <input type="number" id="transferAmount" placeholder="المبلغ" style="width: 100%; padding: 15px; margin-bottom: 10px; border: none; border-radius: 10px; background: rgba(255,255,255,0.2); color: white;">
+                <button class="button" onclick="transfer()" style="width: 100%;">تحويل</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- مودال المتجر -->
+    <div id="shopModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-bottom: 20px;">🛒 متجر الترقيات</h2>
+            <div id="shopItems"></div>
+            <button class="button" onclick="closeModal('shopModal')" style="margin-top: 20px; width: 100%;">إغلاق</button>
+        </div>
+    </div>
+
+    <!-- مودال التحدي اليومي -->
+    <div id="dailyModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-bottom: 20px;">🎯 التحدي اليومي</h2>
+            <div style="text-align: center; margin-bottom: 20px;">
+                <div style="font-size: 48px;">🔥</div>
+                <div style="font-size: 24px; margin: 10px 0;" id="dailyReward">20</div>
+                <div style="opacity: 0.8;">مكافأة اليوم</div>
+                <div style="margin-top: 10px;">سلسلة: <span id="modalStreak">0</span> أيام</div>
+            </div>
+            <button class="button" onclick="claimDaily()" style="width: 100%; margin-bottom: 10px;">استلام المكافأة</button>
+            <button class="button" onclick="closeModal('dailyModal')" style="width: 100%;">إغلاق</button>
+        </div>
+    </div>
+
+    <!-- مودال الدعوة -->
+    <div id="inviteModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-bottom: 20px;">👥 دعوة أصدقاء</h2>
+            <p style="margin-bottom: 20px;">اربح 25 عملة لكل صديق ينضم عبر رابطك!</p>
+            <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px; margin-bottom: 20px; word-break: break-all;" id="inviteLink">
+                جاري التحميل...
+            </div>
+            <button class="button" onclick="copyInviteLink()" style="width: 100%; margin-bottom: 10px;">📋 نسخ الرابط</button>
+            <button class="button" onclick="closeModal('inviteModal')" style="width: 100%;">إغلاق</button>
         </div>
     </div>
 
     <script>
-        // ========== تهيئة Firebase الإصدار المتوافق ==========
-        const firebaseConfig = {
-            apiKey: "AIzaSyAI_mUhuPNoO-XC0Q-VNoWft8UWFbAbIGg",
-            authDomain: "sudan-market-6b122.firebaseapp.com",
-            databaseURL: "https://sudan-market-6b122-default-rtdb.firebaseio.com",
-            projectId: "sudan-market-6b122",
-            storageBucket: "sudan-market-6b122.firebasestorage.app",
-            messagingSenderId: "66729481566",
-            appId: "1:66729481566:web:93393f28dc22d32cceebcf"
-        };
-        
-        firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
+        let tg = window.Telegram.WebApp;
+        let userId = null;
+        let userData = null;
 
-        const ScientificAI = {
-            constants: { g: 9.80665, R: 8.314, c: 299792458 },
+        // تهيئة التطبيق
+        tg.expand();
+        tg.ready();
 
-            // ========== قاعدة بيانات كيميائية أساسية ==========
-            chemicalDatabase: {
-                "معادلة احتراق الميثان": "CH₄ + 2O₂ → CO₂ + 2H₂O",
-                "معادلة تكوين الماء": "2H₂ + O₂ → 2H₂O",
-                "معادلة احتراق الهيدروجين": "2H₂ + O₂ → 2H₂O",
-                "تفاعل تكوين الماء": "2H₂ + O₂ → 2H₂O",
-                "تفاعل احتراق الميثان": "CH₄ + 2O₂ → CO₂ + 2H₂O",
-                "تفاعل حمض مع قاعدة": "حمض + قاعدة → ملح + ماء",
-                "معادلة البناء الضوئي": "6CO₂ + 6H₂O → C₆H₁₂O₆ + 6O₂",
-                "تفاعل الكلور مع الهيدروجين": "H₂ + Cl₂ → 2HCl"
-            },
-
-            // ========== الدالة الرئيسية ==========
-            async analyze(input) {
-                const cleanInput = input.trim();
-                
-                // 1. الحفظ (يظل أولاً)
-                if (cleanInput.startsWith('احفظ') && cleanInput.includes('جواب')) {
-                    return await this.saveToBrain(cleanInput);
-                }
-
-                // 2. التحقق إذا كان هناك عدة مسائل في سطر واحد
-                const problems = this.splitMultipleProblems(cleanInput);
-                
-                if (problems.length > 1) {
-                    // حل كل مسألة على حدة
-                    let combinedResponse = `<div style="color: var(--neon-cyan); margin-bottom: 10px;">
-                    🔢 <b>تم اكتشاف ${problems.length} مسائل:</b></div>`;
-                    
-                    for (let i = 0; i < problems.length; i++) {
-                        const problem = problems[i].trim();
-                        if (!problem) continue;
-                        
-                        combinedResponse += `<div style="margin-bottom: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;">
-                            <b>المسألة ${i+1}:</b> ${problem}<br>`;
-                        
-                        const problemResult = await this.analyzeSingleProblem(problem);
-                        combinedResponse += problemResult;
-                        
-                        combinedResponse += `</div>`;
-                        
-                        // إضافة فاصل بين المسائل (عدا الأخيرة)
-                        if (i < problems.length - 1) {
-                            combinedResponse += `<div class="problem-separator"></div>`;
-                        }
-                    }
-                    
-                    return combinedResponse;
-                }
-                
-                // 3. إذا لم تكن عدة مسائل، حل المسألة الواحدة
-                return await this.analyzeSingleProblem(cleanInput);
-            },
-            
-            // دالة لفصل المسائل المتعددة
-            splitMultipleProblems(text) {
-                // فصل بالفواصل العربية واللاتينية
-                const commaSplit = text.split(/[،,;|]/);
-                if (commaSplit.length > 1) {
-                    return commaSplit;
-                }
-                
-                // إذا كان النص يحتوي على أسهم كيميائية (→) اعتبارها مسألة واحدة
-                if (text.includes('→')) {
-                    return [text];
-                }
-                
-                // فصل بالمسافات المتعددة
-                const spacesSplit = text.split(/\s{2,}/);
-                if (spacesSplit.length > 1) {
-                    return spacesSplit;
-                }
-                
-                return [text];
-            },
-            
-            // ========== دالة تحليل مسألة واحدة ==========
-            async analyzeSingleProblem(problem) {
-                const cleanProblem = problem.trim();
-                const lowerProblem = cleanProblem.toLowerCase();
-                
-                // 1. التحقق من الكيمياء أولاً
-                const chemicalResult = this.chemicalAnalysis(cleanProblem);
-                if (chemicalResult) return chemicalResult;
-                
-                // 2. التحقق إذا كانت مسألة رياضية (قبل الفيزياء!)
-                const hasNumbers = /[0-9]/.test(cleanProblem);
-                const hasMathSymbols = /[\^√\+\-\*\/÷×=π()]/.test(cleanProblem);
-                const isMathExpression = hasNumbers && hasMathSymbols;
-                
-                // كلمات الاستفهام الرياضية
-                const mathQuestionPattern = /^(ما هو|أوجد|قيمة|احسب|ما|كم|هو|حل|ناتج)/;
-                const isMathQuestion = mathQuestionPattern.test(lowerProblem);
-                
-                // إذا كانت تعبيراً رياضياً أو سؤالاً رياضياً
-                if (isMathExpression || isMathQuestion) {
-                    // أولاً: التحليل المتقدم
-                    const advancedResult = await this.advancedAnalyze(cleanProblem);
-                    if (advancedResult) return advancedResult;
-                    
-                    // ثانياً: الرياضيات الأساسية
-                    const mathResult = this.solveMath(cleanProblem);
-                    if (mathResult && !mathResult.includes("⚠️ لم أستطع")) {
-                        return mathResult;
-                    }
-                }
-                
-                // 3. التحقق إذا كانت مسألة فيزيائية حقيقية (وليس مجرد أرقام)
-                const physicsKeywords = ['سرعة', 'قوة', 'تسارع', 'مسافة', 'زمن', 'كتلة', 'عجلة', 'جسم', 'سيارة', 'قطعت', 'فيزياء'];
-                const hasPhysicsKeyword = physicsKeywords.some(keyword => cleanProblem.includes(keyword));
-                
-                if (hasPhysicsKeyword) {
-                    const physicsResult = this.solvePhysics(cleanProblem);
-                    if (physicsResult && !physicsResult.includes("يرجى تزويدي") && !physicsResult.includes("لم أتعرف")) {
-                        return physicsResult;
-                    }
-                }
-                
-                // 4. البحث في قاعدة البيانات
-                const storedResponse = await this.searchBrain(cleanProblem);
-                if (storedResponse) return storedResponse;
-
-                // 5. المنطق
-                return this.logicalReasoning(lowerProblem);
-            },
-
-            // ========== تحليل كيميائي ==========
-            chemicalAnalysis(q) {
-                // 1. إذا كان السؤال مطابقاً لقاعدة البيانات الكيميائية
-                if (this.chemicalDatabase[q]) {
-                    return `<div class="chem-res">⚗️ <b>المعادلة الكيميائية:</b><br>${this.chemicalDatabase[q]}</div>`;
-                }
-                
-                // 2. إذا كان السؤال عن معادلة كيميائية
-                const chemKeywords = ['معادلة', 'تفاعل', 'احتراق', 'تكوين', 'كيميائي', '→'];
-                const hasChemKeyword = chemKeywords.some(keyword => q.includes(keyword));
-                
-                if (hasChemKeyword) {
-                    // البحث في قاعدة البيانات عن كلمات مفتاحية
-                    for (const [question, answer] of Object.entries(this.chemicalDatabase)) {
-                        const firstWord = question.split(' ')[0];
-                        if (q.includes(firstWord)) {
-                            return `<div class="chem-res">⚗️ <b>المعادلة الكيميائية:</b><br>${answer}</div>`;
-                        }
-                    }
-                    
-                    // إذا كان النص يحتوي على سهم كيميائي
-                    if (q.includes('→')) {
-                        return `<div class="chem-res">⚗️ <b>معادلة كيميائية:</b><br>${q}</div>`;
-                    }
-                    
-                    return `<div class="chem-res">⚠️ لا أعرف هذه المعادلة الكيميائية.<br>يمكنك حفظها باستخدام: "احفظ ${q} جواب [المعادلة]"</div>`;
-                }
-                
-                return null;
-            },
-
-            // ========== فيزياء محسنة ==========
-            solvePhysics(q) {
-                // مسائل السرعة
-                const speedKeywords = ['سرعة', 'احسب سرعة', 'أوجد سرعة', 'ما سرعة', 'سرعة جسم', 'سرعة سيارة', 'قطعت', 'قطع'];
-                const hasSpeed = speedKeywords.some(keyword => q.includes(keyword));
-                
-                if (hasSpeed) {
-                    // استخراج الأرقام
-                    const nums = q.match(/\d+(\.\d+)?/g)?.map(Number) || [];
-                    
-                    if (nums.length >= 2) {
-                        const distance = nums[0];
-                        const time = nums[1];
-                        const speed = distance / time;
-                        
-                        // اكتشاف الوحدات
-                        const hasKm = q.includes('كم') || q.includes('كيلومتر');
-                        const hasMeter = q.includes('متر') || q.includes('م ');
-                        const hasHour = q.includes('ساعة') || q.includes('ساعات');
-                        const hasSecond = q.includes('ثانية') || q.includes('ثواني');
-                        const hasMinute = q.includes('دقيقة') || q.includes('دقائق');
-                        
-                        let response = `<div class="physics-res">
-                        🚀 <b>حل الفيزياء (السرعة):</b><br>
-                        السرعة = المسافة ÷ الزمن<br>`;
-                        
-                        if (hasKm && hasHour) {
-                            // كم/ساعة
-                            response += `${distance} كم ÷ ${time} ساعة = ${speed.toFixed(2)} كم/ساعة<br>`;
-                            const ms = speed / 3.6;
-                            response += `<b>التحويل إلى م/ث:</b> ${speed.toFixed(2)} كم/ساعة ÷ 3.6 = ${ms.toFixed(2)} م/ث`;
-                        }
-                        else if (hasMeter && hasSecond) {
-                            // م/ث
-                            response += `${distance} م ÷ ${time} ث = ${speed.toFixed(2)} م/ث<br>`;
-                            const kmh = speed * 3.6;
-                            response += `<b>التحويل إلى كم/ساعة:</b> ${speed.toFixed(2)} م/ث × 3.6 = ${kmh.toFixed(2)} كم/ساعة`;
-                        }
-                        else if (hasKm && hasMinute) {
-                            // كم/دقيقة
-                            response += `${distance} كم ÷ ${time} دقيقة = ${speed.toFixed(2)} كم/دقيقة<br>`;
-                            const kmh = speed * 60;
-                            response += `<b>التحويل إلى كم/ساعة:</b> ${speed.toFixed(2)} كم/دقيقة × 60 = ${kmh.toFixed(2)} كم/ساعة`;
-                        }
-                        else {
-                            // بدون وحدات محددة
-                            response += `${distance} ÷ ${time} = ${speed.toFixed(2)} وحدة/زمن<br>`;
-                            response += `<small>تأكد من كتابة الوحدات (متر/ثانية، كم/ساعة...)</small>`;
-                        }
-                        
-                        response += `</div>`;
-                        return response;
-                    }
-                }
-                
-                return "<div class='physics-res'>⚠️ لم أتعرف على المسألة الفيزيائية.<br>تأكد من كتابة المسألة بشكل صحيح.</div>";
-            },
-
-            // ========== التحليل المتقدم ==========
-            async advancedAnalyze(q) {
-                const hasNumbers = /[0-9]/.test(q);
-                const hasMathSymbols = /[\^√\+\-\*\/÷×=π()]/.test(q);
-                
-                if (!hasNumbers || !hasMathSymbols) {
-                    return null;
-                }
-                
-                const mathSymbols = {
-                    '^': 'قانون الأسس',
-                    '√': 'قانون الجذر التربيعي',
-                    '/': 'قانون القسمة',
-                    '÷': 'قانون القسمة',
-                    '×': 'قانون الضرب',
-                    '*': 'قانون الضرب',
-                    '+': 'قانون الجمع',
-                    '-': 'قانون الطرح',
-                    '=': 'قانون المساواة',
-                    'π': 'قانون باي'
-                };
-                
-                let relatedLaws = [];
-                for (const [symbol, law] of Object.entries(mathSymbols)) {
-                    if (q.includes(symbol)) {
-                        const foundLaw = await this.searchBrain(law);
-                        if (foundLaw && !foundLaw.includes('احفظ')) {
-                            relatedLaws.push(`📌 ${law}: ${foundLaw}`);
-                        }
-                    }
-                }
-                
-                let response = '';
-                if (relatedLaws.length > 0) {
-                    response += `🔍 **المسألة تستخدم:**<br>`;
-                    response += relatedLaws.join('<br>');
-                    response += `<br><br>🎯 **الحل العملي:**<br>`;
-                }
-                
-                try {
-                    const mathSolution = this.solveMath(q);
-                    response += mathSolution;
-                } catch (e) {
-                    const manualSolution = this.solveMathManual(q);
-                    response += manualSolution;
-                }
-                
-                return response;
-            },
-
-            // ========== دوال الذاكرة ==========
-            async saveToBrain(input) {
-                try {
-                    const parts = input.split('جواب');
-                    if (parts.length < 2) return "⚠️ الصيغة غير مكتملة. استخدم: احفظ [سؤال] جواب [إجابة]";
-                    
-                    const question = parts[0].replace('احفظ', '').trim();
-                    const answer = parts[1].trim();
-                    
-                    if (!question || !answer) return "⚠️ لا يمكن حفظ بيانات فارغة.";
-
-                    const dbKey = question.replace(/[.#$\[\]]/g, "_");
-
-                    await database.ref('brain/' + dbKey).set({
-                        ans: answer,
-                        time: new Date().toISOString()
-                    });
-
-                    if (answer.includes('→')) {
-                        this.chemicalDatabase[question] = answer;
-                    }
-
-                    return `✅ تم الحفظ بنجاح في الذاكرة المركزية.<br>السؤال: <b>${question}</b><br>الإجابة: <b>${answer}</b>`;
-                } catch (e) {
-                    console.error(e);
-                    return "❌ فشل الحفظ. تأكد من إعدادات قاعدة البيانات.";
-                }
-            },
-
-            async searchBrain(query) {
-                try {
-                    const dbKey = query.replace(/[.#$\[\]]/g, "_");
-                    const snapshot = await database.ref('brain/' + dbKey).once('value');
-                    if (snapshot.exists()) {
-                        const ans = snapshot.val().ans;
-                        if (ans && typeof ans === 'string' && !ans.includes('احفظ قانون')) {
-                            return ans;
-                        }
-                    }
-                    return null;
-                } catch (e) {
-                    return null;
-                }
-            },
-
-            // ========== دوال الحل الرياضي ==========
-            solveMath(q) {
-                try {
-                    const originalQ = q;
-                    
-                    let cleanQ = q
-                        .replace(/√/g, 'sqrt')
-                        .replace(/π/g, 'pi')
-                        .replace(/÷/g, '/')
-                        .replace(/×/g, '*')
-                        .replace(/أوجد|ما هو|قيمة|احسب|ما|كم|هو|حل|ناتج/g, '')
-                        .replace(/\s+/g, '');
-                    
-                    cleanQ = cleanQ.replace(/sqrt(\d+)/g, 'sqrt($1)');
-                    cleanQ = cleanQ.replace(/(\d+)\^(\d+)/g, 'pow($1,$2)');
-                    
-                    const openParen = (cleanQ.match(/\(/g) || []).length;
-                    const closeParen = (cleanQ.match(/\)/g) || []).length;
-                    if (openParen > closeParen) {
-                        cleanQ += ')'.repeat(openParen - closeParen);
-                    }
-                    
-                    const result = math.evaluate(cleanQ);
-                    
-                    let response = `<span class="math-res">`;
-                    response += `🧮 <b>الحل:</b><br><br>`;
-                    
-                    const steps = this.getMathSteps(originalQ);
-                    response += steps;
-                    
-                    response += `<br>✅ <b>النتيجة:</b> ${result.toFixed(6)}`;
-                    response += `</span>`;
-                    
-                    return response;
-                } catch (e) {
-                    console.error('خطأ في solveMath:', e);
-                    return this.solveMathManual(q);
-                }
-            },
-            
-            getMathSteps(q) {
-                let steps = '';
-                
-                if (q.includes('√')) {
-                    const sqrtMatch = q.match(/√(\d+)/);
-                    if (sqrtMatch) {
-                        const num = sqrtMatch[1];
-                        const sqrtVal = Math.sqrt(parseInt(num));
-                        steps += `√${num} = ${sqrtVal}<br>`;
-                    }
-                }
-                
-                if (q.includes('^')) {
-                    const expMatch = q.match(/(\d+)\^(\d+)/);
-                    if (expMatch) {
-                        const base = expMatch[1];
-                        const exponent = expMatch[2];
-                        const powResult = Math.pow(parseInt(base), parseInt(exponent));
-                        steps += `${base}^${exponent} = ${powResult}<br>`;
-                    }
-                }
-                
-                if (q.includes('(') && q.includes(')')) {
-                    const insideParen = q.match(/\(([^)]+)\)/);
-                    if (insideParen) {
-                        const inside = insideParen[1];
-                        const parenResult = this.calculateSimple(inside);
-                        steps += `(${inside}) = ${parenResult}<br>`;
-                    }
-                }
-                
-                return steps || `${q}<br>`;
-            },
-            
-            calculateSimple(expr) {
-                try {
-                    const cleanExpr = expr
-                        .replace(/×/g, '*')
-                        .replace(/÷/g, '/');
-                    return math.evaluate(cleanExpr);
-                } catch (e) {
-                    return '؟';
-                }
-            },
-            
-            solveMathManual(q) {
-                const solutions = {
-                    '√144 ÷ 3': '√144 = 12<br>12 ÷ 3 = 4',
-                    '√81 + 9': '√81 = 9<br>9 + 9 = 18',
-                    '4^3 ÷ 8': '4^3 = 64<br>64 ÷ 8 = 8',
-                    '(5 + 3) × 2': '5 + 3 = 8<br>8 × 2 = 16',
-                    '√100 - 5': '√100 = 10<br>10 - 5 = 5',
-                    '10 ÷ 2': '10 ÷ 2 = 5',
-                    '3^2': '3^2 = 9',
-                    '12 × 4': '12 × 4 = 48',
-                    '12 × 3 ÷ 4': '12 × 3 = 36<br>36 ÷ 4 = 9',
-                    '3^4': '3^4 = 81',
-                    '8^2 ÷ 4': '8^2 = 64<br>64 ÷ 4 = 16'
-                };
-                
-                if (solutions[q]) {
-                    return `<span class="math-res">🧮 <b>الحل:</b><br><br>${solutions[q]}<br><br>✅ <b>النتيجة:</b> ${this.calculateSimple(q.replace(/÷/g, '/').replace(/×/g, '*'))}</span>`;
-                }
-                
-                return `<span class="math-res">⚠️ لم أستطع حل المسألة الرياضية تلقائياً.</span>`;
-            },
-
-            logicalReasoning(q) {
-                const responses = {
-                    "مرحبا": "أهلاً بك في وحدة المعالجة المركزية. كيف يمكنني خدمتك؟",
-                    "من انت": "أنا Quantum AI، نظام استدلال منطقي متطور متصل بقاعدة بيانات سحابية.",
-                    "شكرا": "في الخدمة دائماً.",
-                    "مساعدة": `💡 <b>دليل الاستخدام:</b><br>
-                    1) <b>حفظ معلومات:</b> "احفظ [سؤال] جواب [إجابة]"<br>
-                    2) <b>رياضيات:</b> "ما هو 10 ÷ 2" أو "√144 ÷ 3"<br>
-                    3) <b>فيزياء:</b> "سرعة عند مسافة 100 وزمَن 20"<br>
-                    4) <b>كيمياء:</b> "معادلة تكوين الماء"<br>
-                    5) <b>مسائل متعددة:</b> فصلها بـ "،" أو مسافتين`,
-                    "hello": "مرحباً! كيف يمكنني مساعدتك اليوم؟"
-                };
-                return responses[q] || "لم أجد إجابة مخزنة لهذه العبارة. يمكنك تعليمي إياها باستخدام أمر 'احفظ'.";
-            }
-        };
-
-        function appendMsg(text, type, id = null) {
-            const chat = document.getElementById('chat');
-            const div = document.createElement('div');
-            div.className = `message ${type}-msg`;
-            if (id) div.id = id;
-            div.innerHTML = text;
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
+        // الحصول على معرف المستخدم
+        if (tg.initDataUnsafe?.user?.id) {
+            userId = tg.initDataUnsafe.user.id.toString();
+            loadUserData();
+            loadTopPlayers();
+            loadStats();
         }
 
-        async function processInput() {
-            const inputField = document.getElementById('user-input');
-            const query = inputField.value.trim();
-            if (!query) return;
-
-            appendMsg(query, 'user');
-            inputField.value = '';
-
-            const thinkingId = "think_" + Date.now();
-            appendMsg("<i class='fas fa-sync fa-spin'></i> جاري استرجاع البيانات من النواة...", 'ai', thinkingId);
-
+        // تحميل بيانات المستخدم
+        async function loadUserData() {
             try {
-                const response = await ScientificAI.analyze(query);
-                const thinkElem = document.getElementById(thinkingId);
-                if(thinkElem) thinkElem.innerHTML = response;
+                const response = await fetch(`/api/user/${userId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    userData = data.user;
+                    updateUI();
+                    
+                    // شحن الطاقة
+                    await fetch('/api/charge', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId })
+                    });
+                }
             } catch (error) {
-                console.error(error);
-                const thinkElem = document.getElementById(thinkingId);
-                if(thinkElem) thinkElem.innerHTML = "حدث خطأ غير متوقع في المصفوفة.";
+                console.error('خطأ:', error);
             }
         }
 
-        document.getElementById('user-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') processInput();
-        });
-
-        const canvas = document.getElementById('bg-canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-
-        function drawBg() {
-            ctx.fillStyle = 'rgba(2, 2, 5, 0.1)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#00f5ff11';
-            for(let i=0; i<15; i++) {
-                ctx.fillRect(Math.random()*canvas.width, Math.random()*canvas.height, 2, 2);
+        // تحديث الواجهة
+        function updateUI() {
+            if (userData) {
+                document.getElementById('balance').textContent = userData.balance.toFixed(2);
+                document.getElementById('energy').textContent = `${userData.energy}/${userData.maxEnergy || 100}`;
+                
+                const energyPercent = (userData.energy / (userData.maxEnergy || 100)) * 100;
+                document.getElementById('energyBar').style.width = `${energyPercent}%`;
+                
+                if (userData.daily_streak) {
+                    document.getElementById('streak').textContent = userData.daily_streak;
+                }
             }
-            requestAnimationFrame(drawBg);
         }
-        drawBg();
+
+        // عملية التعدين
+        async function mine() {
+            if (userData.energy < 10) {
+                tg.showAlert('❌ الطاقة غير كافية! انتظر حتى تشحن.');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/mine', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    userData.balance = parseFloat(data.newBalance);
+                    userData.energy = data.newEnergy;
+                    updateUI();
+                    
+                    tg.showAlert(`✅ تم التعدين!\n🪙 +${data.minedAmount} عملة`);
+                }
+            } catch (error) {
+                console.error('خطأ:', error);
+            }
+        }
+
+        // فتح المتجر
+        function openShop() {
+            loadShopItems();
+            document.getElementById('shopModal').style.display = 'flex';
+        }
+
+        // تحميل عناصر المتجر
+        async function loadShopItems() {
+            try {
+                const response = await fetch(`/api/user/${userId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const shopHtml = `
+                        <div class="shop-item">
+                            <div>
+                                <div style="font-weight: bold;">⚡ تعزيز الطاقة</div>
+                                <div style="font-size: 12px; opacity: 0.8;">50 عملة - يزيد الطاقة إلى 150</div>
+                            </div>
+                            <button class="button" onclick="buyItem('energy_boost')" ${data.user.upgrades?.energy_boost ? 'disabled' : ''}>
+                                ${data.user.upgrades?.energy_boost ? '✅ مملوك' : 'شراء'}
+                            </button>
+                        </div>
+                        <div class="shop-item">
+                            <div>
+                                <div style="font-weight: bold;">⛏️ مُعدِّن محترف</div>
+                                <div style="font-size: 12px; opacity: 0.8;">120 عملة - زيادة الأرباح 30%</div>
+                            </div>
+                            <button class="button" onclick="buyItem('miner_upgrade')" ${data.user.upgrades?.miner_upgrade ? 'disabled' : ''}>
+                                ${data.user.upgrades?.miner_upgrade ? '✅ مملوك' : 'شراء'}
+                            </button>
+                        </div>
+                    `;
+                    
+                    document.getElementById('shopItems').innerHTML = shopHtml;
+                }
+            } catch (error) {
+                console.error('خطأ:', error);
+            }
+        }
+
+        // شراء عنصر
+        async function buyItem(itemId) {
+            try {
+                const response = await fetch('/api/buy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId, itemId })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    userData.balance = parseFloat(data.newBalance);
+                    if (data.maxEnergy) {
+                        userData.maxEnergy = data.maxEnergy;
+                    }
+                    updateUI();
+                    loadShopItems();
+                    tg.showAlert('✅ تم الشراء بنجاح!');
+                } else {
+                    tg.showAlert(`❌ ${data.error || 'فشل في الشراء'}`);
+                }
+            } catch (error) {
+                console.error('خطأ:', error);
+            }
+        }
+
+        // فتح التحدي اليومي
+        function openDaily() {
+            document.getElementById('dailyModal').style.display = 'flex';
+            document.getElementById('modalStreak').textContent = userData.daily_streak || 0;
+            
+            const reward = 20 + Math.min((userData.daily_streak || 0) * 5, 50);
+            document.getElementById('dailyReward').textContent = reward;
+        }
+
+        // استلام المكافأة اليومية
+        async function claimDaily() {
+            try {
+                const response = await fetch('/api/daily', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    userData.balance = parseFloat(userData.balance) + parseFloat(data.reward);
+                    userData.daily_streak = data.streak;
+                    updateUI();
+                    closeModal('dailyModal');
+                    tg.showAlert(`✅ تم استلام ${data.reward} عملة!\n🔥 السلسلة: ${data.streak} يوم`);
+                } else {
+                    tg.showAlert(`❌ ${data.error || 'لقد استلمت مكافأتك اليوم'}`);
+                }
+            } catch (error) {
+                console.error('خطأ:', error);
+            }
+        }
+
+        // فتح قسم الدعوة
+        async function openInvite() {
+            const botUsername = (await fetch('/api/user/me')).username;
+            const inviteLink = `https://t.me/${botUsername}?start=invite_${userId}`;
+            document.getElementById('inviteLink').textContent = inviteLink;
+            document.getElementById('inviteModal').style.display = 'flex';
+        }
+
+        // نسخ رابط الدعوة
+        function copyInviteLink() {
+            const link = document.getElementById('inviteLink').textContent;
+            navigator.clipboard.writeText(link);
+            tg.showAlert('✅ تم نسخ الرابط!');
+        }
+
+        // تحميل قائمة المتصدرين
+        async function loadTopPlayers() {
+            try {
+                const response = await fetch('/api/top');
+                const data = await response.json();
+                
+                if (data.success) {
+                    let html = '';
+                    data.topUsers.forEach((user, index) => {
+                        const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+                        html += `
+                            <div style="background: rgba(255,255,255,0.1); border-radius: 10px; padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between;">
+                                <span>${medal} ${user.name}</span>
+                                <span style="font-weight: bold;">💰 ${user.balance}</span>
+                            </div>
+                        `;
+                    });
+                    document.getElementById('topList').innerHTML = html;
+                }
+            } catch (error) {
+                console.error('خطأ:', error);
+            }
+        }
+
+        // تحميل الإحصائيات
+        async function loadStats() {
+            try {
+                const response = await fetch(`/api/stats/${userId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('rank').textContent = `#${data.rank}/${data.totalUsers}`;
+                    document.getElementById('totalMines').textContent = data.totalMines;
+                    document.getElementById('totalInvites').textContent = data.totalInvites;
+                    document.getElementById('ownedUpgrades').textContent = data.upgrades;
+                }
+            } catch (error) {
+                console.error('خطأ:', error);
+            }
+        }
+
+        // تحويل عملات
+        async function transfer() {
+            const toUsername = document.getElementById('receiverUsername').value;
+            const amount = parseFloat(document.getElementById('transferAmount').value);
+            
+            if (!toUsername || !amount || amount < 10) {
+                tg.showAlert('❌ يرجى إدخال اسم مستخدم صحيح ومبلغ لا يقل عن 10');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/transfer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fromId: userId, toUsername, amount })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    userData.balance = parseFloat(data.newBalance);
+                    updateUI();
+                    document.getElementById('receiverUsername').value = '';
+                    document.getElementById('transferAmount').value = '';
+                    tg.showAlert(`✅ تم تحويل ${amount} عملة إلى ${data.receiverName}`);
+                } else {
+                    tg.showAlert(`❌ ${data.error || 'فشل في التحويل'}`);
+                }
+            } catch (error) {
+                console.error('خطأ:', error);
+            }
+        }
+
+        // تبديل التبويبات
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            document.getElementById('topSection').classList.add('hidden');
+            document.getElementById('statsSection').classList.add('hidden');
+            document.getElementById('transferSection').classList.add('hidden');
+            
+            if (tab === 'top') {
+                document.getElementById('topSection').classList.remove('hidden');
+                loadTopPlayers();
+            } else if (tab === 'stats') {
+                document.getElementById('statsSection').classList.remove('hidden');
+                loadStats();
+            } else if (tab === 'transfer') {
+                document.getElementById('transferSection').classList.remove('hidden');
+            }
+        }
+
+        // إغلاق المودال
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
     </script>
 </body>
 </html>
