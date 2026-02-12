@@ -23,7 +23,7 @@ let buyOrdersCollection;
 let withdrawOrdersCollection;
 let inviteRewardsCollection;
 let walletsCollection;
-let transactionsCollection;
+let starInvoicesCollection;
 
 async function connectToMongo() {
     try {
@@ -39,7 +39,7 @@ async function connectToMongo() {
         withdrawOrdersCollection = db.collection('withdraw_orders');
         inviteRewardsCollection = db.collection('invite_rewards');
         walletsCollection = db.collection('wallets');
-        transactionsCollection = db.collection('transactions');
+        starInvoicesCollection = db.collection('star_invoices');
         
         const system = await systemCollection.findOne({ _id: 'config' });
         if (!system) {
@@ -51,13 +51,13 @@ async function connectToMongo() {
                 coinName: '💎 كريستال التعدين',
                 coinSymbol: '💎',
                 coinEmoji: '💎',
-                usdRate: 0.10,
+                starRate: 0.1, // 10 نجوم = 1 كريستال
                 withdrawRate: 0.08,
                 totalCrystalSold: 0,
-                totalUsdInvested: 0,
+                totalStarsInvested: 0,
                 totalWithdrawn: 0,
                 totalWalletConnections: 0,
-                botWalletAddress: process.env.BOT_WALLET_ADDRESS || "TL5jLrLGprWcit3dEfY4pAgzbiTpRtUK2N",
+                botWalletAddress: process.env.BOT_WALLET_ADDRESS || "",
                 createdAt: Date.now()
             });
         }
@@ -85,17 +85,15 @@ async function connectToMongo() {
             });
         }
         
-        await walletsCollection.createIndex({ userId: 1, type: 1, status: 1 });
-        await walletsCollection.createIndex({ createdAt: -1 });
-        await transactionsCollection.createIndex({ fromAddress: 1, toAddress: 1, createdAt: -1 });
-        await transactionsCollection.createIndex({ status: 1, createdAt: -1 });
+        await starInvoicesCollection.createIndex({ payload: 1 }, { unique: true });
+        await starInvoicesCollection.createIndex({ userId: 1, createdAt: -1 });
+        await starInvoicesCollection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
         
         console.log('📦 قاعدة البيانات جاهزة');
         const config = await systemCollection.findOne({ _id: 'config' });
-        console.log(`💰 سعر الشراء: 1 💎 = ${config.usdRate} دولار`);
-        console.log(`💸 سعر السحب: 1 💎 = ${config.withdrawRate} دولار`);
-        console.log(`🏦 محفظة البوت: ${config.botWalletAddress}`);
-        console.log(`💳 نظام المحافظ المتكامل: مفعل`);
+        console.log(`⭐ سعر الصرف: 10 نجوم = 1 💎`);
+        console.log(`💸 سعر السحب: 1 💎 = 0.08$`);
+        console.log(`🤖 نظام نجوم تليجرام: مفعل`);
         return true;
     } catch (error) {
         console.error('❌ فشل الاتصال بقاعدة البيانات:', error);
@@ -143,24 +141,6 @@ async function updateUserBalance(userId, amount) {
     }
 }
 
-async function addUserUpgrade(userId, upgradeId, effect) {
-    try {
-        const update = { [`upgrades.${upgradeId}`]: true };
-        if (effect.maxEnergy) {
-            update.maxEnergy = effect.maxEnergy;
-        }
-        
-        await usersCollection.updateOne(
-            { user_id: userId },
-            { $set: update }
-        );
-        return true;
-    } catch (error) {
-        console.error('خطأ في إضافة الترقية:', error);
-        return false;
-    }
-}
-
 async function getSystemStats() {
     try {
         const system = await systemCollection.findOne({ _id: 'config' });
@@ -191,108 +171,6 @@ async function getShopItems() {
     } catch (error) {
         console.error('خطأ في قراءة المتجر:', error);
         return {};
-    }
-}
-
-async function savePurchase(purchaseData) {
-    try {
-        await purchasesCollection.insertOne({
-            ...purchaseData,
-            createdAt: Date.now()
-        });
-        return true;
-    } catch (error) {
-        console.error('خطأ في حفظ طلب الشراء:', error);
-        return false;
-    }
-}
-
-async function updatePurchaseStatus(paymentId, status, txHash = null) {
-    try {
-        const update = { status };
-        if (txHash) update.txHash = txHash;
-        
-        await purchasesCollection.updateOne(
-            { paymentId },
-            { $set: update }
-        );
-        return true;
-    } catch (error) {
-        console.error('خطأ في تحديث طلب الشراء:', error);
-        return false;
-    }
-}
-
-async function getPurchase(paymentId) {
-    try {
-        return await purchasesCollection.findOne({ paymentId });
-    } catch (error) {
-        console.error('خطأ في قراءة طلب الشراء:', error);
-        return null;
-    }
-}
-
-async function saveBuyOrder(orderData) {
-    try {
-        await buyOrdersCollection.insertOne({
-            ...orderData,
-            createdAt: Date.now(),
-            status: 'pending'
-        });
-        return true;
-    } catch (error) {
-        console.error('خطأ في حفظ طلب شراء:', error);
-        return false;
-    }
-}
-
-async function updateBuyOrderStatus(orderId, status) {
-    try {
-        await buyOrdersCollection.updateOne(
-            { orderId },
-            { $set: { status, updatedAt: Date.now() } }
-        );
-        return true;
-    } catch (error) {
-        console.error('خطأ في تحديث طلب شراء:', error);
-        return false;
-    }
-}
-
-async function getUserBuyOrders(userId) {
-    try {
-        return await buyOrdersCollection
-            .find({ userId })
-            .sort({ createdAt: -1 })
-            .limit(20)
-            .toArray();
-    } catch (error) {
-        console.error('خطأ في قراءة طلبات الشراء:', error);
-        return [];
-    }
-}
-
-async function getBuyStats() {
-    try {
-        const totalOrders = await buyOrdersCollection.countDocuments({ status: 'completed' });
-        const totalAmount = await buyOrdersCollection.aggregate([
-            { $match: { status: 'completed' } },
-            { $group: { _id: null, total: { $sum: '$crystalAmount' } } }
-        ]).toArray();
-        
-        const totalUsd = await buyOrdersCollection.aggregate([
-            { $match: { status: 'completed' } },
-            { $group: { _id: null, total: { $sum: '$usdAmount' } } }
-        ]).toArray();
-        
-        return {
-            totalOrders: totalOrders || 0,
-            totalCrystals: totalAmount[0]?.total || 0,
-            totalUsd: totalUsd[0]?.total || 0
-        };
-    } catch (error) {
-        console.error('خطأ في قراءة إحصائيات الشراء:', error);
-        return { totalOrders: 0, totalCrystals: 0, totalUsd: 0 };
     }
 }
 
@@ -374,48 +252,27 @@ async function getTopUsers(limit = 10) {
     }
 }
 
-async function getUserStats(userId) {
+async function getStarPurchaseStats() {
     try {
-        const user = await usersCollection.findOne({ user_id: userId });
-        if (!user) return null;
-        
-        const totalUsers = await usersCollection.countDocuments();
-        const rank = await usersCollection.countDocuments({ balance: { $gt: user.balance } }) + 1;
-        
-        const userBuys = await buyOrdersCollection.countDocuments({ 
-            userId, 
-            status: 'completed' 
-        });
-        
-        const userBuyAmount = await buyOrdersCollection.aggregate([
-            { $match: { userId, status: 'completed' } },
-            { $group: { _id: null, total: { $sum: '$crystalAmount' } } }
+        const totalOrders = await starInvoicesCollection.countDocuments({ status: 'completed' });
+        const totalStars = await starInvoicesCollection.aggregate([
+            { $match: { status: 'completed' } },
+            { $group: { _id: null, total: { $sum: '$starAmount' } } }
         ]).toArray();
         
-        const userWithdraws = await withdrawOrdersCollection.countDocuments({ 
-            userId, 
-            status: 'completed' 
-        });
-        
-        const userWithdrawAmount = await withdrawOrdersCollection.aggregate([
-            { $match: { userId, status: 'completed' } },
+        const totalCrystals = await starInvoicesCollection.aggregate([
+            { $match: { status: 'completed' } },
             { $group: { _id: null, total: { $sum: '$crystalAmount' } } }
         ]).toArray();
         
         return {
-            rank,
-            totalUsers,
-            totalMines: Math.floor((user.total_mined || 0) / 1),
-            upgrades: Object.keys(user.upgrades || {}).length,
-            dailyStreak: user.daily_streak || 0,
-            totalBuys: userBuys || 0,
-            totalBought: userBuyAmount[0]?.total || 0,
-            totalWithdraws: userWithdraws || 0,
-            totalWithdrawn: userWithdrawAmount[0]?.total || 0
+            totalOrders: totalOrders || 0,
+            totalStars: totalStars[0]?.total || 0,
+            totalCrystals: totalCrystals[0]?.total || 0
         };
     } catch (error) {
-        console.error('خطأ في قراءة إحصائيات المستخدم:', error);
-        return null;
+        console.error('خطأ في قراءة إحصائيات شراء النجوم:', error);
+        return { totalOrders: 0, totalStars: 0, totalCrystals: 0 };
     }
 }
 
@@ -438,12 +295,10 @@ const ADMIN_IDS = process.env.ADMIN_USER_IDS
     ? process.env.ADMIN_USER_IDS.split(',').map(id => parseInt(id.trim())) 
     : [];
 
-const BOT_WALLET_ADDRESS = process.env.BOT_WALLET_ADDRESS || "TL5jLrLGprWcit3dEfY4pAgzbiTpRtUK2N";
-
 const APP_URL = process.env.APP_URL || "https://clean-fredelia-bot199311-892fd8e8.koyeb.app";
 
 console.log(`🔗 رابط الواجهة: ${APP_URL}`);
-console.log(`🏦 محفظة البوت: ${BOT_WALLET_ADDRESS}`);
+console.log(`⭐ نظام دفع نجوم تليجرام: مفعل`);
 
 function verifyWebAppData(initData) {
     try {
@@ -486,8 +341,8 @@ app.use('/api', async (req, res, next) => {
         '/api/withdraw-stats', 
         '/api/withdraw-info', 
         '/api/invite-info',
-        '/api/wallets',
-        '/api/bot-wallet'
+        '/api/star-stats',
+        '/api/telegram-webhook'
     ];
     
     if (publicPaths.includes(req.path)) {
@@ -510,8 +365,6 @@ app.use('/api', async (req, res, next) => {
     next();
 });
 
-let pendingPurchases = {};
-let pendingBuyOrders = {};
 let pendingWithdrawOrders = {};
 let pendingWalletConnections = {};
 
@@ -621,17 +474,13 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
         `💎 *مرحباً بك في مناجم الكريستال!* 💎\n\n` +
         `اهلاً ${msg.from.first_name}!\n\n` +
         `⛏️ *التعدين:* 1 كريستال كل 24 ساعة (مع الكسور)\n` +
-        `💰 *الشراء:* 1 💎 = 0.10$ (USDT)\n` +
-        `💸 *السحب:* 1 💎 = 0.08$ (حد أدنى 5$ - 20% يومياً)\n` +
-        `💳 *نظام المحافظ المتكامل:*\n` +
-        `   • محفظة دفع: للتحويل إلى محفظة البوت عند الشراء\n` +
-        `   • محفظة سحب: لاستلام أرباحك من البوت\n` +
-        `🏦 *محفظة البوت الرسمية:*\n` +
-        `\`${BOT_WALLET_ADDRESS}\`\n\n` +
+        `⭐ *الشراء:* 10 نجوم = 1 💎\n` +
+        `💰 *الدفع:* نجوم تليجرام - آمن وفوري\n` +
+        `💸 *السحب:* 1 💎 = 0.08$ (USDT) - حد أدنى 5$\n\n` +
         `👥 *نظام الدعوة:*\n` +
         `• دعوة صديق = 1 💎 (إذا أودع)\n` +
-        `• دعوة صديق = 0.3 💎 (إذا لم يودع)\n` +
-        `• رابط الدعوة خاص بك في التبويب 👥\n\n` +
+        `• دعوة صديق = 0.3 💎 (إذا لم يودع)\n\n` +
+        `✨ *ميزة جديدة:* الدفع بالنجوم متاح الآن!\n` +
         `اضغط على الزر أدناه لفتح منصة التعدين:`,
         {
             parse_mode: 'Markdown',
@@ -645,6 +494,270 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
             }
         }
     );
+});
+
+// ========== نظام إعداد Webhook ==========
+bot.onText(/\/setupwebhook/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    
+    if (!ADMIN_IDS.includes(userId)) {
+        await bot.sendMessage(chatId, '❌ غير مصرح');
+        return;
+    }
+    
+    const webhookUrl = `${APP_URL}/api/telegram-webhook`;
+    
+    try {
+        const response = await fetch(
+            `https://api.telegram.org/bot${BOT_TOKEN}/setWebhook`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    url: webhookUrl,
+                    allowed_updates: ['pre_checkout_query', 'message']
+                })
+            }
+        );
+        
+        const data = await response.json();
+        if (data.ok) {
+            await bot.sendMessage(chatId, `✅ تم تفعيل Webhook بنجاح!\n🔗 ${webhookUrl}`);
+            
+            // إيقاف polling
+            await bot.deleteWebHook();
+        } else {
+            await bot.sendMessage(chatId, `❌ خطأ: ${data.description}`);
+        }
+    } catch (error) {
+        await bot.sendMessage(chatId, `❌ فشل: ${error.message}`);
+    }
+});
+
+bot.onText(/\/statsby/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    
+    if (!ADMIN_IDS.includes(userId)) return;
+    
+    try {
+        const response = await fetch(
+            `https://api.telegram.org/bot${BOT_TOKEN}/getStarsStatus`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: chatId })
+            }
+        );
+        
+        const data = await response.json();
+        if (data.ok) {
+            await bot.sendMessage(chatId, 
+                `⭐ *رصيد النجوم:*\n\n` +
+                `💰 الرصيد الحالي: ${data.result.balance} ⭐\n` +
+                `🔄 آخر تحديث: ${new Date().toLocaleString('ar-EG')}`,
+                { parse_mode: 'Markdown' }
+            );
+        }
+    } catch (error) {
+        console.error('خطأ في جلب رصيد النجوم:', error);
+    }
+});
+
+// ========== نظام دفع نجوم تليجرام ==========
+async function createStarInvoice(userId, starAmount, description = "💎 شراء كريستال") {
+    const user = await getUser(userId);
+    const system = await getSystemStats();
+    const starRate = system.starRate || 0.1;
+    
+    const payload = `${userId}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    
+    const crystalAmount = starAmount * starRate;
+    
+    const params = {
+        title: "💎 كريستال التعدين",
+        description: description,
+        payload: payload,
+        provider_token: "",
+        currency: "XTR",
+        prices: [
+            {
+                label: `${starAmount} ⭐ = ${crystalAmount.toFixed(1)} 💎`,
+                amount: starAmount
+            }
+        ],
+        photo_url: "https://cdn.jsdelivr.net/gh/telegram-js/telegram-web-app@gh-pages/img/icon-192.png"
+    };
+
+    try {
+        const response = await fetch(
+            `https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(params)
+            }
+        );
+
+        const data = await response.json();
+        if (data.ok) {
+            await starInvoicesCollection.insertOne({
+                payload: payload,
+                userId: userId,
+                userFirstName: user?.first_name || 'مستخدم',
+                starAmount: starAmount,
+                crystalAmount: crystalAmount,
+                status: 'pending',
+                createdAt: Date.now(),
+                expiresAt: Date.now() + 24 * 60 * 60 * 1000
+            });
+            
+            return { success: true, url: data.result, payload, crystalAmount };
+        } else {
+            return { success: false, error: data.description };
+        }
+    } catch (error) {
+        console.error('خطأ في إنشاء فاتورة النجوم:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// ========== Webhook لاستقبال تأكيد الدفع ==========
+app.post('/api/telegram-webhook', async (req, res) => {
+    const update = req.body;
+    
+    // تأكيد طلب الدفع (Pre-checkout)
+    if (update.pre_checkout_query) {
+        const queryId = update.pre_checkout_query.id;
+        const payload = update.pre_checkout_query.invoice_payload;
+        
+        try {
+            await fetch(
+                `https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        pre_checkout_query_id: queryId,
+                        ok: true
+                    })
+                }
+            );
+            console.log(`✅ تأكيد دفع مبدئي: ${payload}`);
+        } catch (error) {
+            console.error('❌ خطأ في تأكيد الدفع:', error);
+        }
+        
+        return res.json({ ok: true });
+    }
+    
+    // ✅ دفع ناجح!
+    if (update.message?.successful_payment) {
+        const payload = update.message.successful_payment.invoice_payload;
+        const starAmount = update.message.successful_payment.total_amount;
+        const currency = update.message.successful_payment.currency;
+        const chatId = update.message.chat.id;
+        
+        console.log(`💰 دفع ناجح!`, { payload, starAmount, currency });
+        
+        try {
+            const invoice = await starInvoicesCollection.findOne({ payload });
+            
+            if (invoice && invoice.status === 'pending') {
+                const crystalAmount = invoice.crystalAmount;
+                const userId = invoice.userId;
+                
+                await usersCollection.updateOne(
+                    { user_id: userId },
+                    { 
+                        $inc: { 
+                            balance: crystalAmount,
+                            total_bought: crystalAmount 
+                        } 
+                    }
+                );
+                
+                await starInvoicesCollection.updateOne(
+                    { payload },
+                    { 
+                        $set: { 
+                            status: 'completed',
+                            completedAt: Date.now(),
+                            chatId: chatId
+                        } 
+                    }
+                );
+                
+                await updateSystemStats({ 
+                    totalStarsInvested: starAmount,
+                    totalCrystalSold: crystalAmount 
+                });
+                
+                try {
+                    await bot.sendMessage(
+                        userId,
+                        `✅ *تم شراء الكريستال بنجاح!*\n\n` +
+                        `💎 الكمية: ${crystalAmount.toFixed(1)} كريستال\n` +
+                        `⭐ الدفع: ${starAmount} نجوم\n` +
+                        `📦 الحالة: مكتمل\n\n` +
+                        `شكراً لاستخدامك نجوم تليجرام! 🚀`,
+                        { parse_mode: 'Markdown' }
+                    );
+                } catch (e) {
+                    console.error('❌ فشل إرسال رسالة التأكيد:', e);
+                }
+                
+                // مكافأة الداعي إذا موجود
+                const user = await getUser(userId);
+                if (user?.invited_by) {
+                    const pendingReward = await inviteRewardsCollection.findOne({
+                        inviterId: user.invited_by,
+                        invitedId: userId,
+                        status: 'pending'
+                    });
+                    
+                    if (pendingReward) {
+                        await usersCollection.updateOne(
+                            { user_id: user.invited_by },
+                            { $inc: { balance: 1 } }
+                        );
+                        
+                        await inviteRewardsCollection.updateOne(
+                            { _id: pendingReward._id },
+                            { 
+                                $set: { 
+                                    status: 'completed',
+                                    completedAt: Date.now(),
+                                    rewardAmount: 1,
+                                    depositAmount: starAmount
+                                }
+                            }
+                        );
+                        
+                        try {
+                            await bot.sendMessage(user.invited_by,
+                                `💰 *مبروك! تم إيداع من قبل الشخص الذي دعوته!* 💰\n\n` +
+                                `👤 المستخدم: ${user.first_name}\n` +
+                                `⭐ مبلغ الإيداع: ${starAmount} نجوم\n` +
+                                `🎁 *المكافأة: +1 💎*\n\n` +
+                                `تم إضافتها إلى محفظتك!`,
+                                { parse_mode: 'Markdown' }
+                            );
+                        } catch (e) {}
+                    }
+                }
+                
+                console.log(`✅ تم صرف ${crystalAmount} كريستال للمستخدم ${userId}`);
+            }
+        } catch (error) {
+            console.error('❌ خطأ في معالجة الدفع الناجح:', error);
+        }
+        
+        return res.json({ ok: true });
+    }
+    
+    res.json({ ok: true });
 });
 
 app.get('/api/user/:userId', async (req, res) => {
@@ -677,9 +790,8 @@ app.get('/api/user/:userId', async (req, res) => {
             success: true, 
             user: {
                 ...user,
-                usdRate: system.usdRate || 0.10,
+                starRate: system.starRate || 0.1,
                 withdrawRate: system.withdrawRate || 0.08,
-                botWallet: system.botWalletAddress || BOT_WALLET_ADDRESS,
                 miningCooldown: miningCooldown,
                 miningFraction: miningFraction,
                 withdrawCooldown: withdrawCooldown
@@ -692,14 +804,6 @@ app.get('/api/user/:userId', async (req, res) => {
 
 app.get('/api/user/me', async (req, res) => {
     res.json({ username: bot.options.username });
-});
-
-app.get('/api/bot-wallet', async (req, res) => {
-    const system = await getSystemStats();
-    res.json({ 
-        success: true, 
-        address: system.botWalletAddress || BOT_WALLET_ADDRESS 
-    });
 });
 
 app.post('/api/mine', async (req, res) => {
@@ -754,251 +858,77 @@ app.post('/api/mine', async (req, res) => {
     });
 });
 
-app.post('/api/buy-boost', async (req, res) => {
+// ========== الشراء بالنجوم ==========
+app.post('/api/buy-with-stars', async (req, res) => {
     const userId = req.telegramUser.id.toString();
-    const { boostId, price } = req.body;
-    
-    const user = await getUser(userId);
-    if (!user) return res.json({ success: false, error: 'مستخدم غير موجود' });
-    
-    let crystalAmount = 0;
-    let boostName = '';
-    
-    switch(boostId) {
-        case 'speed_1':
-            crystalAmount = 1;
-            boostName = 'تسريع بسيط';
-            break;
-        case 'speed_2':
-            crystalAmount = 5;
-            boostName = 'تسريع قوي';
-            break;
-        case 'speed_3':
-            crystalAmount = 12;
-            boostName = 'تسريع خارق';
-            break;
-        case 'speed_4':
-            crystalAmount = 25;
-            boostName = 'تسريع أسطوري';
-            break;
-        default:
-            return res.json({ success: false, error: 'تسريع غير موجود' });
-    }
-    
-    const orderId = 'BOOST_' + Date.now().toString() + userId;
-    
-    const orderData = {
-        orderId,
-        userId,
-        userFirstName: user.first_name,
-        boostId,
-        boostName,
-        usdAmount: price,
-        crystalAmount,
-        status: 'pending',
-        createdAt: Date.now(),
-        expiresAt: Date.now() + 60 * 60 * 1000
-    };
-    
-    pendingPurchases[orderId] = orderData;
-    await savePurchase(orderData);
-    
-    for (const adminId of ADMIN_IDS) {
-        try {
-            const keyboard = {
-                inline_keyboard: [
-                    [{ text: '✅ تأكيد شراء التسريع', callback_data: `confirm_boost_${orderId}` }],
-                    [{ text: '❌ رفض الطلب', callback_data: `reject_boost_${orderId}` }]
-                ]
-            };
-            
-            await bot.sendMessage(adminId,
-                `⚡ *طلب شراء تسريع جديد*\n\n` +
-                `👤 المستخدم: ${user.first_name} (${userId})\n` +
-                `🚀 التسريع: ${boostName}\n` +
-                `💎 الكمية: +${crystalAmount} كريستال\n` +
-                `💰 المبلغ: ${price} USDT\n` +
-                `🏦 محفظة البوت: \`${BOT_WALLET_ADDRESS}\`\n` +
-                `⏰ الوقت: ${new Date().toLocaleString('ar-EG')}\n\n` +
-                `⚠️ تأكد من وصول التحويل ثم اضغط تأكيد`,
-                { parse_mode: 'Markdown', reply_markup: keyboard }
-            );
-        } catch (e) {}
-    }
-    
-    res.json({
-        success: true,
-        orderId,
-        wallet: BOT_WALLET_ADDRESS,
-        usdAmount: price,
-        crystalAmount,
-        boostName,
-        expiresIn: 60
-    });
-});
-
-app.post('/api/buy-crystal', async (req, res) => {
-    const userId = req.telegramUser.id.toString();
-    const { usdAmount } = req.body;
+    const { starAmount } = req.body;
     
     const user = await getUser(userId);
     if (!user) {
         return res.json({ success: false, error: 'مستخدم غير موجود' });
     }
     
-    const paymentWallet = await walletsCollection.findOne({
-        userId: userId,
-        type: 'payment',
-        status: 'active'
-    });
-    
-    if (!paymentWallet) {
+    if (!starAmount || starAmount < 5) {
         return res.json({ 
             success: false, 
-            error: 'محفظة دفع',
-            message: '❌ يجب ربط محفظة دفع نشطة أولاً' 
+            error: 'الحد الأدنى 5 نجوم' 
         });
     }
     
-    const system = await getSystemStats();
-    const usdRate = system.usdRate || 0.10;
-    
-    if (usdAmount < 5) {
-        return res.json({ success: false, error: 'الحد الأدنى للشراء 5 دولار' });
+    if (starAmount > 2500) {
+        return res.json({ 
+            success: false, 
+            error: 'الحد الأقصى 2500 نجوم' 
+        });
     }
     
-    if (usdAmount > 500) {
-        return res.json({ success: false, error: 'الحد الأقصى للشراء 500 دولار' });
+    const invoice = await createStarInvoice(
+        userId, 
+        starAmount, 
+        `💎 شراء ${(starAmount * 0.1).toFixed(1)} كريستال`
+    );
+    
+    if (invoice.success) {
+        res.json({
+            success: true,
+            invoiceUrl: invoice.url,
+            payload: invoice.payload,
+            starAmount: starAmount,
+            crystalAmount: invoice.crystalAmount.toFixed(1)
+        });
+    } else {
+        res.json({
+            success: false,
+            error: invoice.error || 'فشل إنشاء الفاتورة'
+        });
     }
-    
-    const crystalAmount = usdAmount / usdRate;
-    const orderId = 'BUY_' + Date.now().toString() + userId;
-    
-    const orderData = {
-        orderId,
-        userId,
-        userFirstName: user.first_name,
-        usdAmount,
-        crystalAmount,
-        usdRate,
-        status: 'pending',
-        createdAt: Date.now(),
-        expiresAt: Date.now() + 60 * 60 * 1000,
-        paymentWallet: {
-            address: paymentWallet.address,
-            wallet_name: paymentWallet.wallet_name,
-            network: paymentWallet.network
-        },
-        botWallet: system.botWalletAddress || BOT_WALLET_ADDRESS
-    };
-    
-    pendingBuyOrders[orderId] = orderData;
-    await saveBuyOrder(orderData);
-    
-    setTimeout(() => {
-        if (pendingBuyOrders[orderId]?.status === 'pending') {
-            delete pendingBuyOrders[orderId];
-        }
-    }, 60 * 60 * 1000);
-    
-    if (user.invited_by) {
-        const inviterId = user.invited_by;
-        const inviter = await getUser(inviterId);
-        
-        if (inviter) {
-            const pendingReward = await inviteRewardsCollection.findOne({
-                inviterId: inviterId,
-                invitedId: userId,
-                status: 'pending'
-            });
-            
-            if (pendingReward) {
-                await usersCollection.updateOne(
-                    { user_id: inviterId },
-                    { $inc: { balance: 1 } }
-                );
-                
-                await inviteRewardsCollection.updateOne(
-                    { _id: pendingReward._id },
-                    { 
-                        $set: { 
-                            status: 'completed',
-                            completedAt: Date.now(),
-                            rewardAmount: 1,
-                            depositAmount: usdAmount
-                        }
-                    }
-                );
-                
-                try {
-                    await bot.sendMessage(inviterId,
-                        `💰 *مبروك! تم إيداع من قبل الشخص الذي دعوته!* 💰\n\n` +
-                        `👤 المستخدم: ${user.first_name}\n` +
-                        `💵 مبلغ الإيداع: ${usdAmount} USDT\n` +
-                        `🎁 *المكافأة: +1 💎*\n\n` +
-                        `تم إضافتها إلى محفظتك!`,
-                        { parse_mode: 'Markdown' }
-                    );
-                } catch (e) {}
-                
-                console.log(`🎁 تم منح 1 كريستال للداعي ${inviterId} من إيداع ${userId}`);
-            }
-        }
-    }
-    
-    for (const adminId of ADMIN_IDS) {
-        try {
-            const keyboard = {
-                inline_keyboard: [
-                    [{ text: '✅ تأكيد شراء كريستال', callback_data: `confirm_buy_${orderId}` }],
-                    [{ text: '❌ رفض الطلب', callback_data: `reject_buy_${orderId}` }]
-                ]
-            };
-            
-            let inviteText = '';
-            if (user.invited_by) {
-                const inviter = await getUser(user.invited_by);
-                inviteText = `👥 مدعو بواسطة: ${inviter?.first_name || user.invited_by}\n`;
-            }
-            
-            await bot.sendMessage(adminId,
-                `💰 *طلب شراء كريستال جديد*\n\n` +
-                `👤 المستخدم: ${user.first_name} (${userId})\n` +
-                `${inviteText}` +
-                `💵 المبلغ: ${usdAmount} USDT\n` +
-                `💎 كمية الكريستال: ${crystalAmount.toFixed(2)} 💎\n` +
-                `💰 سعر الصرف: 1 💎 = ${usdRate} دولار\n\n` +
-                `💳 *محفظة دفع المستخدم:*\n` +
-                `• عنوان: \`${paymentWallet.address}\`\n` +
-                `• الشبكة: ${paymentWallet.network || 'TRC20'}\n` +
-                `• الاسم: ${paymentWallet.wallet_name || 'غير محدد'}\n\n` +
-                `🏦 *محفظة البوت:*\n` +
-                `\`${system.botWalletAddress || BOT_WALLET_ADDRESS}\`\n\n` +
-                `⏰ الوقت: ${new Date().toLocaleString('ar-EG')}\n\n` +
-                `⚠️ تأكد من وصول التحويل من محفظة المستخدم إلى محفظة البوت ثم اضغط تأكيد`,
-                { parse_mode: 'Markdown', reply_markup: keyboard }
-            );
-        } catch (e) {}
-    }
-    
-    const buyStats = await getBuyStats();
-    
-    res.json({
-        success: true,
-        orderId,
-        wallet: system.botWalletAddress || BOT_WALLET_ADDRESS,
-        usdAmount,
-        crystalAmount: crystalAmount.toFixed(2),
-        usdRate,
-        expiresIn: 60,
-        stats: {
-            totalOrders: buyStats.totalOrders,
-            totalCrystals: buyStats.totalCrystals.toFixed(2),
-            totalUsd: buyStats.totalUsd.toFixed(2)
-        }
-    });
 });
 
+app.get('/api/star-stats', async (req, res) => {
+    const stats = await getStarPurchaseStats();
+    res.json({ success: true, stats });
+});
+
+app.get('/api/star-orders/:userId', async (req, res) => {
+    const userId = req.params.userId;
+    
+    try {
+        const orders = await starInvoicesCollection
+            .find({ userId })
+            .sort({ createdAt: -1 })
+            .limit(20)
+            .toArray();
+        
+        const cleanOrders = orders.map(({ _id, ...order }) => order);
+        
+        res.json({ success: true, orders: cleanOrders });
+    } catch (error) {
+        console.error('خطأ في قراءة طلبات النجوم:', error);
+        res.json({ success: false, orders: [] });
+    }
+});
+
+// ========== نظام سحب الأرباح (USDT) ==========
 app.post('/api/withdraw', async (req, res) => {
     const userId = req.telegramUser.id.toString();
     const { crystalAmount } = req.body;
@@ -1018,19 +948,18 @@ app.post('/api/withdraw', async (req, res) => {
         return res.json({ 
             success: false, 
             error: 'محفظة سحب',
-            message: '❌ يجب ربط محفظة سحب نشطة أولاً' 
+            message: '❌ يجب ربط محفظة USDT نشطة أولاً' 
         });
     }
     
     const system = await getSystemStats();
-    const usdRate = system.usdRate || 0.10;
     const withdrawRate = system.withdrawRate || 0.08;
     
     const MIN_WITHDRAW_USD = 5;
     const MAX_WITHDRAW_PERCENT = 0.20;
     
     const totalDeposits = user.total_bought || 0;
-    const totalDepositsUSD = totalDeposits * usdRate;
+    const totalDepositsUSD = totalDeposits * 0.1;
     
     const maxDailyWithdrawUSD = totalDepositsUSD * MAX_WITHDRAW_PERCENT;
     const maxDailyWithdrawCrystals = maxDailyWithdrawUSD / withdrawRate;
@@ -1097,7 +1026,6 @@ app.post('/api/withdraw', async (req, res) => {
     const usdAmount = crystalAmount * withdrawRate;
     const orderId = 'WITHDRAW_' + Date.now().toString() + userId;
     
-    const withdrawPercent = (usdAmount / totalDepositsUSD) * 100;
     const totalWithdrawnUSD = (user.total_sold || 0) * withdrawRate;
     const remainingDeposits = totalDepositsUSD - totalWithdrawnUSD;
     
@@ -1108,13 +1036,11 @@ app.post('/api/withdraw', async (req, res) => {
         crystalAmount,
         usdAmount,
         usdRate: withdrawRate,
-        buyRate: usdRate,
         status: 'pending',
         createdAt: Date.now(),
         expiresAt: Date.now() + 60 * 60 * 1000,
         totalDeposits: totalDepositsUSD,
         maxDailyWithdraw: maxDailyWithdrawUSD,
-        withdrawPercent: withdrawPercent,
         remainingDeposits: remainingDeposits,
         withdrawWallet: {
             address: withdrawWallet.address,
@@ -1151,8 +1077,6 @@ app.post('/api/withdraw', async (req, res) => {
         }
     }, 60 * 60 * 1000);
     
-    const daysToWithdrawAll = Math.ceil(remainingDeposits / maxDailyWithdrawUSD);
-    
     for (const adminId of ADMIN_IDS) {
         try {
             const keyboard = {
@@ -1163,7 +1087,7 @@ app.post('/api/withdraw', async (req, res) => {
             };
             
             await bot.sendMessage(adminId,
-                `💰 *طلب سحب جديد - نظام 20%*\n\n` +
+                `💰 *طلب سحب جديد - USDT*\n\n` +
                 `👤 *المستخدم:* ${user.first_name}\n` +
                 `🆔 ID: \`${userId}\`\n\n` +
                 `💎 *طلبه:*\n` +
@@ -1174,18 +1098,7 @@ app.post('/api/withdraw', async (req, res) => {
                 `• عنوان: \`${withdrawWallet.address}\`\n` +
                 `• الشبكة: ${withdrawWallet.network || 'TRC20'}\n` +
                 `• الاسم: ${withdrawWallet.wallet_name || 'غير محدد'}\n\n` +
-                `📊 *تحليل المحفظة:*\n` +
-                `• 💰 إجمالي المشتريات: ${totalDepositsUSD.toFixed(2)}$\n` +
-                `• 💸 إجمالي المسحوبات: ${totalWithdrawnUSD.toFixed(2)}$\n` +
-                `• 💎 المتبقي للسحب: ${remainingDeposits.toFixed(2)}$\n` +
-                `• 📈 نسبة هذا السحب: ${withdrawPercent.toFixed(1)}% من رأس المال\n\n` +
-                `🎯 *حدود السحب:*\n` +
-                `• 🔵 الحد الأقصى اليوم: ${maxDailyWithdrawUSD.toFixed(2)}$ (20%)\n` +
-                `• 🟢 هذا الطلب: ${usdAmount.toFixed(2)}$\n` +
-                `• ⚪ متبقي لليوم: ${(maxDailyWithdrawUSD - usdAmount).toFixed(2)}$\n\n` +
-                `📅 *توقعات:*\n` +
-                `• 🕐 مدة سحب الرصيد كامل: ${daysToWithdrawAll} يوم\n\n` +
-                `⚠️ *يرجى تحويل المبلغ إلى عنوان محفظة المستخدم أعلاه ثم الضغط على تأكيد*`,
+                `⚠️ *يرجى تحويل المبلغ إلى عنوان المحفظة أعلاه ثم الضغط على تأكيد*`,
                 { parse_mode: 'Markdown', reply_markup: keyboard }
             );
         } catch (e) {}
@@ -1197,27 +1110,8 @@ app.post('/api/withdraw', async (req, res) => {
         crystalAmount,
         usdAmount: usdAmount.toFixed(2),
         usdRate: withdrawRate,
-        buyRate: usdRate,
         newBalance: (user.balance - crystalAmount).toFixed(3),
-        totalSold: (user.total_sold || 0) + crystalAmount,
-        walletAddress: withdrawWallet.address,
-        
-        smartWithdraw: {
-            minWithdraw: MIN_WITHDRAW_USD,
-            minCrystals: (MIN_WITHDRAW_USD / withdrawRate).toFixed(0),
-            maxWithdraw: maxDailyWithdrawUSD.toFixed(2),
-            maxCrystals: maxDailyWithdrawCrystals.toFixed(0),
-            totalDeposits: totalDepositsUSD.toFixed(2),
-            totalDepositsCrystals: totalDeposits.toFixed(0),
-            totalWithdrawn: totalWithdrawnUSD.toFixed(2),
-            totalWithdrawnCrystals: (user.total_sold || 0).toFixed(0),
-            availableToWithdraw: remainingDeposits.toFixed(2),
-            withdrawPercent: withdrawPercent.toFixed(1),
-            daysRemaining: daysToWithdrawAll,
-            dailyUsed: usdAmount.toFixed(2),
-            dailyRemaining: (maxDailyWithdrawUSD - usdAmount).toFixed(2),
-            dailyProgress: ((usdAmount / maxDailyWithdrawUSD) * 100).toFixed(0)
-        }
+        walletAddress: withdrawWallet.address
     });
 });
 
@@ -1230,14 +1124,13 @@ app.get('/api/withdraw-info/:userId', async (req, res) => {
     }
     
     const system = await getSystemStats();
-    const usdRate = system.usdRate || 0.10;
     const withdrawRate = system.withdrawRate || 0.08;
     
     const MIN_WITHDRAW_USD = 5;
     const MAX_WITHDRAW_PERCENT = 0.20;
     
     const totalDeposits = user.total_bought || 0;
-    const totalDepositsUSD = totalDeposits * usdRate;
+    const totalDepositsUSD = totalDeposits * 0.1;
     
     const totalWithdrawn = user.total_sold || 0;
     const totalWithdrawnUSD = totalWithdrawn * withdrawRate;
@@ -1279,6 +1172,170 @@ app.get('/api/withdraw-info/:userId', async (req, res) => {
     });
 });
 
+// ========== نظام ربط محفظة السحب (USDT) ==========
+app.get('/api/wallets/:userId', async (req, res) => {
+    const userId = req.params.userId;
+    
+    try {
+        const withdrawWallet = await walletsCollection.findOne({
+            userId: userId,
+            type: 'withdraw',
+            status: 'active'
+        });
+        
+        const withdrawPending = await walletsCollection.findOne({
+            userId: userId,
+            type: 'withdraw',
+            status: 'pending'
+        });
+        
+        const history = await walletsCollection.find({ 
+            userId: userId,
+            type: 'withdraw'
+        })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .toArray();
+        
+        const cleanHistory = history.map(({ _id, ...item }) => item);
+        
+        res.json({ 
+            success: true, 
+            withdrawWallet: withdrawWallet || withdrawPending || null,
+            history: cleanHistory
+        });
+    } catch (error) {
+        console.error('خطأ في قراءة المحافظ:', error);
+        res.json({ success: false, error: 'فشل في قراءة المحافظ' });
+    }
+});
+
+app.post('/api/wallet/connect', async (req, res) => {
+    const userId = req.telegramUser.id.toString();
+    const { type, address, walletName, network } = req.body;
+    
+    if (type !== 'withdraw') {
+        return res.json({ success: false, error: 'نوع محفظة غير صالح' });
+    }
+    
+    if (!address || address.length < 30) {
+        return res.json({ success: false, error: 'عنوان محفظة غير صالح' });
+    }
+    
+    try {
+        await walletsCollection.updateMany(
+            { userId: userId, type: 'withdraw', status: 'active' },
+            { $set: { status: 'replaced', updatedAt: Date.now() } }
+        );
+        
+        await walletsCollection.updateMany(
+            { userId: userId, type: 'withdraw', status: 'pending' },
+            { $set: { status: 'replaced', updatedAt: Date.now() } }
+        );
+        
+        const walletData = {
+            userId: userId,
+            type: 'withdraw',
+            address: address,
+            wallet_name: walletName || 'محفظة سحب',
+            network: network || 'TRC20',
+            status: 'pending',
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+        };
+        
+        await walletsCollection.insertOne(walletData);
+        
+        await updateSystemStats({ totalWalletConnections: 1 });
+        
+        const user = await getUser(userId);
+        
+        const connectionId = 'WALLET_' + Date.now().toString() + userId;
+        pendingWalletConnections[connectionId] = {
+            userId,
+            address,
+            walletName: walletData.wallet_name,
+            network,
+            userFirstName: user?.first_name || userId
+        };
+        
+        setTimeout(() => {
+            delete pendingWalletConnections[connectionId];
+        }, 7 * 24 * 60 * 60 * 1000);
+        
+        for (const adminId of ADMIN_IDS) {
+            try {
+                const keyboard = {
+                    inline_keyboard: [
+                        [{ text: '✅ قبول المحفظة', callback_data: `approve_wallet_${connectionId}` }],
+                        [{ text: '❌ رفض المحفظة', callback_data: `reject_wallet_${connectionId}` }]
+                    ]
+                };
+                
+                await bot.sendMessage(adminId,
+                    `💳 *طلب ربط محفظة سحب USDT جديد*\n\n` +
+                    `👤 المستخدم: ${user?.first_name || userId}\n` +
+                    `🆔 ID: \`${userId}\`\n\n` +
+                    `📱 *معلومات المحفظة:*\n` +
+                    `• عنوان: \`${address}\`\n` +
+                    `• الشبكة: ${network || 'TRC20'}\n` +
+                    `• الاسم: ${walletData.wallet_name}\n\n` +
+                    `⏰ الوقت: ${new Date().toLocaleString('ar-EG')}\n\n` +
+                    `⚠️ تأكد من صحة العنوان قبل القبول`,
+                    { parse_mode: 'Markdown', reply_markup: keyboard }
+                );
+            } catch (e) {}
+        }
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('خطأ في ربط المحفظة:', error);
+        res.json({ success: false, error: 'فشل في ربط المحفظة' });
+    }
+});
+
+app.post('/api/wallet/disconnect', async (req, res) => {
+    const userId = req.telegramUser.id.toString();
+    
+    try {
+        await walletsCollection.updateMany(
+            { userId: userId, type: 'withdraw', status: 'active' },
+            { $set: { status: 'disconnected', updatedAt: Date.now() } }
+        );
+        
+        await walletsCollection.updateMany(
+            { userId: userId, type: 'withdraw', status: 'pending' },
+            { $set: { status: 'disconnected', updatedAt: Date.now() } }
+        );
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('خطأ في فصل المحفظة:', error);
+        res.json({ success: false, error: 'فشل في فصل المحفظة' });
+    }
+});
+
+app.get('/api/wallet-history/:userId', async (req, res) => {
+    const userId = req.params.userId;
+    
+    try {
+        const history = await walletsCollection.find({ 
+            userId: userId,
+            type: 'withdraw'
+        })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .toArray();
+        
+        const cleanHistory = history.map(({ _id, ...item }) => item);
+        
+        res.json({ success: true, history: cleanHistory });
+    } catch (error) {
+        console.error('خطأ في قراءة سجل المحافظ:', error);
+        res.json({ success: false, history: [] });
+    }
+});
+
 app.get('/api/invite-info/:userId', async (req, res) => {
     const userId = req.params.userId;
     const user = await getUser(userId);
@@ -1317,217 +1374,9 @@ app.get('/api/invite-info/:userId', async (req, res) => {
     });
 });
 
-app.get('/api/wallets/:userId', async (req, res) => {
-    const userId = req.params.userId;
-    
-    try {
-        const paymentWallet = await walletsCollection.findOne({
-            userId: userId,
-            type: 'payment',
-            status: 'active'
-        });
-        
-        const withdrawWallet = await walletsCollection.findOne({
-            userId: userId,
-            type: 'withdraw',
-            status: 'active'
-        });
-        
-        const paymentPending = await walletsCollection.findOne({
-            userId: userId,
-            type: 'payment',
-            status: 'pending'
-        });
-        
-        const withdrawPending = await walletsCollection.findOne({
-            userId: userId,
-            type: 'withdraw',
-            status: 'pending'
-        });
-        
-        const history = await walletsCollection.find({ 
-            userId: userId 
-        })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .toArray();
-        
-        const cleanHistory = history.map(({ _id, ...item }) => item);
-        
-        res.json({ 
-            success: true, 
-            paymentWallet: paymentWallet || paymentPending || null,
-            withdrawWallet: withdrawWallet || withdrawPending || null,
-            history: cleanHistory
-        });
-    } catch (error) {
-        console.error('خطأ في قراءة المحافظ:', error);
-        res.json({ success: false, error: 'فشل في قراءة المحافظ' });
-    }
-});
-
-app.post('/api/wallet/connect', async (req, res) => {
-    const userId = req.telegramUser.id.toString();
-    const { type, address, walletName, network } = req.body;
-    
-    if (!address || address.length < 30) {
-        return res.json({ success: false, error: 'عنوان محفظة غير صالح' });
-    }
-    
-    if (!type || !['payment', 'withdraw'].includes(type)) {
-        return res.json({ success: false, error: 'نوع محفظة غير صالح' });
-    }
-    
-    try {
-        await walletsCollection.updateMany(
-            { userId: userId, type: type, status: 'active' },
-            { $set: { status: 'replaced', updatedAt: Date.now() } }
-        );
-        
-        await walletsCollection.updateMany(
-            { userId: userId, type: type, status: 'pending' },
-            { $set: { status: 'replaced', updatedAt: Date.now() } }
-        );
-        
-        const walletData = {
-            userId: userId,
-            type: type,
-            address: address,
-            wallet_name: walletName || (type === 'payment' ? 'محفظة دفع' : 'محفظة سحب'),
-            network: network || 'TRC20',
-            status: 'pending',
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-        };
-        
-        await walletsCollection.insertOne(walletData);
-        
-        await updateSystemStats({ totalWalletConnections: 1 });
-        
-        const user = await getUser(userId);
-        const system = await getSystemStats();
-        
-        const connectionId = 'WALLET_' + Date.now().toString() + userId;
-        pendingWalletConnections[connectionId] = {
-            userId,
-            type,
-            address,
-            walletName: walletData.wallet_name,
-            network,
-            userFirstName: user?.first_name || userId
-        };
-        
-        setTimeout(() => {
-            delete pendingWalletConnections[connectionId];
-        }, 24 * 60 * 60 * 1000);
-        
-        for (const adminId of ADMIN_IDS) {
-            try {
-                const keyboard = {
-                    inline_keyboard: [
-                        [{ text: '✅ قبول المحفظة', callback_data: `approve_wallet_${connectionId}` }],
-                        [{ text: '❌ رفض المحفظة', callback_data: `reject_wallet_${connectionId}` }]
-                    ]
-                };
-                
-                const walletTypeText = type === 'payment' ? '💵 محفظة دفع' : '💰 محفظة سحب';
-                
-                await bot.sendMessage(adminId,
-                    `💳 *طلب ربط ${walletTypeText} جديد*\n\n` +
-                    `👤 المستخدم: ${user?.first_name || userId}\n` +
-                    `🆔 ID: \`${userId}\`\n\n` +
-                    `📱 *معلومات المحفظة:*\n` +
-                    `• عنوان: \`${address}\`\n` +
-                    `• الشبكة: ${network || 'TRC20'}\n` +
-                    `• الاسم: ${walletData.wallet_name}\n\n` +
-                    `🏦 *محفظة البوت:*\n` +
-                    `\`${system.botWalletAddress || BOT_WALLET_ADDRESS}\`\n\n` +
-                    `⏰ الوقت: ${new Date().toLocaleString('ar-EG')}\n\n` +
-                    `⚠️ تأكد من صحة العنوان قبل القبول`,
-                    { parse_mode: 'Markdown', reply_markup: keyboard }
-                );
-            } catch (e) {}
-        }
-        
-        res.json({ success: true });
-    } catch (error) {
-        console.error('خطأ في ربط المحفظة:', error);
-        res.json({ success: false, error: 'فشل في ربط المحفظة' });
-    }
-});
-
-app.post('/api/wallet/disconnect', async (req, res) => {
-    const userId = req.telegramUser.id.toString();
-    const { type } = req.body;
-    
-    if (!type || !['payment', 'withdraw'].includes(type)) {
-        return res.json({ success: false, error: 'نوع محفظة غير صالح' });
-    }
-    
-    try {
-        await walletsCollection.updateMany(
-            { userId: userId, type: type, status: 'active' },
-            { $set: { status: 'disconnected', updatedAt: Date.now() } }
-        );
-        
-        await walletsCollection.updateMany(
-            { userId: userId, type: type, status: 'pending' },
-            { $set: { status: 'disconnected', updatedAt: Date.now() } }
-        );
-        
-        res.json({ success: true });
-    } catch (error) {
-        console.error('خطأ في فصل المحفظة:', error);
-        res.json({ success: false, error: 'فشل في فصل المحفظة' });
-    }
-});
-
-app.post('/api/admin/confirm-transaction', async (req, res) => {
-    if (!isAdmin(req.telegramUser?.id)) {
-        return res.status(403).json({ success: false, error: 'غير مصرح' });
-    }
-    
-    const { txHash, fromAddress, toAddress, amount, userId, orderId } = req.body;
-    
-    try {
-        const transaction = {
-            txHash,
-            fromAddress,
-            toAddress,
-            amount,
-            userId,
-            orderId,
-            confirmedBy: req.telegramUser.id,
-            confirmedAt: Date.now(),
-            status: 'confirmed'
-        };
-        
-        await transactionsCollection.insertOne(transaction);
-        
-        res.json({ success: true });
-    } catch (error) {
-        console.error('خطأ في تأكيد المعاملة:', error);
-        res.json({ success: false, error: 'فشل في تأكيد المعاملة' });
-    }
-});
-
-app.get('/api/buy-stats', async (req, res) => {
-    const stats = await getBuyStats();
-    res.json({ success: true, stats });
-});
-
 app.get('/api/withdraw-stats', async (req, res) => {
     const stats = await getWithdrawStats();
     res.json({ success: true, stats });
-});
-
-app.get('/api/user-orders/:userId', async (req, res) => {
-    const userId = req.params.userId;
-    const buyOrders = await getUserBuyOrders(userId);
-    res.json({
-        success: true,
-        buyOrders: buyOrders.map(o => ({ ...o, _id: undefined }))
-    });
 });
 
 app.get('/api/user-withdraws/:userId', async (req, res) => {
@@ -1539,76 +1388,26 @@ app.get('/api/user-withdraws/:userId', async (req, res) => {
     });
 });
 
-app.get('/api/payment-status/:paymentId', async (req, res) => {
-    const payment = pendingPurchases[req.params.paymentId];
-    if (payment) {
-        res.json({
-            success: true,
-            status: payment.status,
-            currency: 'USDT',
-            amount: payment.usdAmount
-        });
-    } else {
-        const savedPayment = await getPurchase(req.params.paymentId);
-        if (savedPayment) {
-            res.json({
-                success: true,
-                status: savedPayment.status,
-                currency: 'USDT',
-                amount: savedPayment.usdAmount
-            });
-        } else {
-            res.json({ success: false, status: 'expired' });
-        }
-    }
-});
-
-app.post('/api/charge', async (req, res) => {
-    const userId = req.telegramUser.id.toString();
-    const user = await getUser(userId);
-    
-    if (!user) return res.json({ success: false });
-    
-    let newEnergy = user.energy;
-    
-    if (user.last_mine) {
-        const hoursPassed = (Date.now() - user.last_mine) / (1000 * 60 * 60);
-        const energyToAdd = Math.floor(hoursPassed * 10);
-        const maxEnergy = user.maxEnergy || 100;
-        newEnergy = Math.min(maxEnergy, user.energy + energyToAdd);
-        
-        await usersCollection.updateOne(
-            { user_id: userId },
-            { $set: { energy: newEnergy } }
-        );
-    }
-    
-    res.json({ success: true, energy: newEnergy, maxEnergy: user.maxEnergy || 100 });
-});
-
 app.get('/api/top', async (req, res) => {
     const topUsers = await getTopUsers(10);
     res.json({ success: true, topUsers });
 });
 
-app.get('/api/stats/:userId', async (req, res) => {
-    const stats = await getUserStats(req.params.userId);
-    if (stats) {
-        res.json({ success: true, ...stats });
-    } else {
-        res.json({ success: false });
-    }
-});
-
 app.get('/api/shop-items', async (req, res) => {
     const items = await getShopItems();
     const system = await getSystemStats();
+    const starStats = await getStarPurchaseStats();
+    
     res.json({ 
         success: true, 
         items,
-        usdRate: system.usdRate || 0.10,
+        starRate: system.starRate || 0.1,
         withdrawRate: system.withdrawRate || 0.08,
-        botWallet: system.botWalletAddress || BOT_WALLET_ADDRESS
+        starStats: {
+            totalOrders: starStats.totalOrders,
+            totalStars: starStats.totalStars,
+            totalCrystals: starStats.totalCrystals
+        }
     });
 });
 
@@ -1696,7 +1495,7 @@ bot.on('callback_query', async (callbackQuery) => {
             await walletsCollection.updateOne(
                 { 
                     userId: connection.userId, 
-                    type: connection.type,
+                    type: 'withdraw',
                     address: connection.address,
                     status: 'pending'
                 },
@@ -1712,31 +1511,24 @@ bot.on('callback_query', async (callbackQuery) => {
             await walletsCollection.updateMany(
                 { 
                     userId: connection.userId, 
-                    type: connection.type, 
+                    type: 'withdraw', 
                     status: { $ne: 'active' } 
                 },
                 { $set: { status: 'replaced' } }
             );
             
-            const walletTypeText = connection.type === 'payment' ? '💵 محفظة الدفع' : '💰 محفظة السحب';
-            
             try {
                 await bot.sendMessage(connection.userId,
-                    `✅ *تمت الموافقة على ${walletTypeText}!* ✅\n\n` +
+                    `✅ *تمت الموافقة على محفظة السحب!* ✅\n\n` +
                     `📱 المحفظة: \`${connection.address.substring(0, 10)}...${connection.address.substring(connection.address.length - 8)}\`\n` +
                     `🌐 الشبكة: ${connection.network || 'TRC20'}\n\n` +
-                    `${
-                        connection.type === 'payment' 
-                            ? '💵 يمكنك الآن شراء الكريستال باستخدام هذه المحفظة' 
-                            : '💰 يمكنك الآن سحب أرباحك إلى هذه المحفظة'
-                    }`,
+                    `💰 يمكنك الآن سحب أرباحك إلى هذه المحفظة`,
                     { parse_mode: 'Markdown' }
                 );
             } catch (e) {}
             
             await bot.sendMessage(chatId, 
-                `✅ تم قبول ${walletTypeText} للمستخدم ${connection.userFirstName || connection.userId}`,
-                { parse_mode: 'Markdown' }
+                `✅ تم قبول محفظة السحب للمستخدم ${connection.userFirstName || connection.userId}`
             );
             
             delete pendingWalletConnections[connectionId];
@@ -1755,24 +1547,22 @@ bot.on('callback_query', async (callbackQuery) => {
                 await walletsCollection.updateMany(
                     { 
                         userId: connection.userId, 
-                        type: connection.type,
+                        type: 'withdraw',
                         status: 'pending' 
                     },
                     { $set: { status: 'rejected', rejectedAt: Date.now(), rejectedBy: adminId } }
                 );
                 
-                const walletTypeText = connection.type === 'payment' ? 'محفظة الدفع' : 'محفظة السحب';
-                
                 try {
                     await bot.sendMessage(connection.userId,
-                        `❌ *تم رفض طلب ربط ${walletTypeText}*\n\n` +
+                        `❌ *تم رفض طلب ربط محفظة السحب*\n\n` +
                         `يرجى التأكد من صحة عنوان المحفظة والمحاولة مرة أخرى.`,
                         { parse_mode: 'Markdown' }
                     );
                 } catch (e) {}
                 
                 await bot.sendMessage(chatId, 
-                    `✅ تم رفض ${walletTypeText} للمستخدم ${connection.userFirstName || connection.userId}`
+                    `✅ تم رفض محفظة السحب للمستخدم ${connection.userFirstName || connection.userId}`
                 );
                 
                 delete pendingWalletConnections[connectionId];
@@ -1782,81 +1572,6 @@ bot.on('callback_query', async (callbackQuery) => {
         } else {
             await bot.sendMessage(chatId, '❌ طلب ربط المحفظة غير موجود');
         }
-    }
-    
-    else if (data.startsWith('confirm_buy_')) {
-        const orderId = data.replace('confirm_buy_', '');
-        const order = pendingBuyOrders[orderId];
-        
-        if (!order) {
-            await bot.sendMessage(chatId, '❌ الطلب منتهي الصلاحية');
-            return;
-        }
-        
-        await usersCollection.updateOne(
-            { user_id: order.userId },
-            { 
-                $inc: { 
-                    balance: order.crystalAmount,
-                    total_bought: order.crystalAmount
-                } 
-            }
-        );
-        
-        await updateSystemStats({ 
-            totalCrystalSold: order.crystalAmount,
-            totalUsdInvested: order.usdAmount
-        });
-        
-        await updateBuyOrderStatus(orderId, 'completed');
-        order.status = 'completed';
-        
-        try {
-            await bot.sendMessage(order.userId,
-                `💰 *تم شراء الكريستال بنجاح!* 💰\n\n` +
-                `✅ تم إضافة ${order.crystalAmount.toFixed(2)} 💎 إلى محفظتك!\n` +
-                `💵 المبلغ المدفوع: ${order.usdAmount} USDT\n\n` +
-                `شكراً لثقتك بمناجم الكريستال! ⛏️`,
-                { parse_mode: 'Markdown' }
-            );
-        } catch (e) {}
-        
-        const buyStats = await getBuyStats();
-        await bot.sendMessage(chatId, 
-            `✅ *تم تأكيد شراء الكريستال*\n\n` +
-            `👤 المستخدم: ${order.userFirstName}\n` +
-            `💎 الكمية: ${order.crystalAmount.toFixed(2)}\n` +
-            `💵 المبلغ: ${order.usdAmount} USDT\n` +
-            `💳 من محفظة: \`${order.paymentWallet?.address || 'غير محدد'}\`\n` +
-            `🏦 إلى محفظة البوت: \`${order.botWallet}\`\n\n` +
-            `📊 *إجمالي المال الداخل للبوت:*\n` +
-            `💰 ${buyStats.totalUsd.toFixed(2)} USDT`,
-            { parse_mode: 'Markdown' }
-        );
-        
-        delete pendingBuyOrders[orderId];
-    }
-    
-    else if (data.startsWith('reject_buy_')) {
-        const orderId = data.replace('reject_buy_', '');
-        const order = pendingBuyOrders[orderId];
-        
-        if (order) {
-            await updateBuyOrderStatus(orderId, 'rejected');
-            
-            try {
-                await bot.sendMessage(order.userId,
-                    `❌ *تم رفض طلب شراء الكريستال*\n\n` +
-                    `للأسف، لم يتم تأكيد وصول التحويل.\n` +
-                    `يمكنك المحاولة مرة أخرى.`,
-                    { parse_mode: 'Markdown' }
-                );
-            } catch (e) {}
-            
-            delete pendingBuyOrders[orderId];
-        }
-        
-        await bot.sendMessage(chatId, '❌ تم رفض طلب الشراء');
     }
     
     else if (data.startsWith('confirm_withdraw_')) {
@@ -1893,7 +1608,7 @@ bot.on('callback_query', async (callbackQuery) => {
         } catch (e) {}
         
         const withdrawStats = await getWithdrawStats();
-        const buyStats = await getBuyStats();
+        const starStats = await getStarPurchaseStats();
         
         await bot.sendMessage(chatId, 
             `✅ *تم تأكيد سحب الأرباح*\n\n` +
@@ -1902,9 +1617,8 @@ bot.on('callback_query', async (callbackQuery) => {
             `💵 المبلغ: ${order.usdAmount.toFixed(2)} USDT\n` +
             `💳 إلى محفظة: \`${order.withdrawWallet?.address || 'غير محدد'}\`\n\n` +
             `📊 *إحصائيات البوت:*\n` +
-            `💰 إجمالي الودائع: ${buyStats.totalUsd.toFixed(2)} USDT\n` +
-            `💸 إجمالي المسحوبات: ${withdrawStats.totalUsd.toFixed(2)} USDT\n` +
-            `💎 الرصيد المتاح: ${(buyStats.totalUsd - withdrawStats.totalUsd).toFixed(2)} USDT`,
+            `⭐ إجمالي نجوم المشتريات: ${starStats.totalStars}\n` +
+            `💰 إجمالي المسحوبات: ${withdrawStats.totalUsd.toFixed(2)} USDT`,
             { parse_mode: 'Markdown' }
         );
         
@@ -1936,81 +1650,6 @@ bot.on('callback_query', async (callbackQuery) => {
         
         await bot.sendMessage(chatId, '❌ تم رفض طلب السحب');
     }
-    
-    else if (data.startsWith('confirm_boost_')) {
-        const orderId = data.replace('confirm_boost_', '');
-        const order = pendingPurchases[orderId];
-        
-        if (!order) {
-            await bot.sendMessage(chatId, '❌ الطلب منتهي الصلاحية');
-            return;
-        }
-        
-        await usersCollection.updateOne(
-            { user_id: order.userId },
-            { 
-                $inc: { 
-                    balance: order.crystalAmount,
-                    total_bought: order.crystalAmount
-                } 
-            }
-        );
-        
-        await updateSystemStats({ 
-            totalUsdInvested: order.usdAmount,
-            shopRevenue: order.usdAmount
-        });
-        
-        await updatePurchaseStatus(orderId, 'completed');
-        order.status = 'completed';
-        
-        try {
-            await bot.sendMessage(order.userId,
-                `⚡ *تم شراء التسريع بنجاح!* ⚡\n\n` +
-                `✅ تم تفعيل *${order.boostName}*\n` +
-                `💎 تم إضافة +${order.crystalAmount} كريستال إلى محفظتك!\n` +
-                `💰 المبلغ: ${order.usdAmount} USDT\n\n` +
-                `استمتع بالتعدين الأسرع! ⛏️`,
-                { parse_mode: 'Markdown' }
-            );
-        } catch (e) {}
-        
-        const buyStats = await getBuyStats();
-        await bot.sendMessage(chatId, 
-            `✅ *تم تأكيد شراء التسريع*\n\n` +
-            `👤 المستخدم: ${order.userFirstName}\n` +
-            `🚀 التسريع: ${order.boostName}\n` +
-            `💎 الكمية: +${order.crystalAmount}\n` +
-            `💵 المبلغ: ${order.usdAmount} USDT\n\n` +
-            `📊 إجمالي المال الداخل: ${buyStats.totalUsd.toFixed(2)} USDT`,
-            { parse_mode: 'Markdown' }
-        );
-        
-        delete pendingPurchases[orderId];
-    }
-    
-    else if (data.startsWith('reject_boost_')) {
-        const orderId = data.replace('reject_boost_', '');
-        const order = pendingPurchases[orderId];
-        
-        if (order) {
-            order.status = 'rejected';
-            await updatePurchaseStatus(orderId, 'rejected');
-            
-            try {
-                await bot.sendMessage(order.userId,
-                    `❌ *تم رفض طلب شراء التسريع*\n\n` +
-                    `للأسف، لم يتم تأكيد وصول التحويل.\n` +
-                    `يمكنك المحاولة مرة أخرى.`,
-                    { parse_mode: 'Markdown' }
-                );
-            } catch (e) {}
-            
-            delete pendingPurchases[orderId];
-        }
-        
-        await bot.sendMessage(chatId, '❌ تم رفض المعاملة');
-    }
 });
 
 bot.onText(/\/admin/, async (msg) => {
@@ -2024,18 +1663,14 @@ bot.onText(/\/admin/, async (msg) => {
     
     const totalUsers = await usersCollection.countDocuments();
     const system = await getSystemStats();
-    const pendingBuys = Object.keys(pendingBuyOrders).length;
     const pendingWithdraws = Object.keys(pendingWithdrawOrders).length;
-    const pendingBoosts = Object.values(pendingPurchases).filter(p => p.status === 'pending').length;
     const pendingWallets = Object.keys(pendingWalletConnections).length;
     
-    const paymentWalletsActive = await walletsCollection.countDocuments({ type: 'payment', status: 'active' });
     const withdrawWalletsActive = await walletsCollection.countDocuments({ type: 'withdraw', status: 'active' });
-    const paymentWalletsPending = await walletsCollection.countDocuments({ type: 'payment', status: 'pending' });
     const withdrawWalletsPending = await walletsCollection.countDocuments({ type: 'withdraw', status: 'pending' });
     
-    const buyStats = await getBuyStats();
     const withdrawStats = await getWithdrawStats();
+    const starStats = await getStarPurchaseStats();
     
     const totalInvites = await inviteRewardsCollection.countDocuments({ status: 'completed' });
     const totalInviteRewards = await inviteRewardsCollection.aggregate([
@@ -2043,33 +1678,44 @@ bot.onText(/\/admin/, async (msg) => {
         { $group: { _id: null, total: { $sum: '$rewardAmount' } } }
     ]).toArray();
     
+    let starBalance = 'غير معروف';
+    try {
+        const response = await fetch(
+            `https://api.telegram.org/bot${BOT_TOKEN}/getStarsStatus`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: chatId })
+            }
+        );
+        const data = await response.json();
+        if (data.ok) {
+            starBalance = data.result.balance;
+        }
+    } catch (e) {}
+    
     const message = 
         `👑 *لوحة تحكم الأدمن - مناجم الكريستال* 👑\n\n` +
         `📊 *إحصائيات عامة:*\n` +
         `• 👥 المستخدمون: ${totalUsers}\n` +
-        `• 💎 إجمالي الكريستال المباع: ${buyStats.totalCrystals.toFixed(2)} 💎\n` +
-        `• 💰 إجمالي المال الداخل للبوت: ${buyStats.totalUsd.toFixed(2)} USDT\n` +
-        `• 💸 إجمالي المسحوبات: ${withdrawStats.totalUsd.toFixed(2)} USDT\n` +
-        `• 💎 الرصيد المتاح: ${(buyStats.totalUsd - withdrawStats.totalUsd).toFixed(2)} USDT\n` +
-        `• 🏪 إيرادات المتجر: ${(system.shopRevenue || 0).toFixed(2)} 💎\n` +
+        `• ⭐ إجمالي نجوم المشتريات: ${starStats.totalStars} ⭐\n` +
+        `• 💎 إجمالي الكريستال المباع: ${starStats.totalCrystals.toFixed(1)} 💎\n` +
+        `• 💸 إجمالي المسحوبات USDT: ${withdrawStats.totalUsd.toFixed(2)} $\n` +
         `• 👥 مكافآت الدعوات: ${(totalInviteRewards[0]?.total || 0).toFixed(1)} 💎\n\n` +
-        `🏦 *محفظة البوت:*\n` +
-        `\`${system.botWalletAddress || BOT_WALLET_ADDRESS}\`\n\n` +
-        `💳 *إحصائيات المحافظ:*\n` +
-        `• 💵 محافظ دفع نشطة: ${paymentWalletsActive}\n` +
-        `• 💰 محافظ سحب نشطة: ${withdrawWalletsActive}\n` +
-        `• ⏳ في انتظار المراجعة: ${paymentWalletsPending + withdrawWalletsPending}\n\n` +
+        `⭐ *رصيد البوت من النجوم:*\n` +
+        `💰 ${starBalance} ⭐\n\n` +
+        `💳 *إحصائيات محافظ السحب:*\n` +
+        `• ✅ محافظ نشطة: ${withdrawWalletsActive}\n` +
+        `• ⏳ في انتظار المراجعة: ${withdrawWalletsPending}\n\n` +
         `⏳ *طلبات معلقة:*\n` +
-        `• 💵 شراء كريستال: ${pendingBuys}\n` +
-        `• 💰 سحب أرباح: ${pendingWithdraws}\n` +
-        `• ⚡ تسريع: ${pendingBoosts}\n` +
+        `• 💰 سحب USDT: ${pendingWithdraws}\n` +
         `• 💳 ربط محافظ: ${pendingWallets}\n\n` +
         `💰 *سعر الصرف:*\n` +
-        `• 💵 شراء: 1 💎 = ${system.usdRate || 0.10} دولار\n` +
-        `• 💸 سحب: 1 💎 = ${system.withdrawRate || 0.08} دولار\n\n` +
+        `• ⭐ شراء: 10 نجوم = 1 💎\n` +
+        `• 💸 سحب: 1 💎 = ${system.withdrawRate || 0.08} USDT\n\n` +
         `🔧 *نظام التعدين:* 1 كريستال كل 24 ساعة (مع الكسور)\n` +
-        `💸 *نظام السحب:* مرة واحدة كل 24 ساعة - 20% من رأس المال - حد أدنى 5$\n` +
-        `💳 *نظام المحافظ:* ربط محافظ دفع وسحب - مراجعة يدوية\n` +
+        `💸 *نظام السحب:* USDT - حد أدنى 5$ - 20% يومياً\n` +
+        `⭐ *نظام الدفع:* نجوم تليجرام - فوري وآمن\n` +
         `👥 *نظام الدعوة:* 1💎 (إيداع) / 0.3💎 (لا إيداع)`;
     
     await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
@@ -2112,10 +1758,15 @@ bot.onText(/\/user (.+)/, async (msg, match) => {
         ? Object.keys(targetUser.upgrades).join(', ') 
         : 'لا يوجد';
     
-    const userBuys = await buyOrdersCollection.countDocuments({ 
+    const starOrders = await starInvoicesCollection.countDocuments({ 
         userId: targetUser.user_id, 
         status: 'completed' 
     });
+    
+    const starAmount = await starInvoicesCollection.aggregate([
+        { $match: { userId: targetUser.user_id, status: 'completed' } },
+        { $group: { _id: null, total: { $sum: '$starAmount' } } }
+    ]).toArray();
     
     const userWithdraws = await withdrawOrdersCollection.countDocuments({ 
         userId: targetUser.user_id, 
@@ -2123,25 +1774,10 @@ bot.onText(/\/user (.+)/, async (msg, match) => {
     });
     
     const totalDeposits = targetUser.total_bought || 0;
-    const totalDepositsUSD = totalDeposits * (system.usdRate || 0.10);
+    const totalDepositsUSD = totalDeposits * 0.1;
     const totalWithdrawnUSD = (targetUser.total_sold || 0) * (system.withdrawRate || 0.08);
     const availableToWithdraw = totalDepositsUSD - totalWithdrawnUSD;
     const maxDailyWithdraw = totalDepositsUSD * 0.20;
-    
-    const userInvites = await inviteRewardsCollection.find({
-        inviterId: targetUser.user_id
-    }).toArray();
-    
-    const completedInvites = userInvites.filter(i => i.status === 'completed').length;
-    const partialInvites = userInvites.filter(i => i.status === 'partial').length;
-    const pendingInvites = userInvites.filter(i => i.status === 'pending').length;
-    const totalInviteRewards = userInvites.reduce((sum, i) => sum + (i.rewardAmount || 0), 0);
-    
-    const paymentWallet = await walletsCollection.findOne({ 
-        userId: targetUser.user_id, 
-        type: 'payment',
-        status: 'active' 
-    });
     
     const withdrawWallet = await walletsCollection.findOne({ 
         userId: targetUser.user_id, 
@@ -2149,27 +1785,11 @@ bot.onText(/\/user (.+)/, async (msg, match) => {
         status: 'active' 
     });
     
-    const paymentPending = await walletsCollection.findOne({ 
-        userId: targetUser.user_id, 
-        type: 'payment',
-        status: 'pending' 
-    });
-    
     const withdrawPending = await walletsCollection.findOne({ 
         userId: targetUser.user_id, 
         type: 'withdraw',
         status: 'pending' 
     });
-    
-    let paymentWalletStatus = 'غير مرتبطة';
-    let paymentWalletAddress = '';
-    if (paymentWallet) {
-        paymentWalletStatus = '✅ نشطة';
-        paymentWalletAddress = paymentWallet.address;
-    } else if (paymentPending) {
-        paymentWalletStatus = '⏳ قيد المراجعة';
-        paymentWalletAddress = paymentPending.address;
-    }
     
     let withdrawWalletStatus = 'غير مرتبطة';
     let withdrawWalletAddress = '';
@@ -2190,16 +1810,6 @@ bot.onText(/\/user (.+)/, async (msg, match) => {
         }
     }
     
-    let paymentWalletInfo = '';
-    if (paymentWalletAddress) {
-        paymentWalletInfo = `💳 محفظة دفع: \`${paymentWalletAddress.substring(0, 10)}...${paymentWalletAddress.substring(paymentWalletAddress.length - 8)}\`\n`;
-    }
-    
-    let withdrawWalletInfo = '';
-    if (withdrawWalletAddress) {
-        withdrawWalletInfo = `💳 محفظة سحب: \`${withdrawWalletAddress.substring(0, 10)}...${withdrawWalletAddress.substring(withdrawWalletAddress.length - 8)}\`\n`;
-    }
-    
     await bot.sendMessage(chatId,
         `👤 *ملف المنقب*\n\n` +
         `🆔 المعرف: \`${targetUser.user_id}\`\n` +
@@ -2213,23 +1823,16 @@ bot.onText(/\/user (.+)/, async (msg, match) => {
         `• ⛏️ إجمالي التعدين: ${(targetUser.total_mined || 0).toFixed(3)} 💎\n` +
         `• 🔥 السلسلة اليومية: ${targetUser.daily_streak || 0}\n\n` +
         `📊 *إحصائيات التداول:*\n` +
-        `• 💵 رأس المال المستثمر: ${totalDepositsUSD.toFixed(2)}$ (${totalDeposits} 💎)\n` +
-        `• 💰 مسحوب سابقاً: ${totalWithdrawnUSD.toFixed(2)}$ (${targetUser.total_sold || 0} 💎)\n` +
+        `• ⭐ مشتريات بالنجوم: ${starOrders} (${(starAmount[0]?.total || 0)} ⭐)\n` +
+        `• 💵 رأس المال المستثمر: ${totalDepositsUSD.toFixed(2)}$\n` +
+        `• 💰 مسحوب سابقاً USDT: ${totalWithdrawnUSD.toFixed(2)}$\n` +
         `• 💎 متبقي للسحب: ${availableToWithdraw.toFixed(2)}$\n` +
         `• 📈 الحد اليومي: ${maxDailyWithdraw.toFixed(2)}$ (20%)\n` +
         `• 💸 حالة السحب: ${withdrawStatus}\n\n` +
-        `💳 *المحافظ:*\n` +
-        `• 💵 محفظة دفع: ${paymentWalletStatus}\n` +
-        `${paymentWalletInfo}` +
-        `• 💰 محفظة سحب: ${withdrawWalletStatus}\n` +
-        `${withdrawWalletInfo}` +
-        `\n👥 *إحصائيات الدعوة:*\n` +
-        `• 📊 إجمالي الدعوات: ${userInvites.length}\n` +
-        `• ✅ أودعوا: ${completedInvites}\n` +
-        `• ⏳ لم يودعوا: ${partialInvites}\n` +
-        `• 🕒 في الانتظار: ${pendingInvites}\n` +
-        `• 🎁 إجمالي المكافآت: ${totalInviteRewards.toFixed(1)} 💎\n\n` +
-        `🛒 الترقيات: ${upgradesList}\n` +
+        `💳 *محفظة السحب USDT:*\n` +
+        `• الحالة: ${withdrawWalletStatus}\n` +
+        `${withdrawWalletAddress ? `• العنوان: \`${withdrawWalletAddress.substring(0, 10)}...${withdrawWalletAddress.substring(withdrawWalletAddress.length - 8)}\`\n` : ''}` +
+        `\n🛒 الترقيات: ${upgradesList}\n` +
         `📅 تاريخ الانضمام: ${new Date(targetUser.created_at).toLocaleDateString('ar-EG')}`,
         { parse_mode: 'Markdown' }
     );
@@ -2246,23 +1849,15 @@ async function startServer() {
         console.log('\n===========================================');
         console.log(`🌐 خادم الويب يعمل على المنفذ: ${PORT}`);
         console.log(`🔗 رابط الواجهة: ${APP_URL}`);
-        console.log(`🏦 محفظة البوت: ${BOT_WALLET_ADDRESS}`);
+        console.log(`⭐ نظام دفع نجوم تليجرام: مفعل`);
         console.log(`⛏️ نظام التعدين: 1 كريستال كل 24 ساعة (مع الكسور)`);
-        console.log(`💰 نظام شراء الكريستال: USDT فقط - 1💎 = 0.10$`);
-        console.log(`💸 نظام السحب الذكي:`);
-        console.log(`   • سعر السحب: 1💎 = 0.08$`);
+        console.log(`💰 نظام الشراء: 10 نجوم = 1 💎`);
+        console.log(`💸 نظام السحب: USDT - 1💎 = 0.08$`);
         console.log(`   • حد أدنى: 5$`);
         console.log(`   • حد أقصى يومي: 20% من رأس المال`);
         console.log(`   • مرة واحدة كل 24 ساعة`);
-        console.log(`💳 نظام المحافظ المتكامل:`);
-        console.log(`   • 💵 محفظة دفع: للشراء والتحويل إلى محفظة البوت`);
-        console.log(`   • 💰 محفظة سحب: لاستلام الأرباح`);
-        console.log(`   • مراجعة يدوية من الأدمن`);
-        console.log(`   • ربط محفظة واحدة لكل نوع`);
-        console.log(`👥 نظام الدعوة:`);
-        console.log(`   • إذا أودع المدعو: +1 💎`);
-        console.log(`   • إذا لم يودع: +0.3 💎 (بعد 7 أيام)`);
-        console.log(`👮 نظام الأدمن اليدوي: مفعل`);
+        console.log(`💳 نظام محافظ السحب: USDT - TRC20`);
+        console.log(`👥 نظام الدعوة: 1💎 (إيداع) / 0.3💎 (لا إيداع)`);
         console.log('===========================================\n');
     });
 }
@@ -2279,15 +1874,13 @@ process.on('SIGTERM', () => {
     process.exit(0);
 });
 
-console.log('🚀 بوت مناجم الكريستال - الإصدار 11.0');
+console.log('🚀 بوت مناجم الكريستال - الإصدار 12.0');
 console.log('📱 افتح تليجرام وأرسل /start');
 console.log('👑 لوحة الأدمن: /admin');
+console.log('⭐ نظام الدفع: نجوم تليجرام - 10 ⭐ = 1 💎');
 console.log('⛏️ تعدين: 1 كريستال كل 24 ساعة مع الكسور التراكمية');
-console.log('💰 شراء: 1 💎 = 0.10$');
-console.log('💸 سحب: 1 💎 = 0.08$');
-console.log('📊 نظام السحب الذكي: 20% يومياً - حد أدنى 5$');
-console.log('💳 نظام المحافظ المتكامل:');
-console.log('   • 💵 محفظة دفع - للشراء');
-console.log('   • 💰 محفظة سحب - للأرباح');
+console.log('💰 شراء: 10 نجوم = 1 كريستال');
+console.log('💸 سحب: 1 💎 = 0.08$ USDT');
+console.log('💳 نظام محافظ السحب: USDT (TRC20)');
 console.log('👥 نظام الدعوة: 1💎 (إيداع) / 0.3💎 (لا إيداع)');
-console.log('⚡ تسريع: شراء كريستال فوري بالدولار');
+console.log('⚡ تسريع: شراء كريستال فوري بالنجوم');
