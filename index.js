@@ -381,13 +381,60 @@ async function updateSystemStats(updates) {
     }
 }
 
+// ========== 🔐 دالة التحقق من WebApp Data (محمية بالكامل) ==========
+function verifyWebAppData(initData) {
+    try {
+        if (!initData) return null;
+        
+        const params = new URLSearchParams(initData);
+        const hash = params.get('hash');
+        const authDate = params.get('auth_date');
+        
+        // 🔐 التحقق من انتهاء صلاحية البيانات (24 ساعة)
+        const now = Math.floor(Date.now() / 1000);
+        if (now - parseInt(authDate) > 86400) {
+            console.warn("⚠️ بيانات منتهية الصلاحية");
+            return null;
+        }
+
+        params.delete('hash');
+        const sortedParams = Array.from(params.entries())
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, value]) => `${key}=${value}`)
+            .join('\n');
+        
+        const secretKey = crypto.createHmac('sha256', 'WebAppData')
+            .update(BOT_TOKEN)
+            .digest();
+        
+        const calculatedHash = crypto.createHmac('sha256', secretKey)
+            .update(sortedParams)
+            .digest('hex');
+        
+        // 🔐 استخدام timingSafeEqual لمنع Timing Attacks
+        const safeCalculated = Buffer.from(calculatedHash, 'hex');
+        const safeProvided = Buffer.from(hash, 'hex');
+        
+        if (safeCalculated.length === safeProvided.length && 
+            crypto.timingSafeEqual(safeCalculated, safeProvided)) {
+            const userStr = params.get('user');
+            return userStr ? JSON.parse(userStr) : null;
+        }
+    } catch (error) {
+        console.error('خطأ في التحقق:', error);
+    }
+    return null;
+}
+
+// ========== 🏆 دالة المتصدرين (بدون user_id) ==========
 async function getTopUsers(limit = 10) {
     try {
         return await usersCollection
             .find({})
             .sort({ balance: -1 })
             .limit(Math.min(limit, 50))
-            .project({ first_name: 1, balance: 1, user_id: 1, _id: 0 })
+            // إزالة user_id من النتائج المرسلة للواجهة
+            .project({ first_name: 1, balance: 1, _id: 0 }) 
             .toArray();
     } catch (error) {
         return [];
@@ -436,44 +483,6 @@ const ADMIN_IDS = process.env.ADMIN_USER_IDS
     : [];
 
 const APP_URL = process.env.APP_URL || "https://your-app.koyeb.app";
-
-// ========== التحقق من WebApp Data ==========
-function verifyWebAppData(initData) {
-    try {
-        if (!initData) return null;
-        
-        const params = new URLSearchParams(initData);
-        const hash = params.get('hash');
-        params.delete('hash');
-        
-        const sortedParams = Array.from(params.entries())
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([key, value]) => `${key}=${value}`)
-            .join('\n');
-        
-        const secretKey = crypto.createHmac('sha256', 'WebAppData')
-            .update(BOT_TOKEN)
-            .digest();
-        
-        const calculatedHash = crypto.createHmac('sha256', secretKey)
-            .update(sortedParams)
-            .digest('hex');
-        
-        if (calculatedHash === hash) {
-            const userStr = params.get('user');
-            if (userStr) {
-                try {
-                    return JSON.parse(userStr);
-                } catch (e) {
-                    return null;
-                }
-            }
-        }
-    } catch (error) {
-        console.error('خطأ في التحقق:', error);
-    }
-    return null;
-}
 
 // ========== Middleware ==========
 app.use('/api', async (req, res, next) => {
@@ -587,7 +596,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
           `⛏️ *التعدين:* 1 كريستال كل 24 ساعة (عرض محدود: 1,000,000 💎 فقط)\n` +
           `⭐ *الشراء:* 10 نجوم = 1 💎\n` +
           `💎 *العرض الكلي:* 800,000,000 كريستال (نادر!)\n\n` +
-          `👥 *الدعوة:* +1💎 (إذا اشترى) / +0.3💎 (إذا لم يشتري)\n` +
+          `👥 *الدعوة:* +1💎 (إذا اشترى) / +0.3💎 (إذا عدّن 3 مرات على الأقل)\n` +
           `🔐 *الشهادات:* موثقة بتوقيع رقمي\n\n` +
           `🚀 *قريباً:* الإدراج في منصة STON.fi!\n\n` +
           `اضغط الزر أدناه لفتح منصة التعدين:`
@@ -596,7 +605,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
           `⛏️ *Mining:* 1 crystal every 24h (Limited: 1,000,000 💎 only)\n` +
           `⭐ *Buy:* 10 stars = 1 💎\n` +
           `💎 *Total Supply:* 800,000,000 crystals (Rare!)\n\n` +
-          `👥 *Invite:* +1💎 (if they buy) / +0.3💎 (if they don't)\n` +
+          `👥 *Invite:* +1💎 (if they buy) / +0.3💎 (if they mine 3+ times)\n` +
           `🔐 *Certificates:* Digitally signed\n\n` +
           `🚀 *Coming Soon:* Listing on STON.fi!\n\n` +
           `Click the button below to open the mining platform:`;
@@ -705,7 +714,6 @@ bot.onText(/\/setupwebhook/, async (msg) => {
         return;
     }
     
-    // 🔐 استخدام المسار السري مع توكن البوت
     const webhookUrl = `${APP_URL}/api/webhook/${BOT_TOKEN}`;
     
     try {
@@ -824,6 +832,7 @@ app.get('/api/user/me', async (req, res) => {
     res.json({ username: bot.options.username });
 });
 
+// ========== 🏆 API المتصدرين (بدون user_id) ==========
 app.get('/api/top', async (req, res) => {
     try {
         const topUsers = await getTopUsers(10);
@@ -846,9 +855,8 @@ app.get('/api/star-stats', async (req, res) => {
 app.post('/api/mine', async (req, res) => {
     try {
         const userId = req.telegramUser.id.toString();
-        const cooldownTime = 24 * 60 * 60 * 1000; // 24 ساعة
+        const cooldownTime = 24 * 60 * 60 * 1000;
 
-        // 🔐 عملية ذرية - تحديث فقط إذا تحقق الشرط
         const result = await usersCollection.findOneAndUpdate(
             { 
                 user_id: userId,
@@ -883,7 +891,6 @@ app.post('/api/mine', async (req, res) => {
             });
         }
 
-        // تحديث العرض المحدود
         await updateSystemStats({ 
             minedSupply: 1,
             remainingSupply: -1 
@@ -1033,24 +1040,39 @@ app.post('/api/buy-with-stars',
         }
 });
 
-// ========== 🔐 Webhook الآمن (بمسار سري) ==========
+// ========== 🔐 Webhook الآمن (بمسار سري + التحقق من المخزون) ==========
 app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
     try {
         const update = req.body;
         
         if (update.pre_checkout_query) {
             const queryId = update.pre_checkout_query.id;
-            await fetch(
-                `https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        pre_checkout_query_id: queryId,
-                        ok: true
-                    })
-                }
-            );
+            const payload = update.pre_checkout_query.invoice_payload;
+            
+            // 🔐 التحقق من المخزون قبل الموافقة على الدفع
+            const invoice = await starInvoicesCollection.findOne({ payload });
+            const system = await getSystemStats();
+
+            let canPay = true;
+            let errorMessage = "";
+
+            if (!invoice) {
+                canPay = false;
+                errorMessage = "الطلب غير موجود";
+            } else if (system.remainingSupply < invoice.crystalAmount) {
+                canPay = false;
+                errorMessage = "عذراً، نفدت الكمية المطلوبة";
+            }
+
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    pre_checkout_query_id: queryId,
+                    ok: canPay,
+                    error_message: errorMessage
+                })
+            });
             return res.json({ ok: true });
         }
         
@@ -1410,8 +1432,8 @@ async function processPendingInvites() {
         for (const reward of pendingRewards) {
             const invitedUser = await getUser(reward.invitedId);
             
-            // 🔐 لا تعطي مكافأة إلا إذا قام المستخدم المدعو بالتعدين مرة واحدة على الأقل
-            if (invitedUser && invitedUser.total_mined > 0) {
+            // 🔐 لا تعطي مكافأة إلا إذا قام المستخدم المدعو بالتعدين 3 مرات على الأقل
+            if (invitedUser && invitedUser.total_mined >= 3) {
                 await usersCollection.updateOne(
                     { user_id: reward.inviterId },
                     { $inc: { balance: 0.3 } }
@@ -1424,7 +1446,7 @@ async function processPendingInvites() {
                             status: 'partial',
                             completedAt: Date.now(),
                             rewardAmount: 0.3,
-                            reason: 'لم يشتري - تم التعدين فقط'
+                            reason: 'لم يشتري - تم التعدين 3+ مرات'
                         } 
                     }
                 );
@@ -1433,8 +1455,8 @@ async function processPendingInvites() {
                 const lang = inviter?.language || 'en';
                 
                 const message = lang === 'ar'
-                    ? `⏳ *مكافأة دعوة محدودة*\n\n👤 ${reward.invitedName}\n⛏️ قام بالتعدين\n🎁 +0.3 💎`
-                    : `⏳ *Limited Invite Reward*\n\n👤 ${reward.invitedName}\n⛏️ Did mining\n🎁 +0.3 💎`;
+                    ? `⏳ *مكافأة دعوة محدودة*\n\n👤 ${reward.invitedName}\n⛏️ قام بالتعدين 3 مرات\n🎁 +0.3 💎`
+                    : `⏳ *Limited Invite Reward*\n\n👤 ${reward.invitedName}\n⛏️ Mined 3+ times\n🎁 +0.3 💎`;
                 
                 try {
                     await bot.sendMessage(reward.inviterId, message, { parse_mode: 'Markdown' });
@@ -1512,9 +1534,10 @@ startServer();
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
-console.log('🚀 بوت كريستال التعدين - الإصدار 17.0');
+console.log('🚀 بوت كريستال التعدين - الإصدار 18.0 (النسخة الآمنة النهائية)');
 console.log('📱 أرسل /start في تليجرام');
-console.log('🔐 الشهادات الرقمية: HMAC-SHA256');
-console.log('🔒 Webhook: محمي بتوكن البوت');
+console.log('🔐 الشهادات الرقمية: HMAC-SHA256 + التحقق من الصلاحية');
+console.log('🔒 Webhook: محمي بتوكن البوت + التحقق من المخزون');
 console.log('⛏️ تعدين: عملية ذرية - لا يمكن اختراقها');
+console.log('🛡️ دعوة: 3 تعدينات كحد أدنى للمكافأة');
 console.log('⭐ شراء: 10 ⭐ = 1 💎 (محدود 800M)');
