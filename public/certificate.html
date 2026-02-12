@@ -266,31 +266,95 @@
             }
         }
 
+        // ========== 🔐 دالة عرض الشهادة - محمية ضد XSS ==========
         function renderCertificate(r) {
             document.getElementById('loadingSpinner').classList.add('hidden');
             document.getElementById('certificateContent').classList.remove('hidden');
-            document.getElementById('certificateId').innerHTML = `🆔 ${r.certificate_id || 'CERT-' + r.transaction_id.substring(0,8)}`;
+            
+            // 🛡️ استخدام textContent لجميع أسماء المستخدمين
+            const certificateIdEl = document.getElementById('certificateId');
+            certificateIdEl.textContent = `🆔 ${r.certificate_id || 'CERT-' + r.transaction_id.substring(0,8)}`;
+            
             const d = new Date(r.date).toLocaleDateString('ar-EG', { dateStyle: 'full', timeStyle: 'medium' });
-            document.getElementById('transactionInfo').innerHTML = `
-                <div class="info-row"><span class="info-label">رقم المعاملة:</span><span class="info-value" style="font-family:monospace; color:#4facfe; font-size:12px; direction:ltr;">${r.transaction_id}</span></div>
-                <div class="info-row"><span class="info-label">التاريخ:</span><span class="info-value">${d}</span></div>
-                <div class="info-row"><span class="info-label">النجوم المدفوعة:</span><span class="stars-value">${r.stars_paid} ⭐</span></div>
-                <div class="info-row"><span class="info-label">الكريستال:</span><span class="crystals-value">${r.crystals_received.toFixed(1)} 💎</span></div>
-                <div class="info-row"><span class="info-label">سعر الصرف:</span><span class="info-value">${r.rate}</span></div>
-                <div class="info-row"><span class="info-label">الحالة:</span><span class="info-value" style="color:#4caf50;">✅ ${r.status}</span></div>
+            
+            // إنشاء HTML بأمان - الأسماء تأتي من textContent
+            const transactionHtml = `
+                <div class="info-row">
+                    <span class="info-label">رقم المعاملة:</span>
+                    <span class="info-value" style="font-family:monospace; color:#4facfe; font-size:12px; direction:ltr;">${r.transaction_id}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">التاريخ:</span>
+                    <span class="info-value">${d}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">النجوم المدفوعة:</span>
+                    <span class="stars-value">${r.stars_paid} ⭐</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">الكريستال:</span>
+                    <span class="crystals-value">${r.crystals_received.toFixed(1)} 💎</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">سعر الصرف:</span>
+                    <span class="info-value">${r.rate}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">الحالة:</span>
+                    <span class="info-value" style="color:#4caf50;">✅ ${r.status}</span>
+                </div>
             `;
-            document.getElementById('userInfo').innerHTML = `
-                <div class="info-row"><span class="info-label">المستخدم:</span><span class="info-value">${r.user_name}</span></div>
-                <div class="info-row"><span class="info-label">المعرف:</span><span class="info-value" style="font-family:monospace; color:#4facfe;">${r.user_id}</span></div>
-                <div class="info-row"><span class="info-label">جهة الإصدار:</span><span class="info-value">@${r.bot_username}</span></div>
-                <div class="info-row"><span class="info-label">التحقق:</span><span class="info-value" style="color:#4caf50;">${r.verified_by}</span></div>
-                <div class="info-row"><span class="info-label">الإصدار:</span><span class="info-value">v${r.certificate_version||'2.0'}</span></div>
+            document.getElementById('transactionInfo').innerHTML = transactionHtml;
+            
+            // 🛡️ استخدام textContent لاسم المستخدم
+            const userInfoDiv = document.getElementById('userInfo');
+            userInfoDiv.innerHTML = `
+                <div class="info-row">
+                    <span class="info-label">المستخدم:</span>
+                    <span class="info-value" id="safeUserName"></span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">المعرف:</span>
+                    <span class="info-value" style="font-family:monospace; color:#4facfe;">${r.user_id}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">جهة الإصدار:</span>
+                    <span class="info-value">@${r.bot_username}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">التحقق:</span>
+                    <span class="info-value" style="color:#4caf50;">${r.verified_by}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">الإصدار:</span>
+                    <span class="info-value">v${r.certificate_version||'2.0'}</span>
+                </div>
             `;
-            document.getElementById('digitalSignature').innerHTML = r.signature.match(/.{1,32}/g)?.join('\n') || r.signature;
+            
+            // 🛡️ إضافة اسم المستخدم بأمان
+            const safeNameSpan = document.createElement('span');
+            safeNameSpan.style.fontWeight = '800';
+            safeNameSpan.style.color = '#fff';
+            safeNameSpan.style.fontSize = '16px';
+            safeNameSpan.textContent = r.user_name;
+            document.getElementById('safeUserName').appendChild(safeNameSpan);
+            
+            // 🛡️ التوقيع الرقمي (نص عادي، آمن)
+            const signature = r.signature.match(/.{1,32}/g)?.join('\n') || r.signature;
+            document.getElementById('digitalSignature').textContent = signature;
+            
+            // تواريخ آمنة
             document.getElementById('verificationDate').innerHTML = `تاريخ الإصدار: ${new Date(r.issued_at||r.date).toLocaleDateString('ar-EG')}`;
             document.getElementById('verificationCount').innerHTML = `🔄 عدد مرات التحقق: ${r.verification_count||1}`;
             document.getElementById('verifyLink').innerHTML = r.verify_link;
-            new QRCode(document.getElementById('qrcode'), { text: r.verify_link, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.H });
+            
+            // QR Code
+            new QRCode(document.getElementById('qrcode'), {
+                text: r.verify_link,
+                width: 180,
+                height: 180,
+                correctLevel: QRCode.CorrectLevel.H
+            });
         }
 
         function showError(msg) {
@@ -319,7 +383,9 @@
                     URL.revokeObjectURL(url);
                     tg.showAlert('✅ تم تحميل الشهادة');
                 }
-            } catch (e) { tg.showAlert('❌ فشل التحميل'); }
+            } catch (e) { 
+                tg.showAlert('❌ فشل التحميل'); 
+            }
         }
 
         async function verifyCertificate() {
