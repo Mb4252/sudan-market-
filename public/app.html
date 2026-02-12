@@ -983,7 +983,7 @@
                     <div style="width: 1px; background: rgba(255,255,255,0.2);"></div>
                     <div style="text-align: center;">
                         <div style="font-size: 32px; font-weight: 900; color: #4facfe;">0.3</div>
-                        <div style="font-size: 13px; color: #ddd;" id="rewardNoBuy">إذا لم يشتري</div>
+                        <div style="font-size: 13px; color: #ddd;" id="rewardNoBuy">إذا عدّن 3 مرات</div>
                     </div>
                 </div>
                 
@@ -1130,7 +1130,7 @@
                 inviteTitle: 'دعوة الأصدقاء',
                 inviteDesc: 'ادعُ أصدقائك واربح كريستال!',
                 rewardBuy: 'إذا اشترى',
-                rewardNoBuy: 'إذا لم يشتري',
+                rewardNoBuy: 'إذا عدّن 3 مرات',
                 invitesCountLabel: 'عدد الدعوات:',
                 rewardsTotalLabel: 'إجمالي المكافآت:',
                 copyLinkText: 'نسخ رابط الدعوة',
@@ -1198,7 +1198,7 @@
                 inviteTitle: 'Invite Friends',
                 inviteDesc: 'Invite friends and earn crystals!',
                 rewardBuy: 'If they buy',
-                rewardNoBuy: 'If they don\'t buy',
+                rewardNoBuy: 'If they mine 3+ times',
                 invitesCountLabel: 'Total invites:',
                 rewardsTotalLabel: 'Total rewards:',
                 copyLinkText: 'Copy invite link',
@@ -1495,7 +1495,6 @@
                 userData.balance = parseFloat(data.newBalance);
                 userData.total_mined = parseFloat(data.totalMined);
                 lastMineTime = Date.now();
-                updateUI();
                 loadSystemStats();
                 updateMiningProgress();
                 loadLeaderboard();
@@ -1670,6 +1669,7 @@
             if (data.success) {
                 document.getElementById('totalInvites').textContent = data.totalInvites || 0;
                 document.getElementById('totalInviteRewards').textContent = `${(data.totalRewards || 0).toFixed(1)} 💎`;
+                
                 let html = '';
                 if (data.recentInvites?.length) {
                     data.recentInvites.slice(0, 3).forEach(i => {
@@ -1679,18 +1679,58 @@
                             status = currentLanguage === 'ar' ? '✅ اشترى' : '✅ Purchased';
                             color = '#4caf50';
                         } else if (i.status === 'partial') {
-                            status = currentLanguage === 'ar' ? '⏳ لم يشتري' : '⏳ No purchase';
+                            status = currentLanguage === 'ar' ? '⏳ عدّن 3+' : '⏳ Mined 3+';
                             color = '#4facfe';
                         } else {
                             status = currentLanguage === 'ar' ? '🕒 معلق' : '🕒 Pending';
                             color = '#ffc107';
                         }
                         const reward = i.rewardAmount ? `+${i.rewardAmount} 💎` : (currentLanguage === 'ar' ? 'في الانتظار' : 'Pending');
-                        html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 12px; margin-bottom: 8px;">
-                            <div><div style="font-weight: 700;">${i.invitedName}</div><div style="font-size: 11px; color: #aaa;">${d}</div></div>
-                            <div style="text-align: left;"><span style="color: ${color}; font-size: 12px;">${status}</span>
-                            <span style="color: #FFD700; font-weight: 700; font-size: 13px; display: block;">${reward}</span></div>
-                        </div>`;
+                        
+                        // 🔐 استخدام textContent للأسماء لمنع XSS
+                        const nameSpan = document.createElement('span');
+                        nameSpan.style.fontWeight = '700';
+                        nameSpan.textContent = i.invitedName;
+                        
+                        const statusSpan = document.createElement('span');
+                        statusSpan.style.color = color;
+                        statusSpan.style.fontSize = '12px';
+                        statusSpan.style.display = 'block';
+                        statusSpan.textContent = status;
+                        
+                        const rewardSpan = document.createElement('span');
+                        rewardSpan.style.color = '#FFD700';
+                        rewardSpan.style.fontWeight = '700';
+                        rewardSpan.style.fontSize = '13px';
+                        rewardSpan.style.display = 'block';
+                        rewardSpan.textContent = reward;
+                        
+                        const container = document.createElement('div');
+                        container.style.display = 'flex';
+                        container.style.justifyContent = 'space-between';
+                        container.style.alignItems = 'center';
+                        container.style.padding = '12px';
+                        container.style.background = 'rgba(255,255,255,0.05)';
+                        container.style.borderRadius = '12px';
+                        container.style.marginBottom = '8px';
+                        
+                        const leftDiv = document.createElement('div');
+                        leftDiv.appendChild(nameSpan);
+                        const dateDiv = document.createElement('div');
+                        dateDiv.style.fontSize = '11px';
+                        dateDiv.style.color = '#aaa';
+                        dateDiv.textContent = d;
+                        leftDiv.appendChild(dateDiv);
+                        
+                        const rightDiv = document.createElement('div');
+                        rightDiv.style.textAlign = 'left';
+                        rightDiv.appendChild(statusSpan);
+                        rightDiv.appendChild(rewardSpan);
+                        
+                        container.appendChild(leftDiv);
+                        container.appendChild(rightDiv);
+                        
+                        html += container.outerHTML;
                     });
                 } else {
                     html = '<div style="text-align: center; padding: 15px; color: #aaa;">' + 
@@ -1718,6 +1758,7 @@
             }
         }
 
+        // ========== 🏆 المتصدرين - محمي ضد XSS وآمن تماماً ==========
         async function loadLeaderboard() {
             const data = await apiRequest('/api/top');
             if (data.success && data.topUsers) {
@@ -1726,14 +1767,57 @@
                     let medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}`;
                     let color = i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#aaa';
                     let bg = i < 3 ? `rgba(${i === 0 ? '255,215,0' : i === 1 ? '192,192,192' : '205,127,50'},0.15)` : 'rgba(255,255,255,0.05)';
-                    html += `<div class="top-rank" style="background: ${bg};">
-                        <div class="rank-medal" style="background: ${color}20; color: ${color};">${medal}</div>
-                        <div style="flex: 1;"><div style="font-weight: 800;">${u.first_name || 'Miner'}</div>
-                        <div style="font-size: 12px; color: #aaa;">${currentLanguage === 'ar' ? 'منقب' : 'Miner'}</div></div>
-                        <div style="text-align: left;"><div style="font-weight: 900; color: #FFD700; font-size: 20px;">${u.balance.toFixed(2)}</div>
-                        <div style="font-size: 11px; color: #4facfe;">💎 ${currentLanguage === 'ar' ? 'كريستال' : 'Crystals'}</div></div>
-                    </div>`;
-                    if (u.user_id === userId) document.getElementById('userRank').innerHTML = `#${i+1}`;
+                    
+                    // 🔐 استخدام textContent للأسماء لمنع XSS
+                    const nameDiv = document.createElement('div');
+                    nameDiv.style.fontWeight = '800';
+                    nameDiv.style.color = '#fff';
+                    nameDiv.style.fontSize = '16px';
+                    nameDiv.textContent = u.first_name || (currentLanguage === 'ar' ? 'منقب' : 'Miner');
+                    
+                    const rankDiv = document.createElement('div');
+                    rankDiv.className = 'top-rank';
+                    rankDiv.style.background = bg;
+                    
+                    const medalDiv = document.createElement('div');
+                    medalDiv.className = 'rank-medal';
+                    medalDiv.style.background = `${color}20`;
+                    medalDiv.style.color = color;
+                    medalDiv.textContent = medal;
+                    
+                    const infoDiv = document.createElement('div');
+                    infoDiv.style.flex = '1';
+                    infoDiv.appendChild(nameDiv);
+                    const titleDiv = document.createElement('div');
+                    titleDiv.style.fontSize = '12px';
+                    titleDiv.style.color = '#aaa';
+                    titleDiv.textContent = currentLanguage === 'ar' ? 'منقب' : 'Miner';
+                    infoDiv.appendChild(titleDiv);
+                    
+                    const balanceDiv = document.createElement('div');
+                    balanceDiv.style.textAlign = 'left';
+                    const amountDiv = document.createElement('div');
+                    amountDiv.style.fontWeight = '900';
+                    amountDiv.style.color = '#FFD700';
+                    amountDiv.style.fontSize = '20px';
+                    amountDiv.textContent = u.balance.toFixed(2);
+                    const crystalDiv = document.createElement('div');
+                    crystalDiv.style.fontSize = '11px';
+                    crystalDiv.style.color = '#4facfe';
+                    crystalDiv.textContent = `💎 ${currentLanguage === 'ar' ? 'كريستال' : 'Crystals'}`;
+                    balanceDiv.appendChild(amountDiv);
+                    balanceDiv.appendChild(crystalDiv);
+                    
+                    rankDiv.appendChild(medalDiv);
+                    rankDiv.appendChild(infoDiv);
+                    rankDiv.appendChild(balanceDiv);
+                    
+                    html += rankDiv.outerHTML;
+                    
+                    // تحديث ترتيب المستخدم الحالي (آمن)
+                    if (u.user_id === userId) {
+                        document.getElementById('userRank').textContent = `#${i+1}`;
+                    }
                 });
                 document.getElementById('topUsersList').innerHTML = html;
             } else {
