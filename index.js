@@ -12,7 +12,20 @@ const { MongoClient } = require('mongodb');
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-// ========== الأمان المتقدم ==========
+// ========== 🔐 الأمان المتقدم - منع الوصول للملفات الحساسة ==========
+app.use((req, res, next) => {
+    // منع الوصول لأي ملف يبدأ بنقطة أو ملفات الإعدادات
+    if (req.path.startsWith('/.') || 
+        req.path.includes('config') || 
+        req.path.endsWith('.json') ||
+        req.path.includes('.env') ||
+        req.path.includes('package.json') ||
+        req.path.includes('package-lock.json')) {
+        return res.status(403).send('Access Denied');
+    }
+    next();
+});
+
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
@@ -27,16 +40,6 @@ app.use(helmet({
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
-
-app.use((req, res, next) => {
-    if (req.path.includes('.env') || 
-        req.path.includes('package.json') || 
-        req.path.includes('config') ||
-        req.path.includes('robots.txt')) {
-        return res.status(403).send('Forbidden');
-    }
-    next();
-});
 
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -74,8 +77,12 @@ let inviteRewardsCollection;
 let securityLogsCollection;
 let certificatesCollection;
 
-// ========== 🔐 مفتاح التوقيع الرقمي الآمن ==========
-const CERTIFICATE_SECRET = process.env.CERT_SECRET || crypto.randomBytes(64).toString('hex');
+// ========== 🔐 مفتاح التوقيع الرقمي الآمن (ثابت من .env) ==========
+const CERTIFICATE_SECRET = process.env.CERT_SECRET;
+if (!CERTIFICATE_SECRET) {
+    console.error('❌ CERT_SECRET غير موجود في ملف .env');
+    process.exit(1);
+}
 
 function generateCertificateSignature(orderId, userId, amount, timestamp) {
     const hmac = crypto.createHmac('sha256', CERTIFICATE_SECRET);
@@ -175,7 +182,7 @@ async function connectToMongo() {
         console.log(`💎 إجمالي العرض: 800,000,000 كريستال`);
         console.log(`⛏️ حد التعدين: 1,000,000 كريستال`);
         console.log(`🛡️ نظام مكافحة الاحتيال: مفعل`);
-        console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
+        console.log(`🔐 نظام الشهادات الرقمية: مفعل (HMAC-SHA256)`);
         console.log(`🔑 مفتاح التوقيع: ${CERTIFICATE_SECRET.substring(0, 10)}...`);
         return true;
     } catch (error) {
@@ -345,14 +352,17 @@ async function saveUser(userData) {
     }
 }
 
-async function updateUserBalance(userId, amount) {
+// ========== 🔐 دالة تحديث الرصيد بدقة حسابية محمية ==========
+async function updateUserBalancePrecise(userId, amount) {
     try {
         if (!userId || typeof amount !== 'number' || isNaN(amount)) {
             return false;
         }
+        // التقريب لـ 3 أرقام عشرية لمنع أخطاء Floating Point
+        const newAmount = Math.round(amount * 1000) / 1000;
         const result = await usersCollection.updateOne(
             { user_id: userId },
-            { $inc: { balance: amount } }
+            { $inc: { balance: newAmount } }
         );
         return result.modifiedCount > 0;
     } catch (error) {
@@ -381,59 +391,12 @@ async function updateSystemStats(updates) {
     }
 }
 
-// ========== 🔐 دالة التحقق من WebApp Data (محمية بالكامل) ==========
-function verifyWebAppData(initData) {
-    try {
-        if (!initData) return null;
-        
-        const params = new URLSearchParams(initData);
-        const hash = params.get('hash');
-        const authDate = params.get('auth_date');
-        
-        // 🔐 التحقق من انتهاء صلاحية البيانات (24 ساعة)
-        const now = Math.floor(Date.now() / 1000);
-        if (now - parseInt(authDate) > 86400) {
-            console.warn("⚠️ بيانات منتهية الصلاحية");
-            return null;
-        }
-
-        params.delete('hash');
-        const sortedParams = Array.from(params.entries())
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([key, value]) => `${key}=${value}`)
-            .join('\n');
-        
-        const secretKey = crypto.createHmac('sha256', 'WebAppData')
-            .update(BOT_TOKEN)
-            .digest();
-        
-        const calculatedHash = crypto.createHmac('sha256', secretKey)
-            .update(sortedParams)
-            .digest('hex');
-        
-        // 🔐 استخدام timingSafeEqual لمنع Timing Attacks
-        const safeCalculated = Buffer.from(calculatedHash, 'hex');
-        const safeProvided = Buffer.from(hash, 'hex');
-        
-        if (safeCalculated.length === safeProvided.length && 
-            crypto.timingSafeEqual(safeCalculated, safeProvided)) {
-            const userStr = params.get('user');
-            return userStr ? JSON.parse(userStr) : null;
-        }
-    } catch (error) {
-        console.error('خطأ في التحقق:', error);
-    }
-    return null;
-}
-
-// ========== 🏆 دالة المتصدرين (بدون user_id) ==========
 async function getTopUsers(limit = 10) {
     try {
         return await usersCollection
             .find({})
             .sort({ balance: -1 })
             .limit(Math.min(limit, 50))
-            // إزالة user_id من النتائج المرسلة للواجهة
             .project({ first_name: 1, balance: 1, _id: 0 }) 
             .toArray();
     } catch (error) {
@@ -483,6 +446,49 @@ const ADMIN_IDS = process.env.ADMIN_USER_IDS
     : [];
 
 const APP_URL = process.env.APP_URL || "https://your-app.koyeb.app";
+
+// ========== 🔐 دالة التحقق من WebApp Data (محمية بالكامل) ==========
+function verifyWebAppData(initData) {
+    try {
+        if (!initData) return null;
+        
+        const params = new URLSearchParams(initData);
+        const hash = params.get('hash');
+        const authDate = params.get('auth_date');
+        
+        const now = Math.floor(Date.now() / 1000);
+        if (now - parseInt(authDate) > 86400) {
+            console.warn("⚠️ بيانات منتهية الصلاحية");
+            return null;
+        }
+
+        params.delete('hash');
+        const sortedParams = Array.from(params.entries())
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, value]) => `${key}=${value}`)
+            .join('\n');
+        
+        const secretKey = crypto.createHmac('sha256', 'WebAppData')
+            .update(BOT_TOKEN)
+            .digest();
+        
+        const calculatedHash = crypto.createHmac('sha256', secretKey)
+            .update(sortedParams)
+            .digest('hex');
+        
+        const safeCalculated = Buffer.from(calculatedHash, 'hex');
+        const safeProvided = Buffer.from(hash, 'hex');
+        
+        if (safeCalculated.length === safeProvided.length && 
+            crypto.timingSafeEqual(safeCalculated, safeProvided)) {
+            const userStr = params.get('user');
+            return userStr ? JSON.parse(userStr) : null;
+        }
+    } catch (error) {
+        console.error('خطأ في التحقق:', error);
+    }
+    return null;
+}
 
 // ========== Middleware ==========
 app.use('/api', async (req, res, next) => {
@@ -596,8 +602,8 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
           `⛏️ *التعدين:* 1 كريستال كل 24 ساعة (عرض محدود: 1,000,000 💎 فقط)\n` +
           `⭐ *الشراء:* 10 نجوم = 1 💎\n` +
           `💎 *العرض الكلي:* 800,000,000 كريستال (نادر!)\n\n` +
-          `👥 *الدعوة:* +1💎 (إذا اشترى) / +0.3💎 (إذا عدّن 3 مرات على الأقل)\n` +
-          `🔐 *الشهادات:* موثقة بتوقيع رقمي\n\n` +
+          `👥 *الدعوة:* +1💎 (إذا اشترى) / +0.3💎 (إذا عدّن 3 مرات وكان عمر الحساب يوم+)\n` +
+          `🔐 *الشهادات:* موثقة بتوقيع رقمي ثابت\n\n` +
           `🚀 *قريباً:* الإدراج في منصة STON.fi!\n\n` +
           `اضغط الزر أدناه لفتح منصة التعدين:`
         : `💎 *Welcome to Crystal Mining!* 💎\n\n` +
@@ -605,8 +611,8 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
           `⛏️ *Mining:* 1 crystal every 24h (Limited: 1,000,000 💎 only)\n` +
           `⭐ *Buy:* 10 stars = 1 💎\n` +
           `💎 *Total Supply:* 800,000,000 crystals (Rare!)\n\n` +
-          `👥 *Invite:* +1💎 (if they buy) / +0.3💎 (if they mine 3+ times)\n` +
-          `🔐 *Certificates:* Digitally signed\n\n` +
+          `👥 *Invite:* +1💎 (if they buy) / +0.3💎 (if they mine 3+ times & account age 1d+)\n` +
+          `🔐 *Certificates:* Digitally signed with permanent key\n\n` +
           `🚀 *Coming Soon:* Listing on STON.fi!\n\n` +
           `Click the button below to open the mining platform:`;
     
@@ -673,6 +679,7 @@ bot.onText(/\/start verify_(.+)/, async (msg, match) => {
               `💎 *الكريستال المستلم:* ${order.crystalAmount.toFixed(1)}\n` +
               `📅 *التاريخ:* ${date}\n\n` +
               `🔄 *عدد مرات التحقق:* ${(certificate?.verifiedCount || 0) + 1}\n\n` +
+              `🔐 *التوقيع:* ${isValid ? 'صحيح' : 'غير صحيح'} (مفتاح ثابت)\n\n` +
               `📌 *هذه شهادة رسمية صادرة عن بوت كريستال التعدين*`
             : `🔐 *Payment Certificate Verification*\n\n` +
               `✅ *Status:* ${isValid ? 'Valid ✓' : 'Invalid ✗'}\n\n` +
@@ -682,6 +689,7 @@ bot.onText(/\/start verify_(.+)/, async (msg, match) => {
               `💎 *Crystals Received:* ${order.crystalAmount.toFixed(1)}\n` +
               `📅 *Date:* ${date}\n\n` +
               `🔄 *Verifications:* ${(certificate?.verifiedCount || 0) + 1}\n\n` +
+              `🔐 *Signature:* ${isValid ? 'Valid' : 'Invalid'} (permanent key)\n\n` +
               `📌 *This is an official certificate issued by Crystal Mining Bot*`;
         
         await bot.sendMessage(chatId, verifyMessage, { 
@@ -832,7 +840,6 @@ app.get('/api/user/me', async (req, res) => {
     res.json({ username: bot.options.username });
 });
 
-// ========== 🏆 API المتصدرين (بدون user_id) ==========
 app.get('/api/top', async (req, res) => {
     try {
         const topUsers = await getTopUsers(10);
@@ -1040,7 +1047,7 @@ app.post('/api/buy-with-stars',
         }
 });
 
-// ========== 🔐 Webhook الآمن (بمسار سري + التحقق من المخزون) ==========
+// ========== 🔐 Webhook الآمن - معالجة ذرية للمخزون ==========
 app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
     try {
         const update = req.body;
@@ -1049,7 +1056,6 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
             const queryId = update.pre_checkout_query.id;
             const payload = update.pre_checkout_query.invoice_payload;
             
-            // 🔐 التحقق من المخزون قبل الموافقة على الدفع
             const invoice = await starInvoicesCollection.findOne({ payload });
             const system = await getSystemStats();
 
@@ -1086,14 +1092,48 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
                 const crystalAmount = invoice.crystalAmount;
                 const userId = invoice.userId;
                 
-                await usersCollection.updateOne(
-                    { user_id: userId },
+                // 🔐 عملية ذرية: تحديث المخزون فقط إذا كان كافياً
+                const updateResult = await systemCollection.findOneAndUpdate(
+                    { 
+                        _id: 'config', 
+                        remainingSupply: { $gte: crystalAmount } 
+                    },
                     { 
                         $inc: { 
-                            balance: crystalAmount,
-                            total_bought: crystalAmount 
+                            totalStarsInvested: starAmount,
+                            totalCrystalSold: crystalAmount,
+                            soldSupply: crystalAmount,
+                            remainingSupply: -crystalAmount 
                         } 
-                    }
+                    },
+                    { returnDocument: 'after' }
+                );
+
+                if (!updateResult) {
+                    // 🚨 محاولة بيع بعد نفاد المخزون - تسجيل خطير
+                    console.error(`🚨 OVERSELL DETECTED: User ${userId} paid ${starAmount}⭐ for ${crystalAmount}💎 but supply is empty!`);
+                    await logSecurityEvent('SUPPLY_OVERSELL_ERROR', userId, { 
+                        starAmount, 
+                        crystalAmount,
+                        payload 
+                    });
+                    
+                    await bot.sendMessage(userId,
+                        `⚠️ *عذراً، حدث خطأ في نظام الدفع*\n\n` +
+                        `تم خصم النجوم من حسابك، لكن الكمية المطلوبة نفدت في اللحظة الأخيرة.\n` +
+                        `سيتم رد النجوم إليك خلال 24 ساعة.`,
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    return res.json({ ok: true });
+                }
+                
+                // إضافة الرصيد للمستخدم بدقة حسابية
+                await updateUserBalancePrecise(userId, crystalAmount);
+                
+                await usersCollection.updateOne(
+                    { user_id: userId },
+                    { $inc: { total_bought: crystalAmount } }
                 );
                 
                 await starInvoicesCollection.updateOne(
@@ -1106,13 +1146,7 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
                     }
                 );
                 
-                await updateSystemStats({ 
-                    totalStarsInvested: starAmount,
-                    totalCrystalSold: crystalAmount,
-                    soldSupply: crystalAmount,
-                    remainingSupply: -crystalAmount
-                });
-                
+                // إنشاء الشهادة الرقمية (بمفتاح ثابت)
                 const signature = generateCertificateSignature(
                     payload,
                     userId,
@@ -1137,16 +1171,17 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
                     ? `✅ *تم شراء الكريستال بنجاح!*\n\n` +
                       `💎 الكمية: ${crystalAmount.toFixed(1)} كريستال\n` +
                       `⭐ الدفع: ${starAmount} نجوم\n` +
-                      `🔐 *شهادة رقمية:* تم إنشاؤها\n\n` +
+                      `🔐 *شهادة رقمية:* تم إنشاؤها (مفتاح ثابت)\n\n` +
                       `📄 شهادة الدفع متاحة في صفحة المشتريات`
                     : `✅ *Crystal Purchase Successful!*\n\n` +
                       `💎 Amount: ${crystalAmount.toFixed(1)} Crystals\n` +
                       `⭐ Paid: ${starAmount} Stars\n` +
-                      `🔐 *Certificate:* Created\n\n` +
+                      `🔐 *Certificate:* Created (permanent key)\n\n` +
                       `📄 Payment certificate available in purchases page`;
                 
                 await bot.sendMessage(userId, successMessage, { parse_mode: 'Markdown' });
                 
+                // مكافأة الدعوة
                 if (user?.invited_by) {
                     const pendingReward = await inviteRewardsCollection.findOne({
                         inviterId: user.invited_by,
@@ -1155,10 +1190,7 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
                     });
                     
                     if (pendingReward) {
-                        await usersCollection.updateOne(
-                            { user_id: user.invited_by },
-                            { $inc: { balance: 1 } }
-                        );
+                        await updateUserBalancePrecise(user.invited_by, 1);
                         
                         await inviteRewardsCollection.updateOne(
                             { _id: pendingReward._id },
@@ -1180,11 +1212,12 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
         
         res.json({ ok: true });
     } catch (error) {
+        console.error('❌ Webhook Error:', error);
         res.json({ ok: true });
     }
 });
 
-// ========== API الشهادات ==========
+// ========== 🔐 API الشهادات - محمي ضد IDOR ==========
 app.get('/api/receipt/:orderId',
     param('orderId').isString().trim().isLength({ min: 10, max: 200 }),
     async (req, res) => {
@@ -1211,10 +1244,18 @@ app.get('/api/receipt/:orderId',
             }
             
             const isOwner = order.userId === userId;
-            const isAdmin = ADMIN_IDS.includes(Number(userId));
-            
-            if (!isOwner && !isAdmin) {
-                return res.status(403).json({ success: false, error: 'هذه الشهادة لا تخصك' });
+            const isAdminUser = ADMIN_IDS.includes(Number(userId));
+
+            // 🔐 حماية صارمة ضد IDOR
+            if (!isOwner && !isAdminUser) {
+                await logSecurityEvent('UNAUTHORIZED_CERT_ACCESS', userId, { 
+                    orderId,
+                    targetUserId: order.userId 
+                });
+                return res.status(403).json({ 
+                    success: false, 
+                    error: 'هذه الشهادة لا تخصك ولا يمكن عرضها' 
+                });
             }
             
             const user = await getUser(order.userId);
@@ -1257,14 +1298,16 @@ app.get('/api/receipt/:orderId',
                 verification_code: verificationCode,
                 verify_link: verifyLink,
                 issued_at: Date.now(),
-                verified_by: 'Telegram Stars API + Digital Signature',
+                verified_by: 'Telegram Stars API + Digital Signature (Permanent Key)',
                 certificate_id: `CERT-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
                 certificate_version: '2.0',
-                verification_count: existingCert?.verifiedCount || 0
+                verification_count: existingCert?.verifiedCount || 0,
+                permanent_key: true
             };
             
-            res.json({ success: true, receipt, isOwner, isAdmin });
+            res.json({ success: true, receipt, isOwner, isAdmin: isAdminUser });
         } catch (error) {
+            console.error('❌ Certificate Error:', error);
             res.status(500).json({ success: false, error: 'فشل في جلب الشهادة' });
         }
 });
@@ -1315,7 +1358,8 @@ app.get('/api/verify-certificate/:orderId',
                 date: order.completedAt || order.createdAt,
                 verifiedAt: Date.now(),
                 verificationCount: (certificate?.verifiedCount || 0) + 1,
-                signatureValid: isValid
+                signatureValid: isValid,
+                permanentKey: true
             };
             
             res.json({ success: true, verification: verificationResult });
@@ -1419,10 +1463,11 @@ app.get('/api/invite-info/:userId',
         }
 });
 
-// ========== ✅ معالجة الدعوات المعلقة (محمية ضد الحسابات الوهمية) ==========
+// ========== ✅ معالجة الدعوات المعلقة - محمي ضد Sybil ==========
 async function processPendingInvites() {
     try {
         const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+        const minAgeRequired = 24 * 60 * 60 * 1000; // يوم واحد
         
         const pendingRewards = await inviteRewardsCollection.find({
             status: 'pending',
@@ -1432,38 +1477,48 @@ async function processPendingInvites() {
         for (const reward of pendingRewards) {
             const invitedUser = await getUser(reward.invitedId);
             
-            // 🔐 لا تعطي مكافأة إلا إذا قام المستخدم المدعو بالتعدين 3 مرات على الأقل
-            if (invitedUser && invitedUser.total_mined >= 3) {
-                await usersCollection.updateOne(
-                    { user_id: reward.inviterId },
-                    { $inc: { balance: 0.3 } }
-                );
+            if (invitedUser) {
+                const accountAge = Date.now() - invitedUser.created_at;
                 
-                await inviteRewardsCollection.updateOne(
-                    { _id: reward._id },
-                    { 
-                        $set: { 
-                            status: 'partial',
-                            completedAt: Date.now(),
-                            rewardAmount: 0.3,
-                            reason: 'لم يشتري - تم التعدين 3+ مرات'
-                        } 
-                    }
-                );
-                
-                const inviter = await getUser(reward.inviterId);
-                const lang = inviter?.language || 'en';
-                
-                const message = lang === 'ar'
-                    ? `⏳ *مكافأة دعوة محدودة*\n\n👤 ${reward.invitedName}\n⛏️ قام بالتعدين 3 مرات\n🎁 +0.3 💎`
-                    : `⏳ *Limited Invite Reward*\n\n👤 ${reward.invitedName}\n⛏️ Mined 3+ times\n🎁 +0.3 💎`;
-                
-                try {
-                    await bot.sendMessage(reward.inviterId, message, { parse_mode: 'Markdown' });
-                } catch (e) {}
+                // 🔐 شروط صارمة لمكافحة Sybil
+                if (invitedUser.total_mined >= 3 && accountAge > minAgeRequired) {
+                    await updateUserBalancePrecise(reward.inviterId, 0.3);
+                    
+                    await inviteRewardsCollection.updateOne(
+                        { _id: reward._id },
+                        { 
+                            $set: { 
+                                status: 'partial',
+                                completedAt: Date.now(),
+                                rewardAmount: 0.3,
+                                reason: 'لم يشتري - تم التعدين 3+ مرات وعمر الحساب يوم+'
+                            } 
+                        }
+                    );
+                    
+                    const inviter = await getUser(reward.inviterId);
+                    const lang = inviter?.language || 'en';
+                    
+                    const message = lang === 'ar'
+                        ? `⏳ *مكافأة دعوة محدودة*\n\n👤 ${reward.invitedName}\n⛏️ تعدين 3+ مرات ويوم+\n🎁 +0.3 💎`
+                        : `⏳ *Limited Invite Reward*\n\n👤 ${reward.invitedName}\n⛏️ Mined 3+ times & 1d+\n🎁 +0.3 💎`;
+                    
+                    try {
+                        await bot.sendMessage(reward.inviterId, message, { parse_mode: 'Markdown' });
+                    } catch (e) {}
+                } else {
+                    // 🚨 تسجيل حسابات مشبوهة
+                    await logSecurityEvent('SYBIL_INVITE_SUSPICION', reward.inviterId, { 
+                        invitedId: reward.invitedId,
+                        total_mined: invitedUser.total_mined,
+                        accountAge
+                    });
+                }
             }
         }
-    } catch (error) {}
+    } catch (error) {
+        console.error('❌ Error processing invites:', error);
+    }
 }
 
 setInterval(processPendingInvites, 60 * 60 * 1000);
@@ -1491,8 +1546,19 @@ bot.onText(/\/admin/, async (msg) => {
     const supplyRemaining = system.remainingSupply || 0;
     const totalCertificates = await certificatesCollection.countDocuments();
     
+    // إحصائيات أمنية
+    const oversellAttempts = await securityLogsCollection.countDocuments({ 
+        type: 'SUPPLY_OVERSELL_ERROR',
+        timestamp: { $gt: Date.now() - 24 * 60 * 60 * 1000 }
+    });
+    
+    const sybilAttempts = await securityLogsCollection.countDocuments({ 
+        type: 'SYBIL_INVITE_SUSPICION',
+        timestamp: { $gt: Date.now() - 24 * 60 * 60 * 1000 }
+    });
+    
     const message = 
-        `👑 *لوحة تحكم الأدمن*\n\n` +
+        `👑 *لوحة تحكم الأدمن - النسخة الآمنة النهائية*\n\n` +
         `📊 *إحصائيات:*\n` +
         `• 👥 المستخدمون: ${totalUsers}\n` +
         `• ⭐ مبيعات النجوم: ${starStats.totalStars} ⭐\n` +
@@ -1501,8 +1567,16 @@ bot.onText(/\/admin/, async (msg) => {
         `• ⛏️ متبقي للتعدين: ${miningRemaining.toLocaleString()} 💎\n` +
         `• 🎯 متبقي للبيع: ${supplyRemaining.toLocaleString()} 💎\n\n` +
         `🔐 *الشهادات:* ${totalCertificates}\n` +
-        `🔑 *مفتاح التوقيع:* ${CERTIFICATE_SECRET.substring(0, 10)}...\n\n` +
-        `🛡️ مكافحة الاحتيال: ${system.antiSybilEnabled ? '✅' : '❌'}`;
+        `🔑 *مفتاح التوقيع:* ${CERTIFICATE_SECRET.substring(0, 10)}... (ثابت)\n\n` +
+        `🛡️ *الأمان:*\n` +
+        `• ✅ XSS Protection: مفعل\n` +
+        `• ✅ IDOR Protection: مفعل\n` +
+        `• ✅ Atomic Operations: مفعل\n` +
+        `• ✅ Anti-Sybil: مفعل (3+ تعدين، عمر يوم)\n` +
+        `• ✅ Precision Fix: مفعل\n` +
+        `• ⚠️ محاولات Oversell (24h): ${oversellAttempts}\n` +
+        `• ⚠️ محاولات Sybil (24h): ${sybilAttempts}\n\n` +
+        `🔒 *Webhook:* /api/webhook/[SECRET] (محمي)`;
     
     await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 });
@@ -1519,9 +1593,13 @@ async function startServer() {
         console.log(`🌐 الخادم يعمل على المنفذ: ${PORT}`);
         console.log(`🔗 رابط الواجهة: ${APP_URL}`);
         console.log(`⭐ نظام دفع النجوم: مفعل`);
-        console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
+        console.log(`🔐 نظام الشهادات الرقمية: مفعل (مفتاح ثابت)`);
         console.log(`🔑 مفتاح التوقيع: ${CERTIFICATE_SECRET.substring(0, 10)}...`);
         console.log(`🔒 Webhook: /api/webhook/[SECRET]`);
+        console.log(`🛡️ XSS Protection: مفعل (textContent + createElement)`);
+        console.log(`🛡️ IDOR Protection: مفعل (ممنوع مشاهدة شهادات غيرك)`);
+        console.log(`🛡️ Atomic Operations: مفعل (لا يمكن تجاوز المخزون)`);
+        console.log(`🛡️ Anti-Sybil: مفعل (3 تعدينات + عمر يوم)`);
         console.log(`💎 العرض المحدود: 800,000,000 💎`);
         console.log(`⛏️ حد التعدين: 1,000,000 💎`);
         console.log(`💰 سحب USDT: ❌ معطل`);
@@ -1534,10 +1612,11 @@ startServer();
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
-console.log('🚀 بوت كريستال التعدين - الإصدار 18.0 (النسخة الآمنة النهائية)');
+console.log('🚀 بوت كريستال التعدين - الإصدار 20.0 (النسخة الآمنة النهائية)');
 console.log('📱 أرسل /start في تليجرام');
-console.log('🔐 الشهادات الرقمية: HMAC-SHA256 + التحقق من الصلاحية');
-console.log('🔒 Webhook: محمي بتوكن البوت + التحقق من المخزون');
+console.log('🔐 الشهادات الرقمية: HMAC-SHA256 + مفتاح ثابت من .env');
+console.log('🔒 Webhook: محمي بتوكن البوت + تحقق ذري من المخزون');
 console.log('⛏️ تعدين: عملية ذرية - لا يمكن اختراقها');
-console.log('🛡️ دعوة: 3 تعدينات كحد أدنى للمكافأة');
+console.log('🛡️ دعوة: 3 تعدينات + عمر يوم كحد أدنى للمكافأة');
 console.log('⭐ شراء: 10 ⭐ = 1 💎 (محدود 800M)');
+console.log('🔑 مفتاح التوقيع: ثابت - الشهادات القديمة لا تبطل');
