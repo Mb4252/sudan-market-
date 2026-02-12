@@ -6,7 +6,7 @@
     <title>⛏️ كريستال التعدين - مناجم الكريستال</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');
         
         * {
             margin: 0;
@@ -16,84 +16,69 @@
         }
 
         body {
-            background: linear-gradient(145deg, #0a0f1e 0%, #1a1f2f 100%);
+            background: linear-gradient(165deg, #0b0e14 0%, #1a1e2a 100%);
             color: #fff;
             min-height: 100vh;
-            padding: 20px;
+            padding: 16px;
             position: relative;
             overflow-x: hidden;
         }
 
-        .crystal-bg {
+        .animated-bg {
             position: fixed;
             top: 0;
             left: 0;
-            right: 0;
-            bottom: 0;
-            background: radial-gradient(circle at 50% 50%, rgba(76, 175, 255, 0.1) 0%, transparent 50%);
-            pointer-events: none;
+            width: 100%;
+            height: 100%;
             z-index: 0;
+            pointer-events: none;
         }
 
-        .crystal-bg::before {
-            content: '💎';
+        .crystal-particle {
             position: absolute;
-            font-size: 150px;
-            opacity: 0.03;
-            top: 10%;
-            left: 5%;
-            transform: rotate(-15deg);
-            animation: float 20s infinite;
+            font-size: 24px;
+            opacity: 0.1;
+            animation: floatParticle 15s infinite linear;
         }
 
-        .crystal-bg::after {
-            content: '⛏️';
-            position: absolute;
-            font-size: 120px;
-            opacity: 0.03;
-            bottom: 10%;
-            right: 5%;
-            transform: rotate(15deg);
-            animation: float 25s infinite reverse;
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0) rotate(-15deg); }
-            50% { transform: translateY(-20px) rotate(-10deg); }
+        @keyframes floatParticle {
+            0% { transform: translateY(0) rotate(0deg); opacity: 0.1; }
+            50% { transform: translateY(-50px) rotate(180deg); opacity: 0.15; }
+            100% { transform: translateY(0) rotate(360deg); opacity: 0.1; }
         }
 
         .container {
             max-width: 600px;
             margin: 0 auto;
             position: relative;
-            z-index: 1;
+            z-index: 2;
         }
 
-        /* أيقونة الرصيد الثابتة */
         .balance-float {
             position: fixed;
-            top: 20px;
-            left: 20px;
-            background: linear-gradient(145deg, rgba(255,215,0,0.2), rgba(255,165,0,0.2));
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,215,0,0.3);
-            border-radius: 50px;
-            padding: 12px 20px;
+            top: 16px;
+            left: 16px;
+            background: linear-gradient(145deg, rgba(255, 215, 0, 0.95), rgba(255, 165, 0, 0.95));
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 14px 22px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             z-index: 100;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
-            animation: slideIn 0.5s ease;
+            box-shadow: 0 10px 30px rgba(255, 215, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            animation: slideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         @keyframes slideIn {
-            from { transform: translateX(-100px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
+            from { transform: translateX(-100%) translateY(20px); opacity: 0; }
+            to { transform: translateX(0) translateY(0); opacity: 1; }
         }
 
         .balance-float-icon {
-            font-size: 28px;
+            font-size: 32px;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
         }
 
         .balance-float-info {
@@ -102,433 +87,639 @@
         }
 
         .balance-float-label {
-            font-size: 12px;
-            color: #FFD700;
-            opacity: 0.9;
+            font-size: 11px;
+            color: rgba(10, 15, 30, 0.7);
+            font-weight: 700;
+            letter-spacing: 0.5px;
         }
 
         .balance-float-amount {
-            font-size: 20px;
-            font-weight: 900;
-            color: white;
+            font-size: 24px;
+            font-weight: 800;
+            color: #0a0f1e;
             line-height: 1;
+            text-shadow: 0 2px 5px rgba(255,255,255,0.3);
         }
 
         .balance-float-usd {
-            font-size: 11px;
-            color: #aaa;
+            font-size: 10px;
+            color: rgba(10, 15, 30, 0.6);
+            font-weight: 600;
         }
 
-        .header {
-            background: linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(255, 165, 0, 0.2) 100%);
+        .main-header {
+            margin-top: 90px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .glowing-title {
+            font-size: 36px;
+            font-weight: 900;
+            background: linear-gradient(135deg, #FFE55C, #FFB347, #FF8C00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(255, 200, 0, 0.3);
+            margin-bottom: 8px;
+            letter-spacing: 2px;
+        }
+
+        .crystal-badge {
+            display: inline-block;
+            background: rgba(255, 215, 0, 0.15);
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 215, 0, 0.3);
-            border-radius: 30px;
+            border: 1px solid rgba(255, 215, 0, 0.4);
+            padding: 8px 24px;
+            border-radius: 100px;
+            color: #FFD700;
+            font-weight: 700;
+            font-size: 16px;
+            box-shadow: 0 5px 20px rgba(255, 215, 0, 0.15);
+        }
+
+        .rate-card {
+            background: linear-gradient(145deg, rgba(41, 128, 185, 0.15), rgba(52, 152, 219, 0.1));
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(52, 152, 219, 0.3);
+            border-radius: 20px;
+            padding: 18px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+        }
+
+        .rate-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .rate-icon {
+            font-size: 28px;
+        }
+
+        .rate-value {
+            font-size: 20px;
+            font-weight: 800;
+            color: #4facfe;
+            text-shadow: 0 0 15px rgba(79, 172, 254, 0.5);
+        }
+
+        .mine-card {
+            background: linear-gradient(145deg, #2a2f3f, #1a1e2a);
+            border-radius: 40px;
             padding: 25px;
             margin-bottom: 25px;
-            margin-top: 80px;
             text-align: center;
-            box-shadow: 0 10px 30px rgba(255, 215, 0, 0.1);
+            border: 1px solid rgba(255, 215, 0, 0.2);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.4);
             position: relative;
             overflow: hidden;
         }
 
-        .header::before {
+        .mine-card::before {
             content: '';
             position: absolute;
             top: -50%;
             left: -50%;
             width: 200%;
             height: 200%;
-            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-            animation: shine 8s infinite;
+            background: radial-gradient(circle, rgba(255,215,0,0.1) 0%, transparent 70%);
+            animation: rotate 20s infinite linear;
         }
 
-        @keyframes shine {
-            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
-            100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
 
-        .header h1 {
-            font-size: 32px;
-            font-weight: 900;
-            background: linear-gradient(45deg, #FFD700, #FFA500);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 10px;
-            text-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+        .crystal-progress {
+            position: relative;
+            z-index: 2;
         }
 
-        .coin-badge {
-            display: inline-block;
-            background: linear-gradient(45deg, #FFD700, #FFA500);
-            padding: 8px 25px;
-            border-radius: 50px;
-            color: #0a0f1e;
-            font-weight: 700;
-            font-size: 18px;
-            box-shadow: 0 5px 15px rgba(255, 215, 0, 0.3);
-        }
-
-        /* بطاقة سعر الصرف */
-        .rate-card {
-            background: linear-gradient(145deg, rgba(0,136,204,0.1), rgba(0,102,153,0.1));
-            border: 1px solid rgba(0,136,204,0.3);
-            border-radius: 15px;
-            padding: 15px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .rate-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .rate-icon {
-            font-size: 24px;
-        }
-
-        .rate-text {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .rate-label {
-            font-size: 12px;
-            color: #aaa;
-        }
-
-        .rate-value {
-            font-size: 18px;
-            font-weight: 700;
-            color: #4facfe;
-        }
-
-        /* إحصائيات التداول */
-        .trade-stats {
-            background: rgba(255,255,255,0.05);
-            border-radius: 20px;
-            padding: 15px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-around;
-            border: 1px solid rgba(255,215,0,0.2);
-        }
-
-        .trade-stat-item {
-            text-align: center;
-        }
-
-        .trade-stat-value {
-            font-size: 20px;
-            font-weight: 900;
-            color: #FFD700;
-        }
-
-        .trade-stat-label {
-            font-size: 12px;
-            color: #aaa;
-        }
-
-        /* زر التعدين الكبير */
         .mine-button {
-            background: radial-gradient(circle at 30% 30%, #FFD700, #FFA500);
-            width: 200px;
-            height: 200px;
+            background: radial-gradient(circle at 30% 30%, #FFD700, #FF8C00);
+            width: 180px;
+            height: 180px;
             border-radius: 50%;
-            margin: 20px auto;
+            margin: 0 auto 20px;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             cursor: pointer;
-            transition: all 0.2s;
-            box-shadow: 0 10px 30px rgba(255,215,0,0.4);
-            border: 5px solid rgba(255,255,255,0.3);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 10px 0 #b45f00, 0 15px 40px rgba(255,215,0,0.5);
+            border: 4px solid rgba(255,255,255,0.4);
             position: relative;
-            animation: pulse 2s infinite;
+            animation: floatMine 3s infinite ease-in-out;
         }
 
-        @keyframes pulse {
-            0% { transform: scale(1); box-shadow: 0 10px 30px rgba(255,215,0,0.4); }
-            50% { transform: scale(1.05); box-shadow: 0 20px 40px rgba(255,215,0,0.6); }
-            100% { transform: scale(1); box-shadow: 0 10px 30px rgba(255,215,0,0.4); }
+        @keyframes floatMine {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
         }
 
         .mine-button:hover {
-            transform: scale(1.1);
-            box-shadow: 0 15px 40px rgba(255,215,0,0.8);
+            transform: scale(1.08);
+            box-shadow: 0 12px 0 #b45f00, 0 25px 50px rgba(255,215,0,0.8);
         }
 
         .mine-button:active {
-            transform: scale(0.95);
+            transform: scale(0.96);
+            box-shadow: 0 5px 0 #b45f00, 0 15px 40px rgba(255,215,0,0.6);
         }
 
         .mine-emoji {
-            font-size: 80px;
-            margin-bottom: 10px;
-            filter: drop-shadow(0 5px 15px rgba(0,0,0,0.3));
+            font-size: 70px;
+            margin-bottom: 5px;
+            filter: drop-shadow(0 8px 15px rgba(0,0,0,0.4));
         }
 
         .mine-text {
-            font-size: 24px;
+            font-size: 28px;
             font-weight: 900;
-            color: #0a0f1e;
-            text-shadow: 0 2px 5px rgba(255,255,255,0.3);
+            color: #1a1e2a;
+            text-shadow: 0 2px 10px rgba(255,255,255,0.5);
+            line-height: 1;
         }
 
         .mine-subtext {
             font-size: 14px;
-            color: #0a0f1e;
+            color: #1a1e2a;
             opacity: 0.9;
-            margin-top: 5px;
+            font-weight: 600;
         }
 
-        .mine-cooldown {
-            font-size: 16px;
-            color: #fff;
-            background: rgba(0,0,0,0.5);
-            padding: 5px 15px;
-            border-radius: 50px;
-            margin-top: 10px;
-        }
-
-        /* شريط الطاقة */
-        .energy-status {
-            text-align: center;
-            margin: 20px 0;
+        .fraction-progress {
+            margin-top: 20px;
             padding: 15px;
-            background: rgba(255,255,255,0.05);
-            border-radius: 15px;
-        }
-
-        .energy-number {
-            font-size: 28px;
-            font-weight: 700;
-            color: #4facfe;
-            text-shadow: 0 0 15px rgba(79, 172, 254, 0.5);
-        }
-
-        .energy-bar-container {
             background: rgba(0,0,0,0.3);
-            height: 15px;
             border-radius: 50px;
-            margin-top: 10px;
-            overflow: hidden;
-            border: 1px solid rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,215,0,0.2);
         }
 
-        .energy-fill {
-            background: linear-gradient(90deg, #00f2fe, #4facfe, #00f2fe);
+        .fraction-label {
+            display: flex;
+            justify-content: space-between;
+            color: #FFD700;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .progress-bar-container {
+            background: rgba(0,0,0,0.4);
+            height: 12px;
+            border-radius: 50px;
+            overflow: hidden;
+            border: 1px solid rgba(255,215,0,0.2);
+        }
+
+        .progress-fill {
+            background: linear-gradient(90deg, #FFD700, #FFA500);
             height: 100%;
             width: 0%;
-            transition: width 0.3s;
+            transition: width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
             border-radius: 50px;
             position: relative;
-            overflow: hidden;
-            animation: shimmer 2s infinite;
+            box-shadow: 0 0 20px rgba(255,215,0,0.6);
         }
 
-        @keyframes shimmer {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
+        .cooldown-timer {
+            margin-top: 15px;
+            color: #aaa;
+            font-size: 14px;
+            font-weight: 600;
         }
 
-        /* بطاقات شراء وبيع */
-        .trade-cards {
+        .action-cards {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 15px;
-            margin: 25px 0;
+            margin-bottom: 25px;
         }
 
-        .trade-card {
-            background: linear-gradient(145deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: 20px;
-            padding: 20px;
+        .action-card {
+            background: linear-gradient(145deg, #232837, #1a1e2a);
+            border-radius: 24px;
+            padding: 22px;
             text-align: center;
             cursor: pointer;
             transition: all 0.3s;
+            border: 1px solid rgba(255,255,255,0.08);
+            position: relative;
+            overflow: hidden;
         }
 
-        .trade-card.buy {
-            border-color: rgba(76, 175, 80, 0.3);
+        .action-card::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #FFD700, #FFA500);
+            opacity: 0;
+            transition: opacity 0.3s;
         }
 
-        .trade-card.sell {
-            border-color: rgba(244, 67, 54, 0.3);
+        .action-card:hover::after {
+            opacity: 1;
         }
 
-        .trade-card:hover {
+        .action-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            border-color: rgba(255,215,0,0.3);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.4);
         }
 
-        .trade-card.buy:hover {
-            border-color: #4caf50;
-            background: rgba(76, 175, 80, 0.1);
+        .card-icon {
+            font-size: 42px;
+            margin-bottom: 12px;
+            filter: drop-shadow(0 5px 10px rgba(0,0,0,0.3));
         }
 
-        .trade-card.sell:hover {
-            border-color: #f44336;
-            background: rgba(244, 67, 54, 0.1);
+        .card-title {
+            font-size: 20px;
+            font-weight: 800;
+            margin-bottom: 6px;
+            color: #fff;
         }
 
-        .trade-emoji {
-            font-size: 40px;
-            margin-bottom: 10px;
-        }
-
-        .trade-title {
-            font-size: 18px;
-            font-weight: 700;
-            margin-bottom: 5px;
-        }
-
-        .trade-desc {
-            font-size: 13px;
-            opacity: 0.8;
-            color: #aaa;
-        }
-
-        .trade-price {
+        .card-price {
             font-size: 16px;
+            color: #4facfe;
             font-weight: 700;
             margin-top: 10px;
-            color: #FFD700;
-        }
-
-        /* التبويبات */
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 25px;
-            background: rgba(255,255,255,0.05);
-            padding: 5px;
+            padding: 6px 12px;
+            background: rgba(79, 172, 254, 0.15);
             border-radius: 50px;
-            backdrop-filter: blur(10px);
+            display: inline-block;
         }
 
-        .tab {
-            flex: 1;
-            padding: 12px;
-            background: transparent;
+        .modern-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 25px;
+            background: rgba(26, 30, 42, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 6px;
+            border-radius: 50px;
+            border: 1px solid rgba(255,255,255,0.05);
+            overflow-x: auto;
+            white-space: nowrap;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .modern-tab {
+            flex: 0 0 auto;
+            padding: 12px 16px;
             border-radius: 50px;
             text-align: center;
             cursor: pointer;
-            font-weight: 600;
+            font-weight: 700;
             transition: all 0.3s;
             color: #aaa;
+            font-size: 14px;
         }
 
-        .tab.active {
-            background: linear-gradient(45deg, #FFD700, #FFA500);
+        .modern-tab.active {
+            background: linear-gradient(145deg, #FFD700, #FFA500);
             color: #0a0f1e;
-            box-shadow: 0 5px 15px rgba(255,215,0,0.3);
+            box-shadow: 0 5px 20px rgba(255,215,0,0.4);
         }
 
-        /* عناصر المتجر */
-        .shop-item {
-            background: linear-gradient(145deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: 20px;
-            padding: 20px;
-            margin-bottom: 15px;
+        .shop-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+        }
+
+        .shop-item-card {
+            background: linear-gradient(145deg, #232837, #1a1e2a);
+            border-radius: 24px;
+            padding: 22px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            border: 1px solid rgba(255,255,255,0.05);
             transition: all 0.3s;
         }
 
-        .shop-item:hover {
-            border-color: rgba(255,215,0,0.5);
-            box-shadow: 0 5px 15px rgba(255,215,0,0.1);
+        .shop-item-card:hover {
+            border-color: rgba(255,215,0,0.4);
+            transform: translateX(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
         }
 
-        .item-name {
+        .item-details h4 {
             font-size: 18px;
-            font-weight: 700;
-            margin-bottom: 5px;
+            font-weight: 800;
             color: #FFD700;
-        }
-
-        .item-desc {
-            font-size: 13px;
-            opacity: 0.8;
-            color: #ddd;
+            margin-bottom: 6px;
         }
 
         .item-price {
             display: inline-block;
-            background: linear-gradient(45deg, #FFD700, #FFA500);
-            padding: 5px 15px;
+            background: linear-gradient(145deg, #FFD700, #FFA500);
+            padding: 6px 16px;
             border-radius: 50px;
             color: #0a0f1e;
-            font-weight: 700;
+            font-weight: 800;
             font-size: 14px;
             margin-top: 8px;
         }
 
-        /* أوامر المستخدم */
-        .orders-section {
-            background: rgba(255,255,255,0.05);
-            border-radius: 20px;
-            padding: 20px;
-            margin-top: 25px;
-        }
-
-        .orders-title {
-            font-size: 18px;
+        .buy-button {
+            background: linear-gradient(145deg, #4facfe, #00f2fe);
+            border: none;
+            color: white;
+            padding: 12px 28px;
+            border-radius: 50px;
             font-weight: 700;
-            color: #FFD700;
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 1px solid rgba(255,255,255,0.2);
+            box-shadow: 0 5px 15px rgba(79, 172, 254, 0.3);
         }
 
-        .order-item {
-            background: rgba(255,255,255,0.05);
-            border-radius: 15px;
+        .buy-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 25px rgba(79, 172, 254, 0.5);
+        }
+
+        .buy-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .withdraw-section {
+            background: linear-gradient(145deg, rgba(244, 67, 54, 0.1), rgba(244, 67, 54, 0.05));
+            border: 1px solid rgba(244, 67, 54, 0.2);
+            border-radius: 24px;
+            padding: 22px;
+            margin-top: 20px;
+        }
+
+        .withdraw-timer {
+            background: rgba(244, 67, 54, 0.15);
             padding: 15px;
-            margin-bottom: 10px;
+            border-radius: 16px;
+            margin-bottom: 15px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border: 1px solid rgba(255,255,255,0.1);
         }
 
-        .order-status {
-            padding: 5px 12px;
+        .timer-value {
+            font-size: 24px;
+            font-weight: 900;
+            color: #f44336;
+            text-shadow: 0 0 20px rgba(244, 67, 54, 0.5);
+        }
+
+        .capital-card {
+            background: linear-gradient(145deg, #1a2a2a, #0f1a1a);
+            border: 1px solid #4caf50;
+            border-radius: 24px;
+            padding: 20px;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .capital-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .capital-icon {
+            width: 50px;
+            height: 50px;
+            background: #4caf50;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .capital-title {
+            font-size: 14px;
+            color: #aaa;
+        }
+
+        .capital-amount {
+            font-size: 24px;
+            font-weight: 900;
+            color: #4caf50;
+        }
+
+        .capital-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .capital-stat-item {
+            background: rgba(255,255,255,0.05);
+            padding: 12px;
+            border-radius: 16px;
+        }
+
+        .capital-stat-label {
+            font-size: 12px;
+            color: #aaa;
+        }
+
+        .capital-stat-value {
+            font-size: 18px;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .withdraw-limit-card {
+            background: rgba(79, 172, 254, 0.1);
+            border: 1px solid #4facfe;
+            border-radius: 20px;
+            padding: 18px;
+            margin-bottom: 20px;
+        }
+
+        .invite-card {
+            background: linear-gradient(145deg, #2a1f3f, #1a1a2a);
+            border: 1px solid #9c27b0;
+            border-radius: 24px;
+            padding: 22px;
+            margin-bottom: 20px;
+        }
+
+        .invite-reward-box {
+            background: linear-gradient(145deg, rgba(255,215,0,0.1), rgba(255,165,0,0.05));
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+        }
+
+        .reward-item {
+            flex: 1;
+        }
+
+        .reward-value {
+            font-size: 32px;
+            font-weight: 900;
+            color: #FFD700;
+        }
+
+        .reward-label {
+            font-size: 13px;
+            color: #ddd;
+        }
+
+        .reward-divider {
+            width: 1px;
+            background: rgba(255,255,255,0.2);
+        }
+
+        /* أنماط المحافظ */
+        .wallet-section {
+            background: linear-gradient(145deg, #232837, #1a1e2a);
+            border-radius: 24px;
+            padding: 22px;
+            margin-bottom: 20px;
+        }
+
+        .wallet-type-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: rgba(0,0,0,0.2);
+            padding: 5px;
+            border-radius: 50px;
+        }
+
+        .wallet-type-tab {
+            flex: 1;
+            padding: 12px;
+            border-radius: 50px;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 700;
+            transition: all 0.3s;
+            color: #aaa;
+            font-size: 13px;
+        }
+
+        .wallet-type-tab.active {
+            background: linear-gradient(145deg, #FFD700, #FFA500);
+            color: #0a0f1e;
+        }
+
+        .wallet-card {
+            background: linear-gradient(145deg, #1a2a3a, #0f1a2a);
+            border: 1px solid #4facfe;
+            border-radius: 24px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .wallet-status-active {
+            color: #4caf50;
+            background: rgba(76, 175, 80, 0.15);
+            padding: 4px 12px;
             border-radius: 50px;
             font-size: 12px;
             font-weight: 700;
         }
 
-        .status-pending {
+        .wallet-status-pending {
+            color: #ffc107;
+            background: rgba(255, 193, 7, 0.15);
+            padding: 4px 12px;
+            border-radius: 50px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .wallet-status-rejected {
+            color: #f44336;
+            background: rgba(244, 67, 54, 0.15);
+            padding: 4px 12px;
+            border-radius: 50px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .wallet-address-box {
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 16px;
+            font-family: monospace;
+            font-size: 13px;
+            color: #4facfe;
+            word-break: break-all;
+            direction: ltr;
+            text-align: left;
+            border: 1px solid rgba(79, 172, 254, 0.3);
+            margin: 10px 0;
+        }
+
+        .transaction-card {
+            background: rgba(79, 172, 254, 0.1);
+            border: 1px solid #4facfe;
+            border-radius: 20px;
+            padding: 18px;
+            margin-bottom: 15px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .transaction-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .transaction-amount {
+            font-size: 22px;
+            font-weight: 900;
+            color: #4caf50;
+        }
+
+        .transaction-status-pending {
             background: rgba(255, 193, 7, 0.2);
             color: #ffc107;
-            border: 1px solid rgba(255, 193, 7, 0.3);
+            padding: 4px 12px;
+            border-radius: 50px;
+            font-size: 12px;
+            font-weight: 700;
         }
 
-        .status-completed {
-            background: rgba(76, 175, 80, 0.2);
-            color: #4caf50;
-            border: 1px solid rgba(76, 175, 80, 0.3);
+        .transaction-hash {
+            background: rgba(0,0,0,0.3);
+            padding: 10px;
+            border-radius: 12px;
+            font-family: monospace;
+            font-size: 11px;
+            color: #aaa;
+            direction: ltr;
+            text-align: left;
+            word-break: break-all;
+            margin: 10px 0;
         }
 
-        .status-rejected {
-            background: rgba(244, 67, 54, 0.2);
-            color: #f44336;
-            border: 1px solid rgba(244, 67, 54, 0.3);
-        }
-
-        /* المودالات */
         .modal {
             display: none;
             position: fixed;
@@ -536,373 +727,692 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(10,15,30,0.95);
-            backdrop-filter: blur(10px);
+            background: rgba(10, 15, 30, 0.95);
+            backdrop-filter: blur(15px);
             justify-content: center;
             align-items: center;
             padding: 20px;
-            z-index: 1000;
+            z-index: 2000;
         }
 
         .modal-content {
-            background: linear-gradient(145deg, #1a1f2f, #0a0f1e);
-            border: 1px solid rgba(255,215,0,0.3);
-            border-radius: 30px;
+            background: linear-gradient(165deg, #232837, #1a1e2a);
+            border: 1px solid rgba(255,215,0,0.2);
+            border-radius: 32px;
             padding: 30px;
-            max-width: 400px;
+            max-width: 420px;
             width: 100%;
-            max-height: 80vh;
+            max-height: 85vh;
             overflow-y: auto;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+            animation: modalSlideUp 0.4s;
         }
 
-        .button {
-            background: linear-gradient(45deg, #FFD700, #FFA500);
+        @keyframes modalSlideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-title {
+            font-size: 26px;
+            font-weight: 900;
+            color: #FFD700;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .input-modern {
+            width: 100%;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            background: rgba(0,0,0,0.2);
+            color: white;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .input-modern:focus {
+            outline: none;
+            border-color: #FFD700;
+            background: rgba(0,0,0,0.3);
+            box-shadow: 0 0 0 3px rgba(255,215,0,0.1);
+        }
+
+        .button-modern {
+            background: linear-gradient(145deg, #FFD700, #FFA500);
             border: none;
             color: #0a0f1e;
-            padding: 15px 25px;
+            padding: 16px 28px;
             border-radius: 50px;
             cursor: pointer;
             font-size: 16px;
-            font-weight: 700;
+            font-weight: 800;
             transition: all 0.3s;
             width: 100%;
             margin: 5px 0;
+            border: 1px solid rgba(255,255,255,0.3);
+            letter-spacing: 0.5px;
         }
 
-        .button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(255,215,0,0.4);
+        .button-modern:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(255,215,0,0.4);
         }
 
-        .button.secondary {
-            background: rgba(255,255,255,0.1);
-            color: white;
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-
-        .button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        input, select {
-            width: 100%;
-            padding: 15px;
-            margin-bottom: 15px;
+        .button-outline {
+            background: transparent;
             border: 2px solid rgba(255,255,255,0.1);
-            border-radius: 15px;
-            background: rgba(255,255,255,0.05);
             color: white;
-            font-size: 16px;
         }
 
-        input:focus {
-            outline: none;
+        .button-outline:hover {
             border-color: #FFD700;
-            background: rgba(255,255,255,0.1);
+            background: rgba(255,215,0,0.1);
+            transform: translateY(-3px);
         }
 
-        input::placeholder {
-            color: rgba(255,255,255,0.5);
-        }
-
-        .wallet-address {
+        .wallet-box {
             background: rgba(0,0,0,0.3);
-            padding: 15px;
-            border-radius: 15px;
+            padding: 18px;
+            border-radius: 18px;
             font-family: monospace;
-            font-size: 12px;
-            color: #FFD700;
+            font-size: 13px;
+            color: #4facfe;
             word-break: break-all;
             margin: 15px 0;
-            border: 1px solid rgba(255,215,0,0.3);
+            border: 1px solid rgba(79, 172, 254, 0.3);
+            text-align: center;
+            font-weight: 600;
+            direction: ltr;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .info-item {
+            background: rgba(255,255,255,0.05);
+            padding: 12px;
+            border-radius: 16px;
+            text-align: center;
+        }
+
+        .info-label {
+            font-size: 11px;
+            color: #aaa;
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            font-size: 16px;
+            font-weight: 800;
+            color: #FFD700;
+        }
+
+        .info-value.small {
+            font-size: 13px;
         }
 
         .hidden {
             display: none !important;
         }
 
-        .toast {
+        .toast-notification {
             position: fixed;
-            bottom: 20px;
+            bottom: 30px;
             left: 50%;
             transform: translateX(-50%);
-            background: linear-gradient(45deg, #FFD700, #FFA500);
+            background: linear-gradient(145deg, #FFD700, #FFA500);
             color: #0a0f1e;
-            padding: 15px 30px;
+            padding: 16px 32px;
             border-radius: 50px;
             font-weight: 700;
-            animation: slideUp 0.3s;
-            box-shadow: 0 10px 30px rgba(255,215,0,0.3);
-            z-index: 2000;
+            animation: slideUp 0.4s;
+            box-shadow: 0 15px 40px rgba(255,215,0,0.4);
+            z-index: 3000;
+            border: 1px solid rgba(255,255,255,0.3);
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
         @keyframes slideUp {
             from { bottom: -100px; opacity: 0; }
-            to { bottom: 20px; opacity: 1; }
+            to { bottom: 30px; opacity: 1; }
+        }
+
+        @media (max-width: 480px) {
+            .mine-button {
+                width: 160px;
+                height: 160px;
+            }
+            
+            .mine-emoji {
+                font-size: 60px;
+            }
+            
+            .mine-text {
+                font-size: 24px;
+            }
+            
+            .glowing-title {
+                font-size: 30px;
+            }
+
+            .capital-stats {
+                grid-template-columns: 1fr;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .modern-tabs {
+                padding: 4px;
+                gap: 4px;
+            }
+
+            .modern-tab {
+                padding: 10px 12px;
+                font-size: 12px;
+            }
+
+            .wallet-type-tabs {
+                flex-direction: column;
+                border-radius: 20px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="crystal-bg"></div>
+    <div class="animated-bg" id="particleBackground"></div>
     
-    <!-- أيقونة الرصيد الثابتة -->
     <div class="balance-float">
         <div class="balance-float-icon">💎</div>
         <div class="balance-float-info">
             <span class="balance-float-label">رصيد الكريستال</span>
-            <span class="balance-float-amount" id="floatBalance">0.00</span>
+            <span class="balance-float-amount" id="floatBalance">0.000</span>
             <span class="balance-float-usd" id="floatUsd">≈ $0.00</span>
         </div>
     </div>
     
     <div class="container">
-        <!-- الهيدر -->
-        <div class="header">
-            <h1>⛏️ كريستال التعدين</h1>
-            <span class="coin-badge">
-                💎 1 كريستال = 0.10$
+        <div class="main-header">
+            <h1 class="glowing-title">⛏️ كريستال التعدين</h1>
+            <span class="crystal-badge">
+                💎 شراء: 0.10$ | سحب: 0.08$
             </span>
         </div>
 
-        <!-- سعر الصرف -->
         <div class="rate-card">
             <div class="rate-info">
-                <span class="rate-icon">💰</span>
-                <div class="rate-text">
-                    <span class="rate-label">سعر الصرف الرسمي</span>
-                    <span class="rate-value" id="usdRate">1 💎 = 0.10 $</span>
+                <span class="rate-icon">💎</span>
+                <span class="rate-value" id="usdRate">1 💎 = 0.10 $</span>
+            </div>
+            <span style="color: #4caf50; font-weight: 700; background: rgba(76,175,80,0.15); padding: 6px 14px; border-radius: 50px;">مستقر</span>
+        </div>
+
+        <div class="mine-card">
+            <div class="crystal-progress">
+                <div class="mine-button" onclick="mine()" id="mineButton">
+                    <div class="mine-emoji">⛏️</div>
+                    <div class="mine-text" id="mineText">تعدين!</div>
+                    <div class="mine-subtext" id="mineSubtext">اضغط لاستخراج 1 كريستال</div>
                 </div>
-            </div>
-            <div style="color: #4caf50;">مستقر ✅</div>
-        </div>
-
-        <!-- إحصائيات التداول -->
-        <div class="trade-stats">
-            <div class="trade-stat-item">
-                <div class="trade-stat-value" id="totalCrystalSold">0</div>
-                <div class="trade-stat-label">إجمالي المشتريات</div>
-            </div>
-            <div class="trade-stat-item">
-                <div class="trade-stat-value" id="totalUsdInvested">$0</div>
-                <div class="trade-stat-label">إجمالي الاستثمار</div>
-            </div>
-            <div class="trade-stat-item">
-                <div class="trade-stat-value" id="totalTransactions">0</div>
-                <div class="trade-stat-label">صفقة</div>
-            </div>
-        </div>
-
-        <!-- زر التعدين الكبير - 1 كريستال كل ساعتين -->
-        <div class="mine-button" onclick="mine()" id="mineButton">
-            <div class="mine-emoji">⛏️</div>
-            <div class="mine-text" id="mineText">تعدين!</div>
-            <div class="mine-subtext" id="mineSubtext">اضغط لاستخراج 1 كريستال</div>
-        </div>
-
-        <!-- المكافأة اليومية - 1 كريستال -->
-        <div style="text-align: center; margin: 15px 0;">
-            <button class="button" onclick="openDailyModal()" style="width: auto; padding: 12px 30px; display: inline-block;">
-                🎁 المكافأة اليومية (1 💎)
-            </button>
-        </div>
-
-        <!-- شريط الطاقة -->
-        <div class="energy-status">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                <span style="color: #4facfe;">⚡ طاقة التعدين</span>
-                <span class="energy-number" id="energy">100/100</span>
-            </div>
-            <div class="energy-bar-container">
-                <div class="energy-fill" id="energyBar" style="width: 100%;"></div>
-            </div>
-        </div>
-
-        <!-- بطاقات شراء وبيع -->
-        <div class="trade-cards">
-            <div class="trade-card buy" onclick="openBuyModal()">
-                <div class="trade-emoji">💵</div>
-                <div class="trade-title">شراء كريستال</div>
-                <div class="trade-desc">اشترِ الكريستال بالدولار</div>
-                <div class="trade-price">1 💎 = 0.10 $</div>
-            </div>
-            <div class="trade-card sell" onclick="openSellModal()">
-                <div class="trade-emoji">💰</div>
-                <div class="trade-title">بيع كريستال</div>
-                <div class="trade-desc">بيع الكريستال بالدولار</div>
-                <div class="trade-price">1 💎 = 0.10 $</div>
-            </div>
-        </div>
-
-        <!-- التبويبات -->
-        <div class="tabs">
-            <div class="tab active" onclick="switchTab(event, 'shop')">🛒 المتجر</div>
-            <div class="tab" onclick="switchTab(event, 'upgrades')">⚡ ترقيات</div>
-            <div class="tab" onclick="switchTab(event, 'orders')">📋 طلباتي</div>
-            <div class="tab" onclick="switchTab(event, 'transfer')">💸 تحويل</div>
-            <div class="tab" onclick="switchTab(event, 'invite')">👥 دعوة</div>
-        </div>
-
-        <!-- قسم المتجر -->
-        <div id="shopSection">
-            <div id="shopItems"></div>
-        </div>
-
-        <!-- قسم الترقيات -->
-        <div id="upgradesSection" class="hidden">
-            <div class="header" style="margin-top: 0;">
-                <h3 style="color: #FFD700;">⚡ ترقيات التعدين</h3>
-                <p style="color: #ddd; font-size: 14px;">زد كفاءة تعدينك بالترقيات</p>
-            </div>
-            <div id="upgradeItems"></div>
-        </div>
-
-        <!-- قسم طلباتي -->
-        <div id="ordersSection" class="hidden">
-            <div class="orders-section">
-                <div class="orders-title">
-                    <span>📋 طلبات شراء كريستال</span>
-                </div>
-                <div id="buyOrdersList"></div>
                 
-                <div class="orders-title" style="margin-top: 20px;">
-                    <span>📋 طلبات بيع كريستال</span>
+                <div class="fraction-progress">
+                    <div class="fraction-label">
+                        <span>⏳ تقدم التعدين</span>
+                        <span id="fractionDisplay">0.000/1.000 💎</span>
+                    </div>
+                    <div class="progress-bar-container">
+                        <div class="progress-fill" id="miningProgressBar" style="width: 0%;"></div>
+                    </div>
+                    <div class="cooldown-timer" id="cooldownTimer">
+                        ✨ يمكنك التعدين الآن!
+                    </div>
                 </div>
-                <div id="sellOrdersList"></div>
             </div>
         </div>
 
-        <!-- قسم التحويل -->
-        <div id="transferSection" class="hidden">
-            <div class="header" style="margin-top: 0;">
-                <h3 style="color: #FFD700;">💸 تحويل كريستال</h3>
-                <p style="color: #ddd; font-size: 14px;">أرسل الكريستال لأصدقائك</p>
+        <div class="action-cards">
+            <div class="action-card" onclick="openBuyModal()">
+                <div class="card-icon">💵</div>
+                <div class="card-title">شراء كريستال</div>
+                <div class="card-price">1 💎 = 0.10 $</div>
             </div>
-            <div style="background: rgba(255,255,255,0.05); border-radius: 25px; padding: 25px;">
-                <input type="text" id="receiverUsername" placeholder="@اسم المستخدم">
-                <input type="number" id="transferAmount" placeholder="كمية الكريستال (الحد الأدنى 1 💎)" min="1">
-                <button class="button" onclick="transfer()" style="width: 100%;">
-                    💎 تحويل الكريستال
-                </button>
+            <div class="action-card" onclick="openWithdrawModal()">
+                <div class="card-icon">💰</div>
+                <div class="card-title">سحب أرباح</div>
+                <div class="card-price">1 💎 = 0.08 $</div>
             </div>
         </div>
 
-        <!-- قسم دعوة الأصدقاء -->
+        <div class="modern-tabs">
+            <div class="modern-tab active" onclick="switchTab(event, 'shop')">🛒 المتجر</div>
+            <div class="modern-tab" onclick="switchTab(event, 'upgrades')">⚡ تسريع</div>
+            <div class="modern-tab" onclick="switchTab(event, 'withdraws')">📋 السحب</div>
+            <div class="modern-tab" onclick="switchTab(event, 'invite')">👥 دعوة</div>
+            <div class="modern-tab" onclick="switchTab(event, 'wallets')">💳 المحافظ</div>
+            <div class="modern-tab" onclick="switchTab(event, 'stats')">📊 إحصائياتي</div>
+        </div>
+
+        <div id="shopSection">
+            <div class="shop-grid" id="shopItems"></div>
+        </div>
+
+        <div id="upgradesSection" class="hidden">
+            <div style="margin-bottom: 20px;">
+                <h3 style="color: #FFD700; font-size: 22px; margin-bottom: 10px;">⚡ تسريع التعدين</h3>
+                <p style="color: #aaa;">اشترِ تسريع واحصل على كريستال فوري!</p>
+            </div>
+            <div id="boostItems"></div>
+        </div>
+
+        <div id="withdrawsSection" class="hidden">
+            <div class="withdraw-section">
+                <h3 style="color: #FFD700; font-size: 22px; margin-bottom: 15px;">📋 طلبات السحب الخاصة بي</h3>
+                <div id="withdrawOrdersList"></div>
+            </div>
+        </div>
+
         <div id="inviteSection" class="hidden">
-            <div class="header" style="margin-top: 0;">
-                <h3 style="color: #FFD700;">👥 دعوة الأصدقاء</h3>
-                <p style="color: #ddd; font-size: 14px;">اربح 25 كريستال لكل صديق</p>
+            <div style="background: linear-gradient(145deg, #232837, #1a1e2a); border-radius: 24px; padding: 22px;">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 64px; margin-bottom: 15px;">👥</div>
+                    <h3 style="color: #FFD700; font-size: 24px; font-weight: 900;">دعوة الأصدقاء</h3>
+                    <p style="color: #aaa; margin-top: 5px;">ادعُ أصدقائك واربح كريستال!</p>
+                </div>
+                
+                <div class="invite-reward-box">
+                    <div class="reward-item">
+                        <div class="reward-value">💰 1</div>
+                        <div class="reward-label">إذا أودع</div>
+                    </div>
+                    <div class="reward-divider"></div>
+                    <div class="reward-item">
+                        <div class="reward-value" style="color: #4facfe;">0.3</div>
+                        <div class="reward-label">إذا لم يودع</div>
+                    </div>
+                </div>
+                
+                <div style="background: rgba(79,172,254,0.1); border-radius: 16px; padding: 15px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: #aaa;">عدد الدعوات:</span>
+                        <span style="color: #FFD700; font-weight: 800;" id="totalInvites">0</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #aaa;">إجمالي المكافآت:</span>
+                        <span style="color: #4caf50; font-weight: 800;" id="totalInviteRewards">0 💎</span>
+                    </div>
+                </div>
+                
+                <div class="wallet-box" id="inviteLink" style="margin-bottom: 15px; font-size: 14px;">
+                    جاري تحميل رابط الدعوة...
+                </div>
+                
+                <button class="button-modern" onclick="copyInviteLink()" style="margin-bottom: 10px;">
+                    📋 نسخ رابط الدعوة
+                </button>
+                <button class="button-modern button-outline" onclick="shareInviteLink()">
+                    🔗 مشاركة الرابط
+                </button>
+                
+                <div style="margin-top: 25px;">
+                    <h4 style="color: #FFD700; margin-bottom: 12px;">📊 آخر المدعوين</h4>
+                    <div id="recentInvites"></div>
+                </div>
             </div>
-            <div style="background: rgba(255,255,255,0.05); border-radius: 25px; padding: 25px;">
-                <div class="wallet-address" id="inviteLink">جاري التحميل...</div>
-                <button class="button" onclick="copyInviteLink()">📋 نسخ رابط الدعوة</button>
+        </div>
+
+        <!-- قسم المحافظ المتكامل (الدفع + السحب) -->
+        <div id="walletsSection" class="hidden">
+            <div class="wallet-section">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 64px; margin-bottom: 15px;">💳</div>
+                    <h3 style="color: #FFD700; font-size: 24px; font-weight: 900;">إدارة المحافظ</h3>
+                    <p style="color: #aaa; margin-top: 5px;">اربط محافظك للشراء والسحب بسهولة</p>
+                </div>
+                
+                <!-- تبويبات نوع المحفظة -->
+                <div class="wallet-type-tabs">
+                    <div class="wallet-type-tab active" onclick="switchWalletType('payment')">💵 محفظة الدفع (شراء)</div>
+                    <div class="wallet-type-tab" onclick="switchWalletType('withdraw')">💰 محفظة السحب (أرباح)</div>
+                </div>
+                
+                <!-- محتوى محفظة الدفع -->
+                <div id="paymentWalletContent">
+                    <div style="background: rgba(79,172,254,0.1); border-radius: 20px; padding: 20px; margin-bottom: 20px;">
+                        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                            <div style="background: #4facfe; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px;">
+                                💵
+                            </div>
+                            <div>
+                                <div style="color: #4facfe; font-weight: 800; font-size: 16px;">محفظة الدفع</div>
+                                <div style="color: #aaa; font-size: 12px;">اربط محفظتك للتحويل إلى محفظة البوت</div>
+                            </div>
+                        </div>
+                        
+                        <div id="paymentWalletStatus"></div>
+                        
+                        <div id="paymentWalletForm" style="display: none;">
+                            <input type="text" id="paymentWalletAddress" class="input-modern" placeholder="عنوان محفظة USDT" style="direction: ltr; font-family: monospace; margin-bottom: 10px;">
+                            <input type="text" id="paymentWalletName" class="input-modern" placeholder="اسم المحفظة (اختياري)" style="margin-bottom: 10px;">
+                            <select id="paymentWalletNetwork" class="input-modern" style="margin-bottom: 15px;">
+                                <option value="TRC20">TRC20 (USDT)</option>
+                                <option value="BEP20">BEP20 (BSC)</option>
+                                <option value="ERC20">ERC20 (Ethereum)</option>
+                            </select>
+                            <button class="button-modern" onclick="connectPaymentWallet()">
+                                🔗 ربط محفظة الدفع
+                            </button>
+                            <button class="button-modern button-outline" onclick="hidePaymentWalletForm()">
+                                ❌ إلغاء
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- عنوان محفظة البوت (محفظتك) -->
+                    <div style="background: linear-gradient(145deg, #1a2a3a, #0f1a2a); border-radius: 20px; padding: 20px; margin-bottom: 20px; border: 1px solid #FFD700;">
+                        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                            <div style="background: #FFD700; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px;">
+                                🏦
+                            </div>
+                            <div>
+                                <div style="color: #FFD700; font-weight: 800; font-size: 16px;">محفظة البوت الرسمية</div>
+                                <div style="color: #aaa; font-size: 12px;">حول USDT إلى هذا العنوان عند الشراء</div>
+                            </div>
+                        </div>
+                        
+                        <div class="wallet-address-box" id="botWalletAddress">
+                            TL5jLrLGprWcit3dEfY4pAgzbiTpRtUK2N
+                        </div>
+                        
+                        <button onclick="copyBotWalletAddress()" style="background: rgba(255,215,0,0.2); border: none; color: #FFD700; padding: 10px; border-radius: 12px; width: 100%; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;">
+                            📋 نسخ عنوان محفظة البوت
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- محتوى محفظة السحب -->
+                <div id="withdrawWalletContent" style="display: none;">
+                    <div style="background: rgba(76,175,80,0.1); border-radius: 20px; padding: 20px; margin-bottom: 20px;">
+                        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                            <div style="background: #4caf50; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px;">
+                                💰
+                            </div>
+                            <div>
+                                <div style="color: #4caf50; font-weight: 800; font-size: 16px;">محفظة السحب</div>
+                                <div style="color: #aaa; font-size: 12px;">اربط محفظتك لاستلام الأرباح</div>
+                            </div>
+                        </div>
+                        
+                        <div id="withdrawWalletStatus"></div>
+                        
+                        <div id="withdrawWalletForm" style="display: none;">
+                            <input type="text" id="withdrawWalletAddress" class="input-modern" placeholder="عنوان محفظة USDT" style="direction: ltr; font-family: monospace; margin-bottom: 10px;">
+                            <input type="text" id="withdrawWalletName" class="input-modern" placeholder="اسم المحفظة (اختياري)" style="margin-bottom: 10px;">
+                            <select id="withdrawWalletNetwork" class="input-modern" style="margin-bottom: 15px;">
+                                <option value="TRC20">TRC20 (USDT)</option>
+                                <option value="BEP20">BEP20 (BSC)</option>
+                                <option value="ERC20">ERC20 (Ethereum)</option>
+                            </select>
+                            <button class="button-modern" onclick="connectWithdrawWallet()">
+                                🔗 ربط محفظة السحب
+                            </button>
+                            <button class="button-modern button-outline" onclick="hideWithdrawWalletForm()">
+                                ❌ إلغاء
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- سجل المحافظ -->
+                <div style="margin-top: 25px;">
+                    <h4 style="color: #FFD700; margin-bottom: 12px;">📋 سجل المحافظ</h4>
+                    <div id="walletsHistoryList"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="statsSection" class="hidden">
+            <div style="background: linear-gradient(145deg, #232837, #1a1e2a); border-radius: 24px; padding: 22px;">
+                <h3 style="color: #FFD700; font-size: 22px; margin-bottom: 20px;">📊 إحصائيات التعدين</h3>
+                <div style="display: grid; gap: 15px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #aaa;">⛏️ إجمالي التعدين:</span>
+                        <span style="font-weight: 800; color: #FFD700;" id="totalMined">0.000 💎</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #aaa;">🔥 سلسلة التعدين:</span>
+                        <span style="font-weight: 800; color: #4facfe;" id="dailyStreak">0 يوم</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #aaa;">💵 إجمالي المشتريات:</span>
+                        <span style="font-weight: 800; color: #4caf50;" id="totalBought">0 💎</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #aaa;">💰 إجمالي السحوبات:</span>
+                        <span style="font-weight: 800; color: #f44336;" id="totalSold">0 💎</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #aaa;">💎 رأس المال المستثمر:</span>
+                        <span style="font-weight: 800; color: #4caf50;" id="totalDeposits">0 $</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #aaa;">👥 عدد الدعوات:</span>
+                        <span style="font-weight: 800; color: #9c27b0;" id="statsTotalInvites">0</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #aaa;">💳 محفظة الدفع:</span>
+                        <span style="font-weight: 800; color: #4facfe;" id="statsPaymentWallet">غير مرتبطة</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #aaa;">💰 محفظة السحب:</span>
+                        <span style="font-weight: 800; color: #4caf50;" id="statsWithdrawWallet">غير مرتبطة</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- مودال شراء كريستال -->
+    <!-- مودال الشراء الجديد -->
     <div id="buyModal" class="modal">
         <div class="modal-content">
-            <h2 style="color: #FFD700; margin-bottom: 20px; text-align: center;">
-                💵 شراء كريستال
-            </h2>
-            <div style="text-align: center; margin-bottom: 20px;">
-                <div style="font-size: 48px; margin-bottom: 10px;">💎</div>
-                <div style="background: rgba(255,215,0,0.1); padding: 15px; border-radius: 15px;">
-                    <span style="color: #FFD700; font-size: 24px;" id="modalUsdRate">1 💎 = 0.10 $</span>
-                </div>
+            <h2 class="modal-title">💵 شراء كريستال</h2>
+            
+            <div id="buyWalletCheckSection">
+                <!-- يتم تعبئته بالجافاسكريبت - التحقق من محفظة الدفع -->
             </div>
             
-            <input type="number" id="buyUsdAmount" placeholder="المبلغ بالدولار (الحد الأدنى 5$)" min="5" max="500" step="5">
-            
-            <div style="background: rgba(76,175,80,0.1); border-radius: 15px; padding: 15px; margin: 15px 0;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                    <span>ستحصل على:</span>
-                    <span style="font-size: 20px; font-weight: 700; color: #FFD700;" id="crystalPreview">0 💎</span>
+            <div id="buyAmountSection" style="display: none;">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 64px; margin-bottom: 15px;">💎</div>
+                    <div style="background: rgba(255,215,0,0.1); padding: 15px; border-radius: 20px;">
+                        <span style="color: #FFD700; font-size: 24px; font-weight: 900;" id="modalUsdRate">1 💎 = 0.10 $</span>
+                    </div>
                 </div>
+                
+                <input type="number" id="buyUsdAmount" class="input-modern" placeholder="المبلغ بالدولار (USDT) - الحد الأدنى 5$" min="5" max="500" step="5">
+                
+                <div style="background: rgba(76,175,80,0.1); border-radius: 20px; padding: 18px; margin: 15px 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 600;">ستحصل على:</span>
+                        <span style="font-size: 24px; font-weight: 900; color: #FFD700;" id="crystalPreview">0.00 💎</span>
+                    </div>
+                </div>
+                
+                <!-- عنوان محفظة البوت -->
+                <div style="background: rgba(255,215,0,0.1); border-radius: 20px; padding: 18px; margin: 15px 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="color: #FFD700; font-weight: 700;">🏦 محفظة البوت:</span>
+                        <button onclick="copyBotWalletAddress()" style="background: rgba(255,215,0,0.2); border: none; color: #FFD700; padding: 5px 15px; border-radius: 50px; font-size: 12px; cursor: pointer;">
+                            📋 نسخ
+                        </button>
+                    </div>
+                    <div class="wallet-address-box" id="buyModalWalletAddress" style="margin: 0; font-size: 12px;">
+                        TL5jLrLGprWcit3dEfY4pAgzbiTpRtUK2N
+                    </div>
+                </div>
+                
+                <!-- تعليمات التحويل -->
+                <div style="background: rgba(79,172,254,0.1); border-radius: 16px; padding: 15px; margin-bottom: 15px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; color: #4facfe;">
+                        <span>💡</span>
+                        <span style="font-weight: 700;">خطوات الشراء:</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px;">
+                        <span style="background: #4facfe; color: white; width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px;">1</span>
+                        <span>حول USDT من محفظتك المسجلة إلى محفظة البوت</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px;">
+                        <span style="background: #4facfe; color: white; width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px;">2</span>
+                        <span>انتظر تأكيد الأدمن (يتم خلال دقائق)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px; font-size: 13px;">
+                        <span style="background: #4facfe; color: white; width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px;">3</span>
+                        <span>سيتم إضافة الكريستال إلى محفظتك تلقائياً</span>
+                    </div>
+                </div>
+                
+                <button class="button-modern" onclick="submitBuyOrder()" id="submitBuyBtn">
+                    💎 تقديم طلب الشراء
+                </button>
             </div>
             
-            <div class="wallet-address" id="buyWalletAddress">TL5jLrLGprWcit3dEfY4pAgzbiTpRtUK2N</div>
-            
-            <button class="button" onclick="submitBuyOrder()">تأكيد طلب الشراء</button>
-            <button class="button secondary" onclick="closeModal('buyModal')">إلغاء</button>
-        </div>
-    </div>
-
-    <!-- مودال بيع كريستال -->
-    <div id="sellModal" class="modal">
-        <div class="modal-content">
-            <h2 style="color: #FFD700; margin-bottom: 20px; text-align: center;">
-                💰 بيع كريستال
-            </h2>
-            <div style="text-align: center; margin-bottom: 20px;">
-                <div style="font-size: 48px; margin-bottom: 10px;">💎</div>
-                <div style="background: rgba(255,215,0,0.1); padding: 15px; border-radius: 15px;">
-                    <span style="color: #FFD700; font-size: 24px;">1 💎 = 0.10 $</span>
-                </div>
-            </div>
-            
-            <input type="number" id="sellCrystalAmount" placeholder="كمية الكريستال (الحد الأدنى 10)" min="10" max="1000" step="10">
-            
-            <div style="background: rgba(244,67,54,0.1); border-radius: 15px; padding: 15px; margin: 15px 0;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                    <span>ستحصل على:</span>
-                    <span style="font-size: 20px; font-weight: 700; color: #FFD700;" id="usdPreview">0 $</span>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span>رصيدك الحالي:</span>
-                    <span style="color: #4caf50;" id="currentBalance">0 💎</span>
-                </div>
-            </div>
-            
-            <button class="button" onclick="submitSellOrder()">تأكيد طلب البيع</button>
-            <button class="button secondary" onclick="closeModal('sellModal')">إلغاء</button>
-        </div>
-    </div>
-
-    <!-- مودال المكافأة اليومية -->
-    <div id="dailyModal" class="modal">
-        <div class="modal-content">
-            <h2 style="color: #FFD700; margin-bottom: 20px; text-align: center;">
-                🎁 المكافأة اليومية
-            </h2>
-            <div style="text-align: center;">
-                <div style="font-size: 64px; margin-bottom: 15px; animation: bounce 2s infinite;">💎</div>
-                <div style="font-size: 36px; font-weight: 900; color: #FFD700; margin: 15px 0;">1 كريستال</div>
-                <div style="color: #ddd; margin-bottom: 20px;">مكافأة يومية للمنقبين</div>
-                <div style="background: rgba(255,215,0,0.1); padding: 15px; border-radius: 15px; margin: 20px 0;">
-                    <span style="color: #FFD700;">🔥 سلسلة التعدين:</span>
-                    <span style="font-size: 24px; font-weight: 900; color: #FFD700; margin-right: 10px;" id="modalStreak">0</span>
-                    <span style="color: #ddd;">يوم</span>
-                </div>
-            </div>
-            <button class="button" onclick="claimDaily()" style="width: 100%; margin-bottom: 10px;">
-                استلام 1 💎
+            <button class="button-modern button-outline" onclick="closeModal('buyModal')" style="margin-top: 10px;">
+                ❌ إغلاق
             </button>
-            <button class="button secondary" onclick="closeModal('dailyModal')">
-                إغلاق
+        </div>
+    </div>
+
+    <!-- مودال السحب -->
+    <div id="withdrawModal" class="modal">
+        <div class="modal-content">
+            <h2 class="modal-title">💰 سحب الأرباح</h2>
+            
+            <div id="withdrawWalletCheckSection">
+                <!-- يتم تعبئته بالجافاسكريبت - التحقق من محفظة السحب -->
+            </div>
+            
+            <div id="withdrawAmountSection" style="display: none;">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 64px; margin-bottom: 15px;">💸</div>
+                    <div style="background: rgba(244,67,54,0.1); padding: 15px; border-radius: 20px;">
+                        <span style="color: #FFD700; font-size: 24px; font-weight: 900;">1 💎 = 0.08 $</span>
+                    </div>
+                </div>
+                
+                <div id="withdrawInfoContainer"></div>
+                
+                <div id="withdrawTimerContainer" style="background: rgba(244,67,54,0.15); border-radius: 20px; padding: 18px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 600; color: #f44336;">⏳ وقت السحب المتبقي:</span>
+                        <span class="timer-value" id="withdrawTimer">0 س 0 د</span>
+                    </div>
+                </div>
+                
+                <input type="number" id="withdrawAmount" class="input-modern" placeholder="كمية الكريستال" min="10" step="1">
+                
+                <div style="background: rgba(244,67,54,0.1); border-radius: 20px; padding: 18px; margin: 15px 0;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                        <span>ستحصل على:</span>
+                        <span style="font-size: 20px; font-weight: 900; color: #FFD700;" id="usdPreview">0.00 $</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>رصيدك الحالي:</span>
+                        <span style="color: #4caf50; font-weight: 800;" id="currentBalance">0.000 💎</span>
+                    </div>
+                </div>
+                
+                <div id="withdrawLimitsInfo" style="background: rgba(79,172,254,0.1); border-radius: 16px; padding: 15px; margin-bottom: 15px; font-size: 13px;"></div>
+                
+                <button class="button-modern" onclick="submitWithdrawOrder()" id="withdrawButton">
+                    💰 تأكيد طلب السحب
+                </button>
+            </div>
+            
+            <button class="button-modern button-outline" onclick="closeModal('withdrawModal')">
+                ❌ إلغاء
+            </button>
+        </div>
+    </div>
+
+    <!-- مودال تأكيد ربط المحفظة -->
+    <div id="confirmWalletModal" class="modal">
+        <div class="modal-content">
+            <h2 class="modal-title" style="color: #4facfe;">🔐 تأكيد ربط المحفظة</h2>
+            
+            <div style="text-align: center; margin-bottom: 20px;">
+                <div style="font-size: 64px; margin-bottom: 15px;">💳</div>
+                <div style="background: rgba(79,172,254,0.1); padding: 15px; border-radius: 20px;">
+                    <span style="color: #4facfe; font-size: 18px; font-weight: 700;">يرجى مراجعة العنوان</span>
+                </div>
+            </div>
+            
+            <div style="background: rgba(0,0,0,0.3); border-radius: 16px; padding: 18px; margin-bottom: 20px; direction: ltr; text-align: left;">
+                <div style="font-family: monospace; font-size: 14px; color: #FFD700; word-break: break-all;" id="confirmWalletAddress"></div>
+            </div>
+            
+            <div style="background: rgba(244,67,54,0.1); border-radius: 16px; padding: 15px; margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="color: #f44336; font-size: 20px;">⚠️</span>
+                    <span style="color: #fff; font-size: 14px;">
+                        تأكد من صحة العنوان! بعد التأكيد، سيتم إرسال طلب للأدمن للموافقة.
+                    </span>
+                </div>
+            </div>
+            
+            <button class="button-modern" onclick="confirmWalletSubmission()">
+                ✅ تأكيد وإرسال الطلب
+            </button>
+            <button class="button-modern button-outline" onclick="closeModal('confirmWalletModal')">
+                ❌ رجوع
             </button>
         </div>
     </div>
 
     <script>
-        // ==================== تهيئة التطبيق ====================
         let tg = window.Telegram.WebApp;
         let userId = null;
         let userData = null;
         let shopItems = null;
         let usdRate = 0.10;
-        let miningCooldown = 0;
-        let miningTimer = null;
-        let cooldownInterval = null;
+        let withdrawRate = 0.08;
+        let miningFraction = 0;
+        let lastMineTime = null;
+        let withdrawCooldown = 0;
+        let withdrawTimerInterval = null;
+        let currentWalletType = 'payment';
+        let pendingWalletData = null;
 
         tg.expand();
         tg.ready();
-        tg.setHeaderColor('#0a0f1e');
-        tg.setBackgroundColor('#0a0f1e');
+        tg.setHeaderColor('#0b0e14');
+        tg.setBackgroundColor('#0b0e14');
 
-        // ==================== دوال API الآمنة ====================
+        function createParticles() {
+            const bg = document.getElementById('particleBackground');
+            for (let i = 0; i < 20; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'crystal-particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.top = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 10 + 's';
+                particle.style.animationDuration = (15 + Math.random() * 10) + 's';
+                particle.innerHTML = ['💎', '⛏️', '✨', '💠'][Math.floor(Math.random() * 4)];
+                bg.appendChild(particle);
+            }
+        }
+        createParticles();
+
         async function apiRequest(endpoint, options = {}) {
             const initData = tg.initData;
             
@@ -920,7 +1430,7 @@
                 
                 if (!response.ok) {
                     if (response.status === 401 || response.status === 403) {
-                        tg.showAlert('❌ خطأ في التحقق من الهوية');
+                        showToast('❌ خطأ في التحقق من الهوية', false);
                         return { success: false };
                     }
                 }
@@ -928,247 +1438,124 @@
                 return await response.json();
             } catch (error) {
                 console.error('API Error:', error);
-                tg.showAlert('❌ خطأ في الاتصال بالخادم');
+                showToast('❌ خطأ في الاتصال بالخادم', false);
                 return { success: false };
             }
         }
 
-        // ==================== تحميل البيانات ====================
+        function showToast(message, isSuccess = true) {
+            const toast = document.createElement('div');
+            toast.className = 'toast-notification';
+            toast.innerHTML = `${isSuccess ? '✅' : '❌'} ${message}`;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
         if (tg.initDataUnsafe?.user?.id) {
             userId = tg.initDataUnsafe.user.id.toString();
             loadUserData();
             loadShopItems();
-            loadTradeStats();
-            loadUserOrders();
+            loadUserWithdraws();
+            loadWalletsData();
             
-            // تحديث دوري
             setInterval(() => {
                 loadUserData();
-                loadTradeStats();
-            }, 30000);
+                updateMiningProgress();
+            }, 1000);
         }
 
-        // تحميل بيانات المستخدم
         async function loadUserData() {
             const data = await apiRequest(`/api/user/${userId}`);
             if (data.success) {
                 userData = data.user;
                 usdRate = data.user.usdRate || 0.10;
-                miningCooldown = data.user.miningCooldown || 0;
+                withdrawRate = 0.08;
+                miningFraction = data.user.miningFraction || 0;
+                lastMineTime = data.user.last_mine_click;
+                withdrawCooldown = data.user.withdrawCooldown || 0;
                 updateUI();
-                updateMiningButton();
-                
-                // شحن الطاقة
-                await apiRequest('/api/charge', { method: 'POST', body: '{}' });
+                updateMiningProgress();
+                updateWithdrawTimer();
             }
         }
 
-        // تحميل إحصائيات التداول
-        async function loadTradeStats() {
-            const buyStats = await apiRequest('/api/buy-stats');
-            const sellStats = await apiRequest('/api/sell-stats');
-            
-            if (buyStats.success) {
-                document.getElementById('totalCrystalSold').textContent = buyStats.stats.totalCrystals.toFixed(0);
-                document.getElementById('totalUsdInvested').textContent = `$${buyStats.stats.totalUsd.toFixed(0)}`;
-            }
-            
-            document.getElementById('totalTransactions').textContent = 
-                (buyStats.stats?.totalOrders || 0) + (sellStats.stats?.totalOrders || 0);
-        }
-
-        // تحميل طلبات المستخدم
-        async function loadUserOrders() {
-            if (!userId) return;
-            const data = await apiRequest(`/api/user-orders/${userId}`);
-            
-            if (data.success) {
-                // طلبات الشراء
-                let buyHtml = '';
-                if (data.buyOrders.length === 0) {
-                    buyHtml = '<div style="text-align: center; padding: 20px; color: #aaa;">لا توجد طلبات شراء</div>';
-                } else {
-                    data.buyOrders.slice(0, 5).forEach(order => {
-                        let statusClass = 'status-pending';
-                        let statusText = '⏳ قيد الانتظار';
-                        
-                        if (order.status === 'completed') {
-                            statusClass = 'status-completed';
-                            statusText = '✅ مكتمل';
-                        } else if (order.status === 'rejected') {
-                            statusClass = 'status-rejected';
-                            statusText = '❌ مرفوض';
-                        }
-                        
-                        buyHtml += `
-                            <div class="order-item">
-                                <div>
-                                    <div style="font-weight: 700;">💵 شراء ${order.crystalAmount.toFixed(2)} 💎</div>
-                                    <div style="font-size: 12px; color: #aaa;">${new Date(order.createdAt).toLocaleDateString('ar-EG')}</div>
-                                </div>
-                                <div>
-                                    <span class="order-status ${statusClass}">${statusText}</span>
-                                </div>
-                            </div>
-                        `;
-                    });
-                }
-                document.getElementById('buyOrdersList').innerHTML = buyHtml;
-                
-                // طلبات البيع
-                let sellHtml = '';
-                if (data.sellOrders.length === 0) {
-                    sellHtml = '<div style="text-align: center; padding: 20px; color: #aaa;">لا توجد طلبات بيع</div>';
-                } else {
-                    data.sellOrders.slice(0, 5).forEach(order => {
-                        let statusClass = 'status-pending';
-                        let statusText = '⏳ قيد الانتظار';
-                        
-                        if (order.status === 'completed') {
-                            statusClass = 'status-completed';
-                            statusText = '✅ مكتمل';
-                        } else if (order.status === 'rejected') {
-                            statusClass = 'status-rejected';
-                            statusText = '❌ مرفوض';
-                        }
-                        
-                        sellHtml += `
-                            <div class="order-item">
-                                <div>
-                                    <div style="font-weight: 700;">💰 بيع ${order.crystalAmount} 💎</div>
-                                    <div style="font-size: 12px; color: #aaa;">${new Date(order.createdAt).toLocaleDateString('ar-EG')}</div>
-                                </div>
-                                <div>
-                                    <span class="order-status ${statusClass}">${statusText}</span>
-                                </div>
-                            </div>
-                        `;
-                    });
-                }
-                document.getElementById('sellOrdersList').innerHTML = sellHtml;
-            }
-        }
-
-        // تحميل عناصر المتجر
-        async function loadShopItems() {
-            const data = await apiRequest('/api/shop-items');
-            
-            if (data.success) {
-                shopItems = data.items;
-                usdRate = data.usdRate || 0.10;
-                
-                document.getElementById('usdRate').textContent = `1 💎 = ${usdRate} $`;
-                document.getElementById('modalUsdRate') && (document.getElementById('modalUsdRate').textContent = `1 💎 = ${usdRate} $`);
-                
-                const userResponse = await apiRequest(`/api/user/${userId}`);
-                
-                if (userResponse.success) {
-                    // ترقيات الطاقة
-                    let upgradesHtml = '';
-                    const upgradeItems = ['energy_boost', 'miner_upgrade'];
-                    
-                    upgradeItems.forEach(itemId => {
-                        const item = data.items[itemId];
-                        if (item) {
-                            const isOwned = userResponse.user.upgrades?.[itemId];
-                            upgradesHtml += `
-                                <div class="shop-item">
-                                    <div>
-                                        <div class="item-name">${item.name}</div>
-                                        <div class="item-desc">${item.description}</div>
-                                        <div class="item-price">💎 ${item.price}</div>
-                                    </div>
-                                    <div>
-                                        ${isOwned ? 
-                                            '<span style="color: #4caf50; font-weight: 700; padding: 10px 20px;">✅ مملوك</span>' : 
-                                            `<button class="button" onclick="buyItem('${item.id}')" style="padding: 10px 20px; font-size: 14px;">شراء</button>`
-                                        }
-                                    </div>
-                                </div>
-                            `;
-                        }
-                    });
-                    
-                    document.getElementById('upgradeItems').innerHTML = upgradesHtml;
-                }
-            }
-        }
-
-        // ==================== تحديث الواجهة ====================
         function updateUI() {
             if (userData) {
-                document.getElementById('floatBalance').textContent = parseFloat(userData.balance).toFixed(2);
-                document.getElementById('floatUsd').textContent = `≈ $${(userData.balance * usdRate).toFixed(2)}`;
-                document.getElementById('energy').textContent = `${userData.energy}/${userData.maxEnergy || 100}`;
-                document.getElementById('currentBalance') && (document.getElementById('currentBalance').textContent = `${parseFloat(userData.balance).toFixed(2)} 💎`);
+                document.getElementById('floatBalance').textContent = parseFloat(userData.balance).toFixed(3);
+                document.getElementById('floatUsd').textContent = `≈ $${(userData.balance * withdrawRate).toFixed(2)}`;
+                document.getElementById('currentBalance') && (document.getElementById('currentBalance').textContent = `${parseFloat(userData.balance).toFixed(3)} 💎`);
                 
-                const energyPercent = (userData.energy / (userData.maxEnergy || 100)) * 100;
-                document.getElementById('energyBar').style.width = `${energyPercent}%`;
+                document.getElementById('totalMined') && (document.getElementById('totalMined').textContent = `${(userData.total_mined || 0).toFixed(3)} 💎`);
+                document.getElementById('dailyStreak') && (document.getElementById('dailyStreak').textContent = `${userData.daily_streak || 0} يوم`);
+                document.getElementById('totalBought') && (document.getElementById('totalBought').textContent = `${(userData.total_bought || 0).toFixed(3)} 💎`);
+                document.getElementById('totalSold') && (document.getElementById('totalSold').textContent = `${(userData.total_sold || 0).toFixed(3)} 💎`);
+                document.getElementById('statsTotalInvites') && (document.getElementById('statsTotalInvites').textContent = `${userData.total_invites || 0}`);
+                
+                const totalDepositsUSD = (userData.total_bought || 0) * usdRate;
+                document.getElementById('totalDeposits') && (document.getElementById('totalDeposits').textContent = `${totalDepositsUSD.toFixed(2)} $`);
             }
         }
 
-        // ==================== نظام التعدين - 1 كريستال كل ساعتين ====================
-        function updateMiningButton() {
+        function updateMiningProgress() {
+            if (!userData) return;
+            
+            const fractionDisplay = document.getElementById('fractionDisplay');
+            const progressBar = document.getElementById('miningProgressBar');
+            const cooldownTimer = document.getElementById('cooldownTimer');
             const mineButton = document.getElementById('mineButton');
             const mineText = document.getElementById('mineText');
             const mineSubtext = document.getElementById('mineSubtext');
             
-            if (miningCooldown > 0) {
-                // في فترة التبريد
-                mineButton.style.opacity = '0.7';
-                mineButton.style.pointerEvents = 'none';
-                mineButton.style.animation = 'none';
-                mineText.textContent = '⏳ شحن...';
+            if (lastMineTime) {
+                const now = Date.now();
+                const hoursPassed = (now - lastMineTime) / (1000 * 60 * 60);
                 
-                // حساب الوقت المتبقي
-                const totalMinutes = Math.ceil(miningCooldown * 60);
-                const hours = Math.floor(totalMinutes / 60);
-                const minutes = totalMinutes % 60;
-                
-                if (hours > 0) {
-                    mineSubtext.textContent = `انتظر ${hours} ساعة ${minutes} دقيقة`;
+                if (hoursPassed < 24) {
+                    const fraction = Math.min(1, hoursPassed / 24);
+                    miningFraction = fraction;
+                    
+                    fractionDisplay.textContent = `${fraction.toFixed(3)}/1.000 💎`;
+                    progressBar.style.width = `${fraction * 100}%`;
+                    
+                    const remainingHours = 24 - hoursPassed;
+                    const hours = Math.floor(remainingHours);
+                    const minutes = Math.floor((remainingHours - hours) * 60);
+                    
+                    cooldownTimer.innerHTML = `⏳ التعدين التالي بعد: ${hours} ساعة ${minutes} دقيقة`;
+                    
+                    mineButton.style.opacity = '0.7';
+                    mineButton.style.pointerEvents = 'none';
+                    mineButton.style.animation = 'none';
+                    mineText.textContent = '⏳ تعدين...';
+                    mineSubtext.textContent = `اكتمال ${(fraction * 100).toFixed(1)}%`;
                 } else {
-                    mineSubtext.textContent = `انتظر ${minutes} دقيقة`;
+                    miningFraction = 1;
+                    fractionDisplay.textContent = '1.000/1.000 💎 (جاهز!)';
+                    progressBar.style.width = '100%';
+                    cooldownTimer.innerHTML = '✨ يمكنك التعدين الآن! اضغط على الكريستالة!';
+                    
+                    mineButton.style.opacity = '1';
+                    mineButton.style.pointerEvents = 'auto';
+                    mineButton.style.animation = 'floatMine 3s infinite ease-in-out';
+                    mineText.textContent = 'تعدين!';
+                    mineSubtext.textContent = 'اضغط لاستخراج 1 كريستال';
                 }
-                
-                // تحديث العد التنازلي كل دقيقة
-                if (cooldownInterval) clearInterval(cooldownInterval);
-                cooldownInterval = setInterval(() => {
-                    miningCooldown -= 1/60;
-                    if (miningCooldown <= 0) {
-                        clearInterval(cooldownInterval);
-                        resetMiningButton();
-                    } else {
-                        const mins = Math.ceil(miningCooldown * 60);
-                        const h = Math.floor(mins / 60);
-                        const m = mins % 60;
-                        if (h > 0) {
-                            mineSubtext.textContent = `انتظر ${h} ساعة ${m} دقيقة`;
-                        } else {
-                            mineSubtext.textContent = `انتظر ${m} دقيقة`;
-                        }
-                    }
-                }, 60000);
             } else {
-                resetMiningButton();
+                fractionDisplay.textContent = '1.000/1.000 💎 (جاهز!)';
+                progressBar.style.width = '100%';
+                cooldownTimer.innerHTML = '✨ يمكنك التعدين الآن!';
+                
+                mineButton.style.opacity = '1';
+                mineButton.style.pointerEvents = 'auto';
+                mineButton.style.animation = 'floatMine 3s infinite ease-in-out';
+                mineText.textContent = 'تعدين!';
+                mineSubtext.textContent = 'اضغط لاستخراج 1 كريستال';
             }
         }
 
-        function resetMiningButton() {
-            const mineButton = document.getElementById('mineButton');
-            const mineText = document.getElementById('mineText');
-            const mineSubtext = document.getElementById('mineSubtext');
-            
-            mineButton.style.opacity = '1';
-            mineButton.style.pointerEvents = 'auto';
-            mineButton.style.animation = 'pulse 2s infinite';
-            mineText.textContent = 'تعدين!';
-            mineSubtext.textContent = 'اضغط لاستخراج 1 كريستال';
-            
-            if (cooldownInterval) clearInterval(cooldownInterval);
-        }
-
-        // دالة التعدين
         async function mine() {
             const data = await apiRequest('/api/mine', {
                 method: 'POST',
@@ -1177,68 +1564,463 @@
             
             if (data.success) {
                 userData.balance = parseFloat(data.newBalance);
-                miningCooldown = data.cooldown || 2;
-                updateUI();
-                updateMiningButton();
+                userData.total_mined = parseFloat(data.totalMined);
+                lastMineTime = Date.now();
+                miningFraction = 0;
                 
-                tg.showAlert(`✅ تم التعدين!\n💎 +${parseFloat(data.minedAmount).toFixed(2)} كريستال\n⏳ انتظر ساعتين للتعدين مرة أخرى`);
+                updateUI();
+                updateMiningProgress();
+                
+                showToast(`✅ تم التعدين! +${parseFloat(data.minedAmount).toFixed(3)} كريستال`, true);
             } else {
                 if (data.error === 'تعدين') {
-                    tg.showAlert(`⏳ ${data.message || 'انتظر ساعتين بين كل تعدين'}`);
+                    showToast(`⏳ ${data.message || 'انتظر 24 ساعة بين كل تعدين'}`, false);
                 } else {
-                    tg.showAlert(`❌ ${data.error || 'فشل التعدين'}`);
+                    showToast(`❌ ${data.error || 'فشل التعدين'}`, false);
                 }
             }
         }
 
-        // ==================== نظام المكافأة اليومية - 1 كريستال ====================
-        function openDailyModal() {
-            if (!userData) return;
-            document.getElementById('dailyModal').style.display = 'flex';
-            document.getElementById('modalStreak').textContent = userData.daily_streak || 0;
-        }
-
-        async function claimDaily() {
-            const data = await apiRequest('/api/daily', {
-                method: 'POST',
-                body: JSON.stringify({})
-            });
+        // ========== نظام المحافظ المتكامل ==========
+        async function loadWalletsData() {
+            if (!userId) return;
             
+            const data = await apiRequest(`/api/wallets/${userId}`);
             if (data.success) {
-                userData.balance = parseFloat(userData.balance) + parseFloat(data.reward);
-                userData.daily_streak = data.streak;
-                updateUI();
-                closeModal('dailyModal');
-                tg.showAlert(`✅ تم استلام 1 كريستال!\n🔥 السلسلة: ${data.streak} يوم`);
-            } else {
-                tg.showAlert(`❌ ${data.error || 'لقد استلمت مكافأتك اليوم'}`);
+                // محفظة الدفع
+                updatePaymentWalletUI(data.paymentWallet);
+                // محفظة السحب
+                updateWithdrawWalletUI(data.withdrawWallet);
+                // سجل المحافظ
+                updateWalletsHistory(data.history);
+                // تحديث الإحصائيات
+                updateStatsWallets(data.paymentWallet, data.withdrawWallet);
             }
         }
 
-        // ==================== نظام شراء الترقيات ====================
-        async function buyItem(itemId) {
-            const data = await apiRequest('/api/buy', {
-                method: 'POST',
-                body: JSON.stringify({ itemId })
-            });
+        function updatePaymentWalletUI(wallet) {
+            const statusDiv = document.getElementById('paymentWalletStatus');
+            const formDiv = document.getElementById('paymentWalletForm');
+            const statsElement = document.getElementById('statsPaymentWallet');
             
-            if (data.success) {
-                userData.balance = parseFloat(data.newBalance);
-                if (data.maxEnergy) {
-                    userData.maxEnergy = data.maxEnergy;
+            if (wallet) {
+                let statusClass = '';
+                let statusText = '';
+                let statusColor = '';
+                
+                switch(wallet.status) {
+                    case 'active':
+                        statusClass = 'wallet-status-active';
+                        statusText = '✅ نشطة';
+                        statusColor = '#4caf50';
+                        if (statsElement) statsElement.textContent = '✅ نشطة';
+                        break;
+                    case 'pending':
+                        statusClass = 'wallet-status-pending';
+                        statusText = '⏳ في انتظار الموافقة';
+                        statusColor = '#ffc107';
+                        if (statsElement) statsElement.textContent = '⏳ قيد المراجعة';
+                        break;
+                    case 'rejected':
+                        statusClass = 'wallet-status-rejected';
+                        statusText = '❌ مرفوضة';
+                        statusColor = '#f44336';
+                        if (statsElement) statsElement.textContent = '❌ مرفوضة';
+                        break;
                 }
-                updateUI();
-                loadShopItems();
-                tg.showAlert('✅ تم الشراء بنجاح!');
+                
+                statusDiv.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                        <div style="background: ${statusColor}; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px;">
+                            💵
+                        </div>
+                        <div>
+                            <div style="font-size: 14px; color: #aaa;">حالة محفظة الدفع</div>
+                            <div style="font-size: 20px; font-weight: 900; color: ${statusColor};">${statusText}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="wallet-address-box" style="margin-bottom: 15px;">
+                        ${wallet.address}
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                        <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 12px;">
+                            <div style="color: #aaa; font-size: 11px;">اسم المحفظة</div>
+                            <div style="color: #FFD700; font-weight: 700;">${wallet.wallet_name || 'غير محدد'}</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 12px;">
+                            <div style="color: #aaa; font-size: 11px;">الشبكة</div>
+                            <div style="color: #4facfe; font-weight: 700;">${wallet.network || 'TRC20'}</div>
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <button class="button-modern" onclick="showPaymentWalletForm()" style="padding: 12px; font-size: 14px;">
+                            🔄 تغيير المحفظة
+                        </button>
+                        <button class="button-modern button-outline" onclick="disconnectPaymentWallet()" style="padding: 12px; font-size: 14px;">
+                            🔌 فصل المحفظة
+                        </button>
+                    </div>
+                `;
+                
+                formDiv.style.display = 'none';
             } else {
-                tg.showAlert(`❌ ${data.error || 'فشل في الشراء'}`);
+                statusDiv.innerHTML = `
+                    <div style="text-align: center; padding: 20px;">
+                        <div style="font-size: 48px; margin-bottom: 15px;">💵</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #aaa; margin-bottom: 10px;">لا توجد محفظة دفع مرتبطة</div>
+                        <p style="color: #ddd; font-size: 14px; margin-bottom: 20px;">اربط محفظتك للتحويل إلى محفظة البوت</p>
+                        <button class="button-modern" onclick="showPaymentWalletForm()" style="padding: 14px;">
+                            🔗 ربط محفظة الدفع
+                        </button>
+                    </div>
+                `;
+                
+                formDiv.style.display = 'none';
+                if (statsElement) statsElement.textContent = 'غير مرتبطة';
             }
         }
 
-        // ==================== نظام شراء كريستال بالدولار ====================
-        function openBuyModal() {
+        function updateWithdrawWalletUI(wallet) {
+            const statusDiv = document.getElementById('withdrawWalletStatus');
+            const formDiv = document.getElementById('withdrawWalletForm');
+            const statsElement = document.getElementById('statsWithdrawWallet');
+            
+            if (wallet) {
+                let statusClass = '';
+                let statusText = '';
+                let statusColor = '';
+                
+                switch(wallet.status) {
+                    case 'active':
+                        statusClass = 'wallet-status-active';
+                        statusText = '✅ نشطة';
+                        statusColor = '#4caf50';
+                        if (statsElement) statsElement.textContent = '✅ نشطة';
+                        break;
+                    case 'pending':
+                        statusClass = 'wallet-status-pending';
+                        statusText = '⏳ في انتظار الموافقة';
+                        statusColor = '#ffc107';
+                        if (statsElement) statsElement.textContent = '⏳ قيد المراجعة';
+                        break;
+                    case 'rejected':
+                        statusClass = 'wallet-status-rejected';
+                        statusText = '❌ مرفوضة';
+                        statusColor = '#f44336';
+                        if (statsElement) statsElement.textContent = '❌ مرفوضة';
+                        break;
+                }
+                
+                statusDiv.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                        <div style="background: ${statusColor}; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px;">
+                            💰
+                        </div>
+                        <div>
+                            <div style="font-size: 14px; color: #aaa;">حالة محفظة السحب</div>
+                            <div style="font-size: 20px; font-weight: 900; color: ${statusColor};">${statusText}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="wallet-address-box" style="margin-bottom: 15px;">
+                        ${wallet.address}
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                        <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 12px;">
+                            <div style="color: #aaa; font-size: 11px;">اسم المحفظة</div>
+                            <div style="color: #FFD700; font-weight: 700;">${wallet.wallet_name || 'غير محدد'}</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 12px;">
+                            <div style="color: #aaa; font-size: 11px;">الشبكة</div>
+                            <div style="color: #4facfe; font-weight: 700;">${wallet.network || 'TRC20'}</div>
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <button class="button-modern" onclick="showWithdrawWalletForm()" style="padding: 12px; font-size: 14px;">
+                            🔄 تغيير المحفظة
+                        </button>
+                        <button class="button-modern button-outline" onclick="disconnectWithdrawWallet()" style="padding: 12px; font-size: 14px;">
+                            🔌 فصل المحفظة
+                        </button>
+                    </div>
+                `;
+                
+                formDiv.style.display = 'none';
+            } else {
+                statusDiv.innerHTML = `
+                    <div style="text-align: center; padding: 20px;">
+                        <div style="font-size: 48px; margin-bottom: 15px;">💰</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #aaa; margin-bottom: 10px;">لا توجد محفظة سحب مرتبطة</div>
+                        <p style="color: #ddd; font-size: 14px; margin-bottom: 20px;">اربط محفظتك لاستلام الأرباح</p>
+                        <button class="button-modern" onclick="showWithdrawWalletForm()" style="padding: 14px;">
+                            🔗 ربط محفظة السحب
+                        </button>
+                    </div>
+                `;
+                
+                formDiv.style.display = 'none';
+                if (statsElement) statsElement.textContent = 'غير مرتبطة';
+            }
+        }
+
+        function updateWalletsHistory(history) {
+            const historyDiv = document.getElementById('walletsHistoryList');
+            
+            if (history && history.length > 0) {
+                let historyHtml = '';
+                history.slice(0, 5).forEach(item => {
+                    let statusColor = '';
+                    let statusText = '';
+                    let typeIcon = item.type === 'payment' ? '💵' : '💰';
+                    let typeText = item.type === 'payment' ? 'محفظة دفع' : 'محفظة سحب';
+                    
+                    switch(item.status) {
+                        case 'active':
+                            statusColor = '#4caf50';
+                            statusText = '✅ مقبولة';
+                            break;
+                        case 'pending':
+                            statusColor = '#ffc107';
+                            statusText = '⏳ قيد المراجعة';
+                            break;
+                        case 'rejected':
+                            statusColor = '#f44336';
+                            statusText = '❌ مرفوضة';
+                            break;
+                        case 'disconnected':
+                            statusColor = '#aaa';
+                            statusText = '🔌 مفصولة';
+                            break;
+                    }
+                    
+                    historyHtml += `
+                        <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 12px; margin-bottom: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                                <div>
+                                    <span style="font-size: 16px; margin-left: 5px;">${typeIcon}</span>
+                                    <span style="color: #FFD700; font-size: 12px; font-weight: 700;">${typeText}</span>
+                                </div>
+                                <span style="color: ${statusColor}; font-size: 11px; font-weight: 700;">${statusText}</span>
+                            </div>
+                            <div style="font-family: monospace; font-size: 11px; color: #4facfe; direction: ltr; text-align: left; margin-bottom: 5px;">
+                                ${item.address.substring(0, 10)}...${item.address.substring(item.address.length - 8)}
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #aaa; font-size: 10px;">${item.wallet_name || 'غير محدد'}</span>
+                                <span style="color: #aaa; font-size: 10px;">${new Date(item.createdAt).toLocaleDateString('ar-EG')}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                historyDiv.innerHTML = historyHtml;
+            } else {
+                historyDiv.innerHTML = '<div style="text-align: center; padding: 15px; color: #aaa;">لا يوجد سجل للمحافظ</div>';
+            }
+        }
+
+        function updateStatsWallets(paymentWallet, withdrawWallet) {
+            const statsPayment = document.getElementById('statsPaymentWallet');
+            const statsWithdraw = document.getElementById('statsWithdrawWallet');
+            
+            if (statsPayment) {
+                if (paymentWallet) {
+                    if (paymentWallet.status === 'active') statsPayment.textContent = '✅ نشطة';
+                    else if (paymentWallet.status === 'pending') statsPayment.textContent = '⏳ قيد المراجعة';
+                    else if (paymentWallet.status === 'rejected') statsPayment.textContent = '❌ مرفوضة';
+                } else {
+                    statsPayment.textContent = 'غير مرتبطة';
+                }
+            }
+            
+            if (statsWithdraw) {
+                if (withdrawWallet) {
+                    if (withdrawWallet.status === 'active') statsWithdraw.textContent = '✅ نشطة';
+                    else if (withdrawWallet.status === 'pending') statsWithdraw.textContent = '⏳ قيد المراجعة';
+                    else if (withdrawWallet.status === 'rejected') statsWithdraw.textContent = '❌ مرفوضة';
+                } else {
+                    statsWithdraw.textContent = 'غير مرتبطة';
+                }
+            }
+        }
+
+        function switchWalletType(type) {
+            currentWalletType = type;
+            
+            document.querySelectorAll('.wallet-type-tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            if (type === 'payment') {
+                document.getElementById('paymentWalletContent').style.display = 'block';
+                document.getElementById('withdrawWalletContent').style.display = 'none';
+            } else {
+                document.getElementById('paymentWalletContent').style.display = 'none';
+                document.getElementById('withdrawWalletContent').style.display = 'block';
+            }
+        }
+
+        function showPaymentWalletForm() {
+            document.getElementById('paymentWalletForm').style.display = 'block';
+            document.getElementById('paymentWalletStatus').style.display = 'none';
+        }
+
+        function hidePaymentWalletForm() {
+            document.getElementById('paymentWalletForm').style.display = 'none';
+            document.getElementById('paymentWalletStatus').style.display = 'block';
+        }
+
+        function showWithdrawWalletForm() {
+            document.getElementById('withdrawWalletForm').style.display = 'block';
+            document.getElementById('withdrawWalletStatus').style.display = 'none';
+        }
+
+        function hideWithdrawWalletForm() {
+            document.getElementById('withdrawWalletForm').style.display = 'none';
+            document.getElementById('withdrawWalletStatus').style.display = 'block';
+        }
+
+        async function connectPaymentWallet() {
+            const address = document.getElementById('paymentWalletAddress').value.trim();
+            const walletName = document.getElementById('paymentWalletName').value.trim();
+            const network = document.getElementById('paymentWalletNetwork').value;
+            
+            if (!address || address.length < 30) {
+                showToast('❌ يرجى إدخال عنوان محفظة صحيح', false);
+                return;
+            }
+            
+            pendingWalletData = {
+                type: 'payment',
+                address: address,
+                walletName: walletName || 'محفظة الدفع',
+                network: network
+            };
+            
+            document.getElementById('confirmWalletAddress').textContent = address;
+            openModal('confirmWalletModal');
+        }
+
+        async function connectWithdrawWallet() {
+            const address = document.getElementById('withdrawWalletAddress').value.trim();
+            const walletName = document.getElementById('withdrawWalletName').value.trim();
+            const network = document.getElementById('withdrawWalletNetwork').value;
+            
+            if (!address || address.length < 30) {
+                showToast('❌ يرجى إدخال عنوان محفظة صحيح', false);
+                return;
+            }
+            
+            pendingWalletData = {
+                type: 'withdraw',
+                address: address,
+                walletName: walletName || 'محفظة السحب',
+                network: network
+            };
+            
+            document.getElementById('confirmWalletAddress').textContent = address;
+            openModal('confirmWalletModal');
+        }
+
+        async function confirmWalletSubmission() {
+            if (!pendingWalletData) return;
+            
+            const data = await apiRequest('/api/wallet/connect', {
+                method: 'POST',
+                body: JSON.stringify(pendingWalletData)
+            });
+            
+            if (data.success) {
+                closeModal('confirmWalletModal');
+                showToast('✅ تم إرسال طلب ربط المحفظة للإدارة', true);
+                loadWalletsData();
+                pendingWalletData = null;
+            } else {
+                showToast('❌ فشل في إرسال الطلب', false);
+            }
+        }
+
+        async function disconnectPaymentWallet() {
+            if (!confirm('هل أنت متأكد من فصل محفظة الدفع؟')) return;
+            
+            const data = await apiRequest('/api/wallet/disconnect', {
+                method: 'POST',
+                body: JSON.stringify({ type: 'payment' })
+            });
+            
+            if (data.success) {
+                showToast('✅ تم فصل محفظة الدفع', true);
+                loadWalletsData();
+            } else {
+                showToast('❌ فشل في فصل المحفظة', false);
+            }
+        }
+
+        async function disconnectWithdrawWallet() {
+            if (!confirm('هل أنت متأكد من فصل محفظة السحب؟')) return;
+            
+            const data = await apiRequest('/api/wallet/disconnect', {
+                method: 'POST',
+                body: JSON.stringify({ type: 'withdraw' })
+            });
+            
+            if (data.success) {
+                showToast('✅ تم فصل محفظة السحب', true);
+                loadWalletsData();
+            } else {
+                showToast('❌ فشل في فصل المحفظة', false);
+            }
+        }
+
+        function copyBotWalletAddress() {
+            const address = document.getElementById('botWalletAddress').textContent;
+            navigator.clipboard.writeText(address);
+            showToast('✅ تم نسخ عنوان محفظة البوت', true);
+        }
+
+        // ========== نظام الشراء المتكامل مع محفظة الدفع ==========
+        async function openBuyModal() {
+            if (!userId) return;
+            
+            const walletsData = await apiRequest(`/api/wallets/${userId}`);
+            const paymentWallet = walletsData.success ? walletsData.paymentWallet : null;
+            
+            const checkSection = document.getElementById('buyWalletCheckSection');
+            const amountSection = document.getElementById('buyAmountSection');
+            
+            if (!paymentWallet || paymentWallet.status !== 'active') {
+                checkSection.innerHTML = `
+                    <div style="text-align: center; padding: 30px 20px;">
+                        <div style="font-size: 64px; margin-bottom: 20px;">💵</div>
+                        <div style="font-size: 20px; font-weight: 900; color: #f44336; margin-bottom: 15px;">محفظة الدفع غير مرتبطة!</div>
+                        <p style="color: #aaa; margin-bottom: 25px;">يجب ربط محفظة دفع نشطة أولاً للشراء</p>
+                        <button class="button-modern" onclick="closeModal('buyModal'); switchTab(event, 'wallets');">
+                            🔗 ربط محفظة الدفع
+                        </button>
+                    </div>
+                `;
+                amountSection.style.display = 'none';
+            } else {
+                checkSection.innerHTML = `
+                    <div style="background: rgba(76,175,80,0.1); border-radius: 16px; padding: 15px; margin-bottom: 20px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="color: #4caf50; font-size: 24px;">✅</span>
+                            <div>
+                                <div style="color: #4caf50; font-weight: 700;">محفظة دفع نشطة</div>
+                                <div style="font-family: monospace; font-size: 11px; color: #4facfe; direction: ltr; text-align: left;">
+                                    ${paymentWallet.address.substring(0, 10)}...${paymentWallet.address.substring(paymentWallet.address.length - 8)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                amountSection.style.display = 'block';
+            }
+            
             document.getElementById('buyModal').style.display = 'flex';
-            document.getElementById('buyWalletAddress').textContent = 'TL5jLrLGprWcit3dEfY4pAgzbiTpRtUK2N';
             
             document.getElementById('buyUsdAmount').addEventListener('input', function(e) {
                 const usd = parseFloat(e.target.value) || 0;
@@ -1251,12 +2033,12 @@
             const usdAmount = parseFloat(document.getElementById('buyUsdAmount').value);
             
             if (!usdAmount || usdAmount < 5) {
-                tg.showAlert('❌ الحد الأدنى للشراء 5 دولار');
+                showToast('❌ الحد الأدنى للشراء 5 دولار', false);
                 return;
             }
             
             if (usdAmount > 500) {
-                tg.showAlert('❌ الحد الأقصى للشراء 500 دولار');
+                showToast('❌ الحد الأقصى للشراء 500 دولار', false);
                 return;
             }
             
@@ -1267,95 +2049,299 @@
             
             if (data.success) {
                 closeModal('buyModal');
-                tg.showAlert(`✅ تم إرسال طلب شراء ${data.crystalAmount} 💎\n⏰ في انتظار تأكيد الأدمن`);
-                loadUserOrders();
+                showToast(`✅ تم إرسال طلب شراء ${data.crystalAmount} 💎`, true);
             } else {
-                tg.showAlert(`❌ ${data.error || 'فشل في إرسال الطلب'}`);
+                showToast(`❌ ${data.error || 'فشل في إرسال الطلب'}`, false);
             }
         }
 
-        // ==================== نظام بيع كريستال ====================
-        function openSellModal() {
-            if (!userData || userData.balance < 10) {
-                tg.showAlert('❌ رصيدك أقل من 10 كريستال');
-                return;
-            }
-            document.getElementById('sellModal').style.display = 'flex';
-            document.getElementById('currentBalance').textContent = `${parseFloat(userData.balance).toFixed(2)} 💎`;
+        // ========== نظام السحب المتكامل مع محفظة السحب ==========
+        async function openWithdrawModal() {
+            if (!userData) return;
             
-            document.getElementById('sellCrystalAmount').addEventListener('input', function(e) {
+            const walletsData = await apiRequest(`/api/wallets/${userId}`);
+            const withdrawWallet = walletsData.success ? walletsData.withdrawWallet : null;
+            
+            const checkSection = document.getElementById('withdrawWalletCheckSection');
+            const amountSection = document.getElementById('withdrawAmountSection');
+            
+            if (!withdrawWallet || withdrawWallet.status !== 'active') {
+                checkSection.innerHTML = `
+                    <div style="text-align: center; padding: 30px 20px;">
+                        <div style="font-size: 64px; margin-bottom: 20px;">💰</div>
+                        <div style="font-size: 20px; font-weight: 900; color: #f44336; margin-bottom: 15px;">محفظة السحب غير مرتبطة!</div>
+                        <p style="color: #aaa; margin-bottom: 25px;">يجب ربط محفظة سحب نشطة أولاً لسحب الأرباح</p>
+                        <button class="button-modern" onclick="closeModal('withdrawModal'); switchTab(event, 'wallets');">
+                            🔗 ربط محفظة السحب
+                        </button>
+                    </div>
+                `;
+                amountSection.style.display = 'none';
+            } else {
+                checkSection.innerHTML = `
+                    <div style="background: rgba(76,175,80,0.1); border-radius: 16px; padding: 15px; margin-bottom: 20px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="color: #4caf50; font-size: 24px;">✅</span>
+                            <div>
+                                <div style="color: #4caf50; font-weight: 700;">محفظة سحب نشطة</div>
+                                <div style="font-family: monospace; font-size: 11px; color: #4facfe; direction: ltr; text-align: left;">
+                                    ${withdrawWallet.address.substring(0, 10)}...${withdrawWallet.address.substring(withdrawWallet.address.length - 8)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                amountSection.style.display = 'block';
+            }
+            
+            document.getElementById('withdrawModal').style.display = 'flex';
+            document.getElementById('currentBalance').textContent = `${parseFloat(userData.balance).toFixed(3)} 💎`;
+            
+            const info = await loadWithdrawInfo();
+            if (info) {
+                let infoHTML = `
+                    <div class="capital-card">
+                        <div class="capital-header">
+                            <div class="capital-icon">💰</div>
+                            <div>
+                                <div class="capital-title">رأس مالك المستثمر</div>
+                                <div class="capital-amount">${info.deposits.usd} $</div>
+                                <div style="font-size: 12px; color: #aaa;">≈ ${info.deposits.crystals} 💎</div>
+                            </div>
+                        </div>
+                        
+                        <div class="capital-stats">
+                            <div class="capital-stat-item">
+                                <div class="capital-stat-label">مسحوب سابقاً</div>
+                                <div class="capital-stat-value" style="color: #f44336;">${info.withdrawn.usd} $</div>
+                                <div style="font-size: 11px; color: #aaa;">${info.withdrawn.crystals} 💎</div>
+                            </div>
+                            <div class="capital-stat-item">
+                                <div class="capital-stat-label">متبقي للسحب</div>
+                                <div class="capital-stat-value" style="color: #4caf50;">${info.available.usd} $</div>
+                                <div style="font-size: 11px; color: #aaa;">${info.available.crystals} 💎</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('withdrawInfoContainer').innerHTML = infoHTML;
+                
+                document.getElementById('withdrawLimitsInfo').innerHTML = `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span>📊 الحد الأدنى:</span>
+                        <span style="color: #FFD700; font-weight: 700;">5$ (≈ ${info.daily.minCrystals} 💎)</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span>📈 الحد الأقصى اليوم:</span>
+                        <span style="color: #4facfe; font-weight: 700;">${info.daily.maxUsd} $ (${info.daily.maxCrystals} 💎)</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <span style="color: #aaa;">تقدم رأس المال:</span>
+                        <span style="color: #4caf50; font-weight: 700;">${info.available.percent}% متبقي</span>
+                    </div>
+                `;
+            }
+            
+            updateWithdrawTimer();
+            
+            document.getElementById('withdrawAmount').addEventListener('input', function(e) {
                 const crystals = parseFloat(e.target.value) || 0;
-                const usd = crystals * usdRate;
+                const usd = crystals * withdrawRate;
                 document.getElementById('usdPreview').textContent = `${usd.toFixed(2)} $`;
             });
         }
 
-        async function submitSellOrder() {
-            const crystalAmount = parseFloat(document.getElementById('sellCrystalAmount').value);
+        async function loadWithdrawInfo() {
+            const data = await apiRequest(`/api/withdraw-info/${userId}`);
+            if (data.success) {
+                return data;
+            }
+            return null;
+        }
+
+        function updateWithdrawTimer() {
+            const timerElement = document.getElementById('withdrawTimer');
+            const withdrawButton = document.getElementById('withdrawButton');
+            const timerContainer = document.getElementById('withdrawTimerContainer');
+            
+            if (!userData || !timerElement) return;
+            
+            if (withdrawCooldown > 0) {
+                const totalMinutes = Math.ceil(withdrawCooldown * 60);
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = totalMinutes % 60;
+                
+                timerElement.textContent = `${hours} س ${minutes} د`;
+                timerContainer.style.background = 'rgba(244,67,54,0.15)';
+                withdrawButton.disabled = true;
+                withdrawButton.style.opacity = '0.5';
+                withdrawButton.style.cursor = 'not-allowed';
+                
+                if (withdrawTimerInterval) clearInterval(withdrawTimerInterval);
+                withdrawTimerInterval = setInterval(() => {
+                    if (withdrawCooldown > 0) {
+                        withdrawCooldown -= 1/60;
+                        if (withdrawCooldown <= 0) {
+                            clearInterval(withdrawTimerInterval);
+                            timerElement.textContent = '0 س 0 د';
+                            timerContainer.style.background = 'rgba(76,175,80,0.15)';
+                            withdrawButton.disabled = false;
+                            withdrawButton.style.opacity = '1';
+                            withdrawButton.style.cursor = 'pointer';
+                        } else {
+                            const mins = Math.ceil(withdrawCooldown * 60);
+                            const h = Math.floor(mins / 60);
+                            const m = mins % 60;
+                            timerElement.textContent = `${h} س ${m} د`;
+                        }
+                    }
+                }, 60000);
+            } else {
+                timerElement.textContent = 'جاهز!';
+                timerContainer.style.background = 'rgba(76,175,80,0.15)';
+                withdrawButton.disabled = false;
+                withdrawButton.style.opacity = '1';
+                withdrawButton.style.cursor = 'pointer';
+            }
+        }
+
+        async function submitWithdrawOrder() {
+            const crystalAmount = parseFloat(document.getElementById('withdrawAmount').value);
             
             if (!crystalAmount || crystalAmount < 10) {
-                tg.showAlert('❌ الحد الأدنى للبيع 10 كريستال');
-                return;
-            }
-            
-            if (crystalAmount > 1000) {
-                tg.showAlert('❌ الحد الأقصى للبيع 1000 كريستال');
+                showToast('❌ الحد الأدنى للسحب 10 كريستال', false);
                 return;
             }
             
             if (userData.balance < crystalAmount) {
-                tg.showAlert('❌ رصيد غير كافي');
+                showToast('❌ رصيد غير كافي', false);
                 return;
             }
             
-            const data = await apiRequest('/api/sell-crystal', {
+            if (withdrawCooldown > 0) {
+                showToast('⏳ يمكنك السحب مرة واحدة كل 24 ساعة', false);
+                return;
+            }
+            
+            const data = await apiRequest('/api/withdraw', {
                 method: 'POST',
                 body: JSON.stringify({ crystalAmount })
             });
             
             if (data.success) {
                 userData.balance = parseFloat(data.newBalance);
+                userData.total_sold = parseFloat(data.totalSold);
+                withdrawCooldown = 24;
+                
                 updateUI();
-                closeModal('sellModal');
-                tg.showAlert(`✅ تم إرسال طلب بيع ${crystalAmount} 💎\n⏰ في انتظار تأكيد الأدمن`);
-                loadUserOrders();
+                closeModal('withdrawModal');
+                updateWithdrawTimer();
+                loadUserWithdraws();
+                
+                showToast(`✅ تم إرسال طلب سحب ${crystalAmount} 💎`, true);
             } else {
-                tg.showAlert(`❌ ${data.error || 'فشل في إرسال الطلب'}`);
+                if (data.error === 'حد أدنى') {
+                    showToast(`⚠️ ${data.message}`, false);
+                } else if (data.error === 'حد أقصى') {
+                    showToast(`⚠️ ${data.message}`, false);
+                } else if (data.error === 'وقت') {
+                    showToast(`⏳ ${data.message}`, false);
+                } else if (data.error === 'رصيد') {
+                    showToast(`❌ ${data.message}`, false);
+                } else {
+                    showToast(`❌ ${data.error || 'فشل في إرسال الطلب'}`, false);
+                }
             }
         }
 
-        // ==================== نظام تحويل الكريستال ====================
-        async function transfer() {
-            const toUsername = document.getElementById('receiverUsername').value;
-            const amount = parseFloat(document.getElementById('transferAmount').value);
-            
-            if (!toUsername || !amount || amount < 1) {
-                tg.showAlert('❌ يرجى إدخال اسم مستخدم صحيح وكمية لا تقل عن 1 كريستال');
-                return;
-            }
-            
-            if (userData.balance < amount) {
-                tg.showAlert('❌ رصيد غير كافي');
-                return;
-            }
-            
-            const data = await apiRequest('/api/transfer', {
-                method: 'POST',
-                body: JSON.stringify({ toUsername, amount })
-            });
+        async function loadUserWithdraws() {
+            if (!userId) return;
+            const data = await apiRequest(`/api/user-withdraws/${userId}`);
             
             if (data.success) {
-                userData.balance = parseFloat(data.newBalance);
-                updateUI();
-                document.getElementById('receiverUsername').value = '';
-                document.getElementById('transferAmount').value = '';
-                tg.showAlert(`✅ تم تحويل ${amount} كريستال إلى ${data.receiverName}`);
-            } else {
-                tg.showAlert(`❌ ${data.error || 'فشل في التحويل'}`);
+                let withdrawHtml = '';
+                if (data.withdraws.length === 0) {
+                    withdrawHtml = '<div style="text-align: center; padding: 20px; color: #aaa;">لا توجد طلبات سحب</div>';
+                } else {
+                    data.withdraws.slice(0, 5).forEach(order => {
+                        let statusColor = '#ffc107';
+                        let statusText = '⏳ قيد الانتظار';
+                        
+                        if (order.status === 'completed') {
+                            statusColor = '#4caf50';
+                            statusText = '✅ مكتمل';
+                        } else if (order.status === 'rejected') {
+                            statusColor = '#f44336';
+                            statusText = '❌ مرفوض';
+                        }
+                        
+                        withdrawHtml += `
+                            <div style="background: rgba(255,255,255,0.05); border-radius: 16px; padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="font-weight: 800; color: #FFD700;">💰 سحب ${order.crystalAmount} 💎</div>
+                                    <div style="font-size: 12px; color: #aaa;">${new Date(order.createdAt).toLocaleDateString('ar-EG')}</div>
+                                    <div style="font-size: 11px; color: #4facfe;">${order.usdAmount.toFixed(2)} USDT</div>
+                                </div>
+                                <div>
+                                    <span style="color: ${statusColor}; font-weight: 700; background: ${statusColor}20; padding: 6px 14px; border-radius: 50px;">${statusText}</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+                document.getElementById('withdrawOrdersList').innerHTML = withdrawHtml;
             }
         }
 
-        // ==================== نظام دعوة الأصدقاء ====================
+        async function loadInviteInfo() {
+            if (!userId) return;
+            
+            const data = await apiRequest(`/api/invite-info/${userId}`);
+            if (data.success) {
+                document.getElementById('totalInvites').textContent = data.totalInvites || 0;
+                document.getElementById('totalInviteRewards').textContent = `${(data.totalRewards || 0).toFixed(1)} 💎`;
+                
+                let recentHtml = '';
+                if (data.recentInvites && data.recentInvites.length > 0) {
+                    data.recentInvites.slice(0, 3).forEach(invite => {
+                        const date = new Date(invite.createdAt).toLocaleDateString('ar-EG');
+                        let statusText = '';
+                        let statusColor = '';
+                        
+                        if (invite.status === 'completed') {
+                            statusText = '✅ أودع';
+                            statusColor = '#4caf50';
+                        } else if (invite.status === 'partial') {
+                            statusText = '⏳ لم يودع';
+                            statusColor = '#4facfe';
+                        } else {
+                            statusText = '🕒 معلق';
+                            statusColor = '#ffc107';
+                        }
+                        
+                        const rewardText = invite.rewardAmount ? `+${invite.rewardAmount} 💎` : 'في الانتظار';
+                        
+                        recentHtml += `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 12px; margin-bottom: 8px;">
+                                <div>
+                                    <div style="font-weight: 700;">${invite.invitedName}</div>
+                                    <div style="font-size: 11px; color: #aaa;">${date}</div>
+                                </div>
+                                <div style="text-align: left;">
+                                    <span style="color: ${statusColor}; font-size: 12px; display: block;">${statusText}</span>
+                                    <span style="color: #FFD700; font-weight: 700; font-size: 13px;">${rewardText}</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    recentHtml = '<div style="text-align: center; padding: 15px; color: #aaa;">لا يوجد مدعوين بعد</div>';
+                }
+                document.getElementById('recentInvites').innerHTML = recentHtml;
+            }
+        }
+
         async function copyInviteLink() {
             const data = await apiRequest('/api/user/me');
             const botUsername = data.username;
@@ -1363,42 +2349,129 @@
             document.getElementById('inviteLink').textContent = inviteLink;
             
             navigator.clipboard.writeText(inviteLink);
-            tg.showAlert('✅ تم نسخ رابط الدعوة!');
+            showToast('✅ تم نسخ رابط الدعوة!', true);
         }
 
-        // ==================== تبديل التبويبات ====================
+        function shareInviteLink() {
+            const inviteLink = document.getElementById('inviteLink').textContent;
+            if (inviteLink && inviteLink !== 'جاري تحميل رابط الدعوة...') {
+                const text = encodeURIComponent(`💎 انضم إلي في مناجم الكريستال واربح كريستال مجاني!\n${inviteLink}`);
+                window.open(`https://t.me/share/url?url=${inviteLink}&text=${text}`, '_blank');
+            }
+        }
+
+        async function buyBoost(boostId, price) {
+            const data = await apiRequest('/api/buy-boost', {
+                method: 'POST',
+                body: JSON.stringify({ boostId, price })
+            });
+            
+            if (data.success) {
+                showToast(`✅ تم شراء ${data.boostName} بنجاح! +${data.crystalAmount} 💎`, true);
+            } else {
+                showToast(`❌ ${data.error || 'فشل في الشراء'}`, false);
+            }
+        }
+
+        async function loadShopItems() {
+            const data = await apiRequest('/api/shop-items');
+            
+            if (data.success) {
+                shopItems = data.items;
+                usdRate = data.usdRate || 0.10;
+                
+                document.getElementById('usdRate').textContent = `1 💎 = ${usdRate} $`;
+                document.getElementById('modalUsdRate') && (document.getElementById('modalUsdRate').textContent = `1 💎 = ${usdRate} $`);
+                
+                let boostsHtml = '';
+                const boostItems = [
+                    { id: 'speed_1', name: '⚡ تسريع بسيط', desc: 'احصل على 1 كريستال فوري', price: 0.5, crystals: 1 },
+                    { id: 'speed_2', name: '💪 تسريع قوي', desc: 'احصل على 5 كريستال فوري', price: 2, crystals: 5 },
+                    { id: 'speed_3', name: '🚀 تسريع خارق', desc: 'احصل على 12 كريستال فوري', price: 5, crystals: 12 },
+                    { id: 'speed_4', name: '👑 تسريع أسطوري', desc: 'احصل على 25 كريستال فوري', price: 10, crystals: 25 }
+                ];
+                
+                boostItems.forEach(boost => {
+                    boostsHtml += `
+                        <div class="shop-item-card">
+                            <div class="item-details">
+                                <h4>${boost.name}</h4>
+                                <p style="color: #ddd; font-size: 14px;">${boost.desc}</p>
+                                <span class="item-price">💰 ${boost.price} USDT</span>
+                                <span style="display: block; margin-top: 8px; color: #4facfe; font-weight: 700;">+${boost.crystals} 💎 فوري</span>
+                            </div>
+                            <div>
+                                <button class="buy-button" onclick="buyBoost('${boost.id}', ${boost.price})">
+                                    شراء
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                document.getElementById('boostItems').innerHTML = boostsHtml;
+            }
+        }
+
         function switchTab(event, tab) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.modern-tab').forEach(t => t.classList.remove('active'));
             event.target.classList.add('active');
             
             document.getElementById('shopSection')?.classList.add('hidden');
             document.getElementById('upgradesSection')?.classList.add('hidden');
-            document.getElementById('ordersSection')?.classList.add('hidden');
-            document.getElementById('transferSection')?.classList.add('hidden');
+            document.getElementById('withdrawsSection')?.classList.add('hidden');
             document.getElementById('inviteSection')?.classList.add('hidden');
+            document.getElementById('walletsSection')?.classList.add('hidden');
+            document.getElementById('statsSection')?.classList.add('hidden');
             
             if (tab === 'shop') {
                 document.getElementById('shopSection').classList.remove('hidden');
             } else if (tab === 'upgrades') {
                 document.getElementById('upgradesSection').classList.remove('hidden');
-            } else if (tab === 'orders') {
-                document.getElementById('ordersSection').classList.remove('hidden');
-                loadUserOrders();
-            } else if (tab === 'transfer') {
-                document.getElementById('transferSection').classList.remove('hidden');
+            } else if (tab === 'withdraws') {
+                document.getElementById('withdrawsSection').classList.remove('hidden');
+                loadUserWithdraws();
             } else if (tab === 'invite') {
                 document.getElementById('inviteSection').classList.remove('hidden');
+                loadInviteInfo();
                 copyInviteLink();
+            } else if (tab === 'wallets') {
+                document.getElementById('walletsSection').classList.remove('hidden');
+                loadWalletsData();
+            } else if (tab === 'stats') {
+                document.getElementById('statsSection').classList.remove('hidden');
             }
         }
 
-        // ==================== إغلاق المودال ====================
+        function openModal(modalId) {
+            document.getElementById(modalId).style.display = 'flex';
+        }
+
         function closeModal(modalId) {
             document.getElementById(modalId).style.display = 'none';
         }
 
-        // ==================== تحميل رابط الدعوة عند فتح القسم ====================
+        window.mine = mine;
+        window.openBuyModal = openBuyModal;
+        window.openWithdrawModal = openWithdrawModal;
+        window.submitBuyOrder = submitBuyOrder;
+        window.submitWithdrawOrder = submitWithdrawOrder;
+        window.switchTab = switchTab;
+        window.switchWalletType = switchWalletType;
+        window.closeModal = closeModal;
+        window.buyBoost = buyBoost;
         window.copyInviteLink = copyInviteLink;
+        window.shareInviteLink = shareInviteLink;
+        window.showPaymentWalletForm = showPaymentWalletForm;
+        window.hidePaymentWalletForm = hidePaymentWalletForm;
+        window.showWithdrawWalletForm = showWithdrawWalletForm;
+        window.hideWithdrawWalletForm = hideWithdrawWalletForm;
+        window.connectPaymentWallet = connectPaymentWallet;
+        window.connectWithdrawWallet = connectWithdrawWallet;
+        window.confirmWalletSubmission = confirmWalletSubmission;
+        window.disconnectPaymentWallet = disconnectPaymentWallet;
+        window.disconnectWithdrawWallet = disconnectWithdrawWallet;
+        window.copyBotWalletAddress = copyBotWalletAddress;
     </script>
 </body>
 </html>
