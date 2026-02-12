@@ -454,7 +454,7 @@ if (!BOT_TOKEN) {
 
 let bot;
 try {
-    bot = new TelegramBot(BOT_TOKEN, { polling: true });
+    bot = new TelegramBot(BOT_TOKEN, { polling: false });
     console.log('🤖 البوت يعمل...');
 } catch (error) {
     console.error('❌ خطأ في تهيئة البوت:', error);
