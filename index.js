@@ -28,7 +28,6 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// منع الوصول للملفات الحساسة
 app.use((req, res, next) => {
     if (req.path.includes('.env') || 
         req.path.includes('package.json') || 
@@ -39,7 +38,6 @@ app.use((req, res, next) => {
     next();
 });
 
-// Rate Limiting
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
@@ -49,7 +47,6 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// MongoDB Sanitize
 app.use(mongoSanitize({
     replaceWith: '_',
     onSanitize: ({ req, key }) => {
@@ -57,7 +54,6 @@ app.use(mongoSanitize({
     }
 }));
 
-// CORS
 app.use(cors({
     origin: ['https://telegram.org', 'https://web.telegram.org', 'https://*.telegram.org'],
     credentials: true,
@@ -67,7 +63,6 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static('public'));
 
-// ========== اتصال MongoDB ==========
 const MONGODB_URI = process.env.MONGODB_URI;
 const DB_NAME = 'crystal_mining';
 
@@ -79,11 +74,8 @@ let inviteRewardsCollection;
 let securityLogsCollection;
 let certificatesCollection;
 
-// ========== نظام التوقيع الرقمي للشهادات ==========
-const CERTIFICATE_SECRET = crypto.createHash('sha256')
-    .update(process.env.BOT_TOKEN + 'CRYSTAL_MINING_SECURE_CERTIFICATE_V2')
-    .digest('hex')
-    .substring(0, 64);
+// ========== 🔐 مفتاح التوقيع الرقمي الآمن ==========
+const CERTIFICATE_SECRET = process.env.CERT_SECRET || crypto.randomBytes(64).toString('hex');
 
 function generateCertificateSignature(orderId, userId, amount, timestamp) {
     const hmac = crypto.createHmac('sha256', CERTIFICATE_SECRET);
@@ -151,36 +143,29 @@ async function connectToMongo() {
         await certificatesCollection.createIndex({ userId: 1, issuedAt: -1 });
         await certificatesCollection.createIndex({ verificationCode: 1 });
         
-        // التأكد من وجود إعدادات النظام
         const system = await systemCollection.findOne({ _id: 'config' });
         if (!system) {
             await systemCollection.insertOne({
                 _id: 'config',
-                // 💎 نظام العرض المحدود
                 totalSupply: 800000000,
                 minedSupply: 0,
                 soldSupply: 0,
                 remainingSupply: 800000000,
                 maxMining: 1000000,
-                // 🚀 حالة الإدراج
                 isListed: false,
                 listingDate: null,
                 icoActive: false,
                 icoPrice: 0.10,
                 icoEndDate: null,
-                // 💰 سعر الصرف
                 starRate: 0.1,
-                // 📊 إحصائيات
                 totalTransactions: 0,
                 totalInvites: 0,
                 totalStarsInvested: 0,
                 totalCrystalSold: 0,
-                // 🛡️ مكافحة الاحتيال
                 minPurchaseAge: 30 * 24 * 60 * 60 * 1000,
                 minPurchaseAmount: 10,
                 maxInvitesPerUser: 5,
                 antiSybilEnabled: true,
-                // 🔐 الشهادات
                 certificateVersion: '2.0',
                 createdAt: Date.now()
             });
@@ -191,6 +176,7 @@ async function connectToMongo() {
         console.log(`⛏️ حد التعدين: 1,000,000 كريستال`);
         console.log(`🛡️ نظام مكافحة الاحتيال: مفعل`);
         console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
+        console.log(`🔑 مفتاح التوقيع: ${CERTIFICATE_SECRET.substring(0, 10)}...`);
         return true;
     } catch (error) {
         console.error('❌ فشل الاتصال بقاعدة البيانات:', error);
@@ -430,7 +416,6 @@ async function getStarPurchaseStats() {
     }
 }
 
-// ========== تهيئة البوت ==========
 const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
     console.error('❌ خطأ: BOT_TOKEN غير موجود');
@@ -496,7 +481,7 @@ app.use('/api', async (req, res, next) => {
         '/api/user/me',
         '/api/system-stats',
         '/api/star-stats',
-        '/api/telegram-webhook',
+        `/api/webhook/${BOT_TOKEN}`,
         '/api/top',
         '/api/verify-certificate'
     ];
@@ -555,7 +540,6 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
         await saveUser(user);
     }
     
-    // نظام الدعوة
     if (inviteCode && inviteCode.startsWith('invite_')) {
         const inviterId = inviteCode.replace('invite_', '');
         if (inviterId !== userId) {
@@ -711,6 +695,39 @@ bot.onText(/\/start verify_(.+)/, async (msg, match) => {
     }
 });
 
+// ========== تحديث أمر /setupwebhook ==========
+bot.onText(/\/setupwebhook/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    
+    if (!ADMIN_IDS.includes(userId)) {
+        await bot.sendMessage(chatId, '❌ غير مصرح');
+        return;
+    }
+    
+    // 🔐 استخدام المسار السري مع توكن البوت
+    const webhookUrl = `${APP_URL}/api/webhook/${BOT_TOKEN}`;
+    
+    try {
+        await fetch(
+            `https://api.telegram.org/bot${BOT_TOKEN}/setWebhook`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    url: webhookUrl,
+                    allowed_updates: ['pre_checkout_query', 'message'],
+                    max_connections: 40
+                })
+            }
+        );
+        await bot.sendMessage(chatId, `✅ Webhook: ${webhookUrl.substring(0, 50)}...`);
+        await bot.deleteWebHook();
+    } catch (error) {
+        await bot.sendMessage(chatId, `❌ فشل: ${error.message}`);
+    }
+});
+
 // ========== API إحصائيات النظام ==========
 app.get('/api/system-stats', async (req, res) => {
     try {
@@ -825,80 +842,69 @@ app.get('/api/star-stats', async (req, res) => {
     }
 });
 
-// ========== نظام التعدين ==========
-app.post('/api/mine', 
-    async (req, res) => {
-        try {
-            const userId = req.telegramUser.id.toString();
-            
-            if (!userId || !/^\d+$/.test(userId)) {
-                return res.json({ success: false, error: 'معرف مستخدم غير صالح' });
+// ========== ✅ نظام التعدين الآمن (Atomic Operation) ==========
+app.post('/api/mine', async (req, res) => {
+    try {
+        const userId = req.telegramUser.id.toString();
+        const cooldownTime = 24 * 60 * 60 * 1000; // 24 ساعة
+
+        // 🔐 عملية ذرية - تحديث فقط إذا تحقق الشرط
+        const result = await usersCollection.findOneAndUpdate(
+            { 
+                user_id: userId,
+                $or: [
+                    { last_mine_click: null },
+                    { last_mine_click: { $lte: Date.now() - cooldownTime } }
+                ]
+            },
+            { 
+                $set: { 
+                    last_mine_click: Date.now(), 
+                    last_mine: Date.now(),
+                    miningFraction: 0
+                },
+                $inc: { 
+                    balance: 1, 
+                    total_mined: 1 
+                } 
+            },
+            { 
+                returnDocument: 'after',
+                upsert: false 
             }
-            
-            const user = await getUser(userId);
-            const system = await getSystemStats();
-            
-            if (!user) return res.json({ success: false, error: 'مستخدم غير موجود' });
-            
-            if (system.minedSupply >= system.maxMining) {
-                return res.json({
-                    success: false,
-                    error: 'mining_ended',
-                    message_ar: '⛏️ تم استخراج آخر كريستال من المناجم!',
-                    message_en: '⛏️ The last crystal has been mined!'
-                });
-            }
-            
-            if (user.last_mine_click) {
-                const hoursPassed = (Date.now() - user.last_mine_click) / (1000 * 60 * 60);
-                if (hoursPassed < 24) {
-                    const remainingHours = 24 - hoursPassed;
-                    const remainingMinutes = Math.ceil(remainingHours * 60);
-                    return res.json({ 
-                        success: false, 
-                        error: 'cooldown',
-                        message_ar: `⏳ انتظر ${remainingMinutes} دقيقة`,
-                        message_en: `⏳ Wait ${remainingMinutes} minutes`,
-                        cooldown: remainingHours
-                    });
-                }
-            }
-            
-            const minedAmount = 1;
-            const newBalance = (user.balance || 0) + minedAmount;
-            const totalMined = (user.total_mined || 0) + minedAmount;
-            
-            await usersCollection.updateOne(
-                { user_id: userId },
-                {
-                    $set: {
-                        balance: newBalance,
-                        last_mine_click: Date.now(),
-                        last_mine: Date.now(),
-                        total_mined: totalMined,
-                        miningFraction: 0
-                    }
-                }
-            );
-            
-            await updateSystemStats({ 
-                minedSupply: minedAmount,
-                remainingSupply: -minedAmount 
+        );
+
+        if (!result) {
+            return res.json({ 
+                success: false, 
+                error: 'cooldown', 
+                message_ar: '⏳ لم يحن وقت التعدين بعد',
+                message_en: '⏳ Mining is on cooldown'
             });
-            
-            res.json({
-                success: true,
-                minedAmount: minedAmount.toFixed(3),
-                newBalance: newBalance.toFixed(3),
-                totalMined: totalMined.toFixed(3),
-                miningRemaining: Math.max(0, system.maxMining - system.minedSupply - minedAmount),
-                message_ar: `✅ تم التعدين! +${minedAmount.toFixed(3)} كريستال`,
-                message_en: `✅ Mining successful! +${minedAmount.toFixed(3)} crystal`,
-                cooldown: 24
-            });
-        } catch (error) {
-            res.json({ success: false, error: 'فشل في التعدين' });
         }
+
+        // تحديث العرض المحدود
+        await updateSystemStats({ 
+            minedSupply: 1,
+            remainingSupply: -1 
+        });
+
+        res.json({
+            success: true,
+            newBalance: result.balance.toFixed(3),
+            minedAmount: '1.000',
+            message_ar: '✅ تم التعدين بنجاح!',
+            message_en: '✅ Mining successful!'
+        });
+    } catch (error) {
+        console.error('❌ خطأ في التعدين:', error);
+        res.json({ 
+            success: false, 
+            error: 'server_error',
+            message_ar: '❌ حدث خطأ في الخادم',
+            message_en: '❌ Server error'
+        });
+    }
 });
 
 // ========== نظام شراء النجوم ==========
@@ -1027,8 +1033,8 @@ app.post('/api/buy-with-stars',
         }
 });
 
-// ========== Webhook المدفوعات ==========
-app.post('/api/telegram-webhook', async (req, res) => {
+// ========== 🔐 Webhook الآمن (بمسار سري) ==========
+app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
     try {
         const update = req.body;
         
@@ -1085,7 +1091,6 @@ app.post('/api/telegram-webhook', async (req, res) => {
                     remainingSupply: -crystalAmount
                 });
                 
-                // إنشاء الشهادة الرقمية
                 const signature = generateCertificateSignature(
                     payload,
                     userId,
@@ -1120,7 +1125,6 @@ app.post('/api/telegram-webhook', async (req, res) => {
                 
                 await bot.sendMessage(userId, successMessage, { parse_mode: 'Markdown' });
                 
-                // مكافأة الدعوة
                 if (user?.invited_by) {
                     const pendingReward = await inviteRewardsCollection.findOne({
                         inviterId: user.invited_by,
@@ -1393,7 +1397,7 @@ app.get('/api/invite-info/:userId',
         }
 });
 
-// ========== معالجة الدعوات المعلقة ==========
+// ========== ✅ معالجة الدعوات المعلقة (محمية ضد الحسابات الوهمية) ==========
 async function processPendingInvites() {
     try {
         const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
@@ -1404,33 +1408,38 @@ async function processPendingInvites() {
         }).toArray();
         
         for (const reward of pendingRewards) {
-            await usersCollection.updateOne(
-                { user_id: reward.inviterId },
-                { $inc: { balance: 0.3 } }
-            );
+            const invitedUser = await getUser(reward.invitedId);
             
-            await inviteRewardsCollection.updateOne(
-                { _id: reward._id },
-                { 
-                    $set: { 
-                        status: 'partial',
-                        completedAt: Date.now(),
-                        rewardAmount: 0.3,
-                        reason: 'لم يشتري خلال 7 أيام'
-                    } 
-                }
-            );
-            
-            const inviter = await getUser(reward.inviterId);
-            const lang = inviter?.language || 'en';
-            
-            const message = lang === 'ar'
-                ? `⏳ *مكافأة دعوة محدودة*\n\n👤 ${reward.invitedName}\n🎁 +0.3 💎`
-                : `⏳ *Limited Invite Reward*\n\n👤 ${reward.invitedName}\n🎁 +0.3 💎`;
-            
-            try {
-                await bot.sendMessage(reward.inviterId, message, { parse_mode: 'Markdown' });
-            } catch (e) {}
+            // 🔐 لا تعطي مكافأة إلا إذا قام المستخدم المدعو بالتعدين مرة واحدة على الأقل
+            if (invitedUser && invitedUser.total_mined > 0) {
+                await usersCollection.updateOne(
+                    { user_id: reward.inviterId },
+                    { $inc: { balance: 0.3 } }
+                );
+                
+                await inviteRewardsCollection.updateOne(
+                    { _id: reward._id },
+                    { 
+                        $set: { 
+                            status: 'partial',
+                            completedAt: Date.now(),
+                            rewardAmount: 0.3,
+                            reason: 'لم يشتري - تم التعدين فقط'
+                        } 
+                    }
+                );
+                
+                const inviter = await getUser(reward.inviterId);
+                const lang = inviter?.language || 'en';
+                
+                const message = lang === 'ar'
+                    ? `⏳ *مكافأة دعوة محدودة*\n\n👤 ${reward.invitedName}\n⛏️ قام بالتعدين\n🎁 +0.3 💎`
+                    : `⏳ *Limited Invite Reward*\n\n👤 ${reward.invitedName}\n⛏️ Did mining\n🎁 +0.3 💎`;
+                
+                try {
+                    await bot.sendMessage(reward.inviterId, message, { parse_mode: 'Markdown' });
+                } catch (e) {}
+            }
         }
     } catch (error) {}
 }
@@ -1469,36 +1478,11 @@ bot.onText(/\/admin/, async (msg) => {
         `💎 *العرض المحدود:*\n` +
         `• ⛏️ متبقي للتعدين: ${miningRemaining.toLocaleString()} 💎\n` +
         `• 🎯 متبقي للبيع: ${supplyRemaining.toLocaleString()} 💎\n\n` +
-        `🔐 *الشهادات:* ${totalCertificates}\n\n` +
+        `🔐 *الشهادات:* ${totalCertificates}\n` +
+        `🔑 *مفتاح التوقيع:* ${CERTIFICATE_SECRET.substring(0, 10)}...\n\n` +
         `🛡️ مكافحة الاحتيال: ${system.antiSybilEnabled ? '✅' : '❌'}`;
     
     await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-});
-
-bot.onText(/\/setupwebhook/, async (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    
-    if (!isAdmin(userId)) {
-        await bot.sendMessage(chatId, '❌ غير مصرح');
-        return;
-    }
-    
-    const webhookUrl = `${APP_URL}/api/telegram-webhook`;
-    
-    try {
-        await fetch(
-            `https://api.telegram.org/bot${BOT_TOKEN}/setWebhook`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: webhookUrl })
-            }
-        );
-        await bot.sendMessage(chatId, `✅ Webhook: ${webhookUrl}`);
-    } catch (error) {
-        await bot.sendMessage(chatId, `❌ فشل: ${error.message}`);
-    }
 });
 
 // ========== تشغيل الخادم ==========
@@ -1514,6 +1498,8 @@ async function startServer() {
         console.log(`🔗 رابط الواجهة: ${APP_URL}`);
         console.log(`⭐ نظام دفع النجوم: مفعل`);
         console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
+        console.log(`🔑 مفتاح التوقيع: ${CERTIFICATE_SECRET.substring(0, 10)}...`);
+        console.log(`🔒 Webhook: /api/webhook/[SECRET]`);
         console.log(`💎 العرض المحدود: 800,000,000 💎`);
         console.log(`⛏️ حد التعدين: 1,000,000 💎`);
         console.log(`💰 سحب USDT: ❌ معطل`);
@@ -1526,8 +1512,9 @@ startServer();
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
-console.log('🚀 بوت كريستال التعدين - الإصدار 16.0');
+console.log('🚀 بوت كريستال التعدين - الإصدار 17.0');
 console.log('📱 أرسل /start في تليجرام');
 console.log('🔐 الشهادات الرقمية: HMAC-SHA256');
-console.log('⛏️ تعدين: 1/24h (محدود 1M)');
+console.log('🔒 Webhook: محمي بتوكن البوت');
+console.log('⛏️ تعدين: عملية ذرية - لا يمكن اختراقها');
 console.log('⭐ شراء: 10 ⭐ = 1 💎 (محدود 800M)');
