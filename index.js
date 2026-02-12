@@ -51,7 +51,7 @@ async function connectToMongo() {
                 coinName: '💎 كريستال التعدين',
                 coinSymbol: '💎',
                 coinEmoji: '💎',
-                starRate: 0.1, // 10 نجوم = 1 كريستال
+                starRate: 0.1,
                 withdrawRate: 0.08,
                 totalCrystalSold: 0,
                 totalStarsInvested: 0,
@@ -244,7 +244,7 @@ async function getTopUsers(limit = 10) {
             .find({})
             .sort({ balance: -1 })
             .limit(limit)
-            .project({ first_name: 1, balance: 1, _id: 0 })
+            .project({ first_name: 1, balance: 1, user_id: 1, _id: 0 })
             .toArray();
     } catch (error) {
         console.error('خطأ في قراءة أفضل المستخدمين:', error);
@@ -342,7 +342,9 @@ app.use('/api', async (req, res, next) => {
         '/api/withdraw-info', 
         '/api/invite-info',
         '/api/star-stats',
-        '/api/telegram-webhook'
+        '/api/telegram-webhook',
+        '/api/top',
+        '/api/receipt'
     ];
     
     if (publicPaths.includes(req.path)) {
@@ -477,10 +479,14 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
         `⭐ *الشراء:* 10 نجوم = 1 💎\n` +
         `💰 *الدفع:* نجوم تليجرام - آمن وفوري\n` +
         `💸 *السحب:* 1 💎 = 0.08$ (USDT) - حد أدنى 5$\n\n` +
+        `🔒 *الشفافية:*\n` +
+        `• جميع مشترياتك مسجلة في قاعدة بيانات البوت\n` +
+        `• يمكنك طلب شهادة دفع لأي عملية مكتملة\n` +
+        `• معاملاتك موثقة بمعرف فريد من تليجرام\n\n` +
         `👥 *نظام الدعوة:*\n` +
-        `• دعوة صديق = 1 💎 (إذا أودع)\n` +
-        `• دعوة صديق = 0.3 💎 (إذا لم يودع)\n\n` +
-        `✨ *ميزة جديدة:* الدفع بالنجوم متاح الآن!\n` +
+        `• دعوة صديق = 1 💎 (إذا اشترى)\n` +
+        `• دعوة صديق = 0.3 💎 (إذا لم يشتري)\n\n` +
+        `✨ *ميزة جديدة:* شهادات الدفع الرقمية متاحة الآن!\n` +
         `اضغط على الزر أدناه لفتح منصة التعدين:`,
         {
             parse_mode: 'Markdown',
@@ -496,7 +502,6 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     );
 });
 
-// ========== نظام إعداد Webhook ==========
 bot.onText(/\/setupwebhook/, async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
@@ -524,8 +529,6 @@ bot.onText(/\/setupwebhook/, async (msg) => {
         const data = await response.json();
         if (data.ok) {
             await bot.sendMessage(chatId, `✅ تم تفعيل Webhook بنجاح!\n🔗 ${webhookUrl}`);
-            
-            // إيقاف polling
             await bot.deleteWebHook();
         } else {
             await bot.sendMessage(chatId, `❌ خطأ: ${data.description}`);
@@ -535,99 +538,84 @@ bot.onText(/\/setupwebhook/, async (msg) => {
     }
 });
 
-bot.onText(/\/statsby/, async (msg) => {
+bot.onText(/\/balance/, async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     
-    if (!ADMIN_IDS.includes(userId)) return;
+    if (!ADMIN_IDS.includes(userId)) {
+        await bot.sendMessage(chatId, '❌ غير مصرح');
+        return;
+    }
     
     try {
         const response = await fetch(
-            `https://api.telegram.org/bot${BOT_TOKEN}/getStarsStatus`,
+            `https://api.telegram.org/bot${BOT_TOKEN}/getStarBalance`,
             {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: chatId })
+                headers: { 'Content-Type': 'application/json' }
             }
         );
         
         const data = await response.json();
         if (data.ok) {
-            await bot.sendMessage(chatId, 
-                `⭐ *رصيد النجوم:*\n\n` +
+            const starStats = await getStarPurchaseStats();
+            await bot.sendMessage(chatId,
+                `⭐ *رصيد البوت من النجوم*\n\n` +
                 `💰 الرصيد الحالي: ${data.result.balance} ⭐\n` +
+                `📊 إجمالي المبيعات: ${starStats.totalStars} ⭐\n` +
+                `💎 كريستال مباع: ${starStats.totalCrystals.toFixed(1)} 💎\n` +
                 `🔄 آخر تحديث: ${new Date().toLocaleString('ar-EG')}`,
                 { parse_mode: 'Markdown' }
             );
+        } else {
+            await bot.sendMessage(chatId, `❌ فشل: ${data.description}`);
         }
     } catch (error) {
-        console.error('خطأ في جلب رصيد النجوم:', error);
+        await bot.sendMessage(chatId, `❌ خطأ: ${error.message}`);
     }
 });
 
-// ========== نظام دفع نجوم تليجرام ==========
-async function createStarInvoice(userId, starAmount, description = "💎 شراء كريستال") {
-    const user = await getUser(userId);
-    const system = await getSystemStats();
-    const starRate = system.starRate || 0.1;
+app.get('/api/receipt/:orderId', async (req, res) => {
+    const orderId = req.params.orderId;
     
-    const payload = `${userId}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-    
-    const crystalAmount = starAmount * starRate;
-    
-    const params = {
-        title: "💎 كريستال التعدين",
-        description: description,
-        payload: payload,
-        provider_token: "",
-        currency: "XTR",
-        prices: [
-            {
-                label: `${starAmount} ⭐ = ${crystalAmount.toFixed(1)} 💎`,
-                amount: starAmount
-            }
-        ],
-        photo_url: "https://cdn.jsdelivr.net/gh/telegram-js/telegram-web-app@gh-pages/img/icon-192.png"
-    };
-
     try {
-        const response = await fetch(
-            `https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(params)
-            }
-        );
-
-        const data = await response.json();
-        if (data.ok) {
-            await starInvoicesCollection.insertOne({
-                payload: payload,
-                userId: userId,
-                userFirstName: user?.first_name || 'مستخدم',
-                starAmount: starAmount,
-                crystalAmount: crystalAmount,
-                status: 'pending',
-                createdAt: Date.now(),
-                expiresAt: Date.now() + 24 * 60 * 60 * 1000
-            });
-            
-            return { success: true, url: data.result, payload, crystalAmount };
-        } else {
-            return { success: false, error: data.description };
+        const order = await starInvoicesCollection.findOne({ 
+            payload: orderId,
+            status: 'completed'
+        });
+        
+        if (!order) {
+            return res.json({ success: false, error: 'المعاملة غير موجودة' });
         }
+        
+        const user = await getUser(order.userId);
+        
+        const receipt = {
+            transaction_id: order.payload,
+            date: order.completedAt || order.createdAt,
+            user_id: order.userId,
+            user_name: user?.first_name || 'مستخدم',
+            stars_paid: order.starAmount,
+            crystals_received: order.crystalAmount,
+            rate: '10 ⭐ = 1 💎',
+            status: 'مكتمل',
+            bot_name: 'كريستال التعدين',
+            bot_username: bot.options.username,
+            verified_by: 'Telegram Stars API',
+            blockchain_verified: false,
+            refund_policy: 'حسب سياسة تليجرام'
+        };
+        
+        res.json({ success: true, receipt });
     } catch (error) {
-        console.error('خطأ في إنشاء فاتورة النجوم:', error);
-        return { success: false, error: error.message };
+        console.error('خطأ في جلب شهادة الدفع:', error);
+        res.json({ success: false, error: 'فشل في جلب الشهادة' });
     }
-}
+});
 
-// ========== Webhook لاستقبال تأكيد الدفع ==========
 app.post('/api/telegram-webhook', async (req, res) => {
     const update = req.body;
     
-    // تأكيد طلب الدفع (Pre-checkout)
     if (update.pre_checkout_query) {
         const queryId = update.pre_checkout_query.id;
         const payload = update.pre_checkout_query.invoice_payload;
@@ -652,7 +640,6 @@ app.post('/api/telegram-webhook', async (req, res) => {
         return res.json({ ok: true });
     }
     
-    // ✅ دفع ناجح!
     if (update.message?.successful_payment) {
         const payload = update.message.successful_payment.invoice_payload;
         const starAmount = update.message.successful_payment.total_amount;
@@ -700,7 +687,9 @@ app.post('/api/telegram-webhook', async (req, res) => {
                         `✅ *تم شراء الكريستال بنجاح!*\n\n` +
                         `💎 الكمية: ${crystalAmount.toFixed(1)} كريستال\n` +
                         `⭐ الدفع: ${starAmount} نجوم\n` +
-                        `📦 الحالة: مكتمل\n\n` +
+                        `📦 الحالة: مكتمل\n` +
+                        `🔗 معرف المعاملة: \`${payload}\`\n\n` +
+                        `📄 يمكنك طلب شهادة الدفع من صفحة "مشترياتي السابقة"\n\n` +
                         `شكراً لاستخدامك نجوم تليجرام! 🚀`,
                         { parse_mode: 'Markdown' }
                     );
@@ -708,8 +697,6 @@ app.post('/api/telegram-webhook', async (req, res) => {
                     console.error('❌ فشل إرسال رسالة التأكيد:', e);
                 }
                 
-                // مكافأة الداعي إذا موجود
-                const user = await getUser(userId);
                 if (user?.invited_by) {
                     const pendingReward = await inviteRewardsCollection.findOne({
                         inviterId: user.invited_by,
@@ -858,7 +845,6 @@ app.post('/api/mine', async (req, res) => {
     });
 });
 
-// ========== الشراء بالنجوم ==========
 app.post('/api/buy-with-stars', async (req, res) => {
     const userId = req.telegramUser.id.toString();
     const { starAmount } = req.body;
@@ -904,6 +890,62 @@ app.post('/api/buy-with-stars', async (req, res) => {
     }
 });
 
+async function createStarInvoice(userId, starAmount, description = "💎 شراء كريستال") {
+    const user = await getUser(userId);
+    const system = await getSystemStats();
+    const starRate = system.starRate || 0.1;
+    
+    const payload = `${userId}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const crystalAmount = starAmount * starRate;
+    
+    const params = {
+        title: "💎 كريستال التعدين",
+        description: description,
+        payload: payload,
+        provider_token: "",
+        currency: "XTR",
+        prices: [
+            {
+                label: `${starAmount} ⭐ = ${crystalAmount.toFixed(1)} 💎`,
+                amount: starAmount
+            }
+        ],
+        photo_url: "https://cdn.jsdelivr.net/gh/telegram-js/telegram-web-app@gh-pages/img/icon-192.png"
+    };
+
+    try {
+        const response = await fetch(
+            `https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(params)
+            }
+        );
+
+        const data = await response.json();
+        if (data.ok) {
+            await starInvoicesCollection.insertOne({
+                payload: payload,
+                userId: userId,
+                userFirstName: user?.first_name || 'مستخدم',
+                starAmount: starAmount,
+                crystalAmount: crystalAmount,
+                status: 'pending',
+                createdAt: Date.now(),
+                expiresAt: Date.now() + 24 * 60 * 60 * 1000
+            });
+            
+            return { success: true, url: data.result, payload, crystalAmount };
+        } else {
+            return { success: false, error: data.description };
+        }
+    } catch (error) {
+        console.error('خطأ في إنشاء فاتورة النجوم:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 app.get('/api/star-stats', async (req, res) => {
     const stats = await getStarPurchaseStats();
     res.json({ success: true, stats });
@@ -920,7 +962,6 @@ app.get('/api/star-orders/:userId', async (req, res) => {
             .toArray();
         
         const cleanOrders = orders.map(({ _id, ...order }) => order);
-        
         res.json({ success: true, orders: cleanOrders });
     } catch (error) {
         console.error('خطأ في قراءة طلبات النجوم:', error);
@@ -928,7 +969,6 @@ app.get('/api/star-orders/:userId', async (req, res) => {
     }
 });
 
-// ========== نظام سحب الأرباح (USDT) ==========
 app.post('/api/withdraw', async (req, res) => {
     const userId = req.telegramUser.id.toString();
     const { crystalAmount } = req.body;
@@ -1172,7 +1212,6 @@ app.get('/api/withdraw-info/:userId', async (req, res) => {
     });
 });
 
-// ========== نظام ربط محفظة السحب (USDT) ==========
 app.get('/api/wallets/:userId', async (req, res) => {
     const userId = req.params.userId;
     
@@ -1681,11 +1720,10 @@ bot.onText(/\/admin/, async (msg) => {
     let starBalance = 'غير معروف';
     try {
         const response = await fetch(
-            `https://api.telegram.org/bot${BOT_TOKEN}/getStarsStatus`,
+            `https://api.telegram.org/bot${BOT_TOKEN}/getStarBalance`,
             {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: chatId })
+                headers: { 'Content-Type': 'application/json' }
             }
         );
         const data = await response.json();
@@ -1698,12 +1736,11 @@ bot.onText(/\/admin/, async (msg) => {
         `👑 *لوحة تحكم الأدمن - مناجم الكريستال* 👑\n\n` +
         `📊 *إحصائيات عامة:*\n` +
         `• 👥 المستخدمون: ${totalUsers}\n` +
-        `• ⭐ إجمالي نجوم المشتريات: ${starStats.totalStars} ⭐\n` +
+        `• ⭐ رصيد البوت من النجوم: ${starBalance} ⭐\n` +
+        `• 💰 إجمالي مبيعات النجوم: ${starStats.totalStars} ⭐\n` +
         `• 💎 إجمالي الكريستال المباع: ${starStats.totalCrystals.toFixed(1)} 💎\n` +
         `• 💸 إجمالي المسحوبات USDT: ${withdrawStats.totalUsd.toFixed(2)} $\n` +
         `• 👥 مكافآت الدعوات: ${(totalInviteRewards[0]?.total || 0).toFixed(1)} 💎\n\n` +
-        `⭐ *رصيد البوت من النجوم:*\n` +
-        `💰 ${starBalance} ⭐\n\n` +
         `💳 *إحصائيات محافظ السحب:*\n` +
         `• ✅ محافظ نشطة: ${withdrawWalletsActive}\n` +
         `• ⏳ في انتظار المراجعة: ${withdrawWalletsPending}\n\n` +
@@ -1716,6 +1753,7 @@ bot.onText(/\/admin/, async (msg) => {
         `🔧 *نظام التعدين:* 1 كريستال كل 24 ساعة (مع الكسور)\n` +
         `💸 *نظام السحب:* USDT - حد أدنى 5$ - 20% يومياً\n` +
         `⭐ *نظام الدفع:* نجوم تليجرام - فوري وآمن\n` +
+        `📄 *شهادات الدفع:* متاحة للمستخدمين\n` +
         `👥 *نظام الدعوة:* 1💎 (إيداع) / 0.3💎 (لا إيداع)`;
     
     await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
@@ -1850,6 +1888,7 @@ async function startServer() {
         console.log(`🌐 خادم الويب يعمل على المنفذ: ${PORT}`);
         console.log(`🔗 رابط الواجهة: ${APP_URL}`);
         console.log(`⭐ نظام دفع نجوم تليجرام: مفعل`);
+        console.log(`📄 نظام شهادات الدفع: مفعل`);
         console.log(`⛏️ نظام التعدين: 1 كريستال كل 24 ساعة (مع الكسور)`);
         console.log(`💰 نظام الشراء: 10 نجوم = 1 💎`);
         console.log(`💸 نظام السحب: USDT - 1💎 = 0.08$`);
@@ -1874,10 +1913,11 @@ process.on('SIGTERM', () => {
     process.exit(0);
 });
 
-console.log('🚀 بوت مناجم الكريستال - الإصدار 12.0');
+console.log('🚀 بوت مناجم الكريستال - الإصدار 13.0');
 console.log('📱 افتح تليجرام وأرسل /start');
 console.log('👑 لوحة الأدمن: /admin');
 console.log('⭐ نظام الدفع: نجوم تليجرام - 10 ⭐ = 1 💎');
+console.log('📄 شهادات الدفع: متاحة لجميع المشتريات');
 console.log('⛏️ تعدين: 1 كريستال كل 24 ساعة مع الكسور التراكمية');
 console.log('💰 شراء: 10 نجوم = 1 كريستال');
 console.log('💸 سحب: 1 💎 = 0.08$ USDT');
