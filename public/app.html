@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>⛏️ كريستال التعدين - نجوم تليجرام</title>
+    <title>💎 Crystal Mining - كريستال التعدين</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Cairo', sans-serif;
         }
 
         body {
@@ -22,6 +22,22 @@
             padding: 16px;
             position: relative;
             overflow-x: hidden;
+        }
+
+        .font-arabic {
+            font-family: 'Cairo', sans-serif;
+        }
+
+        .font-english {
+            font-family: 'Inter', sans-serif;
+        }
+
+        body[dir="rtl"] {
+            font-family: 'Cairo', sans-serif;
+        }
+
+        body[dir="ltr"] {
+            font-family: 'Inter', sans-serif;
         }
 
         .animated-bg {
@@ -52,6 +68,38 @@
             margin: 0 auto;
             position: relative;
             z-index: 2;
+        }
+
+        /* Language Switcher */
+        .lang-switch {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            background: rgba(26, 30, 42, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,215,0,0.3);
+            border-radius: 50px;
+            padding: 6px;
+            display: flex;
+            gap: 6px;
+            z-index: 101;
+        }
+
+        .lang-btn {
+            padding: 8px 16px;
+            border-radius: 50px;
+            border: none;
+            background: transparent;
+            color: #aaa;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .lang-btn.active {
+            background: linear-gradient(145deg, #FFD700, #FFA500);
+            color: #0a0f1e;
         }
 
         .balance-float {
@@ -137,6 +185,79 @@
             box-shadow: 0 5px 20px rgba(255, 215, 0, 0.15);
         }
 
+        .supply-card {
+            background: linear-gradient(145deg, #2a2a3a, #1a1a2a);
+            border: 1px solid #FFD700;
+            border-radius: 24px;
+            padding: 20px;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .supply-card::before {
+            content: '💎';
+            position: absolute;
+            font-size: 100px;
+            opacity: 0.03;
+            bottom: -20px;
+            right: -20px;
+            transform: rotate(15deg);
+        }
+
+        .supply-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .supply-title {
+            font-size: 18px;
+            font-weight: 800;
+            color: #FFD700;
+        }
+
+        .supply-value {
+            font-size: 24px;
+            font-weight: 900;
+            color: #fff;
+        }
+
+        .supply-progress {
+            margin-top: 15px;
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            color: #aaa;
+            font-size: 13px;
+        }
+
+        .progress-bar-container {
+            background: rgba(0,0,0,0.4);
+            height: 12px;
+            border-radius: 50px;
+            overflow: hidden;
+            border: 1px solid rgba(255,215,0,0.2);
+        }
+
+        .progress-fill {
+            background: linear-gradient(90deg, #FFD700, #FFA500);
+            height: 100%;
+            width: 0%;
+            transition: width 0.5s;
+            border-radius: 50px;
+            position: relative;
+            box-shadow: 0 0 20px rgba(255,215,0,0.6);
+        }
+
+        .warning-progress {
+            background: linear-gradient(90deg, #f44336, #ff9800);
+        }
+
         .rate-card {
             background: linear-gradient(145deg, rgba(255, 215, 0, 0.15), rgba(255, 165, 0, 0.1));
             backdrop-filter: blur(10px);
@@ -147,7 +268,6 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
         }
 
         .rate-info {
@@ -195,11 +315,6 @@
             to { transform: rotate(360deg); }
         }
 
-        .crystal-progress {
-            position: relative;
-            z-index: 2;
-        }
-
         .mine-button {
             background: radial-gradient(circle at 30% 30%, #FFD700, #FF8C00);
             width: 180px;
@@ -223,14 +338,12 @@
             50% { transform: translateY(-10px); }
         }
 
-        .mine-button:hover {
-            transform: scale(1.08);
-            box-shadow: 0 12px 0 #b45f00, 0 25px 50px rgba(255,215,0,0.8);
-        }
-
-        .mine-button:active {
-            transform: scale(0.96);
-            box-shadow: 0 5px 0 #b45f00, 0 15px 40px rgba(255,215,0,0.6);
+        .mine-button.disabled {
+            opacity: 0.7;
+            pointer-events: none;
+            animation: none;
+            background: radial-gradient(circle at 30% 30%, #666, #444);
+            box-shadow: 0 10px 0 #333, 0 15px 40px rgba(0,0,0,0.5);
         }
 
         .mine-emoji {
@@ -254,45 +367,23 @@
             font-weight: 600;
         }
 
-        .fraction-progress {
-            margin-top: 20px;
-            padding: 15px;
-            background: rgba(0,0,0,0.3);
+        .mining-limit-badge {
+            display: inline-block;
+            background: rgba(255, 215, 0, 0.15);
+            padding: 8px 16px;
             border-radius: 50px;
-            border: 1px solid rgba(255,215,0,0.2);
-        }
-
-        .fraction-label {
-            display: flex;
-            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 13px;
             color: #FFD700;
-            margin-bottom: 8px;
-            font-weight: 600;
         }
 
-        .progress-bar-container {
-            background: rgba(0,0,0,0.4);
-            height: 12px;
-            border-radius: 50px;
-            overflow: hidden;
-            border: 1px solid rgba(255,215,0,0.2);
-        }
-
-        .progress-fill {
-            background: linear-gradient(90deg, #FFD700, #FFA500);
-            height: 100%;
-            width: 0%;
-            transition: width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-            border-radius: 50px;
-            position: relative;
-            box-shadow: 0 0 20px rgba(255,215,0,0.6);
-        }
-
-        .cooldown-timer {
+        .mining-ended {
+            background: rgba(244,67,54,0.15);
+            color: #f44336;
+            padding: 15px;
+            border-radius: 16px;
             margin-top: 15px;
-            color: #aaa;
-            font-size: 14px;
-            font-weight: 600;
+            border: 1px solid #f44336;
         }
 
         .action-cards {
@@ -314,6 +405,12 @@
             overflow: hidden;
         }
 
+        .action-card.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
         .action-card::after {
             content: '';
             position: absolute;
@@ -328,12 +425,6 @@
 
         .action-card:hover::after {
             opacity: 1;
-        }
-
-        .action-card:hover {
-            transform: translateY(-5px);
-            border-color: rgba(255,215,0,0.3);
-            box-shadow: 0 15px 30px rgba(0,0,0,0.4);
         }
 
         .card-icon {
@@ -392,217 +483,6 @@
             box-shadow: 0 5px 20px rgba(255,215,0,0.4);
         }
 
-        .shop-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 15px;
-        }
-
-        .shop-item-card {
-            background: linear-gradient(145deg, #232837, #1a1e2a);
-            border-radius: 24px;
-            padding: 22px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border: 1px solid rgba(255,255,255,0.05);
-            transition: all 0.3s;
-        }
-
-        .shop-item-card:hover {
-            border-color: rgba(255,215,0,0.4);
-            transform: translateX(-5px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-        }
-
-        .item-details h4 {
-            font-size: 18px;
-            font-weight: 800;
-            color: #FFD700;
-            margin-bottom: 6px;
-        }
-
-        .item-price {
-            display: inline-block;
-            background: linear-gradient(145deg, #FFD700, #FFA500);
-            padding: 6px 16px;
-            border-radius: 50px;
-            color: #0a0f1e;
-            font-weight: 800;
-            font-size: 14px;
-            margin-top: 8px;
-        }
-
-        .buy-button {
-            background: linear-gradient(145deg, #FFD700, #FFA500);
-            border: none;
-            color: #0a0f1e;
-            padding: 12px 28px;
-            border-radius: 50px;
-            font-weight: 700;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.3s;
-            border: 1px solid rgba(255,255,255,0.2);
-            box-shadow: 0 5px 15px rgba(255, 215, 0, 0.3);
-        }
-
-        .buy-button:hover {
-            transform: scale(1.05);
-            box-shadow: 0 8px 25px rgba(255, 215, 0, 0.5);
-        }
-
-        .buy-button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .star-badge {
-            display: inline-block;
-            background: rgba(255, 215, 0, 0.2);
-            color: #FFD700;
-            padding: 4px 12px;
-            border-radius: 50px;
-            font-size: 12px;
-            font-weight: 700;
-            margin-top: 8px;
-        }
-
-        .withdraw-section {
-            background: linear-gradient(145deg, rgba(244, 67, 54, 0.1), rgba(244, 67, 54, 0.05));
-            border: 1px solid rgba(244, 67, 54, 0.2);
-            border-radius: 24px;
-            padding: 22px;
-            margin-top: 20px;
-        }
-
-        .withdraw-timer {
-            background: rgba(244, 67, 54, 0.15);
-            padding: 15px;
-            border-radius: 16px;
-            margin-bottom: 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .timer-value {
-            font-size: 24px;
-            font-weight: 900;
-            color: #f44336;
-            text-shadow: 0 0 20px rgba(244, 67, 54, 0.5);
-        }
-
-        .capital-card {
-            background: linear-gradient(145deg, #1a2a2a, #0f1a1a);
-            border: 1px solid #4caf50;
-            border-radius: 24px;
-            padding: 20px;
-            margin-bottom: 20px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .capital-header {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-
-        .capital-icon {
-            width: 50px;
-            height: 50px;
-            background: #4caf50;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-        }
-
-        .capital-title {
-            font-size: 14px;
-            color: #aaa;
-        }
-
-        .capital-amount {
-            font-size: 24px;
-            font-weight: 900;
-            color: #4caf50;
-        }
-
-        .capital-stats {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-top: 15px;
-        }
-
-        .capital-stat-item {
-            background: rgba(255,255,255,0.05);
-            padding: 12px;
-            border-radius: 16px;
-        }
-
-        .capital-stat-label {
-            font-size: 12px;
-            color: #aaa;
-        }
-
-        .capital-stat-value {
-            font-size: 18px;
-            font-weight: 800;
-            color: #fff;
-        }
-
-        .withdraw-limit-card {
-            background: rgba(79, 172, 254, 0.1);
-            border: 1px solid #4facfe;
-            border-radius: 20px;
-            padding: 18px;
-            margin-bottom: 20px;
-        }
-
-        .invite-card {
-            background: linear-gradient(145deg, #2a1f3f, #1a1a2a);
-            border: 1px solid #9c27b0;
-            border-radius: 24px;
-            padding: 22px;
-            margin-bottom: 20px;
-        }
-
-        .invite-reward-box {
-            background: linear-gradient(145deg, rgba(255,215,0,0.1), rgba(255,165,0,0.05));
-            border-radius: 20px;
-            padding: 20px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-around;
-            text-align: center;
-        }
-
-        .reward-item {
-            flex: 1;
-        }
-
-        .reward-value {
-            font-size: 32px;
-            font-weight: 900;
-            color: #FFD700;
-        }
-
-        .reward-label {
-            font-size: 13px;
-            color: #ddd;
-        }
-
-        .reward-divider {
-            width: 1px;
-            background: rgba(255,255,255,0.2);
-        }
-
         .star-package-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -632,6 +512,13 @@
             box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
         }
 
+        .star-package.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+            border-color: rgba(255,255,255,0.1);
+        }
+
         .star-amount {
             font-size: 28px;
             font-weight: 900;
@@ -649,157 +536,6 @@
         .star-icon {
             font-size: 32px;
             margin-bottom: 5px;
-        }
-
-        .wallet-section {
-            background: linear-gradient(145deg, #232837, #1a1e2a);
-            border-radius: 24px;
-            padding: 22px;
-            margin-bottom: 20px;
-        }
-
-        .wallet-card {
-            background: linear-gradient(145deg, #1a2a3a, #0f1a2a);
-            border: 1px solid #4facfe;
-            border-radius: 24px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-
-        .wallet-status-active {
-            color: #4caf50;
-            background: rgba(76, 175, 80, 0.15);
-            padding: 4px 12px;
-            border-radius: 50px;
-            font-size: 12px;
-            font-weight: 700;
-        }
-
-        .wallet-status-pending {
-            color: #ffc107;
-            background: rgba(255, 193, 7, 0.15);
-            padding: 4px 12px;
-            border-radius: 50px;
-            font-size: 12px;
-            font-weight: 700;
-        }
-
-        .wallet-status-rejected {
-            color: #f44336;
-            background: rgba(244, 67, 54, 0.15);
-            padding: 4px 12px;
-            border-radius: 50px;
-            font-size: 12px;
-            font-weight: 700;
-        }
-
-        .wallet-address-box {
-            background: rgba(0,0,0,0.3);
-            padding: 15px;
-            border-radius: 16px;
-            font-family: monospace;
-            font-size: 13px;
-            color: #4facfe;
-            word-break: break-all;
-            direction: ltr;
-            text-align: left;
-            border: 1px solid rgba(79, 172, 254, 0.3);
-            margin: 10px 0;
-        }
-
-        .leaderboard-card {
-            background: linear-gradient(145deg, #1a1a2a, #0f0f1a);
-            border: 1px solid #FFD700;
-            border-radius: 24px;
-            padding: 20px;
-            margin-bottom: 15px;
-        }
-
-        .top-rank {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 15px;
-            border-radius: 16px;
-            margin-bottom: 10px;
-            transition: all 0.3s;
-        }
-
-        .top-rank:hover {
-            background: rgba(255,215,0,0.1);
-            transform: translateX(-5px);
-        }
-
-        .rank-medal {
-            width: 45px;
-            height: 45px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            font-weight: 900;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(10, 15, 30, 0.95);
-            backdrop-filter: blur(15px);
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-            z-index: 2000;
-        }
-
-        .modal-content {
-            background: linear-gradient(165deg, #232837, #1a1e2a);
-            border: 1px solid rgba(255,215,0,0.2);
-            border-radius: 32px;
-            padding: 30px;
-            max-width: 420px;
-            width: 100%;
-            max-height: 85vh;
-            overflow-y: auto;
-            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
-            animation: modalSlideUp 0.4s;
-        }
-
-        @keyframes modalSlideUp {
-            from { transform: translateY(50px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-
-        .modal-title {
-            font-size: 26px;
-            font-weight: 900;
-            color: #FFD700;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .input-modern {
-            width: 100%;
-            padding: 16px 20px;
-            margin-bottom: 16px;
-            border: 2px solid rgba(255,255,255,0.1);
-            border-radius: 20px;
-            background: rgba(0,0,0,0.2);
-            color: white;
-            font-size: 16px;
-            font-weight: 500;
-            transition: all 0.3s;
-        }
-
-        .input-modern:focus {
-            outline: none;
-            border-color: #FFD700;
-            background: rgba(0,0,0,0.3);
-            box-shadow: 0 0 0 3px rgba(255,215,0,0.1);
         }
 
         .button-modern {
@@ -823,6 +559,13 @@
             box-shadow: 0 10px 30px rgba(255,215,0,0.4);
         }
 
+        .button-modern:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
         .button-outline {
             background: transparent;
             border: 2px solid rgba(255,255,255,0.1);
@@ -835,34 +578,147 @@
             transform: translateY(-3px);
         }
 
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
+        .listing-badge {
+            background: linear-gradient(145deg, #4a2a3a, #2a1a2a);
+            border: 2px solid gold;
+            border-radius: 24px;
+            padding: 20px;
             margin-bottom: 20px;
-        }
-
-        .info-item {
-            background: rgba(255,255,255,0.05);
-            padding: 12px;
-            border-radius: 16px;
             text-align: center;
+            position: relative;
+            overflow: hidden;
         }
 
-        .info-label {
-            font-size: 11px;
-            color: #aaa;
-            margin-bottom: 4px;
+        .listing-badge::before {
+            content: '🚀';
+            position: absolute;
+            font-size: 80px;
+            opacity: 0.1;
+            bottom: -20px;
+            right: -20px;
+            transform: rotate(15deg);
         }
 
-        .info-value {
+        .listing-title {
+            font-size: 24px;
+            font-weight: 900;
+            color: gold;
+            margin-bottom: 10px;
+        }
+
+        .listing-text {
+            color: #fff;
             font-size: 16px;
-            font-weight: 800;
+            margin-bottom: 5px;
+        }
+
+        .listing-small {
+            color: #aaa;
+            font-size: 13px;
+        }
+
+        .receipt-card {
+            background: linear-gradient(145deg, #1a2a3a, #0f1a2a);
+            border: 2px solid #FFD700;
+            border-radius: 24px;
+            padding: 25px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .receipt-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px dashed rgba(255,215,0,0.3);
+        }
+
+        .receipt-title {
+            font-size: 24px;
+            font-weight: 900;
             color: #FFD700;
         }
 
-        .hidden {
-            display: none !important;
+        .receipt-id {
+            font-family: monospace;
+            font-size: 12px;
+            color: #4facfe;
+            background: rgba(79,172,254,0.1);
+            padding: 6px 12px;
+            border-radius: 50px;
+        }
+
+        .receipt-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            padding: 8px 0;
+        }
+
+        .receipt-label {
+            color: #aaa;
+            font-size: 14px;
+        }
+
+        .receipt-value {
+            font-weight: 800;
+            color: #fff;
+            font-size: 16px;
+        }
+
+        .receipt-stars {
+            color: #FFD700;
+            font-size: 20px;
+            font-weight: 900;
+        }
+
+        .receipt-crystals {
+            color: #4facfe;
+            font-size: 20px;
+            font-weight: 900;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(10, 15, 30, 0.95);
+            backdrop-filter: blur(15px);
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            z-index: 2000;
+        }
+
+        .modal-content {
+            background: linear-gradient(165deg, #232837, #1a1e2a);
+            border: 1px solid rgba(255,215,0,0.2);
+            border-radius: 32px;
+            padding: 30px;
+            max-width: 450px;
+            width: 100%;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+            animation: modalSlideUp 0.4s;
+        }
+
+        @keyframes modalSlideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-title {
+            font-size: 26px;
+            font-weight: 900;
+            color: #FFD700;
+            margin-bottom: 20px;
+            text-align: center;
         }
 
         .toast-notification {
@@ -883,11 +739,17 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            max-width: 90%;
+            text-align: center;
         }
 
         @keyframes slideUp {
             from { bottom: -100px; opacity: 0; }
             to { bottom: 30px; opacity: 1; }
+        }
+
+        .hidden {
+            display: none !important;
         }
 
         @media (max-width: 480px) {
@@ -908,17 +770,8 @@
                 font-size: 30px;
             }
 
-            .capital-stats {
+            .star-package-grid {
                 grid-template-columns: 1fr;
-            }
-
-            .info-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .modern-tabs {
-                padding: 4px;
-                gap: 4px;
             }
 
             .modern-tab {
@@ -926,40 +779,71 @@
                 font-size: 12px;
             }
 
-            .star-package-grid {
-                grid-template-columns: 1fr;
+            .supply-value {
+                font-size: 20px;
             }
         }
     </style>
 </head>
-<body>
+<body dir="rtl">
     <div class="animated-bg" id="particleBackground"></div>
     
+    <!-- Language Switcher -->
+    <div class="lang-switch">
+        <button class="lang-btn active" onclick="setLanguage('ar')" id="langAr">🇸🇦 العربية</button>
+        <button class="lang-btn" onclick="setLanguage('en')" id="langEn">🇬🇧 English</button>
+    </div>
+    
+    <!-- Balance Float -->
     <div class="balance-float">
         <div class="balance-float-icon">💎</div>
         <div class="balance-float-info">
-            <span class="balance-float-label">رصيد الكريستال</span>
+            <span class="balance-float-label" id="balanceLabel">رصيد الكريستال</span>
             <span class="balance-float-amount" id="floatBalance">0.000</span>
-            <span class="balance-float-usd" id="floatUsd">≈ $0.00</span>
+            <span class="balance-float-usd" id="floatValue">≈ $0.00</span>
         </div>
     </div>
     
     <div class="container">
+        <!-- Header -->
         <div class="main-header">
-            <h1 class="glowing-title">⛏️ كريستال التعدين</h1>
-            <span class="crystal-badge">
-                ⭐ 10 نجوم = 1 💎 | 💸 سحب: 0.08$
+            <h1 class="glowing-title">⛏️ <span id="titleText">كريستال التعدين</span></h1>
+            <span class="crystal-badge" id="badgeText">
+                ⭐ 10 = 1 💎 | 800M 💎
             </span>
         </div>
 
+        <!-- Limited Supply Card -->
+        <div class="supply-card">
+            <div class="supply-header">
+                <span class="supply-title" id="supplyTitle">💎 العرض المحدود</span>
+                <span class="supply-value" id="supplyValue">800,000,000</span>
+            </div>
+            <div class="supply-progress">
+                <div class="progress-label">
+                    <span id="soldLabel">تم البيع</span>
+                    <span id="soldPercent">0%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-fill" id="supplyProgress" style="width: 0%;"></div>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 10px; color: #aaa; font-size: 12px;">
+                <span id="remainingLabel">المتبقي: <span id="remainingValue">800,000,000</span> 💎</span>
+                <span id="soldValue">0 💎</span>
+            </div>
+        </div>
+
+        <!-- Exchange Rate Card -->
         <div class="rate-card">
             <div class="rate-info">
                 <span class="rate-icon">⭐</span>
-                <span class="rate-value" id="starRate">10 نجوم = 1 💎</span>
+                <span class="rate-value" id="starRate">10 ⭐ = 1 💎</span>
             </div>
-            <span style="color: #4caf50; font-weight: 700; background: rgba(76,175,80,0.15); padding: 6px 14px; border-radius: 50px;">✨ دفع فوري</span>
+            <span style="color: #4caf50; font-weight: 700; background: rgba(76,175,80,0.15); padding: 6px 14px; border-radius: 50px;" id="instantPayment">✨ دفع فوري</span>
         </div>
 
+        <!-- Mining Card -->
         <div class="mine-card">
             <div class="crystal-progress">
                 <div class="mine-button" onclick="mine()" id="mineButton">
@@ -968,332 +852,248 @@
                     <div class="mine-subtext" id="mineSubtext">اضغط لاستخراج 1 كريستال</div>
                 </div>
                 
-                <div class="fraction-progress">
+                <div class="fraction-progress" style="margin-top: 20px; padding: 15px; background: rgba(0,0,0,0.3); border-radius: 50px;">
                     <div class="fraction-label">
-                        <span>⏳ تقدم التعدين</span>
+                        <span id="miningProgressLabel">⏳ تقدم التعدين</span>
                         <span id="fractionDisplay">0.000/1.000 💎</span>
                     </div>
                     <div class="progress-bar-container">
                         <div class="progress-fill" id="miningProgressBar" style="width: 0%;"></div>
                     </div>
-                    <div class="cooldown-timer" id="cooldownTimer">
+                    <div class="cooldown-timer" id="cooldownTimer" style="margin-top: 15px; color: #aaa; font-size: 14px;">
                         ✨ يمكنك التعدين الآن!
                     </div>
+                </div>
+                
+                <div id="miningLimitInfo" class="mining-limit-badge">
+                    ⛏️ <span id="miningLimitText">متبقي للتعدين: 1,000,000 💎</span>
+                </div>
+                
+                <div id="miningEndedMessage" class="mining-ended hidden">
+                    ⛏️ <span id="miningEndedText">تم استخراج آخر كريستال! التعدين انتهى.</span>
                 </div>
             </div>
         </div>
 
+        <!-- Action Cards -->
         <div class="action-cards">
-            <div class="action-card" onclick="openBuyModal()">
+            <div class="action-card" onclick="openBuyModal()" id="buyCard">
                 <div class="card-icon">⭐</div>
-                <div class="card-title">شراء بالنجوم</div>
-                <div class="card-price">10 ⭐ = 1 💎</div>
+                <div class="card-title" id="buyTitle">شراء بالنجوم</div>
+                <div class="card-price" id="buyPrice">10 ⭐ = 1 💎</div>
             </div>
-            <div class="action-card" onclick="openWithdrawModal()">
-                <div class="card-icon">💰</div>
-                <div class="card-title">سحب USDT</div>
-                <div class="card-price">1 💎 = 0.08 $</div>
+            <div class="action-card disabled" id="withdrawCard">
+                <div class="card-icon">🚀</div>
+                <div class="card-title" id="withdrawTitle">الإدراج قريباً</div>
+                <div class="card-price" id="withdrawPrice">STON.fi 🚀</div>
             </div>
         </div>
 
+        <!-- Listing Announcement -->
+        <div class="listing-badge">
+            <div class="listing-title" id="listingTitle">🚀 قريباً في STON.fi!</div>
+            <div class="listing-text" id="listingText">تداول الكريستال بحرية - السعر يحدده السوق</div>
+            <div class="listing-small" id="listingSmall">سحب USDT غير متاح - استبدل كريستالك بـ TON مباشرة</div>
+        </div>
+
+        <!-- Tabs -->
         <div class="modern-tabs">
-            <div class="modern-tab active" onclick="switchTab(event, 'buy')">⭐ شراء</div>
-            <div class="modern-tab" onclick="switchTab(event, 'upgrades')">⚡ تسريع</div>
-            <div class="modern-tab" onclick="switchTab(event, 'withdraws')">📋 سحوباتي</div>
-            <div class="modern-tab" onclick="switchTab(event, 'withdrawWallet')">💳 محفظتي</div>
-            <div class="modern-tab" onclick="switchTab(event, 'invite')">👥 دعوة</div>
-            <div class="modern-tab" onclick="switchTab(event, 'leaderboard')">🏆 المتصدرين</div>
-            <div class="modern-tab" onclick="switchTab(event, 'stats')">📊 إحصائياتي</div>
+            <div class="modern-tab active" onclick="switchTab(event, 'buy')" id="tabBuy">⭐ <span>شراء</span></div>
+            <div class="modern-tab" onclick="switchTab(event, 'orders')" id="tabOrders">📋 <span>مشترياتي</span></div>
+            <div class="modern-tab" onclick="switchTab(event, 'invite')" id="tabInvite">👥 <span>دعوة</span></div>
+            <div class="modern-tab" onclick="switchTab(event, 'leaderboard')" id="tabLeaderboard">🏆 <span>المتصدرين</span></div>
+            <div class="modern-tab" onclick="switchTab(event, 'stats')" id="tabStats">📊 <span>إحصائياتي</span></div>
         </div>
 
-        <!-- قسم شراء النجوم -->
+        <!-- Buy Section -->
         <div id="buySection">
             <div style="background: linear-gradient(145deg, #232837, #1a1e2a); border-radius: 24px; padding: 22px; margin-bottom: 20px;">
                 <div style="text-align: center; margin-bottom: 20px;">
                     <div style="font-size: 64px; margin-bottom: 15px;">⭐</div>
-                    <h3 style="color: #FFD700; font-size: 24px; font-weight: 900;">اشترِ الكريستال بالنجوم</h3>
-                    <p style="color: #aaa; margin-top: 5px;">اختر الباقة المناسبة وادفع فوراً بنجوم تليجرام</p>
+                    <h3 style="color: #FFD700; font-size: 24px; font-weight: 900;" id="buySectionTitle">اشترِ الكريستال بالنجوم</h3>
+                    <p style="color: #aaa; margin-top: 5px;" id="buySectionDesc">اختر الباقة المناسبة وادفع فوراً بنجوم تليجرام</p>
                 </div>
                 
-                <div class="star-package-grid">
-                    <div class="star-package" onclick="selectStarPackage(10, 1, this)">
-                        <div class="star-icon">⭐</div>
-                        <div class="star-amount">10</div>
-                        <div class="crystal-amount">1 💎</div>
-                    </div>
-                    <div class="star-package" onclick="selectStarPackage(25, 2.5, this)">
-                        <div class="star-icon">⭐⭐</div>
-                        <div class="star-amount">25</div>
-                        <div class="crystal-amount">2.5 💎</div>
-                    </div>
-                    <div class="star-package" onclick="selectStarPackage(50, 5, this)">
-                        <div class="star-icon">⭐⭐⭐</div>
-                        <div class="star-amount">50</div>
-                        <div class="crystal-amount">5 💎</div>
-                    </div>
-                    <div class="star-package" onclick="selectStarPackage(100, 10, this)">
-                        <div class="star-icon">⭐⭐⭐⭐</div>
-                        <div class="star-amount">100</div>
-                        <div class="crystal-amount">10 💎</div>
-                    </div>
-                    <div class="star-package" onclick="selectStarPackage(250, 25, this)">
-                        <div class="star-icon">⭐⭐⭐⭐⭐</div>
-                        <div class="star-amount">250</div>
-                        <div class="crystal-amount">25 💎</div>
-                    </div>
-                    <div class="star-package" onclick="selectStarPackage(500, 50, this)">
-                        <div class="star-icon">👑</div>
-                        <div class="star-amount">500</div>
-                        <div class="crystal-amount">50 💎</div>
+                <div id="supplyWarning" style="background: rgba(255,152,0,0.15); border: 1px solid #ff9800; border-radius: 12px; padding: 12px; margin-bottom: 20px; display: none;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: #ff9800; font-size: 18px;">⚠️</span>
+                        <span style="color: #fff; font-size: 13px;" id="supplyWarningText"></span>
                     </div>
                 </div>
                 
-                <div style="background: rgba(255,215,0,0.1); border-radius: 20px; padding: 20px; margin-bottom: 20px;">
+                <div id="soldOutMessage" style="background: rgba(244,67,54,0.15); border: 1px solid #f44336; border-radius: 16px; padding: 25px; margin-bottom: 20px; text-align: center; display: none;">
+                    <div style="font-size: 48px; margin-bottom: 15px;">🎉</div>
+                    <h3 style="color: #FFD700; font-size: 22px; font-weight: 900; margin-bottom: 10px;" id="soldOutTitle">نفدت الكمية!</h3>
+                    <p style="color: #fff; margin-bottom: 10px;" id="soldOutText">تم بيع جميع الكريستال. شكراً لدعمكم!</p>
+                    <p style="color: #aaa; font-size: 14px;" id="soldOutSub">🚀 قريباً في منصة التداول</p>
+                </div>
+                
+                <div id="packageGrid" class="star-package-grid"></div>
+                
+                <div id="selectedPackageContainer" style="background: rgba(255,215,0,0.1); border-radius: 20px; padding: 20px; margin-bottom: 20px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <span style="color: #FFD700; font-weight: 700;">الباقة المختارة:</span>
+                        <span style="color: #FFD700; font-weight: 700;" id="selectedLabel">الباقة المختارة:</span>
                         <span style="font-size: 20px; font-weight: 900; color: #fff;" id="selectedPackage">لم تختر بعد</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="color: #aaa;">ستحصل على:</span>
+                        <span style="color: #aaa;" id="youGetLabel">ستحصل على:</span>
                         <span style="font-size: 24px; font-weight: 900; color: #4facfe;" id="selectedCrystals">0 💎</span>
                     </div>
                 </div>
                 
                 <button class="button-modern" onclick="buyWithStars()" id="buyStarsBtn" disabled style="opacity: 0.5;">
-                    ⭐ ادفع بالنجوم
+                    ⭐ <span id="payButtonText">ادفع بالنجوم</span>
                 </button>
                 
                 <div style="margin-top: 20px; background: rgba(79,172,254,0.1); border-radius: 16px; padding: 15px;">
                     <div style="display: flex; align-items: center; gap: 10px; color: #4facfe;">
                         <span>ℹ️</span>
-                        <span style="font-size: 13px;">سيتم خصم النجوم من محفظتك في تليجرام مباشرة. الدفع آمن وفوري.</span>
+                        <span style="font-size: 13px;" id="paymentInfoText">
+                            سيتم خصم النجوم من محفظتك في تليجرام مباشرة. الدفع آمن وفوري.
+                        </span>
                     </div>
                 </div>
             </div>
             
             <div style="background: linear-gradient(145deg, #232837, #1a1e2a); border-radius: 24px; padding: 22px;">
-                <h4 style="color: #FFD700; margin-bottom: 12px;">📋 مشترياتي السابقة</h4>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h4 style="color: #FFD700; font-size: 18px;" id="purchaseHistoryTitle">📋 مشترياتي السابقة</h4>
+                    <span style="color: #4facfe; font-size: 13px; background: rgba(79,172,254,0.1); padding: 5px 12px; border-radius: 50px;" id="verifiedBadge">
+                        موثقة ✅
+                    </span>
+                </div>
                 <div id="starOrdersList"></div>
             </div>
         </div>
 
-        <!-- قسم التسريع -->
-        <div id="upgradesSection" class="hidden">
-            <div style="margin-bottom: 20px;">
-                <h3 style="color: #FFD700; font-size: 22px; margin-bottom: 10px;">⚡ تسريع التعدين</h3>
-                <p style="color: #aaa;">اشترِ تسريع واحصل على كريستال فوري بالنجوم!</p>
-            </div>
-            <div id="boostItems"></div>
-        </div>
-
-        <!-- قسم سحوباتي -->
-        <div id="withdrawsSection" class="hidden">
-            <div class="withdraw-section">
-                <h3 style="color: #FFD700; font-size: 22px; margin-bottom: 15px;">📋 طلبات السحب الخاصة بي</h3>
-                <div id="withdrawOrdersList"></div>
+        <!-- Orders Section -->
+        <div id="ordersSection" class="hidden">
+            <div style="background: linear-gradient(145deg, #232837, #1a1e2a); border-radius: 24px; padding: 22px;">
+                <h3 style="color: #FFD700; font-size: 22px; margin-bottom: 20px;" id="ordersTitle">📋 جميع مشترياتي</h3>
+                <div id="allOrdersList"></div>
             </div>
         </div>
 
-        <!-- قسم محفظة السحب (USDT) -->
-        <div id="withdrawWalletSection" class="hidden">
-            <div class="wallet-section">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <div style="font-size: 64px; margin-bottom: 15px;">💳</div>
-                    <h3 style="color: #FFD700; font-size: 24px; font-weight: 900;">محفظة السحب</h3>
-                    <p style="color: #aaa; margin-top: 5px;">اربط محفظة USDT (TRC20) لسحب أرباحك</p>
-                </div>
-                
-                <div id="withdrawWalletStatus"></div>
-                
-                <div id="withdrawWalletForm" style="display: none;">
-                    <input type="text" id="withdrawWalletAddress" class="input-modern" placeholder="عنوان محفظة USDT (TRC20)" style="direction: ltr; font-family: monospace; margin-bottom: 10px;">
-                    <input type="text" id="withdrawWalletName" class="input-modern" placeholder="اسم المحفظة (اختياري)" style="margin-bottom: 10px;">
-                    <select id="withdrawWalletNetwork" class="input-modern" style="margin-bottom: 15px;">
-                        <option value="TRC20">TRC20 (USDT) - موصى به</option>
-                        <option value="BEP20">BEP20 (BSC)</option>
-                        <option value="ERC20">ERC20 (Ethereum)</option>
-                    </select>
-                    <button class="button-modern" onclick="connectWithdrawWallet()">
-                        🔗 ربط محفظة السحب
-                    </button>
-                    <button class="button-modern button-outline" onclick="hideWithdrawWalletForm()">
-                        ❌ إلغاء
-                    </button>
-                </div>
-                
-                <div style="margin-top: 25px;">
-                    <h4 style="color: #FFD700; margin-bottom: 12px;">📋 سجل المحافظ</h4>
-                    <div id="walletHistoryList"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- قسم دعوة الأصدقاء -->
+        <!-- Invite Section -->
         <div id="inviteSection" class="hidden">
             <div style="background: linear-gradient(145deg, #232837, #1a1e2a); border-radius: 24px; padding: 22px;">
                 <div style="text-align: center; margin-bottom: 20px;">
                     <div style="font-size: 64px; margin-bottom: 15px;">👥</div>
-                    <h3 style="color: #FFD700; font-size: 24px; font-weight: 900;">دعوة الأصدقاء</h3>
-                    <p style="color: #aaa; margin-top: 5px;">ادعُ أصدقائك واربح كريستال!</p>
+                    <h3 style="color: #FFD700; font-size: 24px; font-weight: 900;" id="inviteTitle">دعوة الأصدقاء</h3>
+                    <p style="color: #aaa; margin-top: 5px;" id="inviteDesc">ادعُ أصدقائك واربح كريستال!</p>
                 </div>
                 
-                <div class="invite-reward-box">
-                    <div class="reward-item">
-                        <div class="reward-value">💰 1</div>
-                        <div class="reward-label">إذا اشترى</div>
+                <div style="background: linear-gradient(145deg, rgba(255,215,0,0.1), rgba(255,165,0,0.05)); border-radius: 20px; padding: 20px; margin-bottom: 20px; display: flex; justify-content: space-around;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 32px; font-weight: 900; color: #FFD700;">💰 1</div>
+                        <div style="font-size: 13px; color: #ddd;" id="rewardBuy">إذا اشترى</div>
                     </div>
-                    <div class="reward-divider"></div>
-                    <div class="reward-item">
-                        <div class="reward-value" style="color: #4facfe;">0.3</div>
-                        <div class="reward-label">إذا لم يشتري</div>
+                    <div style="width: 1px; background: rgba(255,255,255,0.2);"></div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 32px; font-weight: 900; color: #4facfe;">0.3</div>
+                        <div style="font-size: 13px; color: #ddd;" id="rewardNoBuy">إذا لم يشتري</div>
                     </div>
                 </div>
                 
                 <div style="background: rgba(79,172,254,0.1); border-radius: 16px; padding: 15px; margin-bottom: 20px;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span style="color: #aaa;">عدد الدعوات:</span>
+                        <span style="color: #aaa;" id="invitesCountLabel">عدد الدعوات:</span>
                         <span style="color: #FFD700; font-weight: 800;" id="totalInvites">0</span>
                     </div>
                     <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #aaa;">إجمالي المكافآت:</span>
+                        <span style="color: #aaa;" id="rewardsTotalLabel">إجمالي المكافآت:</span>
                         <span style="color: #4caf50; font-weight: 800;" id="totalInviteRewards">0 💎</span>
                     </div>
                 </div>
                 
-                <div class="wallet-address-box" id="inviteLink" style="margin-bottom: 15px; font-size: 14px; direction: ltr;">
-                    جاري تحميل رابط الدعوة...
+                <div class="wallet-address-box" id="inviteLink" style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 16px; font-family: monospace; font-size: 13px; color: #4facfe; word-break: break-all; margin-bottom: 15px; direction: ltr; text-align: left;">
+                    Loading invite link...
                 </div>
                 
                 <button class="button-modern" onclick="copyInviteLink()" style="margin-bottom: 10px;">
-                    📋 نسخ رابط الدعوة
+                    📋 <span id="copyLinkText">نسخ رابط الدعوة</span>
                 </button>
                 <button class="button-modern button-outline" onclick="shareInviteLink()">
-                    🔗 مشاركة الرابط
+                    🔗 <span id="shareLinkText">مشاركة الرابط</span>
                 </button>
                 
                 <div style="margin-top: 25px;">
-                    <h4 style="color: #FFD700; margin-bottom: 12px;">📊 آخر المدعوين</h4>
+                    <h4 style="color: #FFD700; margin-bottom: 12px;" id="recentInvitesTitle">📊 آخر المدعوين</h4>
                     <div id="recentInvites"></div>
                 </div>
             </div>
         </div>
 
-        <!-- قسم المتصدرين (جديد) -->
+        <!-- Leaderboard Section -->
         <div id="leaderboardSection" class="hidden">
             <div style="background: linear-gradient(145deg, #232837, #1a1e2a); border-radius: 24px; padding: 22px;">
                 <div style="text-align: center; margin-bottom: 20px;">
                     <div style="font-size: 64px; margin-bottom: 15px;">🏆</div>
-                    <h3 style="color: #FFD700; font-size: 24px; font-weight: 900;">أفضل المنقبين</h3>
-                    <p style="color: #aaa; margin-top: 5px;">أغنى 10 منقبين في مناجم الكريستال</p>
+                    <h3 style="color: #FFD700; font-size: 24px; font-weight: 900;" id="leaderboardTitle">أفضل المنقبين</h3>
+                    <p style="color: #aaa; margin-top: 5px;" id="leaderboardDesc">أغنى 10 منقبين في كريستال التعدين</p>
                 </div>
                 
-                <div id="topUsersList" style="margin-top: 20px;">
-                    <div style="text-align: center; padding: 20px;">
-                        <span style="color: #aaa;">جاري تحميل قائمة المتصدرين...</span>
-                    </div>
-                </div>
+                <div id="topUsersList"></div>
                 
                 <div style="margin-top: 25px; background: rgba(255,215,0,0.1); border-radius: 16px; padding: 15px;">
                     <div style="display: flex; align-items: center; gap: 10px; color: #FFD700;">
                         <span>💎</span>
-                        <span style="font-size: 13px;">الترتيب يعتمد على إجمالي رصيد الكريستال</span>
+                        <span style="font-size: 13px;" id="leaderboardNote">الترتيب يعتمد على إجمالي رصيد الكريستال</span>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- قسم إحصائياتي -->
+        <!-- Stats Section -->
         <div id="statsSection" class="hidden">
             <div style="background: linear-gradient(145deg, #232837, #1a1e2a); border-radius: 24px; padding: 22px;">
-                <h3 style="color: #FFD700; font-size: 22px; margin-bottom: 20px;">📊 إحصائيات التعدين</h3>
+                <h3 style="color: #FFD700; font-size: 22px; margin-bottom: 20px;" id="statsTitle">📊 إحصائياتي</h3>
                 <div style="display: grid; gap: 15px;">
                     <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #aaa;">⛏️ إجمالي التعدين:</span>
+                        <span style="color: #aaa;" id="statMined">⛏️ إجمالي التعدين:</span>
                         <span style="font-weight: 800; color: #FFD700;" id="totalMined">0.000 💎</span>
                     </div>
                     <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #aaa;">🔥 سلسلة التعدين:</span>
+                        <span style="color: #aaa;" id="statStreak">🔥 سلسلة التعدين:</span>
                         <span style="font-weight: 800; color: #4facfe;" id="dailyStreak">0 يوم</span>
                     </div>
                     <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #aaa;">⭐ مشتريات بالنجوم:</span>
+                        <span style="color: #aaa;" id="statStarPurchases">⭐ مشتريات بالنجوم:</span>
                         <span style="font-weight: 800; color: #FFD700;" id="totalStarPurchases">0 ⭐</span>
                     </div>
                     <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #aaa;">💎 كريستال مشترى:</span>
+                        <span style="color: #aaa;" id="statBought">💎 كريستال مشترى:</span>
                         <span style="font-weight: 800; color: #4caf50;" id="totalBought">0 💎</span>
                     </div>
                     <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #aaa;">💰 إجمالي السحوبات:</span>
-                        <span style="font-weight: 800; color: #f44336;" id="totalSold">0 💎</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #aaa;">💎 رأس المال المستثمر:</span>
-                        <span style="font-weight: 800; color: #4caf50;" id="totalDeposits">0 $</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #aaa;">👥 عدد الدعوات:</span>
+                        <span style="color: #aaa;" id="statInvites">👥 عدد الدعوات:</span>
                         <span style="font-weight: 800; color: #9c27b0;" id="statsTotalInvites">0</span>
                     </div>
                     <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #aaa;">🏆 أفضل ترتيب:</span>
+                        <span style="color: #aaa;" id="statRank">🏆 أفضل ترتيب:</span>
                         <span style="font-weight: 800; color: #FFD700;" id="userRank">-</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #aaa;">💳 محفظة السحب:</span>
-                        <span style="font-weight: 800; color: #4caf50;" id="statsWithdrawWallet">غير مرتبطة</span>
+                </div>
+                
+                <div style="margin-top: 20px; background: rgba(255,215,0,0.1); border-radius: 16px; padding: 15px;">
+                    <div style="display: flex; align-items: center; gap: 10px; color: #FFD700;">
+                        <span>🚀</span>
+                        <span style="font-size: 13px;" id="listingNote">قريباً: تداول الكريستال في منصة STON.fi</span>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- مودال السحب (USDT) -->
-    <div id="withdrawModal" class="modal">
+    <!-- Receipt Modal -->
+    <div id="receiptModal" class="modal">
         <div class="modal-content">
-            <h2 class="modal-title">💰 سحب USDT</h2>
-            
-            <div id="withdrawWalletCheckSection"></div>
-            
-            <div id="withdrawAmountSection" style="display: none;">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <div style="font-size: 64px; margin-bottom: 15px;">💸</div>
-                    <div style="background: rgba(244,67,54,0.1); padding: 15px; border-radius: 20px;">
-                        <span style="color: #FFD700; font-size: 24px; font-weight: 900;">1 💎 = 0.08 $</span>
-                    </div>
-                </div>
-                
-                <div id="withdrawInfoContainer"></div>
-                
-                <div id="withdrawTimerContainer" style="background: rgba(244,67,54,0.15); border-radius: 20px; padding: 18px; margin-bottom: 20px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-weight: 600; color: #f44336;">⏳ وقت السحب المتبقي:</span>
-                        <span class="timer-value" id="withdrawTimer">0 س 0 د</span>
-                    </div>
-                </div>
-                
-                <input type="number" id="withdrawAmount" class="input-modern" placeholder="كمية الكريستال" min="10" step="1">
-                
-                <div style="background: rgba(244,67,54,0.1); border-radius: 20px; padding: 18px; margin: 15px 0;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                        <span>ستحصل على:</span>
-                        <span style="font-size: 20px; font-weight: 900; color: #FFD700;" id="usdPreview">0.00 $</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between;">
-                        <span>رصيدك الحالي:</span>
-                        <span style="color: #4caf50; font-weight: 800;" id="currentBalance">0.000 💎</span>
-                    </div>
-                </div>
-                
-                <div id="withdrawLimitsInfo" style="background: rgba(79,172,254,0.1); border-radius: 16px; padding: 15px; margin-bottom: 15px; font-size: 13px;"></div>
-                
-                <button class="button-modern" onclick="submitWithdrawOrder()" id="withdrawButton">
-                    💰 تأكيد طلب السحب
-                </button>
-            </div>
-            
-            <button class="button-modern button-outline" onclick="closeModal('withdrawModal')">
-                ❌ إلغاء
+            <div id="receiptContent"></div>
+            <button class="button-modern" onclick="downloadReceipt()" style="margin-top: 20px;">
+                ⬇️ <span id="downloadReceiptText">تحميل الشهادة</span>
+            </button>
+            <button class="button-modern button-outline" onclick="closeModal('receiptModal')">
+                ❌ <span id="closeReceiptText">إغلاق</span>
             </button>
         </div>
     </div>
@@ -1302,36 +1102,328 @@
         let tg = window.Telegram.WebApp;
         let userId = null;
         let userData = null;
-        let starRate = 0.1;
-        let withdrawRate = 0.08;
+        let systemData = null;
         let miningFraction = 0;
         let lastMineTime = null;
         let withdrawCooldown = 0;
-        let withdrawTimerInterval = null;
         let selectedStars = 0;
         let selectedCrystals = 0;
         let selectedPackageElement = null;
+        let currentReceipt = null;
+        let currentLanguage = 'ar';
 
         tg.expand();
         tg.ready();
         tg.setHeaderColor('#0b0e14');
         tg.setBackgroundColor('#0b0e14');
 
-        function createParticles() {
-            const bg = document.getElementById('particleBackground');
-            for (let i = 0; i < 20; i++) {
-                const particle = document.createElement('div');
-                particle.className = 'crystal-particle';
-                particle.style.left = Math.random() * 100 + '%';
-                particle.style.top = Math.random() * 100 + '%';
-                particle.style.animationDelay = Math.random() * 10 + 's';
-                particle.style.animationDuration = (15 + Math.random() * 10) + 's';
-                particle.innerHTML = ['💎', '⭐', '✨', '💠'][Math.floor(Math.random() * 4)];
-                bg.appendChild(particle);
+        // Language translations
+        const translations = {
+            ar: {
+                // General
+                balanceLabel: 'رصيد الكريستال',
+                titleText: 'كريستال التعدين',
+                badgeText: '⭐ 10 = 1 💎 | 800M 💎',
+                instantPayment: '✨ دفع فوري',
+                
+                // Supply
+                supplyTitle: '💎 العرض المحدود',
+                soldLabel: 'تم البيع',
+                remainingLabel: 'المتبقي:',
+                
+                // Mining
+                miningProgressLabel: '⏳ تقدم التعدين',
+                mineText: 'تعدين!',
+                mineSubtext: 'اضغط لاستخراج 1 كريستال',
+                miningLimitText: 'متبقي للتعدين:',
+                miningEndedText: 'تم استخراج آخر كريستال! التعدين انتهى.',
+                
+                // Buy
+                buyTitle: 'شراء بالنجوم',
+                buyPrice: '10 ⭐ = 1 💎',
+                buySectionTitle: 'اشترِ الكريستال بالنجوم',
+                buySectionDesc: 'اختر الباقة المناسبة وادفع فوراً بنجوم تليجرام',
+                selectedLabel: 'الباقة المختارة:',
+                youGetLabel: 'ستحصل على:',
+                payButtonText: 'ادفع بالنجوم',
+                paymentInfoText: 'سيتم خصم النجوم من محفظتك في تليجرام مباشرة. الدفع آمن وفوري.',
+                purchaseHistoryTitle: '📋 مشترياتي السابقة',
+                verifiedBadge: 'موثقة ✅',
+                soldOutTitle: 'نفدت الكمية!',
+                soldOutText: 'تم بيع جميع الكريستال. شكراً لدعمكم!',
+                soldOutSub: '🚀 قريباً في منصة التداول',
+                
+                // Withdraw
+                withdrawTitle: 'الإدراج قريباً',
+                withdrawPrice: 'STON.fi 🚀',
+                
+                // Listing
+                listingTitle: '🚀 قريباً في STON.fi!',
+                listingText: 'تداول الكريستال بحرية - السعر يحدده السوق',
+                listingSmall: 'سحب USDT غير متاح - استبدل كريستالك بـ TON مباشرة',
+                
+                // Tabs
+                tabBuy: 'شراء',
+                tabOrders: 'مشترياتي',
+                tabInvite: 'دعوة',
+                tabLeaderboard: 'المتصدرين',
+                tabStats: 'إحصائياتي',
+                
+                // Invite
+                inviteTitle: 'دعوة الأصدقاء',
+                inviteDesc: 'ادعُ أصدقائك واربح كريستال!',
+                rewardBuy: 'إذا اشترى',
+                rewardNoBuy: 'إذا لم يشتري',
+                invitesCountLabel: 'عدد الدعوات:',
+                rewardsTotalLabel: 'إجمالي المكافآت:',
+                copyLinkText: 'نسخ رابط الدعوة',
+                shareLinkText: 'مشاركة الرابط',
+                recentInvitesTitle: '📊 آخر المدعوين',
+                
+                // Leaderboard
+                leaderboardTitle: 'أفضل المنقبين',
+                leaderboardDesc: 'أغنى 10 منقبين في كريستال التعدين',
+                leaderboardNote: 'الترتيب يعتمد على إجمالي رصيد الكريستال',
+                
+                // Stats
+                statsTitle: '📊 إحصائياتي',
+                statMined: '⛏️ إجمالي التعدين:',
+                statStreak: '🔥 سلسلة التعدين:',
+                statStarPurchases: '⭐ مشتريات بالنجوم:',
+                statBought: '💎 كريستال مشترى:',
+                statInvites: '👥 عدد الدعوات:',
+                statRank: '🏆 أفضل ترتيب:',
+                listingNote: 'قريباً: تداول الكريستال في منصة STON.fi',
+                
+                // Receipt
+                downloadReceiptText: 'تحميل الشهادة',
+                closeReceiptText: 'إغلاق',
+                
+                // Toast Messages
+                miningSuccess: '✅ تم التعدين! +',
+                miningCooldown: '⏳ انتظر',
+                miningEnded: '⛏️ تم استخراج آخر كريستال! التعدين انتهى.',
+                buySuccess: '⭐ جاري فتح صفحة الدفع...',
+                buyError: '❌ فشل في إنشاء الفاتورة',
+                supplyExhausted: '💰 نفدت الكريستال! كل العملة تم بيعها. شكراً لدعمكم! 🎉',
+                copySuccess: '✅ تم نسخ رابط الدعوة!',
+                receiptError: '❌ فشل في تحميل شهادة الدفع',
+                receiptDownloaded: '📄 تم تحميل شهادة الدفع',
+                
+                // Package Names
+                packageSimple: 'تسريع بسيط',
+                packageStrong: 'تسريع قوي',
+                packageSuper: 'تسريع خارق',
+                packageLegendary: 'تسريع أسطوري'
+            },
+            en: {
+                // General
+                balanceLabel: 'Crystal Balance',
+                titleText: 'Crystal Mining',
+                badgeText: '⭐ 10 = 1 💎 | 800M 💎',
+                instantPayment: '✨ Instant Payment',
+                
+                // Supply
+                supplyTitle: '💎 Limited Supply',
+                soldLabel: 'Sold',
+                remainingLabel: 'Remaining:',
+                
+                // Mining
+                miningProgressLabel: '⏳ Mining Progress',
+                mineText: 'Mine!',
+                mineSubtext: 'Click to mine 1 crystal',
+                miningLimitText: 'Mining remaining:',
+                miningEndedText: 'The last crystal has been mined! Mining has ended.',
+                
+                // Buy
+                buyTitle: 'Buy with Stars',
+                buyPrice: '10 ⭐ = 1 💎',
+                buySectionTitle: 'Buy Crystals with Stars',
+                buySectionDesc: 'Choose a package and pay instantly with Telegram Stars',
+                selectedLabel: 'Selected package:',
+                youGetLabel: 'You get:',
+                payButtonText: 'Pay with Stars',
+                paymentInfoText: 'Stars will be deducted from your Telegram wallet. Secure & instant.',
+                purchaseHistoryTitle: '📋 Purchase History',
+                verifiedBadge: 'Verified ✅',
+                soldOutTitle: 'Sold Out!',
+                soldOutText: 'All crystals have been sold. Thank you for your support!',
+                soldOutSub: '🚀 Coming soon on DEX',
+                
+                // Withdraw
+                withdrawTitle: 'Listing Soon',
+                withdrawPrice: 'STON.fi 🚀',
+                
+                // Listing
+                listingTitle: '🚀 Coming Soon on STON.fi!',
+                listingText: 'Trade crystals freely - Price determined by market',
+                listingSmall: 'USDT withdrawals disabled - Swap your crystals for TON directly',
+                
+                // Tabs
+                tabBuy: 'Buy',
+                tabOrders: 'My Orders',
+                tabInvite: 'Invite',
+                tabLeaderboard: 'Leaderboard',
+                tabStats: 'My Stats',
+                
+                // Invite
+                inviteTitle: 'Invite Friends',
+                inviteDesc: 'Invite friends and earn crystals!',
+                rewardBuy: 'If they buy',
+                rewardNoBuy: 'If they don\'t buy',
+                invitesCountLabel: 'Total invites:',
+                rewardsTotalLabel: 'Total rewards:',
+                copyLinkText: 'Copy invite link',
+                shareLinkText: 'Share link',
+                recentInvitesTitle: '📊 Recent Invites',
+                
+                // Leaderboard
+                leaderboardTitle: 'Top Miners',
+                leaderboardDesc: 'Top 10 richest miners in Crystal Mining',
+                leaderboardNote: 'Ranking based on total crystal balance',
+                
+                // Stats
+                statsTitle: '📊 My Statistics',
+                statMined: '⛏️ Total Mined:',
+                statStreak: '🔥 Mining Streak:',
+                statStarPurchases: '⭐ Star Purchases:',
+                statBought: '💎 Crystals Bought:',
+                statInvites: '👥 Total Invites:',
+                statRank: '🏆 Best Rank:',
+                listingNote: 'Coming soon: Crystal trading on STON.fi',
+                
+                // Receipt
+                downloadReceiptText: 'Download Certificate',
+                closeReceiptText: 'Close',
+                
+                // Toast Messages
+                miningSuccess: '✅ Mining successful! +',
+                miningCooldown: '⏳ Wait',
+                miningEnded: '⛏️ The last crystal has been mined! Mining has ended.',
+                buySuccess: '⭐ Opening payment page...',
+                buyError: '❌ Failed to create invoice',
+                supplyExhausted: '💰 Crystals are sold out! Thank you for your support! 🎉',
+                copySuccess: '✅ Invite link copied!',
+                receiptError: '❌ Failed to load payment certificate',
+                receiptDownloaded: '📄 Payment certificate downloaded',
+                
+                // Package Names
+                packageSimple: 'Simple Boost',
+                packageStrong: 'Strong Boost',
+                packageSuper: 'Super Boost',
+                packageLegendary: 'Legendary Boost'
+            }
+        };
+
+        // ========== Language Functions ==========
+        function setLanguage(lang) {
+            currentLanguage = lang;
+            
+            // Update direction
+            document.body.dir = lang === 'ar' ? 'rtl' : 'ltr';
+            
+            // Update active button
+            document.getElementById('langAr').classList.toggle('active', lang === 'ar');
+            document.getElementById('langEn').classList.toggle('active', lang === 'en');
+            
+            // Update all text elements
+            updateUIText();
+            
+            // Save language preference
+            if (userId) {
+                apiRequest('/api/set-language', {
+                    method: 'POST',
+                    body: JSON.stringify({ language: lang })
+                });
             }
         }
-        createParticles();
 
+        function updateUIText() {
+            const t = translations[currentLanguage];
+            
+            // Update all elements with IDs
+            for (const [key, value] of Object.entries(t)) {
+                const element = document.getElementById(key);
+                if (element) {
+                    if (element.tagName === 'SPAN' || element.tagName === 'DIV' || element.tagName === 'H1' || element.tagName === 'H2' || element.tagName === 'H3' || element.tagName === 'H4' || element.tagName === 'P' || element.tagName === 'BUTTON') {
+                        element.innerHTML = value;
+                    }
+                }
+            }
+            
+            // Update dynamic text
+            document.getElementById('balanceLabel').innerHTML = t.balanceLabel;
+            document.getElementById('titleText').innerHTML = t.titleText;
+            document.getElementById('badgeText').innerHTML = t.badgeText;
+            document.getElementById('supplyTitle').innerHTML = t.supplyTitle;
+            document.getElementById('soldLabel').innerHTML = t.soldLabel;
+            document.getElementById('remainingLabel').innerHTML = t.remainingLabel;
+            
+            // Update mining text
+            document.getElementById('mineText').innerHTML = t.mineText;
+            document.getElementById('mineSubtext').innerHTML = t.mineSubtext;
+            document.getElementById('miningProgressLabel').innerHTML = t.miningProgressLabel;
+            
+            // Update buy section
+            document.getElementById('buyTitle').innerHTML = t.buyTitle;
+            document.getElementById('buyPrice').innerHTML = t.buyPrice;
+            document.getElementById('buySectionTitle').innerHTML = t.buySectionTitle;
+            document.getElementById('buySectionDesc').innerHTML = t.buySectionDesc;
+            document.getElementById('selectedLabel').innerHTML = t.selectedLabel;
+            document.getElementById('youGetLabel').innerHTML = t.youGetLabel;
+            document.getElementById('payButtonText').innerHTML = t.payButtonText;
+            document.getElementById('paymentInfoText').innerHTML = t.paymentInfoText;
+            document.getElementById('purchaseHistoryTitle').innerHTML = t.purchaseHistoryTitle;
+            document.getElementById('verifiedBadge').innerHTML = t.verifiedBadge;
+            
+            // Update withdraw card
+            document.getElementById('withdrawTitle').innerHTML = t.withdrawTitle;
+            document.getElementById('withdrawPrice').innerHTML = t.withdrawPrice;
+            
+            // Update listing
+            document.getElementById('listingTitle').innerHTML = t.listingTitle;
+            document.getElementById('listingText').innerHTML = t.listingText;
+            document.getElementById('listingSmall').innerHTML = t.listingSmall;
+            
+            // Update tabs
+            document.getElementById('tabBuy').querySelector('span').innerHTML = t.tabBuy;
+            document.getElementById('tabOrders').querySelector('span').innerHTML = t.tabOrders;
+            document.getElementById('tabInvite').querySelector('span').innerHTML = t.tabInvite;
+            document.getElementById('tabLeaderboard').querySelector('span').innerHTML = t.tabLeaderboard;
+            document.getElementById('tabStats').querySelector('span').innerHTML = t.tabStats;
+            
+            // Update invite section
+            document.getElementById('inviteTitle').innerHTML = t.inviteTitle;
+            document.getElementById('inviteDesc').innerHTML = t.inviteDesc;
+            document.getElementById('rewardBuy').innerHTML = t.rewardBuy;
+            document.getElementById('rewardNoBuy').innerHTML = t.rewardNoBuy;
+            document.getElementById('invitesCountLabel').innerHTML = t.invitesCountLabel;
+            document.getElementById('rewardsTotalLabel').innerHTML = t.rewardsTotalLabel;
+            document.getElementById('copyLinkText').innerHTML = t.copyLinkText;
+            document.getElementById('shareLinkText').innerHTML = t.shareLinkText;
+            document.getElementById('recentInvitesTitle').innerHTML = t.recentInvitesTitle;
+            
+            // Update leaderboard
+            document.getElementById('leaderboardTitle').innerHTML = t.leaderboardTitle;
+            document.getElementById('leaderboardDesc').innerHTML = t.leaderboardDesc;
+            document.getElementById('leaderboardNote').innerHTML = t.leaderboardNote;
+            
+            // Update stats
+            document.getElementById('statsTitle').innerHTML = t.statsTitle;
+            document.getElementById('statMined').innerHTML = t.statMined;
+            document.getElementById('statStreak').innerHTML = t.statStreak;
+            document.getElementById('statStarPurchases').innerHTML = t.statStarPurchases;
+            document.getElementById('statBought').innerHTML = t.statBought;
+            document.getElementById('statInvites').innerHTML = t.statInvites;
+            document.getElementById('statRank').innerHTML = t.statRank;
+            document.getElementById('listingNote').innerHTML = t.listingNote;
+            
+            // Update receipt modal
+            document.getElementById('downloadReceiptText').innerHTML = t.downloadReceiptText;
+            document.getElementById('closeReceiptText').innerHTML = t.closeReceiptText;
+        }
+
+        // ========== API Request ==========
         async function apiRequest(endpoint, options = {}) {
             const initData = tg.initData;
             
@@ -1349,7 +1441,7 @@
                 
                 if (!response.ok) {
                     if (response.status === 401 || response.status === 403) {
-                        showToast('❌ خطأ في التحقق من الهوية', false);
+                        showToast(translations[currentLanguage].authError || '❌ Authentication error', false);
                         return { success: false };
                     }
                 }
@@ -1357,7 +1449,7 @@
                 return await response.json();
             } catch (error) {
                 console.error('API Error:', error);
-                showToast('❌ خطأ في الاتصال بالخادم', false);
+                showToast(translations[currentLanguage].connectionError || '❌ Connection error', false);
                 return { success: false };
             }
         }
@@ -1373,55 +1465,111 @@
             }, 3000);
         }
 
+        // ========== Initialization ==========
         if (tg.initDataUnsafe?.user?.id) {
             userId = tg.initDataUnsafe.user.id.toString();
+            loadSystemStats();
             loadUserData();
             loadStarOrders();
-            loadWithdrawWalletInfo();
-            loadUserWithdraws();
             loadInviteInfo();
             loadLeaderboard();
             
             setInterval(() => {
+                loadSystemStats();
                 loadUserData();
                 updateMiningProgress();
             }, 1000);
+        }
+
+        async function loadSystemStats() {
+            const data = await apiRequest('/api/system-stats');
+            if (data.success) {
+                systemData = data.system;
+                updateSupplyUI();
+            }
+        }
+
+        function updateSupplyUI() {
+            if (!systemData) return;
+            
+            const t = translations[currentLanguage];
+            const remaining = systemData.remainingSupply;
+            const total = systemData.totalSupply;
+            const sold = total - remaining;
+            const percent = (sold / total * 100).toFixed(1);
+            
+            document.getElementById('supplyValue').innerHTML = total.toLocaleString();
+            document.getElementById('remainingValue').innerHTML = remaining.toLocaleString();
+            document.getElementById('soldValue').innerHTML = sold.toLocaleString();
+            document.getElementById('soldPercent').innerHTML = `${percent}%`;
+            document.getElementById('supplyProgress').style.width = `${percent}%`;
+            
+            // Update mining limit info
+            const miningRemaining = systemData.maxMining - systemData.minedSupply;
+            document.getElementById('miningLimitText').innerHTML = `${t.miningLimitText} ${miningRemaining.toLocaleString()} 💎`;
+            
+            // Check if mining ended
+            if (systemData.minedSupply >= systemData.maxMining) {
+                document.getElementById('mineButton').classList.add('disabled');
+                document.getElementById('miningLimitInfo').classList.add('hidden');
+                document.getElementById('miningEndedMessage').classList.remove('hidden');
+            }
+            
+            // Check if supply is low
+            const supplyPercent = (remaining / total * 100);
+            const supplyWarning = document.getElementById('supplyWarning');
+            const soldOutMessage = document.getElementById('soldOutMessage');
+            const packageGrid = document.getElementById('packageGrid');
+            const selectedContainer = document.getElementById('selectedPackageContainer');
+            const buyButton = document.getElementById('buyStarsBtn');
+            
+            if (remaining <= 0) {
+                soldOutMessage.style.display = 'block';
+                packageGrid.style.display = 'none';
+                selectedContainer.style.display = 'none';
+                buyButton.style.display = 'none';
+                supplyWarning.style.display = 'none';
+            } else if (remaining < 10000) {
+                supplyWarning.style.display = 'block';
+                document.getElementById('supplyWarningText').innerHTML = 
+                    `⚠️ ${t.supplyExhausted} ${remaining.toLocaleString()} 💎 ${t.remainingLabel.toLowerCase()}`;
+            } else {
+                supplyWarning.style.display = 'none';
+            }
         }
 
         async function loadUserData() {
             const data = await apiRequest(`/api/user/${userId}`);
             if (data.success) {
                 userData = data.user;
-                starRate = data.user.starRate || 0.1;
-                withdrawRate = 0.08;
-                miningFraction = data.user.miningFraction || 0;
                 lastMineTime = data.user.last_mine_click;
-                withdrawCooldown = data.user.withdrawCooldown || 0;
                 updateUI();
                 updateMiningProgress();
-                updateWithdrawTimer();
             }
         }
 
         function updateUI() {
             if (userData) {
                 document.getElementById('floatBalance').textContent = parseFloat(userData.balance).toFixed(3);
-                document.getElementById('floatUsd').textContent = `≈ $${(userData.balance * withdrawRate).toFixed(2)}`;
-                document.getElementById('currentBalance') && (document.getElementById('currentBalance').textContent = `${parseFloat(userData.balance).toFixed(3)} 💎`);
+                document.getElementById('floatValue').textContent = `≈ $${(userData.balance * 0.08).toFixed(2)}`;
                 
-                document.getElementById('totalMined') && (document.getElementById('totalMined').textContent = `${(userData.total_mined || 0).toFixed(3)} 💎`);
-                document.getElementById('dailyStreak') && (document.getElementById('dailyStreak').textContent = `${userData.daily_streak || 0} يوم`);
-                document.getElementById('totalBought') && (document.getElementById('totalBought').textContent = `${(userData.total_bought || 0).toFixed(3)} 💎`);
-                document.getElementById('totalSold') && (document.getElementById('totalSold').textContent = `${(userData.total_sold || 0).toFixed(3)} 💎`);
-                document.getElementById('statsTotalInvites') && (document.getElementById('statsTotalInvites').textContent = `${userData.total_invites || 0}`);
+                document.getElementById('totalMined').textContent = `${(userData.total_mined || 0).toFixed(3)} 💎`;
+                document.getElementById('dailyStreak').textContent = `${userData.daily_streak || 0} ${currentLanguage === 'ar' ? 'يوم' : 'days'}`;
+                document.getElementById('totalBought').textContent = `${(userData.total_bought || 0).toFixed(3)} 💎`;
+                document.getElementById('statsTotalInvites').textContent = `${userData.total_invites || 0}`;
                 
-                const totalDepositsUSD = (userData.total_bought || 0) * 0.1;
-                document.getElementById('totalDeposits') && (document.getElementById('totalDeposits').textContent = `${totalDepositsUSD.toFixed(2)} $`);
+                const totalStars = parseInt(document.getElementById('totalStarPurchases')?.textContent || '0');
+                document.getElementById('totalStarPurchases').textContent = `${totalStars} ⭐`;
             }
         }
 
         function updateMiningProgress() {
-            if (!userData) return;
+            if (!userData || !systemData) return;
+            
+            // Check if mining ended
+            if (systemData.minedSupply >= systemData.maxMining) {
+                return;
+            }
             
             const fractionDisplay = document.getElementById('fractionDisplay');
             const progressBar = document.getElementById('miningProgressBar');
@@ -1429,6 +1577,7 @@
             const mineButton = document.getElementById('mineButton');
             const mineText = document.getElementById('mineText');
             const mineSubtext = document.getElementById('mineSubtext');
+            const t = translations[currentLanguage];
             
             if (lastMineTime) {
                 const now = Date.now();
@@ -1436,7 +1585,6 @@
                 
                 if (hoursPassed < 24) {
                     const fraction = Math.min(1, hoursPassed / 24);
-                    miningFraction = fraction;
                     
                     fractionDisplay.textContent = `${fraction.toFixed(3)}/1.000 💎`;
                     progressBar.style.width = `${fraction * 100}%`;
@@ -1445,39 +1593,38 @@
                     const hours = Math.floor(remainingHours);
                     const minutes = Math.floor((remainingHours - hours) * 60);
                     
-                    cooldownTimer.innerHTML = `⏳ التعدين التالي بعد: ${hours} ساعة ${minutes} دقيقة`;
+                    cooldownTimer.innerHTML = `⏳ ${t.miningCooldown} ${hours}h ${minutes}m`;
                     
-                    mineButton.style.opacity = '0.7';
-                    mineButton.style.pointerEvents = 'none';
-                    mineButton.style.animation = 'none';
-                    mineText.textContent = '⏳ تعدين...';
-                    mineSubtext.textContent = `اكتمال ${(fraction * 100).toFixed(1)}%`;
+                    mineButton.classList.add('disabled');
+                    mineText.textContent = '⏳ ...';
+                    mineSubtext.textContent = `${(fraction * 100).toFixed(1)}%`;
                 } else {
-                    miningFraction = 1;
-                    fractionDisplay.textContent = '1.000/1.000 💎 (جاهز!)';
+                    fractionDisplay.textContent = '1.000/1.000 💎';
                     progressBar.style.width = '100%';
-                    cooldownTimer.innerHTML = '✨ يمكنك التعدين الآن! اضغط على الكريستالة!';
+                    cooldownTimer.innerHTML = `✨ ${t.mineSubtext}`;
                     
-                    mineButton.style.opacity = '1';
-                    mineButton.style.pointerEvents = 'auto';
-                    mineButton.style.animation = 'floatMine 3s infinite ease-in-out';
-                    mineText.textContent = 'تعدين!';
-                    mineSubtext.textContent = 'اضغط لاستخراج 1 كريستال';
+                    mineButton.classList.remove('disabled');
+                    mineText.textContent = t.mineText;
+                    mineSubtext.textContent = t.mineSubtext;
                 }
             } else {
-                fractionDisplay.textContent = '1.000/1.000 💎 (جاهز!)';
+                fractionDisplay.textContent = '1.000/1.000 💎';
                 progressBar.style.width = '100%';
-                cooldownTimer.innerHTML = '✨ يمكنك التعدين الآن!';
+                cooldownTimer.innerHTML = `✨ ${t.mineSubtext}`;
                 
-                mineButton.style.opacity = '1';
-                mineButton.style.pointerEvents = 'auto';
-                mineButton.style.animation = 'floatMine 3s infinite ease-in-out';
-                mineText.textContent = 'تعدين!';
-                mineSubtext.textContent = 'اضغط لاستخراج 1 كريستال';
+                mineButton.classList.remove('disabled');
+                mineText.textContent = t.mineText;
+                mineSubtext.textContent = t.mineSubtext;
             }
         }
 
+        // ========== Mining ==========
         async function mine() {
+            if (!systemData || systemData.minedSupply >= systemData.maxMining) {
+                showToast(translations[currentLanguage].miningEnded, false);
+                return;
+            }
+            
             const data = await apiRequest('/api/mine', {
                 method: 'POST',
                 body: '{}'
@@ -1487,24 +1634,54 @@
                 userData.balance = parseFloat(data.newBalance);
                 userData.total_mined = parseFloat(data.totalMined);
                 lastMineTime = Date.now();
-                miningFraction = 0;
                 
                 updateUI();
+                loadSystemStats();
                 updateMiningProgress();
-                loadLeaderboard(); // تحديث المتصدرين بعد التعدين
+                loadLeaderboard();
                 
-                showToast(`✅ تم التعدين! +${parseFloat(data.minedAmount).toFixed(3)} كريستال`, true);
+                showToast(`${translations[currentLanguage].miningSuccess}${data.minedAmount} 💎`, true);
             } else {
-                if (data.error === 'تعدين') {
-                    showToast(`⏳ ${data.message || 'انتظر 24 ساعة بين كل تعدين'}`, false);
+                if (data.error === 'cooldown') {
+                    showToast(data[`message_${currentLanguage}`] || data.message_en, false);
                 } else {
-                    showToast(`❌ ${data.error || 'فشل التعدين'}`, false);
+                    showToast(data[`message_${currentLanguage}`] || data.message_en, false);
                 }
             }
         }
 
-        // ========== نظام شراء النجوم ==========
+        // ========== Star Packages ==========
+        function loadStarPackages() {
+            const t = translations[currentLanguage];
+            const packages = [
+                { stars: 10, crystals: 1, icon: '⭐' },
+                { stars: 25, crystals: 2.5, icon: '⭐⭐' },
+                { stars: 50, crystals: 5, icon: '⭐⭐⭐' },
+                { stars: 100, crystals: 10, icon: '⭐⭐⭐⭐' },
+                { stars: 250, crystals: 25, icon: '⭐⭐⭐⭐⭐' },
+                { stars: 500, crystals: 50, icon: '👑' }
+            ];
+            
+            let html = '';
+            packages.forEach(pkg => {
+                html += `
+                    <div class="star-package" onclick="selectStarPackage(${pkg.stars}, ${pkg.crystals}, this)">
+                        <div class="star-icon">${pkg.icon}</div>
+                        <div class="star-amount">${pkg.stars}</div>
+                        <div class="crystal-amount">${pkg.crystals} 💎</div>
+                    </div>
+                `;
+            });
+            
+            document.getElementById('packageGrid').innerHTML = html;
+        }
+
         function selectStarPackage(stars, crystals, element) {
+            if (!systemData || systemData.remainingSupply < crystals) {
+                showToast(translations[currentLanguage].supplyExhausted, false);
+                return;
+            }
+            
             selectedStars = stars;
             selectedCrystals = crystals;
             
@@ -1523,7 +1700,12 @@
 
         async function buyWithStars() {
             if (!selectedStars) {
-                showToast('❌ اختر باقة أولاً', false);
+                showToast(translations[currentLanguage].selectPackage || '❌ Select a package first', false);
+                return;
+            }
+            
+            if (systemData && systemData.remainingSupply < selectedCrystals) {
+                showToast(translations[currentLanguage].supplyExhausted, false);
                 return;
             }
             
@@ -1534,49 +1716,63 @@
             
             if (data.success) {
                 window.location.href = data.invoiceUrl;
-                showToast('⭐ جاري فتح صفحة الدفع...', true);
+                showToast(translations[currentLanguage].buySuccess, true);
                 
                 setTimeout(() => {
                     loadStarOrders();
                     loadUserData();
-                    loadLeaderboard(); // تحديث المتصدرين بعد الشراء
+                    loadSystemStats();
+                    loadLeaderboard();
                 }, 5000);
             } else {
-                showToast(`❌ ${data.error || 'فشل في إنشاء الفاتورة'}`, false);
+                showToast(data[`message_${currentLanguage}`] || data.message_en || translations[currentLanguage].buyError, false);
             }
         }
 
+        // ========== Star Orders ==========
         async function loadStarOrders() {
             if (!userId) return;
             
             const data = await apiRequest(`/api/star-orders/${userId}`);
             if (data.success) {
                 let ordersHtml = '';
+                const t = translations[currentLanguage];
+                
                 if (data.orders.length === 0) {
-                    ordersHtml = '<div style="text-align: center; padding: 20px; color: #aaa;">لا توجد مشتريات بعد</div>';
+                    ordersHtml = '<div style="text-align: center; padding: 20px; color: #aaa;">' + 
+                        (currentLanguage === 'ar' ? 'لا توجد مشتريات بعد' : 'No purchases yet') + 
+                        '</div>';
                 } else {
                     data.orders.slice(0, 5).forEach(order => {
                         let statusColor = '#ffc107';
-                        let statusText = '⏳ في الانتظار';
+                        let statusText = currentLanguage === 'ar' ? '⏳ في الانتظار' : '⏳ Pending';
                         
                         if (order.status === 'completed') {
                             statusColor = '#4caf50';
-                            statusText = '✅ مكتمل';
+                            statusText = currentLanguage === 'ar' ? '✅ مكتمل' : '✅ Completed';
                         } else if (order.status === 'expired') {
                             statusColor = '#f44336';
-                            statusText = '❌ منتهي';
+                            statusText = currentLanguage === 'ar' ? '❌ منتهي' : '❌ Expired';
                         }
                         
                         ordersHtml += `
-                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 12px; margin-bottom: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; background: rgba(255,255,255,0.03); border-radius: 16px; margin-bottom: 10px;">
                                 <div>
-                                    <div style="font-weight: 800; color: #FFD700;">⭐ ${order.starAmount} نجوم</div>
-                                    <div style="font-size: 12px; color: #aaa;">${new Date(order.createdAt).toLocaleDateString('ar-EG')}</div>
-                                    <div style="font-size: 11px; color: #4facfe;">+${order.crystalAmount.toFixed(1)} 💎</div>
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+                                        <span style="font-weight: 900; color: #FFD700; font-size: 18px;">⭐ ${order.starAmount}</span>
+                                        <span style="color: #aaa;">→</span>
+                                        <span style="font-weight: 900; color: #4facfe; font-size: 18px;">${order.crystalAmount.toFixed(1)} 💎</span>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <span style="font-size: 12px; color: #aaa;">${new Date(order.createdAt).toLocaleDateString(currentLanguage === 'ar' ? 'ar-EG' : 'en-GB')}</span>
+                                        <span style="color: ${statusColor}; font-weight: 700; background: ${statusColor}20; padding: 4px 12px; border-radius: 50px; font-size: 11px;">${statusText}</span>
+                                    </div>
                                 </div>
-                                <div>
-                                    <span style="color: ${statusColor}; font-weight: 700; background: ${statusColor}20; padding: 4px 12px; border-radius: 50px; font-size: 12px;">${statusText}</span>
-                                </div>
+                                ${order.status === 'completed' ? `
+                                    <button onclick="viewReceipt('${order.payload}')" style="background: transparent; border: 1px solid #4facfe; color: #4facfe; padding: 8px 16px; border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer;">
+                                        📄 ${currentLanguage === 'ar' ? 'شهادة' : 'Certificate'}
+                                    </button>
+                                ` : ''}
                             </div>
                         `;
                     });
@@ -1584,13 +1780,216 @@
                 document.getElementById('starOrdersList').innerHTML = ordersHtml;
                 
                 const totalStars = data.orders.filter(o => o.status === 'completed').reduce((sum, o) => sum + o.starAmount, 0);
-                document.getElementById('totalStarPurchases') && (document.getElementById('totalStarPurchases').textContent = `${totalStars} ⭐`);
+                document.getElementById('totalStarPurchases').textContent = `${totalStars} ⭐`;
             }
         }
 
-        // ========== نظام المتصدرين ==========
+        // ========== Receipt System ==========
+        async function viewReceipt(orderId) {
+            const data = await apiRequest(`/api/receipt/${orderId}`);
+            
+            if (data.success && data.receipt) {
+                currentReceipt = data.receipt;
+                const t = translations[currentLanguage];
+                
+                const date = new Date(data.receipt.date).toLocaleDateString(currentLanguage === 'ar' ? 'ar-EG' : 'en-GB');
+                const shortId = data.receipt.transaction_id.substring(0, 16) + '...';
+                
+                const receiptHTML = `
+                    <div class="receipt-card">
+                        <div class="receipt-header">
+                            <div class="receipt-title">📄 ${currentLanguage === 'ar' ? 'شهادة دفع' : 'Payment Certificate'}</div>
+                            <div class="receipt-id">#${shortId}</div>
+                        </div>
+                        
+                        <div class="receipt-row">
+                            <span class="receipt-label">${currentLanguage === 'ar' ? 'معرف المعاملة:' : 'Transaction ID:'}</span>
+                            <span class="receipt-value" style="font-family: monospace; font-size: 11px; direction: ltr;">${data.receipt.transaction_id}</span>
+                        </div>
+                        
+                        <div class="receipt-row">
+                            <span class="receipt-label">${currentLanguage === 'ar' ? 'التاريخ:' : 'Date:'}</span>
+                            <span class="receipt-value">${date}</span>
+                        </div>
+                        
+                        <div class="receipt-row">
+                            <span class="receipt-label">${currentLanguage === 'ar' ? 'المستخدم:' : 'User:'}</span>
+                            <span class="receipt-value">${data.receipt.user_name}</span>
+                        </div>
+                        
+                        <div class="receipt-row">
+                            <span class="receipt-label">${currentLanguage === 'ar' ? 'المبلغ المدفوع:' : 'Amount paid:'}</span>
+                            <span class="receipt-stars">${data.receipt.stars_paid} ⭐</span>
+                        </div>
+                        
+                        <div class="receipt-row">
+                            <span class="receipt-label">${currentLanguage === 'ar' ? 'الكريستال المستلم:' : 'Crystals received:'}</span>
+                            <span class="receipt-crystals">${data.receipt.crystals_received.toFixed(1)} 💎</span>
+                        </div>
+                        
+                        <div class="receipt-row">
+                            <span class="receipt-label">${currentLanguage === 'ar' ? 'سعر الصرف:' : 'Exchange rate:'}</span>
+                            <span class="receipt-value">${data.receipt.rate}</span>
+                        </div>
+                        
+                        <div class="receipt-row">
+                            <span class="receipt-label">${currentLanguage === 'ar' ? 'حالة الدفع:' : 'Payment status:'}</span>
+                            <span class="receipt-value" style="color: #4caf50;">✅ ${currentLanguage === 'ar' ? 'مكتمل' : 'Completed'}</span>
+                        </div>
+                        
+                        <div class="receipt-footer" style="margin-top: 20px; padding-top: 15px; border-top: 2px dashed rgba(255,215,0,0.3); text-align: center; color: #aaa; font-size: 12px;">
+                            ${currentLanguage === 'ar' 
+                                ? 'هذه الشهادة تثبت عملية الشراء وهي مسجلة في قاعدة بيانات البوت. المعاملة موثقة عبر منصة تليجرام.' 
+                                : 'This certificate proves the purchase and is recorded in the bot database. Transaction verified via Telegram Stars API.'}
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('receiptContent').innerHTML = receiptHTML;
+                openModal('receiptModal');
+            } else {
+                showToast(translations[currentLanguage].receiptError, false);
+            }
+        }
+
+        function downloadReceipt() {
+            if (!currentReceipt) return;
+            
+            const t = translations[currentLanguage];
+            const date = new Date(currentReceipt.date).toLocaleString(currentLanguage === 'ar' ? 'ar-EG' : 'en-GB');
+            
+            const receiptText = currentLanguage === 'ar'
+                ? `🏦 شهادة دفع - كريستال التعدين
+═══════════════════════════
+
+معرف المعاملة: ${currentReceipt.transaction_id}
+التاريخ: ${date}
+المستخدم: ${currentReceipt.user_name}
+
+💰 المبلغ المدفوع: ${currentReceipt.stars_paid} ⭐
+💎 الكريستال المستلم: ${currentReceipt.crystals_received.toFixed(1)} 💎
+📊 سعر الصرف: ${currentReceipt.rate}
+
+✅ حالة الدفع: مكتمل
+🔗 جهة التحقق: ${currentReceipt.verified_by}
+🤖 البوت: @${currentReceipt.bot_username}
+
+═══════════════════════════
+هذه شهادة دفع رسمية صادرة عن بوت كريستال التعدين.
+المعاملة موثقة في قاعدة بيانات البوت ومنصة تليجرام.
+${new Date().toLocaleDateString('ar-EG')}`
+                : `🏦 Crystal Mining - Payment Certificate
+═══════════════════════════
+
+Transaction ID: ${currentReceipt.transaction_id}
+Date: ${date}
+User: ${currentReceipt.user_name}
+
+💰 Stars Paid: ${currentReceipt.stars_paid} ⭐
+💎 Crystals Received: ${currentReceipt.crystals_received.toFixed(1)} 💎
+📊 Exchange Rate: ${currentReceipt.rate}
+
+✅ Status: Completed
+🔗 Verified By: ${currentReceipt.verified_by}
+🤖 Bot: @${currentReceipt.bot_username}
+
+═══════════════════════════
+This is an official payment certificate from Crystal Mining Bot.
+Transaction verified in bot database and Telegram Stars API.
+${new Date().toLocaleDateString('en-GB')}`;
+            
+            const blob = new Blob([receiptText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `receipt_${currentReceipt.transaction_id.substring(0, 8)}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showToast(t.receiptDownloaded, true);
+        }
+
+        // ========== Invite System ==========
+        async function loadInviteInfo() {
+            if (!userId) return;
+            
+            const data = await apiRequest(`/api/invite-info/${userId}`);
+            if (data.success) {
+                document.getElementById('totalInvites').textContent = data.totalInvites || 0;
+                document.getElementById('totalInviteRewards').textContent = `${(data.totalRewards || 0).toFixed(1)} 💎`;
+                
+                let recentHtml = '';
+                const t = translations[currentLanguage];
+                
+                if (data.recentInvites && data.recentInvites.length > 0) {
+                    data.recentInvites.slice(0, 3).forEach(invite => {
+                        const date = new Date(invite.createdAt).toLocaleDateString(currentLanguage === 'ar' ? 'ar-EG' : 'en-GB');
+                        let statusText = '';
+                        let statusColor = '';
+                        
+                        if (invite.status === 'completed') {
+                            statusText = currentLanguage === 'ar' ? '✅ اشترى' : '✅ Purchased';
+                            statusColor = '#4caf50';
+                        } else if (invite.status === 'partial') {
+                            statusText = currentLanguage === 'ar' ? '⏳ لم يشتري' : '⏳ No purchase';
+                            statusColor = '#4facfe';
+                        } else {
+                            statusText = currentLanguage === 'ar' ? '🕒 معلق' : '🕒 Pending';
+                            statusColor = '#ffc107';
+                        }
+                        
+                        const rewardText = invite.rewardAmount 
+                            ? `+${invite.rewardAmount} 💎` 
+                            : (currentLanguage === 'ar' ? 'في الانتظار' : 'Pending');
+                        
+                        recentHtml += `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 12px; margin-bottom: 8px;">
+                                <div>
+                                    <div style="font-weight: 700;">${invite.invitedName}</div>
+                                    <div style="font-size: 11px; color: #aaa;">${date}</div>
+                                </div>
+                                <div style="text-align: left;">
+                                    <span style="color: ${statusColor}; font-size: 12px; display: block;">${statusText}</span>
+                                    <span style="color: #FFD700; font-weight: 700; font-size: 13px;">${rewardText}</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    recentHtml = '<div style="text-align: center; padding: 15px; color: #aaa;">' + 
+                        (currentLanguage === 'ar' ? 'لا يوجد مدعوين بعد' : 'No invites yet') + 
+                        '</div>';
+                }
+                document.getElementById('recentInvites').innerHTML = recentHtml;
+            }
+        }
+
+        async function copyInviteLink() {
+            const data = await apiRequest('/api/user/me');
+            const botUsername = data.username;
+            const inviteLink = `https://t.me/${botUsername}?start=invite_${userId}`;
+            document.getElementById('inviteLink').textContent = inviteLink;
+            
+            navigator.clipboard.writeText(inviteLink);
+            showToast(translations[currentLanguage].copySuccess, true);
+        }
+
+        function shareInviteLink() {
+            const inviteLink = document.getElementById('inviteLink').textContent;
+            if (inviteLink && inviteLink !== 'Loading invite link...' && inviteLink !== 'جاري تحميل رابط الدعوة...') {
+                const text = encodeURIComponent(
+                    currentLanguage === 'ar'
+                        ? `💎 انضم إلي في كريستال التعدين واشترِ الكريستال بالنجوم!\n${inviteLink}`
+                        : `💎 Join me in Crystal Mining and buy crystals with stars!\n${inviteLink}`
+                );
+                window.open(`https://t.me/share/url?url=${inviteLink}&text=${text}`, '_blank');
+            }
+        }
+
+        // ========== Leaderboard ==========
         async function loadLeaderboard() {
             const data = await apiRequest('/api/top');
+            const t = translations[currentLanguage];
             
             if (data.success && data.topUsers) {
                 let html = '';
@@ -1619,626 +2018,50 @@
                     }
                     
                     html += `
-                        <div class="top-rank" style="background: ${medalBg};">
-                            <div class="rank-medal" style="background: ${medalColor}20; color: ${medalColor};">
+                        <div style="display: flex; align-items: center; gap: 15px; padding: 15px; border-radius: 16px; margin-bottom: 10px; background: ${medalBg};">
+                            <div style="width: 45px; height: 45px; border-radius: 50%; background: ${medalColor}20; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; color: ${medalColor};">
                                 ${medal}
                             </div>
                             <div style="flex: 1;">
-                                <div style="font-weight: 800; color: #fff; font-size: 16px;">${user.first_name || 'منقب'}</div>
-                                <div style="font-size: 12px; color: #aaa;">منقب كريستال</div>
+                                <div style="font-weight: 800; color: #fff; font-size: 16px;">${user.first_name || 'Miner'}</div>
+                                <div style="font-size: 12px; color: #aaa;">${currentLanguage === 'ar' ? 'منقب' : 'Miner'}</div>
                             </div>
                             <div style="text-align: left;">
                                 <div style="font-weight: 900; color: #FFD700; font-size: 20px;">${user.balance.toFixed(2)}</div>
-                                <div style="font-size: 11px; color: #4facfe;">💎 كريستال</div>
+                                <div style="font-size: 11px; color: #4facfe;">💎 ${currentLanguage === 'ar' ? 'كريستال' : 'Crystals'}</div>
                             </div>
                         </div>
                     `;
                     
-                    // تحديث ترتيب المستخدم الحالي
                     if (user.user_id === userId) {
-                        document.getElementById('userRank') && (document.getElementById('userRank').textContent = `#${index + 1}`);
+                        document.getElementById('userRank').innerHTML = `#${index + 1}`;
                     }
                 });
                 
                 document.getElementById('topUsersList').innerHTML = html;
             } else {
-                document.getElementById('topUsersList').innerHTML = '<div style="text-align: center; padding: 30px; color: #aaa;">لا يوجد منقبين بعد</div>';
+                document.getElementById('topUsersList').innerHTML = '<div style="text-align: center; padding: 30px; color: #aaa;">' + 
+                    (currentLanguage === 'ar' ? 'لا يوجد منقبين بعد' : 'No miners yet') + 
+                    '</div>';
             }
         }
 
-        // ========== نظام محفظة السحب (USDT) ==========
-        async function loadWithdrawWalletInfo() {
-            if (!userId) return;
-            
-            const data = await apiRequest(`/api/wallets/${userId}`);
-            if (data.success) {
-                updateWithdrawWalletUI(data.withdrawWallet);
-                updateWalletHistory(data.history);
-                updateStatsWithdrawWallet(data.withdrawWallet);
-            }
-        }
-
-        function updateWithdrawWalletUI(wallet) {
-            const statusDiv = document.getElementById('withdrawWalletStatus');
-            const formDiv = document.getElementById('withdrawWalletForm');
-            
-            if (wallet) {
-                let statusClass = '';
-                let statusText = '';
-                let statusColor = '';
-                
-                switch(wallet.status) {
-                    case 'active':
-                        statusClass = 'wallet-status-active';
-                        statusText = '✅ نشطة';
-                        statusColor = '#4caf50';
-                        break;
-                    case 'pending':
-                        statusClass = 'wallet-status-pending';
-                        statusText = '⏳ في انتظار الموافقة';
-                        statusColor = '#ffc107';
-                        break;
-                    case 'rejected':
-                        statusClass = 'wallet-status-rejected';
-                        statusText = '❌ مرفوضة';
-                        statusColor = '#f44336';
-                        break;
-                }
-                
-                statusDiv.innerHTML = `
-                    <div class="wallet-card">
-                        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
-                            <div style="background: ${statusColor}; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px;">
-                                💰
-                            </div>
-                            <div>
-                                <div style="font-size: 14px; color: #aaa;">حالة محفظة السحب</div>
-                                <div style="font-size: 20px; font-weight: 900; color: ${statusColor};">${statusText}</div>
-                            </div>
-                        </div>
-                        
-                        <div class="wallet-address-box">
-                            ${wallet.address}
-                        </div>
-                        
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-                            <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 12px;">
-                                <div style="color: #aaa; font-size: 11px;">اسم المحفظة</div>
-                                <div style="color: #FFD700; font-weight: 700;">${wallet.wallet_name || 'غير محدد'}</div>
-                            </div>
-                            <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 12px;">
-                                <div style="color: #aaa; font-size: 11px;">الشبكة</div>
-                                <div style="color: #4facfe; font-weight: 700;">${wallet.network || 'TRC20'}</div>
-                            </div>
-                        </div>
-                        
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                            <button class="button-modern" onclick="showWithdrawWalletForm()" style="padding: 12px; font-size: 14px;">
-                                🔄 تغيير المحفظة
-                            </button>
-                            <button class="button-modern button-outline" onclick="disconnectWithdrawWallet()" style="padding: 12px; font-size: 14px;">
-                                🔌 فصل المحفظة
-                            </button>
-                        </div>
-                    </div>
-                `;
-                
-                formDiv.style.display = 'none';
-            } else {
-                statusDiv.innerHTML = `
-                    <div style="text-align: center; padding: 30px 20px; background: rgba(255,255,255,0.02); border-radius: 20px;">
-                        <div style="font-size: 48px; margin-bottom: 15px;">💰</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #aaa; margin-bottom: 10px;">لا توجد محفظة سحب مرتبطة</div>
-                        <p style="color: #ddd; font-size: 14px; margin-bottom: 20px;">اربط محفظة USDT لسحب أرباحك</p>
-                        <button class="button-modern" onclick="showWithdrawWalletForm()" style="padding: 14px;">
-                            🔗 ربط محفظة السحب
-                        </button>
-                    </div>
-                `;
-                
-                formDiv.style.display = 'none';
-            }
-        }
-
-        function updateWalletHistory(history) {
-            const historyDiv = document.getElementById('walletHistoryList');
-            
-            if (history && history.length > 0) {
-                let historyHtml = '';
-                history.slice(0, 5).forEach(item => {
-                    let statusColor = '';
-                    let statusText = '';
-                    
-                    switch(item.status) {
-                        case 'active':
-                            statusColor = '#4caf50';
-                            statusText = '✅ مقبولة';
-                            break;
-                        case 'pending':
-                            statusColor = '#ffc107';
-                            statusText = '⏳ قيد المراجعة';
-                            break;
-                        case 'rejected':
-                            statusColor = '#f44336';
-                            statusText = '❌ مرفوضة';
-                            break;
-                        case 'disconnected':
-                            statusColor = '#aaa';
-                            statusText = '🔌 مفصولة';
-                            break;
-                    }
-                    
-                    historyHtml += `
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 12px; margin-bottom: 8px;">
-                            <div>
-                                <div style="font-family: monospace; font-size: 12px; color: #4facfe; direction: ltr;">
-                                    ${item.address.substring(0, 10)}...${item.address.substring(item.address.length - 8)}
-                                </div>
-                                <div style="font-size: 11px; color: #aaa;">${item.wallet_name || 'غير محدد'}</div>
-                            </div>
-                            <div style="text-align: left;">
-                                <span style="color: ${statusColor}; font-size: 12px; font-weight: 700;">${statusText}</span>
-                                <div style="font-size: 10px; color: #aaa;">${new Date(item.createdAt).toLocaleDateString('ar-EG')}</div>
-                            </div>
-                        </div>
-                    `;
-                });
-                historyDiv.innerHTML = historyHtml;
-            } else {
-                historyDiv.innerHTML = '<div style="text-align: center; padding: 15px; color: #aaa;">لا يوجد سجل للمحافظ</div>';
-            }
-        }
-
-        function updateStatsWithdrawWallet(wallet) {
-            const statsElement = document.getElementById('statsWithdrawWallet');
-            if (statsElement) {
-                if (wallet) {
-                    if (wallet.status === 'active') statsElement.textContent = '✅ نشطة';
-                    else if (wallet.status === 'pending') statsElement.textContent = '⏳ قيد المراجعة';
-                    else if (wallet.status === 'rejected') statsElement.textContent = '❌ مرفوضة';
-                } else {
-                    statsElement.textContent = 'غير مرتبطة';
-                }
-            }
-        }
-
-        function showWithdrawWalletForm() {
-            document.getElementById('withdrawWalletForm').style.display = 'block';
-            document.getElementById('withdrawWalletStatus').style.display = 'none';
-        }
-
-        function hideWithdrawWalletForm() {
-            document.getElementById('withdrawWalletForm').style.display = 'none';
-            document.getElementById('withdrawWalletStatus').style.display = 'block';
-        }
-
-        async function connectWithdrawWallet() {
-            const address = document.getElementById('withdrawWalletAddress').value.trim();
-            const walletName = document.getElementById('withdrawWalletName').value.trim();
-            const network = document.getElementById('withdrawWalletNetwork').value;
-            
-            if (!address || address.length < 30) {
-                showToast('❌ يرجى إدخال عنوان محفظة صحيح', false);
-                return;
-            }
-            
-            const data = await apiRequest('/api/wallet/connect', {
-                method: 'POST',
-                body: JSON.stringify({
-                    type: 'withdraw',
-                    address: address,
-                    walletName: walletName || 'محفظة سحب',
-                    network: network
-                })
-            });
-            
-            if (data.success) {
-                showToast('✅ تم إرسال طلب ربط المحفظة للإدارة', true);
-                loadWithdrawWalletInfo();
-                hideWithdrawWalletForm();
-            } else {
-                showToast(`❌ ${data.error || 'فشل في إرسال الطلب'}`, false);
-            }
-        }
-
-        async function disconnectWithdrawWallet() {
-            if (!confirm('هل أنت متأكد من فصل محفظة السحب؟')) return;
-            
-            const data = await apiRequest('/api/wallet/disconnect', {
-                method: 'POST',
-                body: JSON.stringify({ type: 'withdraw' })
-            });
-            
-            if (data.success) {
-                showToast('✅ تم فصل محفظة السحب', true);
-                loadWithdrawWalletInfo();
-            } else {
-                showToast('❌ فشل في فصل المحفظة', false);
-            }
-        }
-
-        // ========== نظام السحب (USDT) ==========
-        async function openWithdrawModal() {
-            if (!userData) return;
-            
-            const walletsData = await apiRequest(`/api/wallets/${userId}`);
-            const withdrawWallet = walletsData.success ? walletsData.withdrawWallet : null;
-            
-            const checkSection = document.getElementById('withdrawWalletCheckSection');
-            const amountSection = document.getElementById('withdrawAmountSection');
-            
-            if (!withdrawWallet || withdrawWallet.status !== 'active') {
-                checkSection.innerHTML = `
-                    <div style="text-align: center; padding: 30px 20px;">
-                        <div style="font-size: 64px; margin-bottom: 20px;">💰</div>
-                        <div style="font-size: 20px; font-weight: 900; color: #f44336; margin-bottom: 15px;">محفظة السحب غير مرتبطة!</div>
-                        <p style="color: #aaa; margin-bottom: 25px;">يجب ربط محفظة USDT نشطة أولاً لسحب الأرباح</p>
-                        <button class="button-modern" onclick="closeModal('withdrawModal'); switchTab(event, 'withdrawWallet');">
-                            🔗 ربط محفظة السحب
-                        </button>
-                    </div>
-                `;
-                amountSection.style.display = 'none';
-            } else {
-                checkSection.innerHTML = `
-                    <div style="background: rgba(76,175,80,0.1); border-radius: 16px; padding: 15px; margin-bottom: 20px;">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="color: #4caf50; font-size: 24px;">✅</span>
-                            <div>
-                                <div style="color: #4caf50; font-weight: 700;">محفظة سحب نشطة</div>
-                                <div style="font-family: monospace; font-size: 11px; color: #4facfe; direction: ltr; text-align: left;">
-                                    ${withdrawWallet.address.substring(0, 10)}...${withdrawWallet.address.substring(withdrawWallet.address.length - 8)}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                amountSection.style.display = 'block';
-            }
-            
-            document.getElementById('withdrawModal').style.display = 'flex';
-            document.getElementById('currentBalance').textContent = `${parseFloat(userData.balance).toFixed(3)} 💎`;
-            
-            const info = await loadWithdrawInfo();
-            if (info) {
-                let infoHTML = `
-                    <div class="capital-card">
-                        <div class="capital-header">
-                            <div class="capital-icon">💰</div>
-                            <div>
-                                <div class="capital-title">رأس مالك المستثمر</div>
-                                <div class="capital-amount">${info.deposits.usd} $</div>
-                                <div style="font-size: 12px; color: #aaa;">≈ ${info.deposits.crystals} 💎</div>
-                            </div>
-                        </div>
-                        
-                        <div class="capital-stats">
-                            <div class="capital-stat-item">
-                                <div class="capital-stat-label">مسحوب سابقاً</div>
-                                <div class="capital-stat-value" style="color: #f44336;">${info.withdrawn.usd} $</div>
-                                <div style="font-size: 11px; color: #aaa;">${info.withdrawn.crystals} 💎</div>
-                            </div>
-                            <div class="capital-stat-item">
-                                <div class="capital-stat-label">متبقي للسحب</div>
-                                <div class="capital-stat-value" style="color: #4caf50;">${info.available.usd} $</div>
-                                <div style="font-size: 11px; color: #aaa;">${info.available.crystals} 💎</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                
-                document.getElementById('withdrawInfoContainer').innerHTML = infoHTML;
-                
-                document.getElementById('withdrawLimitsInfo').innerHTML = `
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span>📊 الحد الأدنى:</span>
-                        <span style="color: #FFD700; font-weight: 700;">5$ (≈ ${info.daily.minCrystals} 💎)</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span>📈 الحد الأقصى اليوم:</span>
-                        <span style="color: #4facfe; font-weight: 700;">${info.daily.maxUsd} $ (${info.daily.maxCrystals} 💎)</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
-                        <span style="color: #aaa;">تقدم رأس المال:</span>
-                        <span style="color: #4caf50; font-weight: 700;">${info.available.percent}% متبقي</span>
-                    </div>
-                `;
-            }
-            
-            updateWithdrawTimer();
-            
-            document.getElementById('withdrawAmount').addEventListener('input', function(e) {
-                const crystals = parseFloat(e.target.value) || 0;
-                const usd = crystals * withdrawRate;
-                document.getElementById('usdPreview').textContent = `${usd.toFixed(2)} $`;
-            });
-        }
-
-        async function loadWithdrawInfo() {
-            const data = await apiRequest(`/api/withdraw-info/${userId}`);
-            if (data.success) {
-                return data;
-            }
-            return null;
-        }
-
-        function updateWithdrawTimer() {
-            const timerElement = document.getElementById('withdrawTimer');
-            const withdrawButton = document.getElementById('withdrawButton');
-            const timerContainer = document.getElementById('withdrawTimerContainer');
-            
-            if (!userData || !timerElement) return;
-            
-            if (withdrawCooldown > 0) {
-                const totalMinutes = Math.ceil(withdrawCooldown * 60);
-                const hours = Math.floor(totalMinutes / 60);
-                const minutes = totalMinutes % 60;
-                
-                timerElement.textContent = `${hours} س ${minutes} د`;
-                timerContainer.style.background = 'rgba(244,67,54,0.15)';
-                withdrawButton.disabled = true;
-                withdrawButton.style.opacity = '0.5';
-                withdrawButton.style.cursor = 'not-allowed';
-                
-                if (withdrawTimerInterval) clearInterval(withdrawTimerInterval);
-                withdrawTimerInterval = setInterval(() => {
-                    if (withdrawCooldown > 0) {
-                        withdrawCooldown -= 1/60;
-                        if (withdrawCooldown <= 0) {
-                            clearInterval(withdrawTimerInterval);
-                            timerElement.textContent = '0 س 0 د';
-                            timerContainer.style.background = 'rgba(76,175,80,0.15)';
-                            withdrawButton.disabled = false;
-                            withdrawButton.style.opacity = '1';
-                            withdrawButton.style.cursor = 'pointer';
-                        } else {
-                            const mins = Math.ceil(withdrawCooldown * 60);
-                            const h = Math.floor(mins / 60);
-                            const m = mins % 60;
-                            timerElement.textContent = `${h} س ${m} د`;
-                        }
-                    }
-                }, 60000);
-            } else {
-                timerElement.textContent = 'جاهز!';
-                timerContainer.style.background = 'rgba(76,175,80,0.15)';
-                withdrawButton.disabled = false;
-                withdrawButton.style.opacity = '1';
-                withdrawButton.style.cursor = 'pointer';
-            }
-        }
-
-        async function submitWithdrawOrder() {
-            const crystalAmount = parseFloat(document.getElementById('withdrawAmount').value);
-            
-            if (!crystalAmount || crystalAmount < 10) {
-                showToast('❌ الحد الأدنى للسحب 10 كريستال', false);
-                return;
-            }
-            
-            if (userData.balance < crystalAmount) {
-                showToast('❌ رصيد غير كافي', false);
-                return;
-            }
-            
-            if (withdrawCooldown > 0) {
-                showToast('⏳ يمكنك السحب مرة واحدة كل 24 ساعة', false);
-                return;
-            }
-            
-            const data = await apiRequest('/api/withdraw', {
-                method: 'POST',
-                body: JSON.stringify({ crystalAmount })
-            });
-            
-            if (data.success) {
-                userData.balance = parseFloat(data.newBalance);
-                userData.total_sold = parseFloat(data.totalSold);
-                withdrawCooldown = 24;
-                
-                updateUI();
-                closeModal('withdrawModal');
-                updateWithdrawTimer();
-                loadUserWithdraws();
-                loadLeaderboard(); // تحديث المتصدرين بعد السحب
-                
-                showToast(`✅ تم إرسال طلب سحب ${crystalAmount} 💎`, true);
-            } else {
-                if (data.error === 'حد أدنى') {
-                    showToast(`⚠️ ${data.message}`, false);
-                } else if (data.error === 'حد أقصى') {
-                    showToast(`⚠️ ${data.message}`, false);
-                } else if (data.error === 'وقت') {
-                    showToast(`⏳ ${data.message}`, false);
-                } else if (data.error === 'رصيد') {
-                    showToast(`❌ ${data.message}`, false);
-                } else {
-                    showToast(`❌ ${data.error || 'فشل في إرسال الطلب'}`, false);
-                }
-            }
-        }
-
-        async function loadUserWithdraws() {
-            if (!userId) return;
-            const data = await apiRequest(`/api/user-withdraws/${userId}`);
-            
-            if (data.success) {
-                let withdrawHtml = '';
-                if (data.withdraws.length === 0) {
-                    withdrawHtml = '<div style="text-align: center; padding: 20px; color: #aaa;">لا توجد طلبات سحب</div>';
-                } else {
-                    data.withdraws.slice(0, 5).forEach(order => {
-                        let statusColor = '#ffc107';
-                        let statusText = '⏳ قيد الانتظار';
-                        
-                        if (order.status === 'completed') {
-                            statusColor = '#4caf50';
-                            statusText = '✅ مكتمل';
-                        } else if (order.status === 'rejected') {
-                            statusColor = '#f44336';
-                            statusText = '❌ مرفوض';
-                        }
-                        
-                        withdrawHtml += `
-                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 12px; margin-bottom: 8px;">
-                                <div>
-                                    <div style="font-weight: 800; color: #FFD700;">💰 سحب ${order.crystalAmount} 💎</div>
-                                    <div style="font-size: 12px; color: #aaa;">${new Date(order.createdAt).toLocaleDateString('ar-EG')}</div>
-                                    <div style="font-size: 11px; color: #4facfe;">${order.usdAmount.toFixed(2)} USDT</div>
-                                </div>
-                                <div>
-                                    <span style="color: ${statusColor}; font-weight: 700; background: ${statusColor}20; padding: 6px 14px; border-radius: 50px; font-size: 12px;">${statusText}</span>
-                                </div>
-                            </div>
-                        `;
-                    });
-                }
-                document.getElementById('withdrawOrdersList').innerHTML = withdrawHtml;
-            }
-        }
-
-        // ========== نظام الدعوة ==========
-        async function loadInviteInfo() {
-            if (!userId) return;
-            
-            const data = await apiRequest(`/api/invite-info/${userId}`);
-            if (data.success) {
-                document.getElementById('totalInvites').textContent = data.totalInvites || 0;
-                document.getElementById('totalInviteRewards').textContent = `${(data.totalRewards || 0).toFixed(1)} 💎`;
-                
-                let recentHtml = '';
-                if (data.recentInvites && data.recentInvites.length > 0) {
-                    data.recentInvites.slice(0, 3).forEach(invite => {
-                        const date = new Date(invite.createdAt).toLocaleDateString('ar-EG');
-                        let statusText = '';
-                        let statusColor = '';
-                        
-                        if (invite.status === 'completed') {
-                            statusText = '✅ اشترى';
-                            statusColor = '#4caf50';
-                        } else if (invite.status === 'partial') {
-                            statusText = '⏳ لم يشتري';
-                            statusColor = '#4facfe';
-                        } else {
-                            statusText = '🕒 معلق';
-                            statusColor = '#ffc107';
-                        }
-                        
-                        const rewardText = invite.rewardAmount ? `+${invite.rewardAmount} 💎` : 'في الانتظار';
-                        
-                        recentHtml += `
-                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 12px; margin-bottom: 8px;">
-                                <div>
-                                    <div style="font-weight: 700;">${invite.invitedName}</div>
-                                    <div style="font-size: 11px; color: #aaa;">${date}</div>
-                                </div>
-                                <div style="text-align: left;">
-                                    <span style="color: ${statusColor}; font-size: 12px; display: block;">${statusText}</span>
-                                    <span style="color: #FFD700; font-weight: 700; font-size: 13px;">${rewardText}</span>
-                                </div>
-                            </div>
-                        `;
-                    });
-                } else {
-                    recentHtml = '<div style="text-align: center; padding: 15px; color: #aaa;">لا يوجد مدعوين بعد</div>';
-                }
-                document.getElementById('recentInvites').innerHTML = recentHtml;
-            }
-        }
-
-        async function copyInviteLink() {
-            const data = await apiRequest('/api/user/me');
-            const botUsername = data.username;
-            const inviteLink = `https://t.me/${botUsername}?start=invite_${userId}`;
-            document.getElementById('inviteLink').textContent = inviteLink;
-            
-            navigator.clipboard.writeText(inviteLink);
-            showToast('✅ تم نسخ رابط الدعوة!', true);
-        }
-
-        function shareInviteLink() {
-            const inviteLink = document.getElementById('inviteLink').textContent;
-            if (inviteLink && inviteLink !== 'جاري تحميل رابط الدعوة...') {
-                const text = encodeURIComponent(`💎 انضم إلي في مناجم الكريستال واشترِ الكريستال بالنجوم!\n${inviteLink}`);
-                window.open(`https://t.me/share/url?url=${inviteLink}&text=${text}`, '_blank');
-            }
-        }
-
-        // ========== نظام التسريع ==========
-        async function buyBoost(boostId, price) {
-            const data = await apiRequest('/api/buy-boost', {
-                method: 'POST',
-                body: JSON.stringify({ boostId, price })
-            });
-            
-            if (data.success) {
-                showToast(`✅ تم شراء ${data.boostName} بنجاح! +${data.crystalAmount} 💎`, true);
-                loadUserData();
-                loadLeaderboard(); // تحديث المتصدرين بعد الشراء
-            } else {
-                showToast(`❌ ${data.error || 'فشل في الشراء'}`, false);
-            }
-        }
-
-        async function loadShopItems() {
-            const data = await apiRequest('/api/shop-items');
-            
-            if (data.success) {
-                document.getElementById('starRate').textContent = `10 نجوم = 1 💎`;
-                
-                let boostsHtml = '';
-                const boostItems = [
-                    { id: 'speed_1', name: '⚡ تسريع بسيط', desc: 'احصل على 1 كريستال فوري', price: 10, crystals: 1 },
-                    { id: 'speed_2', name: '💪 تسريع قوي', desc: 'احصل على 5 كريستال فوري', price: 50, crystals: 5 },
-                    { id: 'speed_3', name: '🚀 تسريع خارق', desc: 'احصل على 12 كريستال فوري', price: 120, crystals: 12 },
-                    { id: 'speed_4', name: '👑 تسريع أسطوري', desc: 'احصل على 25 كريستال فوري', price: 250, crystals: 25 }
-                ];
-                
-                boostItems.forEach(boost => {
-                    boostsHtml += `
-                        <div class="shop-item-card">
-                            <div class="item-details">
-                                <h4>${boost.name}</h4>
-                                <p style="color: #ddd; font-size: 14px;">${boost.desc}</p>
-                                <span class="item-price">⭐ ${boost.price} نجوم</span>
-                                <span style="display: block; margin-top: 8px; color: #4facfe; font-weight: 700;">+${boost.crystals} 💎 فوري</span>
-                            </div>
-                            <div>
-                                <button class="buy-button" onclick="buyBoost('${boost.id}', ${boost.price})">
-                                    شراء
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                });
-                
-                document.getElementById('boostItems').innerHTML = boostsHtml;
-            }
-        }
-
-        // ========== نظام التبويبات ==========
+        // ========== Tab Switching ==========
         function switchTab(event, tab) {
             document.querySelectorAll('.modern-tab').forEach(t => t.classList.remove('active'));
             event.target.classList.add('active');
             
             document.getElementById('buySection')?.classList.add('hidden');
-            document.getElementById('upgradesSection')?.classList.add('hidden');
-            document.getElementById('withdrawsSection')?.classList.add('hidden');
-            document.getElementById('withdrawWalletSection')?.classList.add('hidden');
+            document.getElementById('ordersSection')?.classList.add('hidden');
             document.getElementById('inviteSection')?.classList.add('hidden');
             document.getElementById('leaderboardSection')?.classList.add('hidden');
             document.getElementById('statsSection')?.classList.add('hidden');
             
             if (tab === 'buy') {
                 document.getElementById('buySection').classList.remove('hidden');
-            } else if (tab === 'upgrades') {
-                document.getElementById('upgradesSection').classList.remove('hidden');
-            } else if (tab === 'withdraws') {
-                document.getElementById('withdrawsSection').classList.remove('hidden');
-                loadUserWithdraws();
-            } else if (tab === 'withdrawWallet') {
-                document.getElementById('withdrawWalletSection').classList.remove('hidden');
-                loadWithdrawWalletInfo();
+            } else if (tab === 'orders') {
+                document.getElementById('ordersSection').classList.remove('hidden');
+                loadAllOrders();
             } else if (tab === 'invite') {
                 document.getElementById('inviteSection').classList.remove('hidden');
                 loadInviteInfo();
@@ -2251,33 +2074,113 @@
             }
         }
 
+        async function loadAllOrders() {
+            if (!userId) return;
+            
+            const data = await apiRequest(`/api/star-orders/${userId}`);
+            if (data.success) {
+                let ordersHtml = '';
+                const t = translations[currentLanguage];
+                
+                if (data.orders.length === 0) {
+                    ordersHtml = '<div style="text-align: center; padding: 20px; color: #aaa;">' + 
+                        (currentLanguage === 'ar' ? 'لا توجد مشتريات بعد' : 'No purchases yet') + 
+                        '</div>';
+                } else {
+                    data.orders.forEach(order => {
+                        let statusColor = '#ffc107';
+                        let statusText = currentLanguage === 'ar' ? '⏳ في الانتظار' : '⏳ Pending';
+                        
+                        if (order.status === 'completed') {
+                            statusColor = '#4caf50';
+                            statusText = currentLanguage === 'ar' ? '✅ مكتمل' : '✅ Completed';
+                        } else if (order.status === 'expired') {
+                            statusColor = '#f44336';
+                            statusText = currentLanguage === 'ar' ? '❌ منتهي' : '❌ Expired';
+                        }
+                        
+                        ordersHtml += `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; background: rgba(255,255,255,0.03); border-radius: 16px; margin-bottom: 10px;">
+                                <div>
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+                                        <span style="font-weight: 900; color: #FFD700; font-size: 18px;">⭐ ${order.starAmount}</span>
+                                        <span style="color: #aaa;">→</span>
+                                        <span style="font-weight: 900; color: #4facfe; font-size: 18px;">${order.crystalAmount.toFixed(1)} 💎</span>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <span style="font-size: 12px; color: #aaa;">${new Date(order.createdAt).toLocaleDateString(currentLanguage === 'ar' ? 'ar-EG' : 'en-GB')}</span>
+                                        <span style="color: ${statusColor}; font-weight: 700; background: ${statusColor}20; padding: 4px 12px; border-radius: 50px; font-size: 11px;">${statusText}</span>
+                                    </div>
+                                </div>
+                                ${order.status === 'completed' ? `
+                                    <button onclick="viewReceipt('${order.payload}')" style="background: transparent; border: 1px solid #4facfe; color: #4facfe; padding: 8px 16px; border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer;">
+                                        📄 ${currentLanguage === 'ar' ? 'شهادة' : 'Certificate'}
+                                    </button>
+                                ` : ''}
+                            </div>
+                        `;
+                    });
+                }
+                document.getElementById('allOrdersList').innerHTML = ordersHtml;
+            }
+        }
+
+        // ========== Modal Functions ==========
         function openBuyModal() {
             switchTab({ target: document.querySelector('.modern-tab') }, 'buy');
+        }
+
+        function openModal(modalId) {
+            document.getElementById(modalId).style.display = 'flex';
         }
 
         function closeModal(modalId) {
             document.getElementById(modalId).style.display = 'none';
         }
 
+        // ========== Initialize ==========
+        function initialize() {
+            createParticles();
+            loadStarPackages();
+            
+            // Set initial language based on Telegram
+            if (tg.initDataUnsafe?.user?.language_code?.startsWith('ar')) {
+                setLanguage('ar');
+            } else {
+                setLanguage('en');
+            }
+        }
+
+        function createParticles() {
+            const bg = document.getElementById('particleBackground');
+            for (let i = 0; i < 20; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'crystal-particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.top = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 10 + 's';
+                particle.style.animationDuration = (15 + Math.random() * 10) + 's';
+                particle.innerHTML = ['💎', '⭐', '✨', '💠'][Math.floor(Math.random() * 4)];
+                bg.appendChild(particle);
+            }
+        }
+
+        // Export functions to global scope
+        window.setLanguage = setLanguage;
         window.mine = mine;
         window.selectStarPackage = selectStarPackage;
         window.buyWithStars = buyWithStars;
         window.openBuyModal = openBuyModal;
-        window.openWithdrawModal = openWithdrawModal;
-        window.submitWithdrawOrder = submitWithdrawOrder;
         window.switchTab = switchTab;
         window.closeModal = closeModal;
-        window.buyBoost = buyBoost;
+        window.viewReceipt = viewReceipt;
+        window.downloadReceipt = downloadReceipt;
         window.copyInviteLink = copyInviteLink;
         window.shareInviteLink = shareInviteLink;
-        window.showWithdrawWalletForm = showWithdrawWalletForm;
-        window.hideWithdrawWalletForm = hideWithdrawWalletForm;
-        window.connectWithdrawWallet = connectWithdrawWallet;
-        window.disconnectWithdrawWallet = disconnectWithdrawWallet;
         window.loadLeaderboard = loadLeaderboard;
 
-        // Load initial data
-        loadShopItems();
+        // Start
+        initialize();
     </script>
 </body>
 </html>
