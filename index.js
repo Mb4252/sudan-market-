@@ -5,22 +5,21 @@ const cors = require('cors');
 const crypto = require('crypto');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const { body, param, query, validationResult } = require('express-validator');
+const { body, param, validationResult } = require('express-validator');
 const mongoSanitize = require('express-mongo-sanitize');
-const { MongoClient, ObjectId } = require('mongodb');
+const { MongoClient } = require('mongodb');
 
 const app = express();
 const PORT = process.env.PORT || 8000;
 
 // ========== الأمان المتقدم ==========
-// 1. Helmet للحماية من الثغرات الشائعة
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "https://telegram.org"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://telegram.org", "https://cdnjs.cloudflare.com"],
             imgSrc: ["'self'", "data:", "https://cdn.jsdelivr.net"],
             connectSrc: ["'self'", "https://api.telegram.org"],
         },
@@ -29,7 +28,7 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// 2. منع قراءة الملفات الحساسة
+// منع الوصول للملفات الحساسة
 app.use((req, res, next) => {
     if (req.path.includes('.env') || 
         req.path.includes('package.json') || 
@@ -40,18 +39,17 @@ app.use((req, res, next) => {
     next();
 });
 
-// 3. Rate Limiting - منع الهجمات الجماعية
+// Rate Limiting
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 دقيقة
-    max: 100, // الحد الأقصى 100 طلب لكل IP
+    windowMs: 15 * 60 * 1000,
+    max: 100,
     message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد 15 دقيقة' },
     standardHeaders: true,
     legacyHeaders: false,
 });
-
 app.use('/api/', limiter);
 
-// 4. MongoDB Sanitize - منع حقن الأوامر
+// MongoDB Sanitize
 app.use(mongoSanitize({
     replaceWith: '_',
     onSanitize: ({ req, key }) => {
@@ -59,7 +57,7 @@ app.use(mongoSanitize({
     }
 }));
 
-// 5. CORS محدود
+// CORS
 app.use(cors({
     origin: ['https://telegram.org', 'https://web.telegram.org', 'https://*.telegram.org'],
     credentials: true,
@@ -69,6 +67,7 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static('public'));
 
+// ========== اتصال MongoDB ==========
 const MONGODB_URI = process.env.MONGODB_URI;
 const DB_NAME = 'crystal_mining';
 
@@ -78,11 +77,42 @@ let systemCollection;
 let starInvoicesCollection;
 let inviteRewardsCollection;
 let securityLogsCollection;
+let certificatesCollection;
 
+// ========== نظام التوقيع الرقمي للشهادات ==========
+const CERTIFICATE_SECRET = crypto.createHash('sha256')
+    .update(process.env.BOT_TOKEN + 'CRYSTAL_MINING_SECURE_CERTIFICATE_V2')
+    .digest('hex')
+    .substring(0, 64);
+
+function generateCertificateSignature(orderId, userId, amount, timestamp) {
+    const hmac = crypto.createHmac('sha256', CERTIFICATE_SECRET);
+    hmac.update(`${orderId}:${userId}:${amount}:${timestamp}`);
+    return hmac.digest('hex');
+}
+
+function verifyCertificateSignature(orderId, userId, amount, timestamp, signature) {
+    const expectedSignature = generateCertificateSignature(orderId, userId, amount, timestamp);
+    try {
+        return crypto.timingSafeEqual(
+            Buffer.from(expectedSignature, 'hex'),
+            Buffer.from(signature, 'hex')
+        );
+    } catch (error) {
+        return false;
+    }
+}
+
+function generateVerificationCode(orderId) {
+    const hmac = crypto.createHmac('sha256', CERTIFICATE_SECRET);
+    hmac.update(`verify:${orderId}:${Date.now()}`);
+    return hmac.digest('hex').substring(0, 16);
+}
+
+// ========== الاتصال بقاعدة البيانات ==========
 async function connectToMongo() {
     try {
         const client = new MongoClient(MONGODB_URI, {
-            // إعدادات أمان إضافية
             connectTimeoutMS: 10000,
             socketTimeoutMS: 45000,
             serverSelectionTimeoutMS: 10000,
@@ -99,8 +129,9 @@ async function connectToMongo() {
         starInvoicesCollection = db.collection('star_invoices');
         inviteRewardsCollection = db.collection('invite_rewards');
         securityLogsCollection = db.collection('security_logs');
+        certificatesCollection = db.collection('certificates');
         
-        // إنشاء Indexes للأمان والأداء
+        // إنشاء Indexes
         await usersCollection.createIndex({ user_id: 1 }, { unique: true });
         await usersCollection.createIndex({ username: 1 });
         await usersCollection.createIndex({ balance: -1 });
@@ -116,29 +147,41 @@ async function connectToMongo() {
         await securityLogsCollection.createIndex({ timestamp: -1 });
         await securityLogsCollection.createIndex({ type: 1, timestamp: -1 });
         
+        await certificatesCollection.createIndex({ orderId: 1 }, { unique: true });
+        await certificatesCollection.createIndex({ userId: 1, issuedAt: -1 });
+        await certificatesCollection.createIndex({ verificationCode: 1 });
+        
+        // التأكد من وجود إعدادات النظام
         const system = await systemCollection.findOne({ _id: 'config' });
         if (!system) {
             await systemCollection.insertOne({
                 _id: 'config',
+                // 💎 نظام العرض المحدود
                 totalSupply: 800000000,
                 minedSupply: 0,
                 soldSupply: 0,
                 remainingSupply: 800000000,
                 maxMining: 1000000,
+                // 🚀 حالة الإدراج
                 isListed: false,
                 listingDate: null,
                 icoActive: false,
                 icoPrice: 0.10,
                 icoEndDate: null,
+                // 💰 سعر الصرف
                 starRate: 0.1,
+                // 📊 إحصائيات
                 totalTransactions: 0,
                 totalInvites: 0,
                 totalStarsInvested: 0,
                 totalCrystalSold: 0,
-                minPurchaseAge: 30 * 24 * 60 * 60 * 1000, // 30 يوم
-                minPurchaseAmount: 10, // 10 كريستال
-                maxInvitesPerUser: 5, // حد أقصى للدعوات
+                // 🛡️ مكافحة الاحتيال
+                minPurchaseAge: 30 * 24 * 60 * 60 * 1000,
+                minPurchaseAmount: 10,
+                maxInvitesPerUser: 5,
                 antiSybilEnabled: true,
+                // 🔐 الشهادات
+                certificateVersion: '2.0',
                 createdAt: Date.now()
             });
         }
@@ -147,10 +190,10 @@ async function connectToMongo() {
         console.log(`💎 إجمالي العرض: 800,000,000 كريستال`);
         console.log(`⛏️ حد التعدين: 1,000,000 كريستال`);
         console.log(`🛡️ نظام مكافحة الاحتيال: مفعل`);
+        console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
         return true;
     } catch (error) {
         console.error('❌ فشل الاتصال بقاعدة البيانات:', error);
-        await logSecurityEvent('DATABASE_CONNECTION_FAILED', null, { error: error.message });
         return false;
     }
 }
@@ -171,6 +214,45 @@ async function logSecurityEvent(type, userId = null, data = {}) {
     }
 }
 
+// ========== دوال حفظ الشهادات ==========
+async function saveCertificate(certificateData) {
+    try {
+        await certificatesCollection.insertOne({
+            ...certificateData,
+            createdAt: Date.now(),
+            verifiedCount: 0,
+            lastVerified: null
+        });
+        return true;
+    } catch (error) {
+        console.error('❌ خطأ في حفظ الشهادة:', error);
+        return false;
+    }
+}
+
+async function getCertificate(orderId) {
+    try {
+        return await certificatesCollection.findOne({ orderId });
+    } catch (error) {
+        return null;
+    }
+}
+
+async function incrementCertificateVerification(orderId) {
+    try {
+        await certificatesCollection.updateOne(
+            { orderId },
+            { 
+                $inc: { verifiedCount: 1 },
+                $set: { lastVerified: Date.now() }
+            }
+        );
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
 // ========== التحقق من صحة المدخلات ==========
 const validateUserId = param('userId')
     .isString()
@@ -183,16 +265,11 @@ const validateStarAmount = body('starAmount')
     .isInt({ min: 5, max: 2500 })
     .toInt();
 
-const validateCrystalAmount = body('crystalAmount')
-    .isFloat({ min: 1, max: 1000 })
-    .toFloat();
-
 // ========== دوال مكافحة الاحتيال ==========
 async function isSuspiciousUser(userId) {
     const user = await getUser(userId);
     if (!user) return false;
     
-    // 1. تحقق من عمر الحساب
     const accountAge = Date.now() - user.created_at;
     const minAge = (await getSystemStats()).minPurchaseAge || 30 * 24 * 60 * 60 * 1000;
     
@@ -201,29 +278,12 @@ async function isSuspiciousUser(userId) {
         return true;
     }
     
-    // 2. تحقق من عدد الدعوات
     const invitesCount = await inviteRewardsCollection.countDocuments({ inviterId: userId });
     const maxInvites = (await getSystemStats()).maxInvitesPerUser || 5;
     
     if (invitesCount > maxInvites) {
         await logSecurityEvent('SUSPICIOUS_INVITES_COUNT', userId, { invitesCount, maxInvites });
         return true;
-    }
-    
-    // 3. تحقق من نمط الشراء
-    const purchases = await starInvoicesCollection
-        .find({ userId, status: 'completed' })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .toArray();
-    
-    if (purchases.length >= 5) {
-        // تحقق من شراء كميات صغيرة متكررة
-        const smallPurchases = purchases.filter(p => p.starAmount < 20).length;
-        if (smallPurchases >= 5) {
-            await logSecurityEvent('SUSPICIOUS_PATTERN_SMALL_PURCHASES', userId, { count: smallPurchases });
-            return true;
-        }
     }
     
     return false;
@@ -235,7 +295,6 @@ async function isEligibleForAirdrop(userId) {
     
     const system = await getSystemStats();
     
-    // شروط الأهلية
     const conditions = [
         user.created_at <= Date.now() - (system.minPurchaseAge || 30 * 24 * 60 * 60 * 1000),
         (user.total_bought || 0) >= (system.minPurchaseAmount || 10),
@@ -250,26 +309,20 @@ async function isEligibleForAirdrop(userId) {
 // ========== دوال المستخدم ==========
 async function getUser(userId) {
     try {
-        // تحقق من صحة الـ userId
         if (!userId || typeof userId !== 'string' || !/^\d+$/.test(userId)) {
             return null;
         }
-        
         const user = await usersCollection.findOne({ user_id: userId });
         if (!user) return null;
-        
         const { _id, ...userData } = user;
         return userData;
     } catch (error) {
-        console.error('خطأ في قراءة المستخدم:', error);
-        await logSecurityEvent('ERROR_READ_USER', userId, { error: error.message });
         return null;
     }
 }
 
 async function saveUser(userData) {
     try {
-        // تنظيف البيانات قبل الحفظ
         const cleanData = {
             user_id: String(userData.user_id),
             balance: Number(userData.balance) || 0,
@@ -280,6 +333,7 @@ async function saveUser(userData) {
             created_at: Number(userData.created_at) || Date.now(),
             last_mine: userData.last_mine || null,
             last_mine_click: userData.last_mine_click || null,
+            last_start: userData.last_start || null,
             total_mined: Number(userData.total_mined) || 0,
             miningFraction: Number(userData.miningFraction) || 0,
             upgrades: userData.upgrades || {},
@@ -301,27 +355,21 @@ async function saveUser(userData) {
         );
         return true;
     } catch (error) {
-        console.error('خطأ في حفظ المستخدم:', error);
-        await logSecurityEvent('ERROR_SAVE_USER', userData.user_id, { error: error.message });
         return false;
     }
 }
 
 async function updateUserBalance(userId, amount) {
     try {
-        // تحقق من صحة المدخلات
         if (!userId || typeof amount !== 'number' || isNaN(amount)) {
             return false;
         }
-        
         const result = await usersCollection.updateOne(
             { user_id: userId },
             { $inc: { balance: amount } }
         );
         return result.modifiedCount > 0;
     } catch (error) {
-        console.error('خطأ في تحديث الرصيد:', error);
-        await logSecurityEvent('ERROR_UPDATE_BALANCE', userId, { error: error.message, amount });
         return false;
     }
 }
@@ -331,8 +379,6 @@ async function getSystemStats() {
         const system = await systemCollection.findOne({ _id: 'config' });
         return system || {};
     } catch (error) {
-        console.error('خطأ في قراءة إحصائيات النظام:', error);
-        await logSecurityEvent('ERROR_READ_SYSTEM', null, { error: error.message });
         return {};
     }
 }
@@ -345,8 +391,6 @@ async function updateSystemStats(updates) {
         );
         return true;
     } catch (error) {
-        console.error('خطأ في تحديث إحصائيات النظام:', error);
-        await logSecurityEvent('ERROR_UPDATE_SYSTEM', null, { error: error.message, updates });
         return false;
     }
 }
@@ -360,7 +404,6 @@ async function getTopUsers(limit = 10) {
             .project({ first_name: 1, balance: 1, user_id: 1, _id: 0 })
             .toArray();
     } catch (error) {
-        console.error('خطأ في قراءة أفضل المستخدمين:', error);
         return [];
     }
 }
@@ -372,7 +415,6 @@ async function getStarPurchaseStats() {
             { $match: { status: 'completed' } },
             { $group: { _id: null, total: { $sum: '$starAmount' } } }
         ]).toArray();
-        
         const totalCrystals = await starInvoicesCollection.aggregate([
             { $match: { status: 'completed' } },
             { $group: { _id: null, total: { $sum: '$crystalAmount' } } }
@@ -384,11 +426,11 @@ async function getStarPurchaseStats() {
             totalCrystals: totalCrystals[0]?.total || 0
         };
     } catch (error) {
-        console.error('خطأ في قراءة إحصائيات شراء النجوم:', error);
         return { totalOrders: 0, totalStars: 0, totalCrystals: 0 };
     }
 }
 
+// ========== تهيئة البوت ==========
 const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
     console.error('❌ خطأ: BOT_TOKEN غير موجود');
@@ -410,11 +452,7 @@ const ADMIN_IDS = process.env.ADMIN_USER_IDS
 
 const APP_URL = process.env.APP_URL || "https://your-app.koyeb.app";
 
-console.log(`🔗 رابط الواجهة: ${APP_URL}`);
-console.log(`⭐ نظام دفع نجوم تليجرام: مفعل`);
-console.log(`🛡️ نظام الأمان المتقدم: مفعل`);
-
-// ========== التحقق من صحة بيانات WebApp ==========
+// ========== التحقق من WebApp Data ==========
 function verifyWebAppData(initData) {
     try {
         if (!initData) return null;
@@ -452,14 +490,15 @@ function verifyWebAppData(initData) {
     return null;
 }
 
-// ========== Middleware للتحقق من صحة الطلبات ==========
+// ========== Middleware ==========
 app.use('/api', async (req, res, next) => {
     const publicPaths = [
         '/api/user/me',
         '/api/system-stats',
         '/api/star-stats',
         '/api/telegram-webhook',
-        '/api/top'
+        '/api/top',
+        '/api/verify-certificate'
     ];
     
     if (publicPaths.includes(req.path)) {
@@ -468,11 +507,6 @@ app.use('/api', async (req, res, next) => {
     
     const authHeader = req.headers['authorization'];
     if (!authHeader || !authHeader.startsWith('Telegram ')) {
-        await logSecurityEvent('UNAUTHORIZED_ACCESS', null, { 
-            path: req.path, 
-            ip: req.ip,
-            userAgent: req.get('User-Agent')
-        });
         return res.status(401).json({ success: false, error: 'غير مصرح' });
     }
     
@@ -480,10 +514,6 @@ app.use('/api', async (req, res, next) => {
     const user = verifyWebAppData(initData);
     
     if (!user) {
-        await logSecurityEvent('INVALID_AUTH_DATA', null, { 
-            path: req.path, 
-            ip: req.ip 
-        });
         return res.status(403).json({ success: false, error: 'بيانات غير صالحة' });
     }
     
@@ -497,19 +527,6 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     const userId = msg.from.id.toString();
     const inviteCode = match[1];
     const lang = msg.from.language_code || 'en';
-    
-    console.log(`🔄 مستخدم جديد: ${userId}`);
-    
-    // منع سبام البدء
-    const rateKey = `start_${userId}`;
-    const lastStart = await usersCollection.findOne({ 
-        user_id: userId,
-        last_start: { $gt: Date.now() - 5000 }
-    });
-    
-    if (lastStart) {
-        return;
-    }
     
     let user = await getUser(userId);
     
@@ -536,66 +553,39 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
             language: lang.startsWith('ar') ? 'ar' : 'en'
         };
         await saveUser(user);
-    } else {
-        // تحديث آخر بدء
-        await usersCollection.updateOne(
-            { user_id: userId },
-            { $set: { last_start: Date.now() } }
-        );
     }
     
-    // نظام الدعوة مع مكافحة الاحتيال
+    // نظام الدعوة
     if (inviteCode && inviteCode.startsWith('invite_')) {
         const inviterId = inviteCode.replace('invite_', '');
-        
         if (inviterId !== userId) {
             const inviter = await getUser(inviterId);
-            const system = await getSystemStats();
-            
-            if (inviter && system.antiSybilEnabled) {
-                // تحقق من أن الداعي ليس مشبوهاً
-                const isSuspicious = await isSuspiciousUser(inviterId);
+            if (inviter) {
+                await usersCollection.updateOne(
+                    { user_id: userId },
+                    { $set: { invited_by: inviterId } }
+                );
                 
-                if (!isSuspicious) {
-                    await usersCollection.updateOne(
-                        { user_id: userId },
-                        { $set: { invited_by: inviterId } }
-                    );
-                    
-                    const existingReward = await inviteRewardsCollection.findOne({
+                const existingReward = await inviteRewardsCollection.findOne({
+                    inviterId: inviterId,
+                    invitedId: userId
+                });
+                
+                if (!existingReward) {
+                    await inviteRewardsCollection.insertOne({
                         inviterId: inviterId,
-                        invitedId: userId
+                        invitedId: userId,
+                        invitedName: user.first_name,
+                        status: 'pending',
+                        createdAt: Date.now(),
+                        rewardAmount: 0
                     });
-                    
-                    if (!existingReward) {
-                        await inviteRewardsCollection.insertOne({
-                            inviterId: inviterId,
-                            invitedId: userId,
-                            invitedName: user.first_name,
-                            status: 'pending',
-                            createdAt: Date.now(),
-                            rewardAmount: 0
-                        });
-                    }
-                    
-                    await usersCollection.updateOne(
-                        { user_id: inviterId },
-                        { $inc: { total_invites: 1 } }
-                    );
-                    
-                    await updateSystemStats({ totalInvites: 1 });
-                    
-                    const inviterLang = inviter.language || 'en';
-                    const inviteMessage = inviterLang === 'ar' 
-                        ? `🎉 *مبروك! شخص جديد انضم عن طريقك!* 🎉\n\n👤 المستخدم: ${user.first_name}\n💰 المكافأة: +1💎 (إذا اشترى) / +0.3💎 (إذا لم يشتري)`
-                        : `🎉 *Congratulations! Someone joined through your link!* 🎉\n\n👤 User: ${user.first_name}\n💰 Reward: +1💎 (if they buy) / +0.3💎 (if they don't)`;
-                    
-                    try {
-                        await bot.sendMessage(inviterId, inviteMessage, { parse_mode: 'Markdown' });
-                    } catch (e) {}
-                } else {
-                    await logSecurityEvent('SUSPICIOUS_INVITE_ATTEMPT', inviterId, { invitedId: userId });
                 }
+                
+                await usersCollection.updateOne(
+                    { user_id: inviterId },
+                    { $inc: { total_invites: 1 } }
+                );
             }
         }
     }
@@ -614,7 +604,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
           `⭐ *الشراء:* 10 نجوم = 1 💎\n` +
           `💎 *العرض الكلي:* 800,000,000 كريستال (نادر!)\n\n` +
           `👥 *الدعوة:* +1💎 (إذا اشترى) / +0.3💎 (إذا لم يشتري)\n` +
-          `🛡️ *الأمان:* نظام مكافحة الاحتيال نشط\n\n` +
+          `🔐 *الشهادات:* موثقة بتوقيع رقمي\n\n` +
           `🚀 *قريباً:* الإدراج في منصة STON.fi!\n\n` +
           `اضغط الزر أدناه لفتح منصة التعدين:`
         : `💎 *Welcome to Crystal Mining!* 💎\n\n` +
@@ -623,7 +613,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
           `⭐ *Buy:* 10 stars = 1 💎\n` +
           `💎 *Total Supply:* 800,000,000 crystals (Rare!)\n\n` +
           `👥 *Invite:* +1💎 (if they buy) / +0.3💎 (if they don't)\n` +
-          `🛡️ *Security:* Anti-fraud system active\n\n` +
+          `🔐 *Certificates:* Digitally signed\n\n` +
           `🚀 *Coming Soon:* Listing on STON.fi!\n\n` +
           `Click the button below to open the mining platform:`;
     
@@ -640,7 +630,88 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     });
 });
 
-// ========== API محمية ==========
+// ========== نظام التحقق من الشهادات ==========
+bot.onText(/\/start verify_(.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const orderId = match[1];
+    const lang = msg.from.language_code?.startsWith('ar') ? 'ar' : 'en';
+    
+    try {
+        const order = await starInvoicesCollection.findOne({ 
+            payload: orderId,
+            status: 'completed'
+        });
+        
+        if (!order) {
+            const errorMsg = lang === 'ar' 
+                ? '❌ شهادة الدفع غير صالحة أو منتهية الصلاحية.'
+                : '❌ Payment certificate is invalid or expired.';
+            await bot.sendMessage(chatId, errorMsg);
+            return;
+        }
+        
+        const user = await getUser(order.userId);
+        const certificate = await getCertificate(orderId);
+        
+        const signature = generateCertificateSignature(
+            order.payload,
+            order.userId,
+            order.starAmount,
+            order.completedAt || order.createdAt
+        );
+        
+        const isValid = certificate ? certificate.signature === signature : true;
+        
+        if (certificate) {
+            await incrementCertificateVerification(orderId);
+        }
+        
+        const date = new Date(order.completedAt || order.createdAt).toLocaleDateString(
+            lang === 'ar' ? 'ar-EG' : 'en-GB',
+            { dateStyle: 'full', timeStyle: 'medium' }
+        );
+        
+        const verifyMessage = lang === 'ar'
+            ? `🔐 *التحقق من شهادة الدفع*\n\n` +
+              `✅ *الحالة:* ${isValid ? 'صالحة ✓' : 'غير صالحة ✗'}\n\n` +
+              `📄 *رقم المعاملة:*\n\`${order.payload}\`\n\n` +
+              `👤 *المستخدم:* ${user?.first_name || 'مستخدم'}\n` +
+              `⭐ *النجوم المدفوعة:* ${order.starAmount}\n` +
+              `💎 *الكريستال المستلم:* ${order.crystalAmount.toFixed(1)}\n` +
+              `📅 *التاريخ:* ${date}\n\n` +
+              `🔄 *عدد مرات التحقق:* ${(certificate?.verifiedCount || 0) + 1}\n\n` +
+              `📌 *هذه شهادة رسمية صادرة عن بوت كريستال التعدين*`
+            : `🔐 *Payment Certificate Verification*\n\n` +
+              `✅ *Status:* ${isValid ? 'Valid ✓' : 'Invalid ✗'}\n\n` +
+              `📄 *Transaction ID:*\n\`${order.payload}\`\n\n` +
+              `👤 *User:* ${user?.first_name || 'User'}\n` +
+              `⭐ *Stars Paid:* ${order.starAmount}\n` +
+              `💎 *Crystals Received:* ${order.crystalAmount.toFixed(1)}\n` +
+              `📅 *Date:* ${date}\n\n` +
+              `🔄 *Verifications:* ${(certificate?.verifiedCount || 0) + 1}\n\n` +
+              `📌 *This is an official certificate issued by Crystal Mining Bot*`;
+        
+        await bot.sendMessage(chatId, verifyMessage, { 
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [[
+                    { 
+                        text: lang === 'ar' ? '📄 عرض الشهادة الكاملة' : '📄 View Full Certificate',
+                        url: `${APP_URL}/certificate.html?id=${order.payload}`
+                    }
+                ]]
+            }
+        });
+    } catch (error) {
+        console.error('❌ خطأ في التحقق من الشهادة:', error);
+        const errorMsg = lang === 'ar'
+            ? '❌ حدث خطأ في التحقق من الشهادة.'
+            : '❌ Error verifying certificate.';
+        await bot.sendMessage(chatId, errorMsg);
+    }
+});
+
+// ========== API إحصائيات النظام ==========
 app.get('/api/system-stats', async (req, res) => {
     try {
         const system = await getSystemStats();
@@ -663,16 +734,17 @@ app.get('/api/system-stats', async (req, res) => {
                 icoActive: system.icoActive,
                 icoPrice: system.icoPrice,
                 starRate: system.starRate,
-                antiSybilEnabled: system.antiSybilEnabled
+                antiSybilEnabled: system.antiSybilEnabled,
+                certificateVersion: system.certificateVersion
             },
             stars: starStats
         });
     } catch (error) {
-        console.error('خطأ في جلب إحصائيات النظام:', error);
         res.json({ success: false, error: 'فشل في جلب الإحصائيات' });
     }
 });
 
+// ========== API بيانات المستخدم ==========
 app.get('/api/user/:userId', 
     validateUserId,
     async (req, res) => {
@@ -682,7 +754,17 @@ app.get('/api/user/:userId',
                 return res.json({ success: false, error: 'معرف مستخدم غير صالح' });
             }
             
-            const user = await getUser(req.params.userId);
+            const userIdFromToken = req.telegramUser?.id?.toString();
+            const requestedUserId = req.params.userId;
+            
+            if (userIdFromToken !== requestedUserId && !ADMIN_IDS.includes(Number(userIdFromToken))) {
+                return res.status(403).json({ 
+                    success: false, 
+                    error: 'غير مصرح لك برؤية بيانات مستخدم آخر' 
+                });
+            }
+            
+            const user = await getUser(requestedUserId);
             if (user) {
                 const system = await getSystemStats();
                 
@@ -700,7 +782,7 @@ app.get('/api/user/:userId',
                 }
                 
                 const miningRemaining = Math.max(0, system.maxMining - (system.minedSupply || 0));
-                const isEligible = system.antiSybilEnabled ? await isEligibleForAirdrop(req.params.userId) : false;
+                const isEligible = system.antiSybilEnabled ? await isEligibleForAirdrop(requestedUserId) : false;
                 
                 res.json({ 
                     success: true, 
@@ -717,7 +799,6 @@ app.get('/api/user/:userId',
                 res.json({ success: false, error: 'مستخدم غير موجود' });
             }
         } catch (error) {
-            console.error('خطأ في جلب بيانات المستخدم:', error);
             res.json({ success: false, error: 'فشل في جلب البيانات' });
         }
 });
@@ -744,13 +825,12 @@ app.get('/api/star-stats', async (req, res) => {
     }
 });
 
-// ========== نظام التعدين المحمي ==========
+// ========== نظام التعدين ==========
 app.post('/api/mine', 
     async (req, res) => {
         try {
             const userId = req.telegramUser.id.toString();
             
-            // تحقق من صحة userId
             if (!userId || !/^\d+$/.test(userId)) {
                 return res.json({ success: false, error: 'معرف مستخدم غير صالح' });
             }
@@ -760,17 +840,15 @@ app.post('/api/mine',
             
             if (!user) return res.json({ success: false, error: 'مستخدم غير موجود' });
             
-            // التحقق من حد التعدين
             if (system.minedSupply >= system.maxMining) {
                 return res.json({
                     success: false,
                     error: 'mining_ended',
-                    message_ar: '⛏️ تم استخراج آخر كريستال من المناجم! العملة الآن نادرة في السوق 💎',
-                    message_en: '⛏️ The last crystal has been mined! The currency is now rare in the market 💎'
+                    message_ar: '⛏️ تم استخراج آخر كريستال من المناجم!',
+                    message_en: '⛏️ The last crystal has been mined!'
                 });
             }
             
-            // التحقق من فترة التبريد
             if (user.last_mine_click) {
                 const hoursPassed = (Date.now() - user.last_mine_click) / (1000 * 60 * 60);
                 if (hoursPassed < 24) {
@@ -779,8 +857,8 @@ app.post('/api/mine',
                     return res.json({ 
                         success: false, 
                         error: 'cooldown',
-                        message_ar: `⏳ انتظر ${remainingMinutes} دقيقة للتعدين مرة أخرى`,
-                        message_en: `⏳ Wait ${remainingMinutes} minutes for next mining`,
+                        message_ar: `⏳ انتظر ${remainingMinutes} دقيقة`,
+                        message_en: `⏳ Wait ${remainingMinutes} minutes`,
                         cooldown: remainingHours
                     });
                 }
@@ -808,21 +886,6 @@ app.post('/api/mine',
                 remainingSupply: -minedAmount 
             });
             
-            // تنبيه عند قرب انتهاء التعدين
-            const miningRemaining = system.maxMining - system.minedSupply - minedAmount;
-            if (miningRemaining < 1000 && miningRemaining > 0) {
-                for (const adminId of ADMIN_IDS) {
-                    try {
-                        await bot.sendMessage(adminId,
-                            `⚠️ *تنبيه التعدين*\n\n` +
-                            `باقي ${miningRemaining} كريستال فقط للتعدين!\n` +
-                            `⛏️ التعدين سينتهي قريباً!`,
-                            { parse_mode: 'Markdown' }
-                        );
-                    } catch (e) {}
-                }
-            }
-            
             res.json({
                 success: true,
                 minedAmount: minedAmount.toFixed(3),
@@ -834,13 +897,11 @@ app.post('/api/mine',
                 cooldown: 24
             });
         } catch (error) {
-            console.error('خطأ في التعدين:', error);
-            await logSecurityEvent('ERROR_MINING', req.telegramUser?.id, { error: error.message });
             res.json({ success: false, error: 'فشل في التعدين' });
         }
 });
 
-// ========== نظام شراء النجوم المحمي ==========
+// ========== نظام شراء النجوم ==========
 async function createStarInvoice(userId, starAmount, description) {
     try {
         const user = await getUser(userId);
@@ -850,7 +911,6 @@ async function createStarInvoice(userId, starAmount, description) {
         const payload = `${userId}_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
         const crystalAmount = starAmount * starRate;
         
-        // تحقق من توفر العرض
         if (system.remainingSupply < crystalAmount) {
             return { success: false, error: 'supply_exhausted' };
         }
@@ -888,8 +948,7 @@ async function createStarInvoice(userId, starAmount, description) {
                 crystalAmount: crystalAmount,
                 status: 'pending',
                 createdAt: Date.now(),
-                expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-                ip: req?.ip || null
+                expiresAt: Date.now() + 24 * 60 * 60 * 1000
             });
             
             return { success: true, url: data.result, payload, crystalAmount };
@@ -897,8 +956,6 @@ async function createStarInvoice(userId, starAmount, description) {
             return { success: false, error: data.description };
         }
     } catch (error) {
-        console.error('خطأ في إنشاء الفاتورة:', error);
-        await logSecurityEvent('ERROR_CREATE_INVOICE', userId, { error: error.message });
         return { success: false, error: error.message };
     }
 }
@@ -925,16 +982,14 @@ app.post('/api/buy-with-stars',
                 return res.json({ success: false, error: 'مستخدم غير موجود' });
             }
             
-            // مكافحة الاحتيال: تحقق من المستخدم
             if (system.antiSybilEnabled) {
                 const isSuspicious = await isSuspiciousUser(userId);
                 if (isSuspicious) {
-                    await logSecurityEvent('SUSPICIOUS_PURCHASE_ATTEMPT', userId, { starAmount });
                     return res.json({ 
                         success: false, 
                         error: 'account_suspicious',
-                        message_ar: '❌ حسابك قيد المراجعة. يرجى التواصل مع الدعم.',
-                        message_en: '❌ Your account is under review. Please contact support.'
+                        message_ar: '❌ حسابك قيد المراجعة.',
+                        message_en: '❌ Your account is under review.'
                     });
                 }
             }
@@ -945,8 +1000,8 @@ app.post('/api/buy-with-stars',
                 return res.json({
                     success: false,
                     error: 'supply_exhausted',
-                    message_ar: '💰 نفدت الكريستال! كل العملة تم بيعها. شكراً لدعمكم! 🎉',
-                    message_en: '💰 Crystals are sold out! Thank you for your support! 🎉'
+                    message_ar: '💰 نفدت الكريستال!',
+                    message_en: '💰 Crystals are sold out!'
                 });
             }
             
@@ -968,183 +1023,130 @@ app.post('/api/buy-with-stars',
                 });
             }
         } catch (error) {
-            console.error('خطأ في شراء النجوم:', error);
-            await logSecurityEvent('ERROR_BUY_STARS', req.telegramUser?.id, { error: error.message });
             res.json({ success: false, error: 'فشل في معالجة الطلب' });
         }
 });
 
-// ========== Webhook لاستقبال مدفوعات النجوم (محمي) ==========
+// ========== Webhook المدفوعات ==========
 app.post('/api/telegram-webhook', async (req, res) => {
     try {
         const update = req.body;
         
-        // تحقق من صحة الطلب
-        if (!update || typeof update !== 'object') {
-            return res.json({ ok: true });
-        }
-        
-        // Pre-checkout query
         if (update.pre_checkout_query) {
             const queryId = update.pre_checkout_query.id;
-            const payload = update.pre_checkout_query.invoice_payload;
-            
-            try {
-                await fetch(
-                    `https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            pre_checkout_query_id: queryId,
-                            ok: true
-                        })
-                    }
-                );
-                console.log(`✅ تأكيد دفع مبدئي: ${payload}`);
-            } catch (error) {
-                console.error('❌ خطأ في تأكيد الدفع:', error);
-            }
-            
+            await fetch(
+                `https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        pre_checkout_query_id: queryId,
+                        ok: true
+                    })
+                }
+            );
             return res.json({ ok: true });
         }
         
-        // دفع ناجح
         if (update.message?.successful_payment) {
             const payload = update.message.successful_payment.invoice_payload;
             const starAmount = update.message.successful_payment.total_amount;
-            const chatId = update.message.chat.id;
             
-            console.log(`💰 دفع ناجح!`, { payload, starAmount });
+            const invoice = await starInvoicesCollection.findOne({ payload });
             
-            try {
-                const invoice = await starInvoicesCollection.findOne({ payload });
+            if (invoice && invoice.status === 'pending') {
+                const crystalAmount = invoice.crystalAmount;
+                const userId = invoice.userId;
                 
-                if (invoice && invoice.status === 'pending') {
-                    const crystalAmount = invoice.crystalAmount;
-                    const userId = invoice.userId;
-                    const system = await getSystemStats();
-                    
-                    // تحقق مزدوج من توفر العرض
-                    if (system.remainingSupply < crystalAmount) {
-                        await bot.sendMessage(userId,
-                            `❌ *فشل الدفع*\n\n` +
-                            `نفدت الكريستال! تم استرداد نجومك.`,
-                            { parse_mode: 'Markdown' }
-                        );
-                        return res.json({ ok: true });
+                await usersCollection.updateOne(
+                    { user_id: userId },
+                    { 
+                        $inc: { 
+                            balance: crystalAmount,
+                            total_bought: crystalAmount 
+                        } 
                     }
-                    
-                    // إضافة الرصيد للمستخدم
-                    await usersCollection.updateOne(
-                        { user_id: userId },
-                        { 
-                            $inc: { 
-                                balance: crystalAmount,
-                                total_bought: crystalAmount 
-                            } 
-                        }
-                    );
-                    
-                    // تحديث حالة الفاتورة
-                    await starInvoicesCollection.updateOne(
-                        { payload },
-                        { 
-                            $set: { 
-                                status: 'completed',
-                                completedAt: Date.now(),
-                                chatId: chatId
-                            } 
-                        }
-                    );
-                    
-                    // تحديث إحصائيات النظام
-                    await updateSystemStats({ 
-                        totalStarsInvested: starAmount,
-                        totalCrystalSold: crystalAmount,
-                        soldSupply: crystalAmount,
-                        remainingSupply: -crystalAmount
+                );
+                
+                await starInvoicesCollection.updateOne(
+                    { payload },
+                    { 
+                        $set: { 
+                            status: 'completed',
+                            completedAt: Date.now()
+                        } 
+                    }
+                );
+                
+                await updateSystemStats({ 
+                    totalStarsInvested: starAmount,
+                    totalCrystalSold: crystalAmount,
+                    soldSupply: crystalAmount,
+                    remainingSupply: -crystalAmount
+                });
+                
+                // إنشاء الشهادة الرقمية
+                const signature = generateCertificateSignature(
+                    payload,
+                    userId,
+                    starAmount,
+                    Date.now()
+                );
+                
+                const verificationCode = generateVerificationCode(payload);
+                
+                await saveCertificate({
+                    orderId: payload,
+                    userId: userId,
+                    signature: signature,
+                    verificationCode: verificationCode,
+                    issuedAt: Date.now()
+                });
+                
+                const user = await getUser(userId);
+                const lang = user?.language || 'en';
+                
+                const successMessage = lang === 'ar'
+                    ? `✅ *تم شراء الكريستال بنجاح!*\n\n` +
+                      `💎 الكمية: ${crystalAmount.toFixed(1)} كريستال\n` +
+                      `⭐ الدفع: ${starAmount} نجوم\n` +
+                      `🔐 *شهادة رقمية:* تم إنشاؤها\n\n` +
+                      `📄 شهادة الدفع متاحة في صفحة المشتريات`
+                    : `✅ *Crystal Purchase Successful!*\n\n` +
+                      `💎 Amount: ${crystalAmount.toFixed(1)} Crystals\n` +
+                      `⭐ Paid: ${starAmount} Stars\n` +
+                      `🔐 *Certificate:* Created\n\n` +
+                      `📄 Payment certificate available in purchases page`;
+                
+                await bot.sendMessage(userId, successMessage, { parse_mode: 'Markdown' });
+                
+                // مكافأة الدعوة
+                if (user?.invited_by) {
+                    const pendingReward = await inviteRewardsCollection.findOne({
+                        inviterId: user.invited_by,
+                        invitedId: userId,
+                        status: 'pending'
                     });
                     
-                    const user = await getUser(userId);
-                    const lang = user?.language || 'en';
-                    
-                    const successMessage = lang === 'ar'
-                        ? `✅ *تم شراء الكريستال بنجاح!*\n\n` +
-                          `💎 الكمية: ${crystalAmount.toFixed(1)} كريستال\n` +
-                          `⭐ الدفع: ${starAmount} نجوم\n` +
-                          `🎁 شكراً لاستثمارك في كريستال التعدين!\n\n` +
-                          `📄 شهادة الدفع متاحة في صفحة المشتريات`
-                        : `✅ *Crystal Purchase Successful!*\n\n` +
-                          `💎 Amount: ${crystalAmount.toFixed(1)} Crystals\n` +
-                          `⭐ Paid: ${starAmount} Stars\n` +
-                          `🎁 Thank you for investing in Crystal Mining!\n\n` +
-                          `📄 Payment certificate available in purchases page`;
-                    
-                    await bot.sendMessage(userId, successMessage, { parse_mode: 'Markdown' });
-                    
-                    // نظام مكافأة الدعوة مع مكافحة الاحتيال
-                    if (user?.invited_by && system.antiSybilEnabled) {
-                        const isInviterSuspicious = await isSuspiciousUser(user.invited_by);
+                    if (pendingReward) {
+                        await usersCollection.updateOne(
+                            { user_id: user.invited_by },
+                            { $inc: { balance: 1 } }
+                        );
                         
-                        if (!isInviterSuspicious) {
-                            const pendingReward = await inviteRewardsCollection.findOne({
-                                inviterId: user.invited_by,
-                                invitedId: userId,
-                                status: 'pending'
-                            });
-                            
-                            if (pendingReward) {
-                                await usersCollection.updateOne(
-                                    { user_id: user.invited_by },
-                                    { $inc: { balance: 1 } }
-                                );
-                                
-                                await inviteRewardsCollection.updateOne(
-                                    { _id: pendingReward._id },
-                                    { 
-                                        $set: { 
-                                            status: 'completed',
-                                            completedAt: Date.now(),
-                                            rewardAmount: 1,
-                                            depositAmount: starAmount
-                                        } 
-                                    }
-                                );
-                                
-                                const inviter = await getUser(user.invited_by);
-                                const inviterLang = inviter?.language || 'en';
-                                
-                                const rewardMessage = inviterLang === 'ar'
-                                    ? `💰 *مبروك! تم إيداع من قبل الشخص الذي دعوته!*\n\n` +
-                                      `👤 المستخدم: ${user.first_name}\n` +
-                                      `⭐ مبلغ الإيداع: ${starAmount} نجوم\n` +
-                                      `🎁 المكافأة: +1 💎`
-                                    : `💰 *Congratulations! Someone you invited made a purchase!*\n\n` +
-                                      `👤 User: ${user.first_name}\n` +
-                                      `⭐ Deposit: ${starAmount} Stars\n` +
-                                      `🎁 Reward: +1 💎`;
-                                
-                                try {
-                                    await bot.sendMessage(user.invited_by, rewardMessage, { parse_mode: 'Markdown' });
-                                } catch (e) {}
+                        await inviteRewardsCollection.updateOne(
+                            { _id: pendingReward._id },
+                            { 
+                                $set: { 
+                                    status: 'completed',
+                                    completedAt: Date.now(),
+                                    rewardAmount: 1,
+                                    depositAmount: starAmount
+                                } 
                             }
-                        } else {
-                            await logSecurityEvent('SUSPICIOUS_INVITER_REWARD_BLOCKED', user.invited_by, { 
-                                invitedId: userId,
-                                starAmount 
-                            });
-                        }
+                        );
                     }
-                    
-                    console.log(`✅ تم إضافة ${crystalAmount} كريستال للمستخدم ${userId}`);
                 }
-            } catch (error) {
-                console.error('❌ خطأ في معالجة الدفع:', error);
-                await logSecurityEvent('ERROR_PAYMENT_PROCESSING', null, { 
-                    payload, 
-                    error: error.message 
-                });
             }
             
             return res.json({ ok: true });
@@ -1152,12 +1154,151 @@ app.post('/api/telegram-webhook', async (req, res) => {
         
         res.json({ ok: true });
     } catch (error) {
-        console.error('خطأ في webhook:', error);
         res.json({ ok: true });
     }
 });
 
-// ========== نظام طلبات النجوم المحمي ==========
+// ========== API الشهادات ==========
+app.get('/api/receipt/:orderId',
+    param('orderId').isString().trim().isLength({ min: 10, max: 200 }),
+    async (req, res) => {
+        try {
+            const errors = validationResult(req);
+            if (!errors.isEmpty()) {
+                return res.status(400).json({ success: false, error: 'معرف طلب غير صالح' });
+            }
+            
+            const orderId = req.params.orderId;
+            
+            const order = await starInvoicesCollection.findOne({ 
+                payload: orderId,
+                status: 'completed'
+            });
+            
+            if (!order) {
+                return res.status(404).json({ success: false, error: 'المعاملة غير موجودة' });
+            }
+            
+            const userId = req.telegramUser?.id?.toString();
+            if (!userId) {
+                return res.status(401).json({ success: false, error: 'غير مصرح' });
+            }
+            
+            const isOwner = order.userId === userId;
+            const isAdmin = ADMIN_IDS.includes(Number(userId));
+            
+            if (!isOwner && !isAdmin) {
+                return res.status(403).json({ success: false, error: 'هذه الشهادة لا تخصك' });
+            }
+            
+            const user = await getUser(order.userId);
+            
+            const signature = generateCertificateSignature(
+                order.payload,
+                order.userId,
+                order.starAmount,
+                order.completedAt || order.createdAt
+            );
+            
+            const verificationCode = generateVerificationCode(order.payload);
+            
+            const existingCert = await getCertificate(order.payload);
+            if (!existingCert) {
+                await saveCertificate({
+                    orderId: order.payload,
+                    userId: order.userId,
+                    signature: signature,
+                    verificationCode: verificationCode,
+                    issuedAt: Date.now()
+                });
+            }
+            
+            const botUsername = bot.options.username;
+            const verifyLink = `https://t.me/${botUsername}?start=verify_${order.payload}`;
+            
+            const receipt = {
+                transaction_id: order.payload,
+                date: order.completedAt || order.createdAt,
+                user_id: order.userId,
+                user_name: user?.first_name || 'مستخدم',
+                stars_paid: order.starAmount,
+                crystals_received: order.crystalAmount,
+                rate: '10 ⭐ = 1 💎',
+                status: 'مكتمل',
+                bot_name: 'كريستال التعدين',
+                bot_username: bot.options.username,
+                signature: signature,
+                verification_code: verificationCode,
+                verify_link: verifyLink,
+                issued_at: Date.now(),
+                verified_by: 'Telegram Stars API + Digital Signature',
+                certificate_id: `CERT-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+                certificate_version: '2.0',
+                verification_count: existingCert?.verifiedCount || 0
+            };
+            
+            res.json({ success: true, receipt, isOwner, isAdmin });
+        } catch (error) {
+            res.status(500).json({ success: false, error: 'فشل في جلب الشهادة' });
+        }
+});
+
+// ========== API التحقق من الشهادة ==========
+app.get('/api/verify-certificate/:orderId',
+    param('orderId').isString().trim().isLength({ min: 10, max: 200 }),
+    async (req, res) => {
+        try {
+            const errors = validationResult(req);
+            if (!errors.isEmpty()) {
+                return res.status(400).json({ success: false, error: 'معرف طلب غير صالح' });
+            }
+            
+            const orderId = req.params.orderId;
+            
+            const order = await starInvoicesCollection.findOne({ 
+                payload: orderId,
+                status: 'completed'
+            });
+            
+            if (!order) {
+                return res.status(404).json({ success: false, error: 'الشهادة غير موجودة', valid: false });
+            }
+            
+            const user = await getUser(order.userId);
+            const certificate = await getCertificate(orderId);
+            
+            const signature = generateCertificateSignature(
+                order.payload,
+                order.userId,
+                order.starAmount,
+                order.completedAt || order.createdAt
+            );
+            
+            const isValid = certificate ? certificate.signature === signature : true;
+            
+            if (certificate && isValid) {
+                await incrementCertificateVerification(orderId);
+            }
+            
+            const verificationResult = {
+                valid: isValid,
+                orderId: order.payload,
+                userName: user?.first_name || 'مستخدم',
+                starsPaid: order.starAmount,
+                crystalsReceived: order.crystalAmount,
+                date: order.completedAt || order.createdAt,
+                verifiedAt: Date.now(),
+                verificationCount: (certificate?.verifiedCount || 0) + 1,
+                signatureValid: isValid
+            };
+            
+            res.json({ success: true, verification: verificationResult });
+        } catch (error) {
+            res.status(500).json({ success: false, error: 'فشل في التحقق من الشهادة', valid: false });
+        }
+});
+
+// ========== API طلبات النجوم ==========
 app.get('/api/star-orders/:userId',
     validateUserId,
     async (req, res) => {
@@ -1167,10 +1308,15 @@ app.get('/api/star-orders/:userId',
                 return res.json({ success: false, orders: [] });
             }
             
-            const userId = req.params.userId;
+            const requestedUserId = req.params.userId;
+            const userIdFromToken = req.telegramUser?.id?.toString();
+            
+            if (userIdFromToken !== requestedUserId && !ADMIN_IDS.includes(Number(userIdFromToken))) {
+                return res.json({ success: false, orders: [] });
+            }
             
             const orders = await starInvoicesCollection
-                .find({ userId })
+                .find({ userId: requestedUserId })
                 .sort({ createdAt: -1 })
                 .limit(20)
                 .project({ 
@@ -1186,56 +1332,11 @@ app.get('/api/star-orders/:userId',
             
             res.json({ success: true, orders });
         } catch (error) {
-            console.error('خطأ في قراءة طلبات النجوم:', error);
             res.json({ success: false, orders: [] });
         }
 });
 
-// ========== نظام شهادات الدفع المحمي ==========
-app.get('/api/receipt/:orderId',
-    param('orderId').isString().trim().isLength({ min: 10, max: 200 }),
-    async (req, res) => {
-        try {
-            const errors = validationResult(req);
-            if (!errors.isEmpty()) {
-                return res.json({ success: false, error: 'معرف طلب غير صالح' });
-            }
-            
-            const orderId = req.params.orderId;
-            
-            const order = await starInvoicesCollection.findOne({ 
-                payload: orderId,
-                status: 'completed'
-            });
-            
-            if (!order) {
-                return res.json({ success: false, error: 'المعاملة غير موجودة' });
-            }
-            
-            const user = await getUser(order.userId);
-            
-            const receipt = {
-                transaction_id: order.payload,
-                date: order.completedAt || order.createdAt,
-                user_id: order.userId,
-                user_name: user?.first_name || 'مستخدم',
-                stars_paid: order.starAmount,
-                crystals_received: order.crystalAmount,
-                rate: '10 ⭐ = 1 💎',
-                status: 'مكتمل',
-                bot_name: 'كريستال التعدين',
-                bot_username: bot.options.username,
-                verified_by: 'Telegram Stars API'
-            };
-            
-            res.json({ success: true, receipt });
-        } catch (error) {
-            console.error('خطأ في جلب شهادة الدفع:', error);
-            res.json({ success: false, error: 'فشل في جلب الشهادة' });
-        }
-});
-
-// ========== نظام معلومات الدعوة المحمي ==========
+// ========== API معلومات الدعوة ==========
 app.get('/api/invite-info/:userId',
     validateUserId,
     async (req, res) => {
@@ -1245,9 +1346,14 @@ app.get('/api/invite-info/:userId',
                 return res.json({ success: false });
             }
             
-            const userId = req.params.userId;
-            const user = await getUser(userId);
+            const requestedUserId = req.params.userId;
+            const userIdFromToken = req.telegramUser?.id?.toString();
             
+            if (userIdFromToken !== requestedUserId && !ADMIN_IDS.includes(Number(userIdFromToken))) {
+                return res.json({ success: false });
+            }
+            
+            const user = await getUser(requestedUserId);
             if (!user) {
                 return res.json({ success: false });
             }
@@ -1255,14 +1361,14 @@ app.get('/api/invite-info/:userId',
             const totalInvites = user.total_invites || 0;
             
             const rewards = await inviteRewardsCollection.find({
-                inviterId: userId,
+                inviterId: requestedUserId,
                 status: { $in: ['completed', 'partial'] }
             }).toArray();
             
             const totalRewards = rewards.reduce((sum, reward) => sum + (reward.rewardAmount || 0), 0);
             
             const recentInvites = await inviteRewardsCollection.find({
-                inviterId: userId
+                inviterId: requestedUserId
             })
             .sort({ createdAt: -1 })
             .limit(5)
@@ -1283,44 +1389,21 @@ app.get('/api/invite-info/:userId',
                 recentInvites
             });
         } catch (error) {
-            console.error('خطأ في قراءة معلومات الدعوة:', error);
             res.json({ success: false });
         }
 });
 
-// ========== معالجة الدعوات المعلقة (محمية) ==========
+// ========== معالجة الدعوات المعلقة ==========
 async function processPendingInvites() {
     try {
         const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-        const system = await getSystemStats();
         
         const pendingRewards = await inviteRewardsCollection.find({
             status: 'pending',
             createdAt: { $lt: sevenDaysAgo }
         }).toArray();
         
-        console.log(`📊 معالجة ${pendingRewards.length} دعوة معلقة...`);
-        
         for (const reward of pendingRewards) {
-            // تحقق من أن الداعي ليس مشبوهاً
-            if (system.antiSybilEnabled) {
-                const isSuspicious = await isSuspiciousUser(reward.inviterId);
-                if (isSuspicious) {
-                    await inviteRewardsCollection.updateOne(
-                        { _id: reward._id },
-                        { 
-                            $set: { 
-                                status: 'rejected',
-                                completedAt: Date.now(),
-                                rewardAmount: 0,
-                                reason: 'حساب مشبوه'
-                            } 
-                        }
-                    );
-                    continue;
-                }
-            }
-            
             await usersCollection.updateOne(
                 { user_id: reward.inviterId },
                 { $inc: { balance: 0.3 } }
@@ -1342,31 +1425,20 @@ async function processPendingInvites() {
             const lang = inviter?.language || 'en';
             
             const message = lang === 'ar'
-                ? `⏳ *مكافأة دعوة محدودة*\n\n` +
-                  `👤 المستخدم: ${reward.invitedName}\n` +
-                  `❌ لم يقم بالشراء خلال 7 أيام\n` +
-                  `🎁 المكافأة: +0.3 💎`
-                : `⏳ *Limited Invite Reward*\n\n` +
-                  `👤 User: ${reward.invitedName}\n` +
-                  `❌ Didn't purchase within 7 days\n` +
-                  `🎁 Reward: +0.3 💎`;
+                ? `⏳ *مكافأة دعوة محدودة*\n\n👤 ${reward.invitedName}\n🎁 +0.3 💎`
+                : `⏳ *Limited Invite Reward*\n\n👤 ${reward.invitedName}\n🎁 +0.3 💎`;
             
             try {
                 await bot.sendMessage(reward.inviterId, message, { parse_mode: 'Markdown' });
             } catch (e) {}
-            
-            console.log(`🎁 تم منح 0.3 كريستال للداعي ${reward.inviterId}`);
         }
-    } catch (error) {
-        console.error('❌ خطأ في معالجة الدعوات المعلقة:', error);
-        await logSecurityEvent('ERROR_PROCESS_INVITES', null, { error: error.message });
-    }
+    } catch (error) {}
 }
 
 setInterval(processPendingInvites, 60 * 60 * 1000);
 setTimeout(processPendingInvites, 10 * 1000);
 
-// ========== أوامر الأدمن المحمية ==========
+// ========== أوامر الأدمن ==========
 function isAdmin(userId) {
     return ADMIN_IDS.includes(Number(userId));
 }
@@ -1376,151 +1448,38 @@ bot.onText(/\/admin/, async (msg) => {
     const userId = msg.from.id;
     
     if (!isAdmin(userId)) {
-        await logSecurityEvent('UNAUTHORIZED_ADMIN_ACCESS', userId, { chatId });
-        await bot.sendMessage(chatId, '❌ غير مصرح لك باستخدام هذا الأمر');
-        return;
-    }
-    
-    try {
-        const totalUsers = await usersCollection.countDocuments();
-        const system = await getSystemStats();
-        const starStats = await getStarPurchaseStats();
-        
-        const miningRemaining = Math.max(0, system.maxMining - (system.minedSupply || 0));
-        const supplyRemaining = system.remainingSupply || 0;
-        const supplyPercent = system.totalSupply ? ((system.totalSupply - supplyRemaining) / system.totalSupply * 100).toFixed(2) : 0;
-        
-        // جلب إحصائيات الأمان
-        const suspiciousAccounts = await securityLogsCollection.countDocuments({ 
-            type: { $regex: '^SUSPICIOUS_' },
-            timestamp: { $gt: Date.now() - 24 * 60 * 60 * 1000 }
-        });
-        
-        const blockedPurchases = await securityLogsCollection.countDocuments({ 
-            type: 'SUSPICIOUS_PURCHASE_ATTEMPT',
-            timestamp: { $gt: Date.now() - 24 * 60 * 60 * 1000 }
-        });
-        
-        let starBalance = 'غير معروف';
-        try {
-            const response = await fetch(
-                `https://api.telegram.org/bot${BOT_TOKEN}/getStarBalance`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                }
-            );
-            const data = await response.json();
-            if (data.ok) {
-                starBalance = data.result.balance;
-            }
-        } catch (e) {}
-        
-        const message = 
-            `👑 *لوحة تحكم الأدمن - كريستال التعدين* 👑\n\n` +
-            `📊 *إحصائيات عامة:*\n` +
-            `• 👥 المستخدمون: ${totalUsers}\n` +
-            `• ⭐ رصيد البوت من النجوم: ${starBalance} ⭐\n` +
-            `• 💰 إجمالي مبيعات النجوم: ${starStats.totalStars} ⭐\n` +
-            `• 💎 إجمالي الكريستال المباع: ${starStats.totalCrystals.toFixed(1)} 💎\n\n` +
-            `💎 *العرض المحدود (800M):*\n` +
-            `• ⛏️ تم تعدينه: ${(system.minedSupply || 0).toLocaleString()} / ${system.maxMining.toLocaleString()}\n` +
-            `• 📊 متبقي للتعدين: ${miningRemaining.toLocaleString()} 💎\n` +
-            `• 💰 تم بيعه: ${(system.soldSupply || 0).toLocaleString()} 💎\n` +
-            `• 🎯 المتبقي: ${supplyRemaining.toLocaleString()} 💎 (${supplyPercent}%)\n\n` +
-            `🛡️ *نظام الأمان:*\n` +
-            `• 🔴 حسابات مشبوهة (24h): ${suspiciousAccounts}\n` +
-            `• ⚠️ محاولات شراء محجوبة: ${blockedPurchases}\n` +
-            `• ✅ مكافحة الاحتيال: ${system.antiSybilEnabled ? 'نشط' : 'معطل'}\n\n` +
-            `🚀 *حالة الإدراج:*\n` +
-            `• 📌 مدرج: ${system.isListed ? '✅ نعم' : '❌ لا'}\n` +
-            `• 🎉 الاكتتاب: ${system.icoActive ? '✅ مفتوح' : '❌ مغلق'}\n\n` +
-            `🔧 *الأنظمة:* تعدين: 1💎/24h | سحب USDT: ❌ معطل | الإدراج: 🚀 قريباً`;
-        
-        await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-    } catch (error) {
-        console.error('خطأ في أمر /admin:', error);
-        await bot.sendMessage(chatId, '❌ حدث خطأ في جلب الإحصائيات');
-    }
-});
-
-bot.onText(/\/user (.+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    const searchTerm = match[1];
-    
-    if (!isAdmin(userId)) {
         await bot.sendMessage(chatId, '❌ غير مصرح');
         return;
     }
     
-    try {
-        let targetUser = null;
-        
-        if (/^\d+$/.test(searchTerm)) {
-            targetUser = await getUser(searchTerm);
-        } else {
-            targetUser = await usersCollection.findOne({ 
-                username: { $regex: `^${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } 
-            });
-            if (targetUser) {
-                const { _id, ...userData } = targetUser;
-                targetUser = userData;
-            }
-        }
-        
-        if (!targetUser) {
-            await bot.sendMessage(chatId, '❌ منقب غير موجود');
-            return;
-        }
-        
-        const rank = await usersCollection.countDocuments({ balance: { $gt: targetUser.balance } }) + 1;
-        const totalUsers = await usersCollection.countDocuments();
-        
-        const starOrders = await starInvoicesCollection.countDocuments({ 
-            userId: targetUser.user_id, 
-            status: 'completed' 
-        });
-        
-        const starAmount = await starInvoicesCollection.aggregate([
-            { $match: { userId: targetUser.user_id, status: 'completed' } },
-            { $group: { _id: null, total: { $sum: '$starAmount' } } }
-        ]).toArray();
-        
-        const isEligible = await isEligibleForAirdrop(targetUser.user_id);
-        const isSuspicious = await isSuspiciousUser(targetUser.user_id);
-        
-        await bot.sendMessage(chatId,
-            `👤 *ملف المنقب*\n\n` +
-            `🆔 المعرف: \`${targetUser.user_id}\`\n` +
-            `📛 الاسم: ${targetUser.first_name}\n` +
-            `👤 اليوزر: @${targetUser.username || 'لا يوجد'}\n` +
-            `🌐 اللغة: ${targetUser.language === 'ar' ? '🇸🇦 العربية' : '🇬🇧 الإنجليزية'}\n` +
-            `💰 رصيد الكريستال: ${targetUser.balance.toFixed(3)} 💎\n` +
-            `🏆 الترتيب: #${rank} من ${totalUsers}\n\n` +
-            `📊 *إحصائيات:*\n` +
-            `• ⛏️ إجمالي التعدين: ${(targetUser.total_mined || 0).toFixed(3)} 💎\n` +
-            `• 🔥 السلسلة اليومية: ${targetUser.daily_streak || 0}\n` +
-            `• ⭐ مشتريات بالنجوم: ${starOrders} (${(starAmount[0]?.total || 0)} ⭐)\n` +
-            `• 💎 إجمالي المشتريات: ${(targetUser.total_bought || 0).toFixed(1)} 💎\n` +
-            `• 👥 الدعوات: ${targetUser.total_invites || 0}\n\n` +
-            `🛡️ *حالة الأمان:*\n` +
-            `• ✅ أهلية الإيردروب: ${isEligible ? 'نعم' : 'لا'}\n` +
-            `• ⚠️ حساب مشبوه: ${isSuspicious ? 'نعم' : 'لا'}\n\n` +
-            `📅 تاريخ الانضمام: ${new Date(targetUser.created_at).toLocaleDateString('ar-EG')}`,
-            { parse_mode: 'Markdown' }
-        );
-    } catch (error) {
-        console.error('خطأ في أمر /user:', error);
-        await bot.sendMessage(chatId, '❌ حدث خطأ في البحث');
-    }
+    const totalUsers = await usersCollection.countDocuments();
+    const system = await getSystemStats();
+    const starStats = await getStarPurchaseStats();
+    
+    const miningRemaining = Math.max(0, system.maxMining - (system.minedSupply || 0));
+    const supplyRemaining = system.remainingSupply || 0;
+    const totalCertificates = await certificatesCollection.countDocuments();
+    
+    const message = 
+        `👑 *لوحة تحكم الأدمن*\n\n` +
+        `📊 *إحصائيات:*\n` +
+        `• 👥 المستخدمون: ${totalUsers}\n` +
+        `• ⭐ مبيعات النجوم: ${starStats.totalStars} ⭐\n` +
+        `• 💎 كريستال مباع: ${starStats.totalCrystals.toFixed(1)} 💎\n\n` +
+        `💎 *العرض المحدود:*\n` +
+        `• ⛏️ متبقي للتعدين: ${miningRemaining.toLocaleString()} 💎\n` +
+        `• 🎯 متبقي للبيع: ${supplyRemaining.toLocaleString()} 💎\n\n` +
+        `🔐 *الشهادات:* ${totalCertificates}\n\n` +
+        `🛡️ مكافحة الاحتيال: ${system.antiSybilEnabled ? '✅' : '❌'}`;
+    
+    await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 });
 
 bot.onText(/\/setupwebhook/, async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     
-    if (!ADMIN_IDS.includes(userId)) {
+    if (!isAdmin(userId)) {
         await bot.sendMessage(chatId, '❌ غير مصرح');
         return;
     }
@@ -1528,123 +1487,17 @@ bot.onText(/\/setupwebhook/, async (msg) => {
     const webhookUrl = `${APP_URL}/api/telegram-webhook`;
     
     try {
-        const response = await fetch(
+        await fetch(
             `https://api.telegram.org/bot${BOT_TOKEN}/setWebhook`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    url: webhookUrl,
-                    allowed_updates: ['pre_checkout_query', 'message'],
-                    max_connections: 40
-                })
+                body: JSON.stringify({ url: webhookUrl })
             }
         );
-        
-        const data = await response.json();
-        if (data.ok) {
-            await bot.sendMessage(chatId, `✅ تم تفعيل Webhook بنجاح!\n🔗 ${webhookUrl}`);
-            await bot.deleteWebHook();
-        } else {
-            await bot.sendMessage(chatId, `❌ خطأ: ${data.description}`);
-        }
+        await bot.sendMessage(chatId, `✅ Webhook: ${webhookUrl}`);
     } catch (error) {
-        console.error('خطأ في إعداد webhook:', error);
         await bot.sendMessage(chatId, `❌ فشل: ${error.message}`);
-    }
-});
-
-// ========== نظام مكافحة الاحتيال - أوامر إضافية للأدمن ==========
-bot.onText(/\/block (.+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    const targetId = match[1];
-    
-    if (!isAdmin(userId)) {
-        await bot.sendMessage(chatId, '❌ غير مصرح');
-        return;
-    }
-    
-    if (!/^\d+$/.test(targetId)) {
-        await bot.sendMessage(chatId, '❌ معرف مستخدم غير صالح');
-        return;
-    }
-    
-    try {
-        await usersCollection.updateOne(
-            { user_id: targetId },
-            { $set: { blocked: true, blocked_at: Date.now(), blocked_by: userId } }
-        );
-        
-        await logSecurityEvent('USER_BLOCKED_BY_ADMIN', targetId, { adminId: userId });
-        await bot.sendMessage(chatId, `✅ تم حظر المستخدم ${targetId}`);
-    } catch (error) {
-        await bot.sendMessage(chatId, '❌ فشل في حظر المستخدم');
-    }
-});
-
-bot.onText(/\/unblock (.+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    const targetId = match[1];
-    
-    if (!isAdmin(userId)) {
-        await bot.sendMessage(chatId, '❌ غير مصرح');
-        return;
-    }
-    
-    if (!/^\d+$/.test(targetId)) {
-        await bot.sendMessage(chatId, '❌ معرف مستخدم غير صالح');
-        return;
-    }
-    
-    try {
-        await usersCollection.updateOne(
-            { user_id: targetId },
-            { $unset: { blocked: "", blocked_at: "", blocked_by: "" } }
-        );
-        
-        await logSecurityEvent('USER_UNBLOCKED_BY_ADMIN', targetId, { adminId: userId });
-        await bot.sendMessage(chatId, `✅ تم إلغاء حظر المستخدم ${targetId}`);
-    } catch (error) {
-        await bot.sendMessage(chatId, '❌ فشل في إلغاء حظر المستخدم');
-    }
-});
-
-bot.onText(/\/security/, async (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    
-    if (!isAdmin(userId)) {
-        await bot.sendMessage(chatId, '❌ غير مصرح');
-        return;
-    }
-    
-    try {
-        const last24h = Date.now() - 24 * 60 * 60 * 1000;
-        
-        const suspiciousLogs = await securityLogsCollection.find({
-            timestamp: { $gt: last24h },
-            type: { $regex: '^SUSPICIOUS_' }
-        })
-        .sort({ timestamp: -1 })
-        .limit(10)
-        .toArray();
-        
-        let logsText = '';
-        suspiciousLogs.forEach(log => {
-            const date = new Date(log.timestamp).toLocaleString('ar-EG');
-            logsText += `• ${date}: ${log.type} (${log.userId || '?'})\n`;
-        });
-        
-        const message = 
-            `🛡️ *سجل الأحداث الأمنية (آخر 24 ساعة)*\n\n` +
-            `${logsText || 'لا توجد أحداث مشبوهة'}`;
-        
-        await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-    } catch (error) {
-        console.error('خطأ في جلب سجل الأمان:', error);
-        await bot.sendMessage(chatId, '❌ فشل في جلب السجل');
     }
 });
 
@@ -1652,60 +1505,29 @@ bot.onText(/\/security/, async (msg) => {
 async function startServer() {
     const connected = await connectToMongo();
     if (!connected) {
-        console.error('❌ فشل الاتصال بقاعدة البيانات');
         process.exit(1);
     }
     
     app.listen(PORT, () => {
         console.log('\n===========================================');
-        console.log(`🌐 خادم الويب يعمل على المنفذ: ${PORT}`);
+        console.log(`🌐 الخادم يعمل على المنفذ: ${PORT}`);
         console.log(`🔗 رابط الواجهة: ${APP_URL}`);
-        console.log(`⭐ نظام دفع نجوم تليجرام: مفعل`);
-        console.log(`🛡️ نظام الأمان المتقدم: مفعل`);
-        console.log(`💎 نظام العرض المحدود: 800,000,000 💎`);
+        console.log(`⭐ نظام دفع النجوم: مفعل`);
+        console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
+        console.log(`💎 العرض المحدود: 800,000,000 💎`);
         console.log(`⛏️ حد التعدين: 1,000,000 💎`);
         console.log(`💰 سحب USDT: ❌ معطل`);
-        console.log(`🚀 الإدراج في STON.fi: قريباً`);
         console.log('===========================================\n');
     });
 }
 
 startServer();
 
-process.on('SIGINT', async () => {
-    console.log('\n🛑 إيقاف البوت...');
-    await logSecurityEvent('SERVER_SHUTDOWN', null, { signal: 'SIGINT' });
-    process.exit(0);
-});
+process.on('SIGINT', () => process.exit(0));
+process.on('SIGTERM', () => process.exit(0));
 
-process.on('SIGTERM', async () => {
-    console.log('\n🛑 إيقاف البوت...');
-    await logSecurityEvent('SERVER_SHUTDOWN', null, { signal: 'SIGTERM' });
-    process.exit(0);
-});
-
-process.on('uncaughtException', async (error) => {
-    console.error('❌ استثناء غير متوقع:', error);
-    await logSecurityEvent('UNCAUGHT_EXCEPTION', null, { 
-        error: error.message,
-        stack: error.stack 
-    });
-});
-
-process.on('unhandledRejection', async (reason, promise) => {
-    console.error('❌ رفض وعد غير معالج:', reason);
-    await logSecurityEvent('UNHANDLED_REJECTION', null, { 
-        reason: String(reason),
-        promise: String(promise)
-    });
-});
-
-console.log('🚀 بوت كريستال التعدين - الإصدار المحمي 15.0');
-console.log('📱 افتح تليجرام وأرسل /start');
-console.log('👑 لوحة الأدمن: /admin');
-console.log('🛡️ نظام الأمان: مفعل بالكامل');
-console.log('⛏️ تعدين: 1 كريستال/24 ساعة (محدود 1M)');
-console.log('⭐ شراء: 10 نجوم = 1 💎 (محدود 800M)');
-console.log('💰 سحب USDT: ❌ ملغي نهائياً');
-console.log('🚀 الإدراج: STON.fi قريباً');
-console.log('🌍 اللغات: العربية / English');
+console.log('🚀 بوت كريستال التعدين - الإصدار 16.0');
+console.log('📱 أرسل /start في تليجرام');
+console.log('🔐 الشهادات الرقمية: HMAC-SHA256');
+console.log('⛏️ تعدين: 1/24h (محدود 1M)');
+console.log('⭐ شراء: 10 ⭐ = 1 💎 (محدود 800M)');
