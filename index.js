@@ -58,15 +58,10 @@ app.use(cors({
 
 app.options('*', cors());
 
-// ========== ✅ Trust Proxy لـ Koyeb ==========
-app.set('trust proxy', true);
-
-// ========== ✅ Logging جميع الطلبات مع IP ==========
+// ========== ✅ Logging جميع الطلبات ==========
 app.use((req, res, next) => {
-    const clientIp = req.headers['x-forwarded-for'] || req.ip || req.connection.remoteAddress;
     console.log(`📨 ${req.method} ${req.path} - Origin: ${req.headers.origin || 'same-origin'}`);
     console.log(`🔑 Auth: ${req.headers.authorization ? 'Present' : 'Missing'}`);
-    console.log(`🌐 X-Forwarded-For: ${clientIp}`);
     next();
 });
 
@@ -104,10 +99,7 @@ const limiter = rateLimit({
     message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد 15 دقيقة' },
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => {
-        const clientIp = req.headers['x-forwarded-for'] || req.ip || req.connection.remoteAddress;
-        return clientIp || 'unknown';
-    }
+    keyGenerator: (req) => req.ip || req.connection.remoteAddress || 'unknown'
 });
 app.use('/api/', limiter);
 
@@ -115,18 +107,14 @@ app.use('/api/', limiter);
 const strictLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 30,
-    message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد دقيقة' },
-    keyGenerator: (req) => {
-        const clientIp = req.headers['x-forwarded-for'] || req.ip || req.connection.remoteAddress;
-        return clientIp || 'unknown';
-    }
+    message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد دقيقة' }
 });
 
 // MongoDB Sanitize
 app.use(mongoSanitize({
     replaceWith: '_',
     onSanitize: ({ req, key }) => {
-        console.warn(`🚨 محاولة حقن من IP: ${req.headers['x-forwarded-for'] || req.ip}, key: ${key}`);
+        console.warn(`🚨 محاولة حقن من IP: ${req.ip}, key: ${key}`);
     }
 }));
 
@@ -627,28 +615,10 @@ app.use('/api', (req, res, next) => {
     next();
 });
 
-// ========== ✅ تهيئة البوت مع Webhook للإنتاج ==========
-// ========== ✅ تهيئة البوت مع Webhook للإنتاج (معدل) ==========
+// ========== تهيئة البوت ==========
 async function initializeBot() {
     try {
-        const isProduction = process.env.NODE_ENV === 'production';
-        
-        // في الإنتاج، استخدم Webhook فقط بدون Polling
-        if (isProduction) {
-            bot = new TelegramBot(BOT_TOKEN);
-            const webhookUrl = `${APP_URL}/api/webhook/${BOT_TOKEN}`;
-            
-            // حذف أي Webhooks قديمة
-            await bot.deleteWebHook();
-            
-            // تعيين Webhook جديد
-            await bot.setWebHook(webhookUrl);
-            console.log(`🔗 Webhook set to: ${webhookUrl}`);
-        } else {
-            // في التطوير، استخدم Polling
-            bot = new TelegramBot(BOT_TOKEN, { polling: true });
-        }
-        
+        bot = new TelegramBot(BOT_TOKEN, { polling: true });
         console.log('🤖 البوت يعمل...');
         setupBotCommands();
         return true;
@@ -1719,6 +1689,7 @@ async function processPendingInvites() {
 }
 
 setInterval(processPendingInvites, 60 * 60 * 1000);
+
 // ========== تشغيل الخادم ==========
 async function startServer() {
     console.log('🚀 جاري تشغيل بوت كريستال التعدين...');
@@ -1745,7 +1716,6 @@ async function startServer() {
         console.log(`🔗 رابط WebApp: ${WEBAPP_URL}`);
         console.log(`⭐ نظام دفع النجوم: مفعل`);
         console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
-        console.log(`🛡️ Trust Proxy: مفعل (لـ Koyeb)`);
         console.log(`🛡️ CORS: مفعل لجميع الدومينات`);
         console.log(`🔒 Webhook: /api/webhook/[SECRET]`);
         console.log(`💎 العرض المحدود: 800,000,000 💎`);
@@ -1754,7 +1724,8 @@ async function startServer() {
         console.log('===========================================\n');
     });
 }
-// منع تشغيل السيرفر مرتين
+
+startServer();
 
 process.on('SIGINT', () => {
     console.log('\n🛑 إيقاف البوت...');
