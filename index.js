@@ -8,8 +8,12 @@ const rateLimit = require('express-rate-limit');
 const { body, param, validationResult } = require('express-validator');
 const mongoSanitize = require('express-mongo-sanitize');
 const { MongoClient } = require('mongodb');
-
 const app = express();
+
+// ✅ هذا السطر يحل المشكلة - ضعه هنا مباشرة
+app.set('trust proxy', 1); // يثق في أول بروكسي (كافي لمعظم خدمات الاستضافة)
+// أو
+app.set('trust proxy', true); // يثق في جميع البروكسيات (الأكثر أماناً)
 const PORT = process.env.PORT || 8000;
 
 // ========== الأمان المتقدم ==========
