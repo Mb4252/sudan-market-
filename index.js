@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const { body, param, validationResult } = require('express-validator');
 const mongoSanitize = require('express-mongo-sanitize');
 const { MongoClient } = require('mongodb');
@@ -11,7 +12,7 @@ const { MongoClient } = require('mongodb');
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-// ========== 🔐 الأمان المتقدم ==========
+// ========== الأمان المتقدم ==========
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
@@ -38,77 +39,21 @@ app.use((req, res, next) => {
     next();
 });
 
-// ========== 🔐 Rate Limiting - آمن تماماً ضد الهجمات ==========
-const isProduction = process.env.NODE_ENV === 'production';
-const PROXY_COUNT = 1; // Koyeb يستخدم بروكسي واحد
-
-let limiter;
-try {
-    const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
-    
-    limiter = rateLimit({
-        windowMs: 15 * 60 * 1000, // 15 دقيقة
-        max: 100, // 100 طلب لكل IP
-        message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد 15 دقيقة' },
-        standardHeaders: true,
-        legacyHeaders: false,
-        
-        // ✅ Trust Proxy آمن - يقرأ عنوان IP الحقيقي من Koyeb
-        trustProxy: isProduction ? PROXY_COUNT : false,
-        
-        // ✅ KeyGenerator آمن ضد هجمات IPv6 وتزوير البورت
-        keyGenerator: (req) => {
-            // 1. استخدام API Key إذا وجد (للتطبيقات)
-            if (req.headers['x-api-key']) {
-                return req.headers['x-api-key'];
-            }
-            
-            // 2. الحصول على IP الحقيقي وإزالة البورت (يمنع التجاوز)
-            let ip = req.ip;
-            if (ip) {
-                ip = ip.replace(/:\d+[^:]*$/, '');
-            } else {
-                ip = req.socket.remoteAddress?.replace(/:\d+[^:]*$/, '') || '0.0.0.0';
-            }
-            
-            // 3. IPv6 Subnet Masking - منع تعدد العناوين
-            const ipv6Subnet = 64; // /64 هو النطاق القياسي
-            
-            return ipKeyGenerator(ip, ipv6Subnet);
-        },
-        
-        // ✅ تعطيل التحقق من trust proxy (لأننا حددناه يدوياً)
-        validate: {
-            trustProxy: false,
-            ip: true,
-            xForwardedForHeader: isProduction,
-            ipv6Subnet: true,
-            default: true
-        },
-        
-        // ✅ تخطي الطلبات المحلية في بيئة التطوير
-        skip: (req) => {
-            if (!isProduction) {
-                return req.ip === '::1' || req.ip === '127.0.0.1' || req.ip?.startsWith('192.168.');
-            }
-            return false;
-        }
-    });
-} catch (error) {
-    console.error('❌ خطأ في تهيئة Rate Limiter:', error);
-    // Fallback آمن
-    const rateLimit = require('express-rate-limit');
-    limiter = rateLimit({
-        windowMs: 15 * 60 * 1000,
-        max: 100,
-        trustProxy: isProduction ? PROXY_COUNT : false,
-        validate: { trustProxy: false }
-    });
-}
-
+// 🔥 تم إصلاح Rate Limiting - إزالة ipKeyGenerator نهائياً
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 دقيقة
+    max: 100, // الحد الأقصى 100 طلب
+    message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد 15 دقيقة' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+        // استخدام IP آمن
+        return req.ip || req.connection.remoteAddress || 'unknown';
+    }
+});
 app.use('/api/', limiter);
 
-// ========== 🔐 منع حقن الأكواد ==========
+// MongoDB Sanitize
 app.use(mongoSanitize({
     replaceWith: '_',
     onSanitize: ({ req, key }) => {
@@ -116,7 +61,7 @@ app.use(mongoSanitize({
     }
 }));
 
-// ========== 🔐 CORS الآمن ==========
+// CORS محدود
 app.use(cors({
     origin: ['https://telegram.org', 'https://web.telegram.org', 'https://*.telegram.org'],
     credentials: true,
@@ -126,14 +71,13 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static('public'));
 
-// ========== 📦 متغيرات قاعدة البيانات ==========
 const MONGODB_URI = process.env.MONGODB_URI;
 const DB_NAME = 'crystal_mining';
 
-// ========== 🔐 مفتاح التوقيع الرقمي ==========
+// ========== 🔐 مفتاح التوقيع الرقمي الآمن ==========
 const CERTIFICATE_SECRET = process.env.CERT_SECRET || crypto.randomBytes(64).toString('hex');
 
-// ========== 📦 تهيئة المتغيرات العمومية ==========
+// ========== تهيئة المتغيرات العمومية ==========
 let db;
 let usersCollection;
 let systemCollection;
@@ -148,7 +92,13 @@ const ADMIN_IDS = process.env.ADMIN_USER_IDS
     : [];
 const APP_URL = process.env.APP_URL || "https://your-app.koyeb.app";
 
-// ========== 🔐 دوال التوقيع الرقمي ==========
+// ========== التحقق من وجود BOT_TOKEN ==========
+if (!BOT_TOKEN) {
+    console.error('❌ خطأ: BOT_TOKEN غير موجود في ملف .env');
+    process.exit(1);
+}
+
+// ========== دوال التوقيع الرقمي ==========
 function generateCertificateSignature(orderId, userId, amount, timestamp) {
     const hmac = crypto.createHmac('sha256', CERTIFICATE_SECRET);
     hmac.update(`${orderId}:${userId}:${amount}:${timestamp}`);
@@ -173,7 +123,7 @@ function generateVerificationCode(orderId) {
     return hmac.digest('hex').substring(0, 16);
 }
 
-// ========== 👤 دوال المستخدم المساعدة ==========
+// ========== دوال مساعدة (تعريف مبكر) ==========
 async function getUser(userId) {
     try {
         if (!userId || typeof userId !== 'string' || !/^\d+$/.test(userId)) {
@@ -269,7 +219,90 @@ async function logSecurityEvent(type, userId = null, data = {}) {
     }
 }
 
-// ========== ✅ التحقق من صحة المدخلات ==========
+// ========== الاتصال بقاعدة البيانات ==========
+async function connectToMongo() {
+    try {
+        const client = new MongoClient(MONGODB_URI, {
+            connectTimeoutMS: 10000,
+            socketTimeoutMS: 45000,
+            serverSelectionTimeoutMS: 10000,
+            retryWrites: true,
+            retryReads: true
+        });
+        
+        await client.connect();
+        console.log('✅ متصل بقاعدة MongoDB Atlas');
+        
+        db = client.db(DB_NAME);
+        usersCollection = db.collection('users');
+        systemCollection = db.collection('system');
+        starInvoicesCollection = db.collection('star_invoices');
+        inviteRewardsCollection = db.collection('invite_rewards');
+        securityLogsCollection = db.collection('security_logs');
+        certificatesCollection = db.collection('certificates');
+        
+        // إنشاء Indexes
+        await usersCollection.createIndex({ user_id: 1 }, { unique: true });
+        await usersCollection.createIndex({ username: 1 });
+        await usersCollection.createIndex({ balance: -1 });
+        await usersCollection.createIndex({ created_at: 1 });
+        
+        await starInvoicesCollection.createIndex({ payload: 1 }, { unique: true });
+        await starInvoicesCollection.createIndex({ userId: 1, createdAt: -1 });
+        await starInvoicesCollection.createIndex({ status: 1, createdAt: 1 });
+        
+        await inviteRewardsCollection.createIndex({ inviterId: 1, invitedId: 1 }, { unique: true });
+        await inviteRewardsCollection.createIndex({ status: 1, createdAt: 1 });
+        
+        await securityLogsCollection.createIndex({ timestamp: -1 });
+        await securityLogsCollection.createIndex({ type: 1, timestamp: -1 });
+        
+        await certificatesCollection.createIndex({ orderId: 1 }, { unique: true });
+        await certificatesCollection.createIndex({ userId: 1, issuedAt: -1 });
+        await certificatesCollection.createIndex({ verificationCode: 1 });
+        
+        const system = await systemCollection.findOne({ _id: 'config' });
+        if (!system) {
+            await systemCollection.insertOne({
+                _id: 'config',
+                totalSupply: 800000000,
+                minedSupply: 0,
+                soldSupply: 0,
+                remainingSupply: 800000000,
+                maxMining: 1000000,
+                isListed: false,
+                listingDate: null,
+                icoActive: false,
+                icoPrice: 0.10,
+                icoEndDate: null,
+                starRate: 0.1,
+                totalTransactions: 0,
+                totalInvites: 0,
+                totalStarsInvested: 0,
+                totalCrystalSold: 0,
+                minPurchaseAge: 30 * 24 * 60 * 60 * 1000,
+                minPurchaseAmount: 10,
+                maxInvitesPerUser: 5,
+                antiSybilEnabled: true,
+                certificateVersion: '2.0',
+                createdAt: Date.now()
+            });
+        }
+        
+        console.log('📦 قاعدة البيانات جاهزة');
+        console.log(`💎 إجمالي العرض: 800,000,000 كريستال`);
+        console.log(`⛏️ حد التعدين: 1,000,000 كريستال`);
+        console.log(`🛡️ نظام مكافحة الاحتيال: مفعل`);
+        console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
+        console.log(`🔑 مفتاح التوقيع: ${CERTIFICATE_SECRET.substring(0, 10)}...`);
+        return true;
+    } catch (error) {
+        console.error('❌ فشل الاتصال بقاعدة البيانات:', error);
+        return false;
+    }
+}
+
+// ========== التحقق من صحة المدخلات ==========
 const validateUserId = param('userId')
     .isString()
     .trim()
@@ -281,7 +314,7 @@ const validateStarAmount = body('starAmount')
     .isInt({ min: 5, max: 2500 })
     .toInt();
 
-// ========== 🛡️ دوال مكافحة الاحتيال ==========
+// ========== دوال مكافحة الاحتيال ==========
 async function isSuspiciousUser(userId) {
     const user = await getUser(userId);
     if (!user) return false;
@@ -413,7 +446,7 @@ async function getStarPurchaseStats() {
     }
 }
 
-// ========== 🔐 التحقق من WebApp Data ==========
+// ========== التحقق من WebApp Data ==========
 function verifyWebAppData(initData) {
     try {
         if (!initData || !BOT_TOKEN) return null;
@@ -456,7 +489,7 @@ function verifyWebAppData(initData) {
     return null;
 }
 
-// ========== 🛡️ Middleware التحقق من API ==========
+// ========== Middleware ==========
 app.use('/api', async (req, res, next) => {
     const publicPaths = [
         '/api/user/me',
@@ -487,107 +520,20 @@ app.use('/api', async (req, res, next) => {
     next();
 });
 
-// ========== 📦 الاتصال بقاعدة البيانات ==========
-async function connectToMongo() {
-    try {
-        const client = new MongoClient(MONGODB_URI, {
-            connectTimeoutMS: 10000,
-            socketTimeoutMS: 45000,
-            serverSelectionTimeoutMS: 10000,
-            retryWrites: true,
-            retryReads: true
-        });
-        
-        await client.connect();
-        console.log('✅ متصل بقاعدة MongoDB Atlas');
-        
-        db = client.db(DB_NAME);
-        usersCollection = db.collection('users');
-        systemCollection = db.collection('system');
-        starInvoicesCollection = db.collection('star_invoices');
-        inviteRewardsCollection = db.collection('invite_rewards');
-        securityLogsCollection = db.collection('security_logs');
-        certificatesCollection = db.collection('certificates');
-        
-        // إنشاء Indexes
-        await usersCollection.createIndex({ user_id: 1 }, { unique: true });
-        await usersCollection.createIndex({ username: 1 });
-        await usersCollection.createIndex({ balance: -1 });
-        await usersCollection.createIndex({ created_at: 1 });
-        
-        await starInvoicesCollection.createIndex({ payload: 1 }, { unique: true });
-        await starInvoicesCollection.createIndex({ userId: 1, createdAt: -1 });
-        await starInvoicesCollection.createIndex({ status: 1, createdAt: 1 });
-        
-        await inviteRewardsCollection.createIndex({ inviterId: 1, invitedId: 1 }, { unique: true });
-        await inviteRewardsCollection.createIndex({ status: 1, createdAt: 1 });
-        
-        await securityLogsCollection.createIndex({ timestamp: -1 });
-        await securityLogsCollection.createIndex({ type: 1, timestamp: -1 });
-        
-        await certificatesCollection.createIndex({ orderId: 1 }, { unique: true });
-        await certificatesCollection.createIndex({ userId: 1, issuedAt: -1 });
-        await certificatesCollection.createIndex({ verificationCode: 1 });
-        
-        const system = await systemCollection.findOne({ _id: 'config' });
-        if (!system) {
-            await systemCollection.insertOne({
-                _id: 'config',
-                totalSupply: 800000000,
-                minedSupply: 0,
-                soldSupply: 0,
-                remainingSupply: 800000000,
-                maxMining: 1000000,
-                isListed: false,
-                listingDate: null,
-                icoActive: false,
-                icoPrice: 0.10,
-                icoEndDate: null,
-                starRate: 0.1,
-                totalTransactions: 0,
-                totalInvites: 0,
-                totalStarsInvested: 0,
-                totalCrystalSold: 0,
-                minPurchaseAge: 30 * 24 * 60 * 60 * 1000,
-                minPurchaseAmount: 10,
-                maxInvitesPerUser: 5,
-                antiSybilEnabled: true,
-                certificateVersion: '2.0',
-                createdAt: Date.now()
-            });
-        }
-        
-        console.log('📦 قاعدة البيانات جاهزة');
-        console.log(`💎 إجمالي العرض: 800,000,000 كريستال`);
-        console.log(`⛏️ حد التعدين: 1,000,000 كريستال`);
-        console.log(`🛡️ نظام مكافحة الاحتيال: مفعل`);
-        console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
-        console.log(`🔑 مفتاح التوقيع: ${CERTIFICATE_SECRET.substring(0, 10)}...`);
-        return true;
-    } catch (error) {
-        console.error('❌ فشل الاتصال بقاعدة البيانات:', error);
-        return false;
-    }
-}
-
-// ========== 🤖 تهيئة البوت ==========
+// ========== تهيئة البوت بعد التأكد من الاتصال بقاعدة البيانات ==========
 async function initializeBot() {
-    if (!BOT_TOKEN) {
-        console.error('❌ خطأ: BOT_TOKEN غير موجود');
-        process.exit(1);
-    }
-
     try {
         bot = new TelegramBot(BOT_TOKEN, { polling: true });
         console.log('🤖 البوت يعمل...');
         setupBotCommands();
+        return true;
     } catch (error) {
         console.error('❌ خطأ في تهيئة البوت:', error);
-        process.exit(1);
+        return false;
     }
 }
 
-// ========== 📱 أوامر البوت ==========
+// ========== إعداد أوامر البوت ==========
 function setupBotCommands() {
     
 bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
@@ -804,7 +750,7 @@ bot.onText(/\/setupwebhook/, async (msg) => {
     const webhookUrl = `${APP_URL}/api/webhook/${BOT_TOKEN}`;
     
     try {
-        await fetch(
+        const response = await fetch(
             `https://api.telegram.org/bot${BOT_TOKEN}/setWebhook`,
             {
                 method: 'POST',
@@ -816,8 +762,14 @@ bot.onText(/\/setupwebhook/, async (msg) => {
                 })
             }
         );
-        await bot.sendMessage(chatId, `✅ Webhook: ${webhookUrl.substring(0, 50)}...`);
-        await bot.deleteWebHook();
+        
+        const data = await response.json();
+        if (data.ok) {
+            await bot.sendMessage(chatId, `✅ Webhook: ${webhookUrl.substring(0, 50)}...`);
+            await bot.deleteWebHook();
+        } else {
+            await bot.sendMessage(chatId, `❌ خطأ: ${data.description}`);
+        }
     } catch (error) {
         await bot.sendMessage(chatId, `❌ فشل: ${error.message}`);
     }
@@ -878,7 +830,8 @@ bot.onText(/\/admin/, async (msg) => {
 
 }
 
-// ========== 📊 API إحصائيات النظام ==========
+// ========== API Endpoints ==========
+
 app.get('/api/system-stats', async (req, res) => {
     try {
         const system = await getSystemStats();
@@ -911,7 +864,6 @@ app.get('/api/system-stats', async (req, res) => {
     }
 });
 
-// ========== 👤 API بيانات المستخدم ==========
 app.get('/api/user/:userId', 
     validateUserId,
     async (req, res) => {
@@ -974,7 +926,6 @@ app.get('/api/user/me', async (req, res) => {
     res.json({ username: bot?.options?.username || 'crystal_mining_bot' });
 });
 
-// ========== 🏆 API المتصدرين ==========
 app.get('/api/top', async (req, res) => {
     try {
         const topUsers = await getTopUsers(10);
@@ -993,14 +944,14 @@ app.get('/api/star-stats', async (req, res) => {
     }
 });
 
-// ========== ⛏️ نظام التعدين الآمن (Atomic Operation) ==========
+// ========== ✅ نظام التعدين الآمن (Atomic Operation) ==========
 app.post('/api/mine', async (req, res) => {
     try {
         const userId = req.telegramUser.id.toString();
         const cooldownTime = 24 * 60 * 60 * 1000;
 
         if (!usersCollection) {
-            return res.json({ success: false, error: 'system_busy', message_ar: '⚠️ النظام مشغول' });
+            return res.json({ success: false, error: 'system_busy', message_ar: '⚠️ النظام مشغول، حاول مرة أخرى' });
         }
 
         const result = await usersCollection.findOneAndUpdate(
@@ -1060,7 +1011,7 @@ app.post('/api/mine', async (req, res) => {
     }
 });
 
-// ========== ⭐ نظام شراء النجوم ==========
+// ========== نظام شراء النجوم ==========
 async function createStarInvoice(userId, starAmount, description) {
     try {
         const user = await getUser(userId);
@@ -1336,11 +1287,12 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
         
         res.json({ ok: true });
     } catch (error) {
+        console.error('❌ خطأ في Webhook:', error);
         res.json({ ok: true });
     }
 });
 
-// ========== 🔐 API الشهادات ==========
+// ========== API الشهادات ==========
 app.get('/api/receipt/:orderId',
     param('orderId').isString().trim().isLength({ min: 10, max: 200 }),
     async (req, res) => {
@@ -1425,11 +1377,12 @@ app.get('/api/receipt/:orderId',
             
             res.json({ success: true, receipt, isOwner, isAdmin });
         } catch (error) {
+            console.error('❌ خطأ في جلب الشهادة:', error);
             res.status(500).json({ success: false, error: 'فشل في جلب الشهادة' });
         }
 });
 
-// ========== ✅ API التحقق من الشهادة ==========
+// ========== API التحقق من الشهادة ==========
 app.get('/api/verify-certificate/:orderId',
     param('orderId').isString().trim().isLength({ min: 10, max: 200 }),
     async (req, res) => {
@@ -1488,7 +1441,7 @@ app.get('/api/verify-certificate/:orderId',
         }
 });
 
-// ========== 📋 API طلبات النجوم ==========
+// ========== API طلبات النجوم ==========
 app.get('/api/star-orders/:userId',
     validateUserId,
     async (req, res) => {
@@ -1530,7 +1483,7 @@ app.get('/api/star-orders/:userId',
         }
 });
 
-// ========== 👥 API معلومات الدعوة ==========
+// ========== API معلومات الدعوة ==========
 app.get('/api/invite-info/:userId',
     validateUserId,
     async (req, res) => {
@@ -1591,7 +1544,7 @@ app.get('/api/invite-info/:userId',
         }
 });
 
-// ========== ⏳ معالجة الدعوات المعلقة ==========
+// ========== معالجة الدعوات المعلقة ==========
 async function processPendingInvites() {
     try {
         if (!inviteRewardsCollection || !usersCollection) return;
@@ -1641,15 +1594,22 @@ async function processPendingInvites() {
 
 setInterval(processPendingInvites, 60 * 60 * 1000);
 
-// ========== 🚀 تشغيل الخادم ==========
+// ========== تشغيل الخادم ==========
 async function startServer() {
+    console.log('🚀 جاري تشغيل بوت كريستال التعدين...');
+    
     const connected = await connectToMongo();
     if (!connected) {
-        console.error('❌ فشل الاتصال بقاعدة البيانات - تأكد من MONGODB_URI');
+        console.error('❌ فشل الاتصال بقاعدة البيانات - تأكد من MONGODB_URI في ملف .env');
         process.exit(1);
     }
     
-    await initializeBot();
+    const botInitialized = await initializeBot();
+    if (!botInitialized) {
+        console.error('❌ فشل تشغيل البوت - تأكد من BOT_TOKEN في ملف .env');
+        process.exit(1);
+    }
+    
     setInterval(processPendingInvites, 60 * 60 * 1000);
     setTimeout(processPendingInvites, 10 * 1000);
     
@@ -1661,7 +1621,6 @@ async function startServer() {
         console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
         console.log(`🔑 مفتاح التوقيع: ${CERTIFICATE_SECRET.substring(0, 10)}...`);
         console.log(`🔒 Webhook: /api/webhook/[SECRET]`);
-        console.log(`🛡️ Rate Limiting: آمن ضد IPv6 و Port Spoofing`);
         console.log(`💎 العرض المحدود: 800,000,000 💎`);
         console.log(`⛏️ حد التعدين: 1,000,000 💎`);
         console.log(`💰 سحب USDT: ❌ معطل`);
@@ -1689,7 +1648,5 @@ process.on('unhandledRejection', (reason) => {
     console.error('❌ رفض وعد غير معالج:', reason);
 });
 
-console.log('🚀 بوت كريستال التعدين - الإصدار 19.0 (النسخة النهائية الآمنة 100%)');
+console.log('🚀 بوت كريستال التعدين - الإصدار 19.0 (نسخة مستقرة)');
 console.log('📱 سيبدأ البوت بعد الاتصال بقاعدة البيانات...');
-console.log('🛡️ جميع أنظمة الأمان: مفعلة');
-console.log('🔐 Rate Limiting: محمي ضد تزوير IP و IPv6');
