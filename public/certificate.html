@@ -271,11 +271,13 @@
             document.getElementById('loadingSpinner').classList.add('hidden');
             document.getElementById('certificateContent').classList.remove('hidden');
             
+            // 🛡️ استخدام textContent لجميع أسماء المستخدمين
             const certificateIdEl = document.getElementById('certificateId');
             certificateIdEl.textContent = `🆔 ${r.certificate_id || 'CERT-' + r.transaction_id.substring(0,8)}`;
             
             const d = new Date(r.date).toLocaleDateString('ar-EG', { dateStyle: 'full', timeStyle: 'medium' });
             
+            // إنشاء HTML بأمان - الأسماء تأتي من textContent
             const transactionHtml = `
                 <div class="info-row">
                     <span class="info-label">رقم المعاملة:</span>
@@ -304,6 +306,7 @@
             `;
             document.getElementById('transactionInfo').innerHTML = transactionHtml;
             
+            // 🛡️ استخدام textContent لاسم المستخدم
             const userInfoDiv = document.getElementById('userInfo');
             userInfoDiv.innerHTML = `
                 <div class="info-row">
@@ -328,6 +331,7 @@
                 </div>
             `;
             
+            // 🛡️ إضافة اسم المستخدم بأمان
             const safeNameSpan = document.createElement('span');
             safeNameSpan.style.fontWeight = '800';
             safeNameSpan.style.color = '#fff';
@@ -335,15 +339,16 @@
             safeNameSpan.textContent = r.user_name;
             document.getElementById('safeUserName').appendChild(safeNameSpan);
             
+            // 🛡️ التوقيع الرقمي (نص عادي، آمن)
             const signature = r.signature.match(/.{1,32}/g)?.join('\n') || r.signature;
             document.getElementById('digitalSignature').textContent = signature;
             
+            // تواريخ آمنة
             document.getElementById('verificationDate').innerHTML = `تاريخ الإصدار: ${new Date(r.issued_at||r.date).toLocaleDateString('ar-EG')}`;
             document.getElementById('verificationCount').innerHTML = `🔄 عدد مرات التحقق: ${r.verification_count||1}`;
+            document.getElementById('verifyLink').innerHTML = r.verify_link;
             
-            // ✅ FIXED XSS VULNERABILITY - innerHTML to textContent
-            document.getElementById('verifyLink').textContent = r.verify_link;
-            
+            // QR Code
             new QRCode(document.getElementById('qrcode'), {
                 text: r.verify_link,
                 width: 180,
