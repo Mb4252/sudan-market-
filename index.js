@@ -12,31 +12,6 @@ const { MongoClient } = require('mongodb');
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-// ========== 🔐 Rate Limiters متعددة ==========
-const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 دقيقة
-    max: 100,
-    message: { success: false, error: 'طلبات كثيرة جداً. حاول بعد 15 دقيقة.' },
-    standardHeaders: true,
-    legacyHeaders: false,
-});
-
-const strictLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // ساعة واحدة
-    max: 10,
-    message: { success: false, error: 'لقد تجاوزت الحد المسموح. حاول بعد ساعة.' },
-    standardHeaders: true,
-    legacyHeaders: false,
-});
-
-const verifyLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // ساعة واحدة
-    max: 5,
-    message: { success: false, error: 'محاولات تحقق كثيرة جداً. حاول بعد ساعة.' },
-    standardHeaders: true,
-    legacyHeaders: false,
-});
-
 // ========== الأمان المتقدم ==========
 app.use(helmet({
     contentSecurityPolicy: {
@@ -62,6 +37,15 @@ app.use((req, res, next) => {
     }
     next();
 });
+
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد 15 دقيقة' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+app.use('/api/', limiter);
 
 app.use(mongoSanitize({
     replaceWith: '_',
@@ -89,40 +73,6 @@ let starInvoicesCollection;
 let inviteRewardsCollection;
 let securityLogsCollection;
 let certificatesCollection;
-
-// ========== 🔐 نظام الكاش (Cache) للإحصائيات ==========
-let cachedStarStats = null;
-let lastCacheTime = 0;
-const CACHE_TTL = process.env.CACHE_TTL || 5 * 60 * 1000; // 5 دقائق
-
-async function getStarPurchaseStats() {
-    // إذا كانت البيانات موجودة في الكاش وعمرها أقل من 5 دقائق، ارجع الكاش
-    if (cachedStarStats && (Date.now() - lastCacheTime < CACHE_TTL)) {
-        return cachedStarStats;
-    }
-
-    try {
-        const totalOrders = await starInvoicesCollection.countDocuments({ status: 'completed' });
-        const totalStars = await starInvoicesCollection.aggregate([
-            { $match: { status: 'completed' } },
-            { $group: { _id: null, total: { $sum: '$starAmount' } } }
-        ]).toArray();
-        const totalCrystals = await starInvoicesCollection.aggregate([
-            { $match: { status: 'completed' } },
-            { $group: { _id: null, total: { $sum: '$crystalAmount' } } }
-        ]).toArray();
-        
-        cachedStarStats = {
-            totalOrders: totalOrders || 0,
-            totalStars: totalStars[0]?.total || 0,
-            totalCrystals: totalCrystals[0]?.total || 0
-        };
-        lastCacheTime = Date.now();
-        return cachedStarStats;
-    } catch (error) {
-        return { totalOrders: 0, totalStars: 0, totalCrystals: 0 };
-    }
-}
 
 // ========== 🔐 مفتاح التوقيع الرقمي الآمن ==========
 const CERTIFICATE_SECRET = process.env.CERT_SECRET || crypto.randomBytes(64).toString('hex');
@@ -227,7 +177,6 @@ async function connectToMongo() {
         console.log(`🛡️ نظام مكافحة الاحتيال: مفعل`);
         console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
         console.log(`🔑 مفتاح التوقيع: ${CERTIFICATE_SECRET.substring(0, 10)}...`);
-        console.log(`📊 نظام الكاش: مفعل (${CACHE_TTL/1000} ثانية)`);
         return true;
     } catch (error) {
         console.error('❌ فشل الاتصال بقاعدة البيانات:', error);
@@ -432,41 +381,6 @@ async function updateSystemStats(updates) {
     }
 }
 
-// ========== 🏆 دالة المتصدرين (بدون user_id) ==========
-async function getTopUsers(limit = 10) {
-    try {
-        return await usersCollection
-            .find({})
-            .sort({ balance: -1 })
-            .limit(Math.min(limit, 50))
-            .project({ first_name: 1, balance: 1, _id: 0 }) 
-            .toArray();
-    } catch (error) {
-        return [];
-    }
-}
-
-const BOT_TOKEN = process.env.BOT_TOKEN;
-if (!BOT_TOKEN) {
-    console.error('❌ خطأ: BOT_TOKEN غير موجود');
-    process.exit(1);
-}
-
-let bot;
-try {
-    bot = new TelegramBot(BOT_TOKEN, { polling: false });
-    console.log('🤖 البوت يعمل...');
-} catch (error) {
-    console.error('❌ خطأ في تهيئة البوت:', error);
-    process.exit(1);
-}
-
-const ADMIN_IDS = process.env.ADMIN_USER_IDS 
-    ? process.env.ADMIN_USER_IDS.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
-    : [];
-
-const APP_URL = process.env.APP_URL || "https://your-app.koyeb.app";
-
 // ========== 🔐 دالة التحقق من WebApp Data (محمية بالكامل) ==========
 function verifyWebAppData(initData) {
     try {
@@ -476,6 +390,7 @@ function verifyWebAppData(initData) {
         const hash = params.get('hash');
         const authDate = params.get('auth_date');
         
+        // 🔐 التحقق من انتهاء صلاحية البيانات (24 ساعة)
         const now = Math.floor(Date.now() / 1000);
         if (now - parseInt(authDate) > 86400) {
             console.warn("⚠️ بيانات منتهية الصلاحية");
@@ -496,6 +411,7 @@ function verifyWebAppData(initData) {
             .update(sortedParams)
             .digest('hex');
         
+        // 🔐 استخدام timingSafeEqual لمنع Timing Attacks
         const safeCalculated = Buffer.from(calculatedHash, 'hex');
         const safeProvided = Buffer.from(hash, 'hex');
         
@@ -509,6 +425,64 @@ function verifyWebAppData(initData) {
     }
     return null;
 }
+
+// ========== 🏆 دالة المتصدرين (بدون user_id) ==========
+async function getTopUsers(limit = 10) {
+    try {
+        return await usersCollection
+            .find({})
+            .sort({ balance: -1 })
+            .limit(Math.min(limit, 50))
+            // إزالة user_id من النتائج المرسلة للواجهة
+            .project({ first_name: 1, balance: 1, _id: 0 }) 
+            .toArray();
+    } catch (error) {
+        return [];
+    }
+}
+
+async function getStarPurchaseStats() {
+    try {
+        const totalOrders = await starInvoicesCollection.countDocuments({ status: 'completed' });
+        const totalStars = await starInvoicesCollection.aggregate([
+            { $match: { status: 'completed' } },
+            { $group: { _id: null, total: { $sum: '$starAmount' } } }
+        ]).toArray();
+        const totalCrystals = await starInvoicesCollection.aggregate([
+            { $match: { status: 'completed' } },
+            { $group: { _id: null, total: { $sum: '$crystalAmount' } } }
+        ]).toArray();
+        
+        return {
+            totalOrders: totalOrders || 0,
+            totalStars: totalStars[0]?.total || 0,
+            totalCrystals: totalCrystals[0]?.total || 0
+        };
+    } catch (error) {
+        return { totalOrders: 0, totalStars: 0, totalCrystals: 0 };
+    }
+}
+
+const BOT_TOKEN = process.env.BOT_TOKEN;
+if (!BOT_TOKEN) {
+    console.error('❌ خطأ: BOT_TOKEN غير موجود');
+    process.exit(1);
+}
+
+let bot;
+try {
+    bot = new TelegramBot(BOT_TOKEN, { polling: true });
+    console.log('🤖 البوت يعمل...');
+} catch (error) {
+    console.error('❌ خطأ في تهيئة البوت:', error);
+    process.exit(1);
+}
+
+const ADMIN_IDS = process.env.ADMIN_USER_IDS 
+    ? process.env.ADMIN_USER_IDS.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
+    : [];
+
+const APP_URL = process.env.APP_URL || "https://your-app.koyeb.app";
 
 // ========== Middleware ==========
 app.use('/api', async (req, res, next) => {
@@ -762,22 +736,6 @@ bot.onText(/\/setupwebhook/, async (msg) => {
     }
 });
 
-// ========== 🧹 أمر مسح الكاش للأدمن ==========
-bot.onText(/\/clearcache/, async (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    
-    if (!isAdmin(userId)) {
-        await bot.sendMessage(chatId, '❌ غير مصرح');
-        return;
-    }
-    
-    cachedStarStats = null;
-    lastCacheTime = 0;
-    
-    await bot.sendMessage(chatId, '🧹 تم مسح الكاش بنجاح!');
-});
-
 // ========== API إحصائيات النظام ==========
 app.get('/api/system-stats', async (req, res) => {
     try {
@@ -874,6 +832,7 @@ app.get('/api/user/me', async (req, res) => {
     res.json({ username: bot.options.username });
 });
 
+// ========== 🏆 API المتصدرين (بدون user_id) ==========
 app.get('/api/top', async (req, res) => {
     try {
         const topUsers = await getTopUsers(10);
@@ -892,8 +851,8 @@ app.get('/api/star-stats', async (req, res) => {
     }
 });
 
-// ========== ✅ نظام التعدين الآمن (مع تطبيق Rate Limiter) ==========
-app.post('/api/mine', apiLimiter, async (req, res) => {
+// ========== ✅ نظام التعدين الآمن (Atomic Operation) ==========
+app.post('/api/mine', async (req, res) => {
     try {
         const userId = req.telegramUser.id.toString();
         const cooldownTime = 24 * 60 * 60 * 1000;
@@ -1014,7 +973,7 @@ async function createStarInvoice(userId, starAmount, description) {
     }
 }
 
-app.post('/api/buy-with-stars', apiLimiter,
+app.post('/api/buy-with-stars',
     validateStarAmount,
     async (req, res) => {
         try {
@@ -1081,7 +1040,7 @@ app.post('/api/buy-with-stars', apiLimiter,
         }
 });
 
-// ========== 🔐 Webhook الآمن (بمسار سري) ==========
+// ========== 🔐 Webhook الآمن (بمسار سري + التحقق من المخزون) ==========
 app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
     try {
         const update = req.body;
@@ -1090,6 +1049,7 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
             const queryId = update.pre_checkout_query.id;
             const payload = update.pre_checkout_query.invoice_payload;
             
+            // 🔐 التحقق من المخزون قبل الموافقة على الدفع
             const invoice = await starInvoicesCollection.findOne({ payload });
             const system = await getSystemStats();
 
@@ -1152,10 +1112,6 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
                     soldSupply: crystalAmount,
                     remainingSupply: -crystalAmount
                 });
-                
-                // إبطال الكاش بعد عملية شراء جديدة
-                cachedStarStats = null;
-                lastCacheTime = 0;
                 
                 const signature = generateCertificateSignature(
                     payload,
@@ -1313,8 +1269,8 @@ app.get('/api/receipt/:orderId',
         }
 });
 
-// ========== 🔐 API التحقق من الشهادة - مع حماية Rate Limiter ==========
-app.get('/api/verify-certificate/:orderId', verifyLimiter,
+// ========== API التحقق من الشهادة ==========
+app.get('/api/verify-certificate/:orderId',
     param('orderId').isString().trim().isLength({ min: 10, max: 200 }),
     async (req, res) => {
         try {
@@ -1463,7 +1419,7 @@ app.get('/api/invite-info/:userId',
         }
 });
 
-// ========== ✅ معالجة الدعوات المعلقة ==========
+// ========== ✅ معالجة الدعوات المعلقة (محمية ضد الحسابات الوهمية) ==========
 async function processPendingInvites() {
     try {
         const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
@@ -1476,6 +1432,7 @@ async function processPendingInvites() {
         for (const reward of pendingRewards) {
             const invitedUser = await getUser(reward.invitedId);
             
+            // 🔐 لا تعطي مكافأة إلا إذا قام المستخدم المدعو بالتعدين 3 مرات على الأقل
             if (invitedUser && invitedUser.total_mined >= 3) {
                 await usersCollection.updateOne(
                     { user_id: reward.inviterId },
@@ -1544,8 +1501,7 @@ bot.onText(/\/admin/, async (msg) => {
         `• ⛏️ متبقي للتعدين: ${miningRemaining.toLocaleString()} 💎\n` +
         `• 🎯 متبقي للبيع: ${supplyRemaining.toLocaleString()} 💎\n\n` +
         `🔐 *الشهادات:* ${totalCertificates}\n` +
-        `🔑 *مفتاح التوقيع:* ${CERTIFICATE_SECRET.substring(0, 10)}...\n` +
-        `📊 *حالة الكاش:* ${cachedStarStats ? '✅ نشط' : '❌ فارغ'}\n\n` +
+        `🔑 *مفتاح التوقيع:* ${CERTIFICATE_SECRET.substring(0, 10)}...\n\n` +
         `🛡️ مكافحة الاحتيال: ${system.antiSybilEnabled ? '✅' : '❌'}`;
     
     await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
@@ -1566,9 +1522,6 @@ async function startServer() {
         console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
         console.log(`🔑 مفتاح التوقيع: ${CERTIFICATE_SECRET.substring(0, 10)}...`);
         console.log(`🔒 Webhook: /api/webhook/[SECRET]`);
-        console.log(`📊 نظام الكاش: مفعل (${CACHE_TTL/1000} ثانية)`);
-        console.log(`🔐 Rate Limiter للتحقق: 5 محاولات/ساعة`);
-        console.log(`🧹 أمر مسح الكاش: /clearcache`);
         console.log(`💎 العرض المحدود: 800,000,000 💎`);
         console.log(`⛏️ حد التعدين: 1,000,000 💎`);
         console.log(`💰 سحب USDT: ❌ معطل`);
@@ -1581,13 +1534,10 @@ startServer();
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
-console.log('🚀 بوت كريستال التعدين - الإصدار 20.0 (النسخة الذهبية النهائية)');
+console.log('🚀 بوت كريستال التعدين - الإصدار 18.0 (النسخة الآمنة النهائية)');
 console.log('📱 أرسل /start في تليجرام');
 console.log('🔐 الشهادات الرقمية: HMAC-SHA256 + التحقق من الصلاحية');
 console.log('🔒 Webhook: محمي بتوكن البوت + التحقق من المخزون');
-console.log('⛏️ تعدين: عملية ذرية + Rate Limiter');
+console.log('⛏️ تعدين: عملية ذرية - لا يمكن اختراقها');
 console.log('🛡️ دعوة: 3 تعدينات كحد أدنى للمكافأة');
-console.log('📊 كاش الإحصائيات: 5 دقائق');
-console.log('🔐 Rate Limiter: 5 محاولات/ساعة للتحقق');
-console.log('🧹 أمر /clearcache: مسح الكاش');
 console.log('⭐ شراء: 10 ⭐ = 1 💎 (محدود 800M)');
