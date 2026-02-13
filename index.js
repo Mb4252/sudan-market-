@@ -13,9 +13,6 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-// ========== ✅ تفعيل trust proxy لـ Koyeb ==========
-app.set('trust proxy', 1); // ثق بأول proxy (Koyeb, Render, etc)
-
 // ========== ✅ CORS متقدم مع دعم جميع الدومينات ==========
 const allowedOrigins = [
     'https://telegram.org',
@@ -61,13 +58,15 @@ app.use(cors({
 
 app.options('*', cors());
 
-// ========== ✅ Logging جميع الطلبات ==========
+// ========== ✅ Trust Proxy لـ Koyeb ==========
+app.set('trust proxy', true);
+
+// ========== ✅ Logging جميع الطلبات مع IP ==========
 app.use((req, res, next) => {
+    const clientIp = req.headers['x-forwarded-for'] || req.ip || req.connection.remoteAddress;
     console.log(`📨 ${req.method} ${req.path} - Origin: ${req.headers.origin || 'same-origin'}`);
     console.log(`🔑 Auth: ${req.headers.authorization ? 'Present' : 'Missing'}`);
-    if (req.headers['x-forwarded-for']) {
-        console.log(`🌐 X-Forwarded-For: ${req.headers['x-forwarded-for']}`);
-    }
+    console.log(`🌐 X-Forwarded-For: ${clientIp}`);
     next();
 });
 
@@ -98,39 +97,28 @@ app.use((req, res, next) => {
     next();
 });
 
-// ========== ✅ Rate Limiting مع دعم Proxy ==========
+// ✅ Rate Limiting
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 دقيقة
-    max: 100, // الحد الأقصى 100 طلب
+    windowMs: 15 * 60 * 1000,
+    max: 100,
     message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد 15 دقيقة' },
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: (req) => {
-        // استخدم IP من X-Forwarded-For إذا كان موجوداً (لـ Koyeb)
-        const forwarded = req.headers['x-forwarded-for'];
-        const ip = forwarded ? forwarded.split(',')[0].trim() : req.ip;
-        return ip || req.socket.remoteAddress || 'unknown';
-    },
-    validate: {
-        xForwardedForHeader: false, // عطل التحقق من X-Forwarded-For
-        trustProxy: false           // عطل التحقق من trust proxy
+        const clientIp = req.headers['x-forwarded-for'] || req.ip || req.connection.remoteAddress;
+        return clientIp || 'unknown';
     }
 });
 app.use('/api/', limiter);
 
 // ✅ Rate Limit صارم للمسارات العامة
 const strictLimiter = rateLimit({
-    windowMs: 60 * 1000, // دقيقة واحدة
-    max: 30, // 30 طلب كحد أقصى
+    windowMs: 60 * 1000,
+    max: 30,
     message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد دقيقة' },
     keyGenerator: (req) => {
-        const forwarded = req.headers['x-forwarded-for'];
-        const ip = forwarded ? forwarded.split(',')[0].trim() : req.ip;
-        return ip || req.socket.remoteAddress || 'unknown';
-    },
-    validate: {
-        xForwardedForHeader: false,
-        trustProxy: false
+        const clientIp = req.headers['x-forwarded-for'] || req.ip || req.connection.remoteAddress;
+        return clientIp || 'unknown';
     }
 });
 
@@ -138,7 +126,7 @@ const strictLimiter = rateLimit({
 app.use(mongoSanitize({
     replaceWith: '_',
     onSanitize: ({ req, key }) => {
-        console.warn(`🚨 محاولة حقن من IP: ${req.ip}, key: ${key}`);
+        console.warn(`🚨 محاولة حقن من IP: ${req.headers['x-forwarded-for'] || req.ip}, key: ${key}`);
     }
 }));
 
@@ -639,10 +627,25 @@ app.use('/api', (req, res, next) => {
     next();
 });
 
-// ========== تهيئة البوت ==========
+// ========== ✅ تهيئة البوت مع Webhook للإنتاج ==========
 async function initializeBot() {
     try {
-        bot = new TelegramBot(BOT_TOKEN, { polling: true });
+        const isProduction = process.env.NODE_ENV === 'production';
+        
+        bot = new TelegramBot(BOT_TOKEN, { 
+            polling: !isProduction, // polling فقط في التطوير
+            webHook: isProduction ? {
+                port: PORT,
+                host: '0.0.0.0'
+            } : false
+        });
+        
+        if (isProduction) {
+            const webhookUrl = `${APP_URL}/api/webhook/${BOT_TOKEN}`;
+            await bot.setWebHook(webhookUrl);
+            console.log(`🔗 Webhook set to: ${webhookUrl}`);
+        }
+        
         console.log('🤖 البوت يعمل...');
         setupBotCommands();
         return true;
