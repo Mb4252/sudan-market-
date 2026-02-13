@@ -1081,7 +1081,7 @@
         tg.setBackgroundColor('#0b0e14');
         tg.enableClosingConfirmation();
 
-        // ========== المتغيرات العامة ==========
+        // ========== ✅ تحسين التحميل والتحقق من المستخدم ==========
         let userId = null;
         let userData = null;
         let systemData = null;
@@ -1090,6 +1090,31 @@
         let selectedCrystals = 0;
         let selectedPackageElement = null;
         let lastMineTime = null;
+        
+        // ✅ متغيرات حالة التحميل
+        let isAppReady = false;
+        let initializationPromise = null;
+
+        // ✅ دالة انتظار التحميل
+        async function waitForInitialization() {
+            if (isAppReady) return true;
+            if (initializationPromise) return initializationPromise;
+            
+            initializationPromise = new Promise(async (resolve) => {
+                let attempts = 0;
+                while (!userId && attempts < 30) {
+                    await new Promise(r => setTimeout(r, 200));
+                    attempts++;
+                }
+                isAppReady = !!userId;
+                if (!isAppReady) {
+                    console.warn('⚠️ لم يتم تحميل userId بعد 6 ثوان');
+                }
+                resolve(isAppReady);
+            });
+            
+            return initializationPromise;
+        }
 
         // ========== الترجمات ==========
         const translations = {
@@ -1159,7 +1184,8 @@
                 copySuccess: '✅ تم نسخ رابط الدعوة!',
                 certificateBtn: '🔐 شهادة موثقة',
                 certificateView: '📄 عرض الشهادة',
-                certificateDownloaded: '✅ تم تحميل الشهادة'
+                certificateDownloaded: '✅ تم تحميل الشهادة',
+                loadingData: '⚠️ جاري تحميل البيانات...'
             },
             en: {
                 balanceLabel: 'Crystal Balance',
@@ -1227,16 +1253,23 @@
                 copySuccess: '✅ Invite link copied!',
                 certificateBtn: '🔐 Verified Certificate',
                 certificateView: '📄 View Certificate',
-                certificateDownloaded: '✅ Certificate downloaded'
+                certificateDownloaded: '✅ Certificate downloaded',
+                loadingData: '⚠️ Loading data...'
             }
         };
 
         // ========== دالة API آمنة ==========
         window.apiRequest = async function(endpoint, options = {}) {
             try {
+                // ✅ التأكد من وجود initData
+                const initData = window.Telegram?.WebApp?.initData || '';
+                if (!initData) {
+                    console.warn('⚠️ Telegram initData is empty');
+                }
+                
                 const headers = {
                     'Content-Type': 'application/json',
-                    'Authorization': `Telegram ${tg.initData}`,
+                    'Authorization': `Telegram ${initData}`,
                     ...options.headers
                 };
                 
@@ -1274,20 +1307,24 @@
         window.mine = async function() {
             console.log('⛏️ Mining button clicked');
             
+            // ✅ انتظر تحميل userId
+            await waitForInitialization();
+            
             if (!userId) {
-                window.showToast(currentLanguage === 'ar' ? '❌ يرجى تسجيل الدخول' : '❌ Please login', false);
+                window.showToast(currentLanguage === 'ar' ? '❌ جاري تحميل البيانات...' : '❌ Loading data...', false);
                 return;
             }
             
             try {
                 const data = await window.apiRequest('/api/mine', { method: 'POST', body: '{}' });
                 
-                if (data.success) {
+                // ✅ التحقق من وجود data
+                if (data && data.success) {
                     window.showToast(data.message_ar || data.message_en || '✅ تم التعدين!', true);
                     await loadUserData();
                     await loadSystemStats();
                 } else {
-                    window.showToast(data.message_ar || data.message_en || '⏳ لم يحن وقت التعدين بعد', false);
+                    window.showToast(data?.message_ar || data?.message_en || '⏳ لم يحن وقت التعدين بعد', false);
                 }
             } catch (error) {
                 console.error('❌ Mine error:', error);
@@ -1324,13 +1361,16 @@
         window.buyWithStars = async function() {
             console.log('⭐ Buy with stars clicked');
             
+            // ✅ انتظر تحميل userId
+            await waitForInitialization();
+            
             if (!selectedStars) {
                 window.showToast(currentLanguage === 'ar' ? '❌ اختر باقة أولاً' : '❌ Select a package first', false);
                 return;
             }
             
             if (!userId) {
-                window.showToast(currentLanguage === 'ar' ? '❌ يرجى تسجيل الدخول' : '❌ Please login', false);
+                window.showToast(currentLanguage === 'ar' ? '❌ جاري تحميل البيانات...' : '❌ Loading data...', false);
                 return;
             }
             
@@ -1340,11 +1380,12 @@
                     body: JSON.stringify({ starAmount: selectedStars })
                 });
                 
-                if (data.success && data.invoiceUrl) {
+                // ✅ التحقق من وجود data
+                if (data && data.success && data.invoiceUrl) {
                     window.showToast(currentLanguage === 'ar' ? '⭐ جاري فتح صفحة الدفع...' : '⭐ Opening payment page...', true);
                     tg.openTelegramLink(data.invoiceUrl);
                 } else {
-                    window.showToast(data.message_ar || data.message_en || '❌ فشل إنشاء الفاتورة', false);
+                    window.showToast(data?.message_ar || data?.message_en || '❌ فشل إنشاء الفاتورة', false);
                 }
             } catch (error) {
                 console.error('❌ Buy error:', error);
@@ -1359,6 +1400,10 @@
 
         window.copyInviteLink = async function() {
             console.log('📋 Copy invite link');
+            
+            // ✅ انتظر تحميل userId
+            await waitForInitialization();
+            
             try {
                 const data = await window.apiRequest('/api/user/me');
                 const link = `https://t.me/${data.username}?start=invite_${userId}`;
@@ -1441,7 +1486,7 @@
         // ========== دوال التحميل ==========
         async function loadSystemStats() {
             const data = await window.apiRequest('/api/system-stats');
-            if (data.success) {
+            if (data && data.success) {
                 systemData = data.system;
                 updateSupplyUI();
             }
@@ -1488,7 +1533,7 @@
         async function loadUserData() {
             if (!userId) return;
             const data = await window.apiRequest(`/api/user/${userId}`);
-            if (data.success) {
+            if (data && data.success) {
                 userData = data.user;
                 lastMineTime = data.user.last_mine_click;
                 document.getElementById('floatBalance').textContent = parseFloat(userData.balance).toFixed(3);
@@ -1566,7 +1611,7 @@
         async function loadStarOrders() {
             if (!userId) return;
             const data = await window.apiRequest(`/api/star-orders/${userId}`);
-            if (data.success) {
+            if (data && data.success) {
                 let html = '';
                 const t = translations[currentLanguage];
                 if (data.orders.length === 0) {
@@ -1613,7 +1658,7 @@
         async function loadAllOrders() {
             if (!userId) return;
             const data = await window.apiRequest(`/api/star-orders/${userId}`);
-            if (data.success) {
+            if (data && data.success) {
                 let html = '';
                 const t = translations[currentLanguage];
                 if (data.orders.length === 0) {
@@ -1658,7 +1703,7 @@
         async function loadInviteInfo() {
             if (!userId) return;
             const data = await window.apiRequest(`/api/invite-info/${userId}`);
-            if (data.success) {
+            if (data && data.success) {
                 document.getElementById('totalInvites').textContent = data.totalInvites || 0;
                 document.getElementById('totalInviteRewards').textContent = `${(data.totalRewards || 0).toFixed(1)} 💎`;
                 
@@ -1733,7 +1778,7 @@
 
         async function loadLeaderboard() {
             const data = await window.apiRequest('/api/top');
-            if (data.success && data.topUsers) {
+            if (data && data.success && data.topUsers) {
                 let html = '';
                 data.topUsers.forEach((u, i) => {
                     let medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}`;
@@ -1878,15 +1923,28 @@
                 userId = tg.initDataUnsafe.user.id.toString();
                 console.log(`👤 User ID: ${userId}`);
                 
-                await Promise.all([
-                    loadSystemStats(),
-                    loadUserData(),
-                    loadStarOrders(),
-                    loadInviteInfo(),
-                    loadLeaderboard()
-                ]);
-                
-                console.log('✅ Initial data loaded');
+                try {
+                    await Promise.all([
+                        loadSystemStats(),
+                        loadUserData(),
+                        loadStarOrders(),
+                        loadInviteInfo(),
+                        loadLeaderboard()
+                    ]);
+                    
+                    isAppReady = true;
+                    console.log('✅ Initial data loaded');
+                    
+                    // ✅ تفعيل الأزرار بعد التحميل
+                    document.querySelectorAll('.action-card, .mine-button, .star-package, .button-modern').forEach(btn => {
+                        if (!btn.classList.contains('disabled')) {
+                            btn.style.pointerEvents = 'auto';
+                            btn.style.opacity = '1';
+                        }
+                    });
+                } catch (error) {
+                    console.error('❌ Failed to load data:', error);
+                }
             } else {
                 console.error('❌ No user data from Telegram');
                 window.showToast('❌ خطأ في التحقق من هوية المستخدم', false);
@@ -1899,6 +1957,14 @@
             createParticles();
             loadStarPackages();
             loadInitialData();
+            
+            // ✅ تفعيل الأزرار بعد التحميل (ضمان إضافي)
+            setTimeout(() => {
+                if (!isAppReady) {
+                    console.warn('⚠️ App not ready after 5 seconds, forcing activation');
+                    isAppReady = true;
+                }
+            }, 5000);
         });
     </script>
 </body>
