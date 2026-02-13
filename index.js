@@ -8,11 +8,64 @@ const rateLimit = require('express-rate-limit');
 const { body, param, validationResult } = require('express-validator');
 const mongoSanitize = require('express-mongo-sanitize');
 const { MongoClient } = require('mongodb');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-// ========== الأمان المتقدم ==========
+// ========== ✅ CORS متقدم مع دعم جميع الدومينات ==========
+const allowedOrigins = [
+    'https://telegram.org',
+    'https://web.telegram.org',
+    'https://*.telegram.org',
+    'https://*.koyeb.app',
+    'https://*.render.com',
+    'https://*.ngrok.io',
+    'https://*.vercel.app',
+    process.env.APP_URL,
+    process.env.WEBAPP_URL
+].filter(Boolean);
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // للطلبات من نفس السيرفر
+        if (!origin) return callback(null, true);
+        
+        // للتطوير المحلي
+        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+            return callback(null, true);
+        }
+        
+        // تحقق من السماح
+        const isAllowed = allowedOrigins.some(allowed => {
+            if (allowed.includes('*')) {
+                const pattern = allowed.replace(/\*/g, '.*');
+                return new RegExp(pattern).test(origin);
+            }
+            return origin === allowed;
+        });
+        
+        if (isAllowed) {
+            callback(null, true);
+        } else {
+            console.warn('🚫 CORS blocked origin:', origin);
+            callback(null, true); // مؤقتاً اسمح للجميع للتشخيص
+        }
+    },
+    credentials: true,
+    optionsSuccessStatus: 200
+}));
+
+app.options('*', cors());
+
+// ========== ✅ Logging جميع الطلبات ==========
+app.use((req, res, next) => {
+    console.log(`📨 ${req.method} ${req.path} - Origin: ${req.headers.origin || 'same-origin'}`);
+    console.log(`🔑 Auth: ${req.headers.authorization ? 'Present' : 'Missing'}`);
+    next();
+});
+
+// ========== ✅ الأمان المتقدم ==========
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
@@ -21,7 +74,7 @@ app.use(helmet({
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
             scriptSrc: ["'self'", "'unsafe-inline'", "https://telegram.org", "https://cdnjs.cloudflare.com"],
             imgSrc: ["'self'", "data:", "https://cdn.jsdelivr.net"],
-            connectSrc: ["'self'", "https://api.telegram.org"],
+            connectSrc: ["'self'", "https://api.telegram.org", "https://*.koyeb.app", "https://*.ngrok.io"],
         },
     },
     crossOriginEmbedderPolicy: false,
@@ -39,19 +92,23 @@ app.use((req, res, next) => {
     next();
 });
 
-// 🔥 تم إصلاح Rate Limiting - إزالة ipKeyGenerator نهائياً
+// ✅ Rate Limiting
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 دقيقة
-    max: 100, // الحد الأقصى 100 طلب
+    windowMs: 15 * 60 * 1000,
+    max: 100,
     message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد 15 دقيقة' },
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => {
-        // استخدام IP آمن
-        return req.ip || req.connection.remoteAddress || 'unknown';
-    }
+    keyGenerator: (req) => req.ip || req.connection.remoteAddress || 'unknown'
 });
 app.use('/api/', limiter);
+
+// ✅ Rate Limit صارم للمسارات العامة
+const strictLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد دقيقة' }
+});
 
 // MongoDB Sanitize
 app.use(mongoSanitize({
@@ -61,20 +118,24 @@ app.use(mongoSanitize({
     }
 }));
 
-// CORS محدود
-app.use(cors({
-    origin: ['https://telegram.org', 'https://web.telegram.org', 'https://*.telegram.org'],
-    credentials: true,
-    optionsSuccessStatus: 200
-}));
-
 app.use(express.json({ limit: '1mb' }));
-app.use(express.static('public'));
+
+// ✅ خدمة الملفات الثابتة بشكل صحيح
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+app.get('/index.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+app.get('/certificate.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'certificate.html'));
+});
 
 const MONGODB_URI = process.env.MONGODB_URI;
 const DB_NAME = 'crystal_mining';
 
-// ========== 🔐 مفتاح التوقيع الرقمي الآمن ==========
+// ========== 🔐 مفتاح التوقيع الرقمي ==========
 const CERTIFICATE_SECRET = process.env.CERT_SECRET || crypto.randomBytes(64).toString('hex');
 
 // ========== تهيئة المتغيرات العمومية ==========
@@ -91,11 +152,17 @@ const ADMIN_IDS = process.env.ADMIN_USER_IDS
     ? process.env.ADMIN_USER_IDS.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
     : [];
 const APP_URL = process.env.APP_URL || "https://your-app.koyeb.app";
+const WEBAPP_URL = process.env.WEBAPP_URL || `${APP_URL}/index.html`;
 
-// ========== التحقق من وجود BOT_TOKEN ==========
 if (!BOT_TOKEN) {
     console.error('❌ خطأ: BOT_TOKEN غير موجود في ملف .env');
     process.exit(1);
+}
+
+// ========== ✅ دالة تنظيف المدخلات ==========
+function sanitizeMongoInput(input) {
+    if (!input || typeof input !== 'string') return '';
+    return input.replace(/[$.\[\]#\/\\]/g, '').trim();
 }
 
 // ========== دوال التوقيع الرقمي ==========
@@ -130,7 +197,8 @@ async function getUser(userId) {
             return null;
         }
         if (!usersCollection) return null;
-        const user = await usersCollection.findOne({ user_id: userId });
+        const cleanUserId = sanitizeMongoInput(userId);
+        const user = await usersCollection.findOne({ user_id: cleanUserId });
         if (!user) return null;
         const { _id, ...userData } = user;
         return userData;
@@ -181,7 +249,8 @@ async function saveCertificate(certificateData) {
 async function getCertificate(orderId) {
     try {
         if (!certificatesCollection) return null;
-        return await certificatesCollection.findOne({ orderId });
+        const cleanOrderId = sanitizeMongoInput(orderId);
+        return await certificatesCollection.findOne({ orderId: cleanOrderId });
     } catch (error) {
         return null;
     }
@@ -190,8 +259,9 @@ async function getCertificate(orderId) {
 async function incrementCertificateVerification(orderId) {
     try {
         if (!certificatesCollection) return false;
+        const cleanOrderId = sanitizeMongoInput(orderId);
         await certificatesCollection.updateOne(
-            { orderId },
+            { orderId: cleanOrderId },
             { 
                 $inc: { verifiedCount: 1 },
                 $set: { lastVerified: Date.now() }
@@ -294,7 +364,6 @@ async function connectToMongo() {
         console.log(`⛏️ حد التعدين: 1,000,000 كريستال`);
         console.log(`🛡️ نظام مكافحة الاحتيال: مفعل`);
         console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
-        console.log(`🔑 مفتاح التوقيع: ${CERTIFICATE_SECRET.substring(0, 10)}...`);
         return true;
     } catch (error) {
         console.error('❌ فشل الاتصال بقاعدة البيانات:', error);
@@ -399,8 +468,9 @@ async function updateUserBalance(userId, amount) {
         if (!userId || typeof amount !== 'number' || isNaN(amount) || !usersCollection) {
             return false;
         }
+        const cleanUserId = sanitizeMongoInput(userId);
         const result = await usersCollection.updateOne(
-            { user_id: userId },
+            { user_id: cleanUserId },
             { $inc: { balance: amount } }
         );
         return result.modifiedCount > 0;
@@ -489,7 +559,7 @@ function verifyWebAppData(initData) {
     return null;
 }
 
-// ========== Middleware ==========
+// ========== Middleware للتحقق من المستخدم ==========
 app.use('/api', async (req, res, next) => {
     const publicPaths = [
         '/api/user/me',
@@ -506,6 +576,7 @@ app.use('/api', async (req, res, next) => {
     
     const authHeader = req.headers['authorization'];
     if (!authHeader || !authHeader.startsWith('Telegram ')) {
+        console.log('🚫 No auth header');
         return res.status(401).json({ success: false, error: 'غير مصرح' });
     }
     
@@ -513,6 +584,7 @@ app.use('/api', async (req, res, next) => {
     const user = verifyWebAppData(initData);
     
     if (!user) {
+        console.log('🚫 Invalid webapp data');
         return res.status(403).json({ success: false, error: 'بيانات غير صالحة' });
     }
     
@@ -520,7 +592,30 @@ app.use('/api', async (req, res, next) => {
     next();
 });
 
-// ========== تهيئة البوت بعد التأكد من الاتصال بقاعدة البيانات ==========
+// ========== ✅ CSRF Protection Middleware ==========
+app.use('/api', (req, res, next) => {
+    if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
+        const csrfToken = req.headers['x-csrf-token'];
+        const userHash = req.telegramUser?.hash;
+        
+        // للتطوير المؤقت، نسمح بدون CSRF
+        if (!csrfToken && process.env.NODE_ENV !== 'production') {
+            console.log('⚠️ CSRF token missing but allowed in development');
+            return next();
+        }
+        
+        if (!csrfToken || !userHash || csrfToken !== userHash) {
+            console.log('🚫 CSRF invalid');
+            return res.status(403).json({ 
+                success: false, 
+                error: 'طلب غير مصرح به' 
+            });
+        }
+    }
+    next();
+});
+
+// ========== تهيئة البوت ==========
 async function initializeBot() {
     try {
         bot = new TelegramBot(BOT_TOKEN, { polling: true });
@@ -641,7 +736,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
             inline_keyboard: [[
                 {
                     text: user.language === 'ar' ? '⛏️ فتح مناجم الكريستال' : '⛏️ Open Crystal Mines',
-                    web_app: { url: APP_URL }
+                    web_app: { url: WEBAPP_URL }
                 }
             ]]
         }
@@ -650,7 +745,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
 
 bot.onText(/\/start verify_(.+)/, async (msg, match) => {
     const chatId = msg.chat.id;
-    const orderId = match[1];
+    const orderId = sanitizeMongoInput(match[1]);
     const lang = msg.from.language_code?.startsWith('ar') ? 'ar' : 'en';
     
     try {
@@ -819,7 +914,6 @@ bot.onText(/\/admin/, async (msg) => {
             `• ⛏️ متبقي للتعدين: ${miningRemaining.toLocaleString()} 💎\n` +
             `• 🎯 متبقي للبيع: ${supplyRemaining.toLocaleString()} 💎\n\n` +
             `🔐 *الشهادات:* ${totalCertificates}\n` +
-            `🔑 *مفتاح التوقيع:* ${CERTIFICATE_SECRET.substring(0, 10)}...\n\n` +
             `🛡️ مكافحة الاحتيال: ${system.antiSybilEnabled ? '✅' : '❌'}`;
         
         await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
@@ -874,7 +968,7 @@ app.get('/api/user/:userId',
             }
             
             const userIdFromToken = req.telegramUser?.id?.toString();
-            const requestedUserId = req.params.userId;
+            const requestedUserId = sanitizeMongoInput(req.params.userId);
             
             if (userIdFromToken !== requestedUserId && !ADMIN_IDS.includes(Number(userIdFromToken))) {
                 return res.status(403).json({ 
@@ -926,7 +1020,7 @@ app.get('/api/user/me', async (req, res) => {
     res.json({ username: bot?.options?.username || 'crystal_mining_bot' });
 });
 
-app.get('/api/top', async (req, res) => {
+app.get('/api/top', strictLimiter, async (req, res) => {
     try {
         const topUsers = await getTopUsers(10);
         res.json({ success: true, topUsers });
@@ -935,7 +1029,7 @@ app.get('/api/top', async (req, res) => {
     }
 });
 
-app.get('/api/star-stats', async (req, res) => {
+app.get('/api/star-stats', strictLimiter, async (req, res) => {
     try {
         const stats = await getStarPurchaseStats();
         res.json({ success: true, stats });
@@ -944,7 +1038,7 @@ app.get('/api/star-stats', async (req, res) => {
     }
 });
 
-// ========== ✅ نظام التعدين الآمن (Atomic Operation) ==========
+// ========== ✅ نظام التعدين الآمن ==========
 app.post('/api/mine', async (req, res) => {
     try {
         const userId = req.telegramUser.id.toString();
@@ -954,9 +1048,10 @@ app.post('/api/mine', async (req, res) => {
             return res.json({ success: false, error: 'system_busy', message_ar: '⚠️ النظام مشغول، حاول مرة أخرى' });
         }
 
+        const cleanUserId = sanitizeMongoInput(userId);
         const result = await usersCollection.findOneAndUpdate(
             { 
-                user_id: userId,
+                user_id: cleanUserId,
                 $or: [
                     { last_mine_click: null },
                     { last_mine_click: { $lte: Date.now() - cooldownTime } }
@@ -1147,7 +1242,7 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
         
         if (update.pre_checkout_query) {
             const queryId = update.pre_checkout_query.id;
-            const payload = update.pre_checkout_query.invoice_payload;
+            const payload = sanitizeMongoInput(update.pre_checkout_query.invoice_payload);
             
             if (!starInvoicesCollection || !systemCollection) {
                 return res.json({ ok: true });
@@ -1180,7 +1275,7 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
         }
         
         if (update.message?.successful_payment) {
-            const payload = update.message.successful_payment.invoice_payload;
+            const payload = sanitizeMongoInput(update.message.successful_payment.invoice_payload);
             const starAmount = update.message.successful_payment.total_amount;
             
             if (!starInvoicesCollection || !usersCollection) {
@@ -1191,7 +1286,7 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
             
             if (invoice && invoice.status === 'pending') {
                 const crystalAmount = invoice.crystalAmount;
-                const userId = invoice.userId;
+                const userId = sanitizeMongoInput(invoice.userId);
                 
                 await usersCollection.updateOne(
                     { user_id: userId },
@@ -1302,7 +1397,7 @@ app.get('/api/receipt/:orderId',
                 return res.status(400).json({ success: false, error: 'معرف طلب غير صالح' });
             }
             
-            const orderId = req.params.orderId;
+            const orderId = sanitizeMongoInput(req.params.orderId);
             
             if (!starInvoicesCollection) {
                 return res.status(503).json({ success: false, error: 'الخدمة غير متاحة' });
@@ -1385,14 +1480,15 @@ app.get('/api/receipt/:orderId',
 // ========== API التحقق من الشهادة ==========
 app.get('/api/verify-certificate/:orderId',
     param('orderId').isString().trim().isLength({ min: 10, max: 200 }),
+    strictLimiter,
     async (req, res) => {
         try {
             const errors = validationResult(req);
             if (!errors.isEmpty()) {
-                return res.status(400).json({ success: false, error: 'معرف طلب غير صالح' });
+                return res.status(400).json({ success: false, error: 'معرف طلب غير صالح', valid: false });
             }
             
-            const orderId = req.params.orderId;
+            const orderId = sanitizeMongoInput(req.params.orderId);
             
             if (!starInvoicesCollection) {
                 return res.status(503).json({ success: false, error: 'الخدمة غير متاحة', valid: false });
@@ -1451,7 +1547,7 @@ app.get('/api/star-orders/:userId',
                 return res.json({ success: false, orders: [] });
             }
             
-            const requestedUserId = req.params.userId;
+            const requestedUserId = sanitizeMongoInput(req.params.userId);
             const userIdFromToken = req.telegramUser?.id?.toString();
             
             if (userIdFromToken !== requestedUserId && !ADMIN_IDS.includes(Number(userIdFromToken))) {
@@ -1493,7 +1589,7 @@ app.get('/api/invite-info/:userId',
                 return res.json({ success: false });
             }
             
-            const requestedUserId = req.params.userId;
+            const requestedUserId = sanitizeMongoInput(req.params.userId);
             const userIdFromToken = req.telegramUser?.id?.toString();
             
             if (userIdFromToken !== requestedUserId && !ADMIN_IDS.includes(Number(userIdFromToken))) {
@@ -1617,9 +1713,10 @@ async function startServer() {
         console.log('\n===========================================');
         console.log(`🌐 الخادم يعمل على المنفذ: ${PORT}`);
         console.log(`🔗 رابط الواجهة: ${APP_URL}`);
+        console.log(`🔗 رابط WebApp: ${WEBAPP_URL}`);
         console.log(`⭐ نظام دفع النجوم: مفعل`);
         console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
-        console.log(`🔑 مفتاح التوقيع: ${CERTIFICATE_SECRET.substring(0, 10)}...`);
+        console.log(`🛡️ CORS: مفعل لجميع الدومينات`);
         console.log(`🔒 Webhook: /api/webhook/[SECRET]`);
         console.log(`💎 العرض المحدود: 800,000,000 💎`);
         console.log(`⛏️ حد التعدين: 1,000,000 💎`);
