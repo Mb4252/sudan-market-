@@ -66,6 +66,10 @@ app.use(express.static('public'));
 const MONGODB_URI = process.env.MONGODB_URI;
 const DB_NAME = 'crystal_mining';
 
+// ========== 🔐 مفتاح التوقيع الرقمي الآمن ==========
+const CERTIFICATE_SECRET = process.env.CERT_SECRET || crypto.randomBytes(64).toString('hex');
+
+// ========== تهيئة المتغيرات العمومية ==========
 let db;
 let usersCollection;
 let systemCollection;
@@ -73,10 +77,14 @@ let starInvoicesCollection;
 let inviteRewardsCollection;
 let securityLogsCollection;
 let certificatesCollection;
+let bot;
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const ADMIN_IDS = process.env.ADMIN_USER_IDS 
+    ? process.env.ADMIN_USER_IDS.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
+    : [];
+const APP_URL = process.env.APP_URL || "https://your-app.koyeb.app";
 
-// ========== 🔐 مفتاح التوقيع الرقمي الآمن ==========
-const CERTIFICATE_SECRET = process.env.CERT_SECRET || crypto.randomBytes(64).toString('hex');
-
+// ========== دوال التوقيع الرقمي ==========
 function generateCertificateSignature(orderId, userId, amount, timestamp) {
     const hmac = crypto.createHmac('sha256', CERTIFICATE_SECRET);
     hmac.update(`${orderId}:${userId}:${amount}:${timestamp}`);
@@ -99,6 +107,102 @@ function generateVerificationCode(orderId) {
     const hmac = crypto.createHmac('sha256', CERTIFICATE_SECRET);
     hmac.update(`verify:${orderId}:${Date.now()}`);
     return hmac.digest('hex').substring(0, 16);
+}
+
+// ========== دوال مساعدة (تعريف مبكر) ==========
+async function getUser(userId) {
+    try {
+        if (!userId || typeof userId !== 'string' || !/^\d+$/.test(userId)) {
+            return null;
+        }
+        if (!usersCollection) return null;
+        const user = await usersCollection.findOne({ user_id: userId });
+        if (!user) return null;
+        const { _id, ...userData } = user;
+        return userData;
+    } catch (error) {
+        return null;
+    }
+}
+
+async function getSystemStats() {
+    try {
+        if (!systemCollection) return {};
+        const system = await systemCollection.findOne({ _id: 'config' });
+        return system || {};
+    } catch (error) {
+        return {};
+    }
+}
+
+async function updateSystemStats(updates) {
+    try {
+        if (!systemCollection) return false;
+        await systemCollection.updateOne(
+            { _id: 'config' },
+            { $inc: updates }
+        );
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+async function saveCertificate(certificateData) {
+    try {
+        if (!certificatesCollection) return false;
+        await certificatesCollection.insertOne({
+            ...certificateData,
+            createdAt: Date.now(),
+            verifiedCount: 0,
+            lastVerified: null
+        });
+        return true;
+    } catch (error) {
+        console.error('❌ خطأ في حفظ الشهادة:', error);
+        return false;
+    }
+}
+
+async function getCertificate(orderId) {
+    try {
+        if (!certificatesCollection) return null;
+        return await certificatesCollection.findOne({ orderId });
+    } catch (error) {
+        return null;
+    }
+}
+
+async function incrementCertificateVerification(orderId) {
+    try {
+        if (!certificatesCollection) return false;
+        await certificatesCollection.updateOne(
+            { orderId },
+            { 
+                $inc: { verifiedCount: 1 },
+                $set: { lastVerified: Date.now() }
+            }
+        );
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+async function logSecurityEvent(type, userId = null, data = {}) {
+    try {
+        if (!securityLogsCollection) return;
+        await securityLogsCollection.insertOne({
+            type,
+            userId,
+            data,
+            ip: data.ip || null,
+            timestamp: Date.now(),
+            userAgent: data.userAgent || null
+        });
+    } catch (error) {
+        console.error('خطأ في تسجيل الحدث الأمني:', error);
+    }
 }
 
 // ========== الاتصال بقاعدة البيانات ==========
@@ -184,61 +288,6 @@ async function connectToMongo() {
     }
 }
 
-// ========== نظام تسجيل الأحداث الأمنية ==========
-async function logSecurityEvent(type, userId = null, data = {}) {
-    try {
-        await securityLogsCollection.insertOne({
-            type,
-            userId,
-            data,
-            ip: data.ip || null,
-            timestamp: Date.now(),
-            userAgent: data.userAgent || null
-        });
-    } catch (error) {
-        console.error('خطأ في تسجيل الحدث الأمني:', error);
-    }
-}
-
-// ========== دوال حفظ الشهادات ==========
-async function saveCertificate(certificateData) {
-    try {
-        await certificatesCollection.insertOne({
-            ...certificateData,
-            createdAt: Date.now(),
-            verifiedCount: 0,
-            lastVerified: null
-        });
-        return true;
-    } catch (error) {
-        console.error('❌ خطأ في حفظ الشهادة:', error);
-        return false;
-    }
-}
-
-async function getCertificate(orderId) {
-    try {
-        return await certificatesCollection.findOne({ orderId });
-    } catch (error) {
-        return null;
-    }
-}
-
-async function incrementCertificateVerification(orderId) {
-    try {
-        await certificatesCollection.updateOne(
-            { orderId },
-            { 
-                $inc: { verifiedCount: 1 },
-                $set: { lastVerified: Date.now() }
-            }
-        );
-        return true;
-    } catch (error) {
-        return false;
-    }
-}
-
 // ========== التحقق من صحة المدخلات ==========
 const validateUserId = param('userId')
     .isString()
@@ -292,23 +341,9 @@ async function isEligibleForAirdrop(userId) {
     return conditions.every(Boolean);
 }
 
-// ========== دوال المستخدم ==========
-async function getUser(userId) {
-    try {
-        if (!userId || typeof userId !== 'string' || !/^\d+$/.test(userId)) {
-            return null;
-        }
-        const user = await usersCollection.findOne({ user_id: userId });
-        if (!user) return null;
-        const { _id, ...userData } = user;
-        return userData;
-    } catch (error) {
-        return null;
-    }
-}
-
 async function saveUser(userData) {
     try {
+        if (!usersCollection) return false;
         const cleanData = {
             user_id: String(userData.user_id),
             balance: Number(userData.balance) || 0,
@@ -347,7 +382,7 @@ async function saveUser(userData) {
 
 async function updateUserBalance(userId, amount) {
     try {
-        if (!userId || typeof amount !== 'number' || isNaN(amount)) {
+        if (!userId || typeof amount !== 'number' || isNaN(amount) || !usersCollection) {
             return false;
         }
         const result = await usersCollection.updateOne(
@@ -360,80 +395,13 @@ async function updateUserBalance(userId, amount) {
     }
 }
 
-async function getSystemStats() {
-    try {
-        const system = await systemCollection.findOne({ _id: 'config' });
-        return system || {};
-    } catch (error) {
-        return {};
-    }
-}
-
-async function updateSystemStats(updates) {
-    try {
-        await systemCollection.updateOne(
-            { _id: 'config' },
-            { $inc: updates }
-        );
-        return true;
-    } catch (error) {
-        return false;
-    }
-}
-
-// ========== 🔐 دالة التحقق من WebApp Data (محمية بالكامل) ==========
-function verifyWebAppData(initData) {
-    try {
-        if (!initData) return null;
-        
-        const params = new URLSearchParams(initData);
-        const hash = params.get('hash');
-        const authDate = params.get('auth_date');
-        
-        // 🔐 التحقق من انتهاء صلاحية البيانات (24 ساعة)
-        const now = Math.floor(Date.now() / 1000);
-        if (now - parseInt(authDate) > 86400) {
-            console.warn("⚠️ بيانات منتهية الصلاحية");
-            return null;
-        }
-
-        params.delete('hash');
-        const sortedParams = Array.from(params.entries())
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([key, value]) => `${key}=${value}`)
-            .join('\n');
-        
-        const secretKey = crypto.createHmac('sha256', 'WebAppData')
-            .update(BOT_TOKEN)
-            .digest();
-        
-        const calculatedHash = crypto.createHmac('sha256', secretKey)
-            .update(sortedParams)
-            .digest('hex');
-        
-        // 🔐 استخدام timingSafeEqual لمنع Timing Attacks
-        const safeCalculated = Buffer.from(calculatedHash, 'hex');
-        const safeProvided = Buffer.from(hash, 'hex');
-        
-        if (safeCalculated.length === safeProvided.length && 
-            crypto.timingSafeEqual(safeCalculated, safeProvided)) {
-            const userStr = params.get('user');
-            return userStr ? JSON.parse(userStr) : null;
-        }
-    } catch (error) {
-        console.error('خطأ في التحقق:', error);
-    }
-    return null;
-}
-
-// ========== 🏆 دالة المتصدرين (بدون user_id) ==========
 async function getTopUsers(limit = 10) {
     try {
+        if (!usersCollection) return [];
         return await usersCollection
             .find({})
             .sort({ balance: -1 })
             .limit(Math.min(limit, 50))
-            // إزالة user_id من النتائج المرسلة للواجهة
             .project({ first_name: 1, balance: 1, _id: 0 }) 
             .toArray();
     } catch (error) {
@@ -443,6 +411,7 @@ async function getTopUsers(limit = 10) {
 
 async function getStarPurchaseStats() {
     try {
+        if (!starInvoicesCollection) return { totalOrders: 0, totalStars: 0, totalCrystals: 0 };
         const totalOrders = await starInvoicesCollection.countDocuments({ status: 'completed' });
         const totalStars = await starInvoicesCollection.aggregate([
             { $match: { status: 'completed' } },
@@ -463,26 +432,48 @@ async function getStarPurchaseStats() {
     }
 }
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
-if (!BOT_TOKEN) {
-    console.error('❌ خطأ: BOT_TOKEN غير موجود');
-    process.exit(1);
+// ========== التحقق من WebApp Data ==========
+function verifyWebAppData(initData) {
+    try {
+        if (!initData || !BOT_TOKEN) return null;
+        
+        const params = new URLSearchParams(initData);
+        const hash = params.get('hash');
+        const authDate = params.get('auth_date');
+        
+        const now = Math.floor(Date.now() / 1000);
+        if (now - parseInt(authDate) > 86400) {
+            console.warn("⚠️ بيانات منتهية الصلاحية");
+            return null;
+        }
+
+        params.delete('hash');
+        const sortedParams = Array.from(params.entries())
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, value]) => `${key}=${value}`)
+            .join('\n');
+        
+        const secretKey = crypto.createHmac('sha256', 'WebAppData')
+            .update(BOT_TOKEN)
+            .digest();
+        
+        const calculatedHash = crypto.createHmac('sha256', secretKey)
+            .update(sortedParams)
+            .digest('hex');
+        
+        const safeCalculated = Buffer.from(calculatedHash, 'hex');
+        const safeProvided = Buffer.from(hash, 'hex');
+        
+        if (safeCalculated.length === safeProvided.length && 
+            crypto.timingSafeEqual(safeCalculated, safeProvided)) {
+            const userStr = params.get('user');
+            return userStr ? JSON.parse(userStr) : null;
+        }
+    } catch (error) {
+        console.error('خطأ في التحقق:', error);
+    }
+    return null;
 }
-
-let bot;
-try {
-    bot = new TelegramBot(BOT_TOKEN, { polling: true });
-    console.log('🤖 البوت يعمل...');
-} catch (error) {
-    console.error('❌ خطأ في تهيئة البوت:', error);
-    process.exit(1);
-}
-
-const ADMIN_IDS = process.env.ADMIN_USER_IDS 
-    ? process.env.ADMIN_USER_IDS.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
-    : [];
-
-const APP_URL = process.env.APP_URL || "https://your-app.koyeb.app";
 
 // ========== Middleware ==========
 app.use('/api', async (req, res, next) => {
@@ -515,12 +506,36 @@ app.use('/api', async (req, res, next) => {
     next();
 });
 
-// ========== أوامر التليجرام ==========
+// ========== تهيئة البوت بعد التأكد من الاتصال بقاعدة البيانات ==========
+async function initializeBot() {
+    if (!BOT_TOKEN) {
+        console.error('❌ خطأ: BOT_TOKEN غير موجود');
+        process.exit(1);
+    }
+
+    try {
+        bot = new TelegramBot(BOT_TOKEN, { polling: true });
+        console.log('🤖 البوت يعمل...');
+        setupBotCommands();
+    } catch (error) {
+        console.error('❌ خطأ في تهيئة البوت:', error);
+        process.exit(1);
+    }
+}
+
+// ========== إعداد أوامر البوت ==========
+function setupBotCommands() {
+    
 bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id.toString();
     const inviteCode = match[1];
     const lang = msg.from.language_code || 'en';
+    
+    if (!usersCollection) {
+        await bot.sendMessage(chatId, '⚠️ النظام قيد التشغيل، حاول بعد ثانية');
+        return;
+    }
     
     let user = await getUser(userId);
     
@@ -623,13 +638,17 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     });
 });
 
-// ========== نظام التحقق من الشهادات ==========
 bot.onText(/\/start verify_(.+)/, async (msg, match) => {
     const chatId = msg.chat.id;
     const orderId = match[1];
     const lang = msg.from.language_code?.startsWith('ar') ? 'ar' : 'en';
     
     try {
+        if (!starInvoicesCollection) {
+            await bot.sendMessage(chatId, '⚠️ النظام قيد التشغيل');
+            return;
+        }
+        
         const order = await starInvoicesCollection.findOne({ 
             payload: orderId,
             status: 'completed'
@@ -704,13 +723,17 @@ bot.onText(/\/start verify_(.+)/, async (msg, match) => {
     }
 });
 
-// ========== تحديث أمر /setupwebhook ==========
 bot.onText(/\/setupwebhook/, async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     
     if (!ADMIN_IDS.includes(userId)) {
         await bot.sendMessage(chatId, '❌ غير مصرح');
+        return;
+    }
+    
+    if (!BOT_TOKEN) {
+        await bot.sendMessage(chatId, '❌ توكن البوت غير موجود');
         return;
     }
     
@@ -736,7 +759,63 @@ bot.onText(/\/setupwebhook/, async (msg) => {
     }
 });
 
-// ========== API إحصائيات النظام ==========
+bot.onText(/\/admin/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    
+    if (!ADMIN_IDS.includes(userId)) {
+        await bot.sendMessage(chatId, '❌ غير مصرح');
+        return;
+    }
+    
+    try {
+        const totalUsers = await usersCollection?.countDocuments() || 0;
+        const system = await getSystemStats();
+        const starStats = await getStarPurchaseStats();
+        
+        const miningRemaining = Math.max(0, (system.maxMining || 0) - (system.minedSupply || 0));
+        const supplyRemaining = system.remainingSupply || 0;
+        const totalCertificates = await certificatesCollection?.countDocuments() || 0;
+        
+        let starBalance = 'غير معروف';
+        try {
+            const response = await fetch(
+                `https://api.telegram.org/bot${BOT_TOKEN}/getStarBalance`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                }
+            );
+            const data = await response.json();
+            if (data.ok) {
+                starBalance = data.result.balance;
+            }
+        } catch (e) {}
+        
+        const message = 
+            `👑 *لوحة تحكم الأدمن*\n\n` +
+            `📊 *إحصائيات:*\n` +
+            `• 👥 المستخدمون: ${totalUsers}\n` +
+            `• ⭐ رصيد البوت: ${starBalance} ⭐\n` +
+            `• 💰 مبيعات النجوم: ${starStats.totalStars} ⭐\n` +
+            `• 💎 كريستال مباع: ${starStats.totalCrystals.toFixed(1)} 💎\n\n` +
+            `💎 *العرض المحدود:*\n` +
+            `• ⛏️ متبقي للتعدين: ${miningRemaining.toLocaleString()} 💎\n` +
+            `• 🎯 متبقي للبيع: ${supplyRemaining.toLocaleString()} 💎\n\n` +
+            `🔐 *الشهادات:* ${totalCertificates}\n` +
+            `🔑 *مفتاح التوقيع:* ${CERTIFICATE_SECRET.substring(0, 10)}...\n\n` +
+            `🛡️ مكافحة الاحتيال: ${system.antiSybilEnabled ? '✅' : '❌'}`;
+        
+        await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+    } catch (error) {
+        await bot.sendMessage(chatId, '❌ حدث خطأ');
+    }
+});
+
+}
+
+// ========== API Endpoints ==========
+
 app.get('/api/system-stats', async (req, res) => {
     try {
         const system = await getSystemStats();
@@ -769,7 +848,6 @@ app.get('/api/system-stats', async (req, res) => {
     }
 });
 
-// ========== API بيانات المستخدم ==========
 app.get('/api/user/:userId', 
     validateUserId,
     async (req, res) => {
@@ -806,7 +884,7 @@ app.get('/api/user/:userId',
                     }
                 }
                 
-                const miningRemaining = Math.max(0, system.maxMining - (system.minedSupply || 0));
+                const miningRemaining = Math.max(0, (system.maxMining || 0) - (system.minedSupply || 0));
                 const isEligible = system.antiSybilEnabled ? await isEligibleForAirdrop(requestedUserId) : false;
                 
                 res.json({ 
@@ -829,10 +907,9 @@ app.get('/api/user/:userId',
 });
 
 app.get('/api/user/me', async (req, res) => {
-    res.json({ username: bot.options.username });
+    res.json({ username: bot?.options?.username || 'crystal_mining_bot' });
 });
 
-// ========== 🏆 API المتصدرين (بدون user_id) ==========
 app.get('/api/top', async (req, res) => {
     try {
         const topUsers = await getTopUsers(10);
@@ -856,6 +933,10 @@ app.post('/api/mine', async (req, res) => {
     try {
         const userId = req.telegramUser.id.toString();
         const cooldownTime = 24 * 60 * 60 * 1000;
+
+        if (!usersCollection) {
+            return res.json({ success: false, error: 'system_busy', message_ar: '⚠️ النظام مشغول' });
+        }
 
         const result = await usersCollection.findOneAndUpdate(
             { 
@@ -953,6 +1034,9 @@ async function createStarInvoice(userId, starAmount, description) {
 
         const data = await response.json();
         if (data.ok) {
+            if (!starInvoicesCollection) {
+                return { success: false, error: 'database_not_ready' };
+            }
             await starInvoicesCollection.insertOne({
                 payload: payload,
                 userId: userId,
@@ -1040,7 +1124,7 @@ app.post('/api/buy-with-stars',
         }
 });
 
-// ========== 🔐 Webhook الآمن (بمسار سري + التحقق من المخزون) ==========
+// ========== 🔐 Webhook الآمن ==========
 app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
     try {
         const update = req.body;
@@ -1049,7 +1133,10 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
             const queryId = update.pre_checkout_query.id;
             const payload = update.pre_checkout_query.invoice_payload;
             
-            // 🔐 التحقق من المخزون قبل الموافقة على الدفع
+            if (!starInvoicesCollection || !systemCollection) {
+                return res.json({ ok: true });
+            }
+            
             const invoice = await starInvoicesCollection.findOne({ payload });
             const system = await getSystemStats();
 
@@ -1079,6 +1166,10 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
         if (update.message?.successful_payment) {
             const payload = update.message.successful_payment.invoice_payload;
             const starAmount = update.message.successful_payment.total_amount;
+            
+            if (!starInvoicesCollection || !usersCollection) {
+                return res.json({ ok: true });
+            }
             
             const invoice = await starInvoicesCollection.findOne({ payload });
             
@@ -1145,9 +1236,9 @@ app.post(`/api/webhook/${BOT_TOKEN}`, async (req, res) => {
                       `🔐 *Certificate:* Created\n\n` +
                       `📄 Payment certificate available in purchases page`;
                 
-                await bot.sendMessage(userId, successMessage, { parse_mode: 'Markdown' });
+                await bot?.sendMessage(userId, successMessage, { parse_mode: 'Markdown' });
                 
-                if (user?.invited_by) {
+                if (user?.invited_by && inviteRewardsCollection) {
                     const pendingReward = await inviteRewardsCollection.findOne({
                         inviterId: user.invited_by,
                         invitedId: userId,
@@ -1196,6 +1287,10 @@ app.get('/api/receipt/:orderId',
             
             const orderId = req.params.orderId;
             
+            if (!starInvoicesCollection) {
+                return res.status(503).json({ success: false, error: 'الخدمة غير متاحة' });
+            }
+            
             const order = await starInvoicesCollection.findOne({ 
                 payload: orderId,
                 status: 'completed'
@@ -1239,7 +1334,7 @@ app.get('/api/receipt/:orderId',
                 });
             }
             
-            const botUsername = bot.options.username;
+            const botUsername = bot?.options?.username || 'crystal_mining_bot';
             const verifyLink = `https://t.me/${botUsername}?start=verify_${order.payload}`;
             
             const receipt = {
@@ -1252,7 +1347,7 @@ app.get('/api/receipt/:orderId',
                 rate: '10 ⭐ = 1 💎',
                 status: 'مكتمل',
                 bot_name: 'كريستال التعدين',
-                bot_username: bot.options.username,
+                bot_username: botUsername,
                 signature: signature,
                 verification_code: verificationCode,
                 verify_link: verifyLink,
@@ -1280,6 +1375,10 @@ app.get('/api/verify-certificate/:orderId',
             }
             
             const orderId = req.params.orderId;
+            
+            if (!starInvoicesCollection) {
+                return res.status(503).json({ success: false, error: 'الخدمة غير متاحة', valid: false });
+            }
             
             const order = await starInvoicesCollection.findOne({ 
                 payload: orderId,
@@ -1341,6 +1440,10 @@ app.get('/api/star-orders/:userId',
                 return res.json({ success: false, orders: [] });
             }
             
+            if (!starInvoicesCollection) {
+                return res.json({ success: false, orders: [] });
+            }
+            
             const orders = await starInvoicesCollection
                 .find({ userId: requestedUserId })
                 .sort({ createdAt: -1 })
@@ -1384,6 +1487,10 @@ app.get('/api/invite-info/:userId',
                 return res.json({ success: false });
             }
             
+            if (!inviteRewardsCollection) {
+                return res.json({ success: false });
+            }
+            
             const totalInvites = user.total_invites || 0;
             
             const rewards = await inviteRewardsCollection.find({
@@ -1419,9 +1526,11 @@ app.get('/api/invite-info/:userId',
         }
 });
 
-// ========== ✅ معالجة الدعوات المعلقة (محمية ضد الحسابات الوهمية) ==========
+// ========== معالجة الدعوات المعلقة ==========
 async function processPendingInvites() {
     try {
+        if (!inviteRewardsCollection || !usersCollection) return;
+        
         const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
         
         const pendingRewards = await inviteRewardsCollection.find({
@@ -1432,7 +1541,6 @@ async function processPendingInvites() {
         for (const reward of pendingRewards) {
             const invitedUser = await getUser(reward.invitedId);
             
-            // 🔐 لا تعطي مكافأة إلا إذا قام المستخدم المدعو بالتعدين 3 مرات على الأقل
             if (invitedUser && invitedUser.total_mined >= 3) {
                 await usersCollection.updateOne(
                     { user_id: reward.inviterId },
@@ -1459,7 +1567,7 @@ async function processPendingInvites() {
                     : `⏳ *Limited Invite Reward*\n\n👤 ${reward.invitedName}\n⛏️ Mined 3+ times\n🎁 +0.3 💎`;
                 
                 try {
-                    await bot.sendMessage(reward.inviterId, message, { parse_mode: 'Markdown' });
+                    await bot?.sendMessage(reward.inviterId, message, { parse_mode: 'Markdown' });
                 } catch (e) {}
             }
         }
@@ -1467,52 +1575,18 @@ async function processPendingInvites() {
 }
 
 setInterval(processPendingInvites, 60 * 60 * 1000);
-setTimeout(processPendingInvites, 10 * 1000);
-
-// ========== أوامر الأدمن ==========
-function isAdmin(userId) {
-    return ADMIN_IDS.includes(Number(userId));
-}
-
-bot.onText(/\/admin/, async (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    
-    if (!isAdmin(userId)) {
-        await bot.sendMessage(chatId, '❌ غير مصرح');
-        return;
-    }
-    
-    const totalUsers = await usersCollection.countDocuments();
-    const system = await getSystemStats();
-    const starStats = await getStarPurchaseStats();
-    
-    const miningRemaining = Math.max(0, system.maxMining - (system.minedSupply || 0));
-    const supplyRemaining = system.remainingSupply || 0;
-    const totalCertificates = await certificatesCollection.countDocuments();
-    
-    const message = 
-        `👑 *لوحة تحكم الأدمن*\n\n` +
-        `📊 *إحصائيات:*\n` +
-        `• 👥 المستخدمون: ${totalUsers}\n` +
-        `• ⭐ مبيعات النجوم: ${starStats.totalStars} ⭐\n` +
-        `• 💎 كريستال مباع: ${starStats.totalCrystals.toFixed(1)} 💎\n\n` +
-        `💎 *العرض المحدود:*\n` +
-        `• ⛏️ متبقي للتعدين: ${miningRemaining.toLocaleString()} 💎\n` +
-        `• 🎯 متبقي للبيع: ${supplyRemaining.toLocaleString()} 💎\n\n` +
-        `🔐 *الشهادات:* ${totalCertificates}\n` +
-        `🔑 *مفتاح التوقيع:* ${CERTIFICATE_SECRET.substring(0, 10)}...\n\n` +
-        `🛡️ مكافحة الاحتيال: ${system.antiSybilEnabled ? '✅' : '❌'}`;
-    
-    await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-});
 
 // ========== تشغيل الخادم ==========
 async function startServer() {
     const connected = await connectToMongo();
     if (!connected) {
+        console.error('❌ فشل الاتصال بقاعدة البيانات - تأكد من MONGODB_URI');
         process.exit(1);
     }
+    
+    await initializeBot();
+    setInterval(processPendingInvites, 60 * 60 * 1000);
+    setTimeout(processPendingInvites, 10 * 1000);
     
     app.listen(PORT, () => {
         console.log('\n===========================================');
@@ -1531,13 +1605,23 @@ async function startServer() {
 
 startServer();
 
-process.on('SIGINT', () => process.exit(0));
-process.on('SIGTERM', () => process.exit(0));
+process.on('SIGINT', () => {
+    console.log('\n🛑 إيقاف البوت...');
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('\n🛑 إيقاف البوت...');
+    process.exit(0);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('❌ استثناء غير متوقع:', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('❌ رفض وعد غير معالج:', reason);
+});
 
 console.log('🚀 بوت كريستال التعدين - الإصدار 18.0 (النسخة الآمنة النهائية)');
-console.log('📱 أرسل /start في تليجرام');
-console.log('🔐 الشهادات الرقمية: HMAC-SHA256 + التحقق من الصلاحية');
-console.log('🔒 Webhook: محمي بتوكن البوت + التحقق من المخزون');
-console.log('⛏️ تعدين: عملية ذرية - لا يمكن اختراقها');
-console.log('🛡️ دعوة: 3 تعدينات كحد أدنى للمكافأة');
-console.log('⭐ شراء: 10 ⭐ = 1 💎 (محدود 800M)');
+console.log('📱 سيبدأ البوت بعد الاتصال بقاعدة البيانات...');
