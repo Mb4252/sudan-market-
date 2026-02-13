@@ -13,6 +13,9 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 8000;
 
+// ========== ✅ تفعيل trust proxy لـ Koyeb ==========
+app.set('trust proxy', 1); // ثق بأول proxy (Koyeb, Render, etc)
+
 // ========== ✅ CORS متقدم مع دعم جميع الدومينات ==========
 const allowedOrigins = [
     'https://telegram.org',
@@ -62,6 +65,9 @@ app.options('*', cors());
 app.use((req, res, next) => {
     console.log(`📨 ${req.method} ${req.path} - Origin: ${req.headers.origin || 'same-origin'}`);
     console.log(`🔑 Auth: ${req.headers.authorization ? 'Present' : 'Missing'}`);
+    if (req.headers['x-forwarded-for']) {
+        console.log(`🌐 X-Forwarded-For: ${req.headers['x-forwarded-for']}`);
+    }
     next();
 });
 
@@ -92,22 +98,40 @@ app.use((req, res, next) => {
     next();
 });
 
-// ✅ Rate Limiting
+// ========== ✅ Rate Limiting مع دعم Proxy ==========
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
+    windowMs: 15 * 60 * 1000, // 15 دقيقة
+    max: 100, // الحد الأقصى 100 طلب
     message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد 15 دقيقة' },
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => req.ip || req.connection.remoteAddress || 'unknown'
+    keyGenerator: (req) => {
+        // استخدم IP من X-Forwarded-For إذا كان موجوداً (لـ Koyeb)
+        const forwarded = req.headers['x-forwarded-for'];
+        const ip = forwarded ? forwarded.split(',')[0].trim() : req.ip;
+        return ip || req.socket.remoteAddress || 'unknown';
+    },
+    validate: {
+        xForwardedForHeader: false, // عطل التحقق من X-Forwarded-For
+        trustProxy: false           // عطل التحقق من trust proxy
+    }
 });
 app.use('/api/', limiter);
 
 // ✅ Rate Limit صارم للمسارات العامة
 const strictLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 30,
-    message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد دقيقة' }
+    windowMs: 60 * 1000, // دقيقة واحدة
+    max: 30, // 30 طلب كحد أقصى
+    message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد دقيقة' },
+    keyGenerator: (req) => {
+        const forwarded = req.headers['x-forwarded-for'];
+        const ip = forwarded ? forwarded.split(',')[0].trim() : req.ip;
+        return ip || req.socket.remoteAddress || 'unknown';
+    },
+    validate: {
+        xForwardedForHeader: false,
+        trustProxy: false
+    }
 });
 
 // MongoDB Sanitize
@@ -1716,6 +1740,7 @@ async function startServer() {
         console.log(`🔗 رابط WebApp: ${WEBAPP_URL}`);
         console.log(`⭐ نظام دفع النجوم: مفعل`);
         console.log(`🔐 نظام الشهادات الرقمية: مفعل`);
+        console.log(`🛡️ Trust Proxy: مفعل (لـ Koyeb)`);
         console.log(`🛡️ CORS: مفعل لجميع الدومينات`);
         console.log(`🔒 Webhook: /api/webhook/[SECRET]`);
         console.log(`💎 العرض المحدود: 800,000,000 💎`);
