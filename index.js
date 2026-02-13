@@ -1719,8 +1719,6 @@ async function processPendingInvites() {
 }
 
 setInterval(processPendingInvites, 60 * 60 * 1000);
-// منع تشغيل السيرفر مرتين
-process.env.NODE_ENV === 'production' && process.send && process.send('ready');
 // ========== تشغيل الخادم ==========
 async function startServer() {
     console.log('🚀 جاري تشغيل بوت كريستال التعدين...');
