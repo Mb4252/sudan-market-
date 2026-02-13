@@ -13,6 +13,9 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 8000;
 
+// ✅ 1. أول شيء: تفعيل trust proxy (الأهم!)
+app.set('trust proxy', 1); // أو 'true' أو عدد الـ proxies
+
 // ========== ✅ CORS متقدم مع دعم جميع الدومينات ==========
 const allowedOrigins = [
     'https://telegram.org',
@@ -28,15 +31,10 @@ const allowedOrigins = [
 
 app.use(cors({
     origin: function (origin, callback) {
-        // للطلبات من نفس السيرفر
         if (!origin) return callback(null, true);
-        
-        // للتطوير المحلي
         if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
             return callback(null, true);
         }
-        
-        // تحقق من السماح
         const isAllowed = allowedOrigins.some(allowed => {
             if (allowed.includes('*')) {
                 const pattern = allowed.replace(/\*/g, '.*');
@@ -44,13 +42,7 @@ app.use(cors({
             }
             return origin === allowed;
         });
-        
-        if (isAllowed) {
-            callback(null, true);
-        } else {
-            console.warn('🚫 CORS blocked origin:', origin);
-            callback(null, true); // مؤقتاً اسمح للجميع للتشخيص
-        }
+        callback(null, isAllowed || true); // مؤقتاً نسمح للكل
     },
     credentials: true,
     optionsSuccessStatus: 200
@@ -62,6 +54,7 @@ app.options('*', cors());
 app.use((req, res, next) => {
     console.log(`📨 ${req.method} ${req.path} - Origin: ${req.headers.origin || 'same-origin'}`);
     console.log(`🔑 Auth: ${req.headers.authorization ? 'Present' : 'Missing'}`);
+    console.log(`🌐 IP: ${req.ip}, X-Forwarded-For: ${req.headers['x-forwarded-for']}`);
     next();
 });
 
@@ -81,6 +74,32 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
+// ========== ✅ Rate Limiting مُحدث (بدون خطأ X-Forwarded-For) ==========
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 دقيقة
+    max: 100,
+    message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد 15 دقيقة' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+        // استخدام IP بشكل آمن مع trust proxy
+        return req.ip || req.connection.remoteAddress || 'unknown';
+    },
+    // تجاهل التحقق من X-Forwarded-For
+    validate: { trustProxy: false }
+});
+
+app.use('/api/', limiter);
+
+// Rate Limit صارم للمسارات العامة
+const strictLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد دقيقة' },
+    keyGenerator: (req) => req.ip || req.connection.remoteAddress || 'unknown',
+    validate: { trustProxy: false }
+});
+
 // منع الوصول للملفات الحساسة
 app.use((req, res, next) => {
     if (req.path.includes('.env') || 
@@ -90,24 +109,6 @@ app.use((req, res, next) => {
         return res.status(403).send('Forbidden');
     }
     next();
-});
-
-// ✅ Rate Limiting
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-    message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد 15 دقيقة' },
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req) => req.ip || req.connection.remoteAddress || 'unknown'
-});
-app.use('/api/', limiter);
-
-// ✅ Rate Limit صارم للمسارات العامة
-const strictLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 30,
-    message: { success: false, error: 'طلبات كثيرة جداً، حاول بعد دقيقة' }
 });
 
 // MongoDB Sanitize
@@ -120,7 +121,7 @@ app.use(mongoSanitize({
 
 app.use(express.json({ limit: '1mb' }));
 
-// ✅ خدمة الملفات الثابتة بشكل صحيح
+// خدمة الملفات الثابتة بشكل صحيح
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -559,7 +560,7 @@ function verifyWebAppData(initData) {
     return null;
 }
 
-// ========== Middleware للتحقق من المستخدم ==========
+// ========== ✅ Middleware للتحقق من المستخدم (معدل للتطوير) ==========
 app.use('/api', async (req, res, next) => {
     const publicPaths = [
         '/api/user/me',
@@ -570,11 +571,20 @@ app.use('/api', async (req, res, next) => {
         '/api/verify-certificate'
     ];
     
+    // المسارات العامة لا تحتاج تحقق
     if (publicPaths.includes(req.path)) {
         return next();
     }
     
     const authHeader = req.headers['authorization'];
+    
+    // ✅ نسمح بالتطوير بدون توكن
+    if (!authHeader && process.env.NODE_ENV !== 'production') {
+        console.log('⚠️ Development mode - allowing request without token');
+        req.telegramUser = { id: '123456789', hash: 'dev-mode' };
+        return next();
+    }
+    
     if (!authHeader || !authHeader.startsWith('Telegram ')) {
         console.log('🚫 No auth header');
         return res.status(401).json({ success: false, error: 'غير مصرح' });
@@ -592,15 +602,14 @@ app.use('/api', async (req, res, next) => {
     next();
 });
 
-// ========== ✅ CSRF Protection Middleware ==========
+// ========== ✅ CSRF Protection (معدل للتطوير) ==========
 app.use('/api', (req, res, next) => {
     if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
         const csrfToken = req.headers['x-csrf-token'];
         const userHash = req.telegramUser?.hash;
         
-        // للتطوير المؤقت، نسمح بدون CSRF
-        if (!csrfToken && process.env.NODE_ENV !== 'production') {
-            console.log('⚠️ CSRF token missing but allowed in development');
+        // ✅ نسمح في التطوير
+        if (process.env.NODE_ENV !== 'production') {
             return next();
         }
         
