@@ -783,8 +783,8 @@
     
     <!-- Language Switcher -->
     <div class="lang-switch">
-        <button class="lang-btn active" onclick="setLanguage('ar')" id="langAr">🇸🇦 العربية</button>
-        <button class="lang-btn" onclick="setLanguage('en')" id="langEn">🇬🇧 English</button>
+        <button class="lang-btn active" onclick="window.setLanguage('ar')" id="langAr">🇸🇦 العربية</button>
+        <button class="lang-btn" onclick="window.setLanguage('en')" id="langEn">🇬🇧 English</button>
     </div>
     
     <!-- Balance Float -->
@@ -837,7 +837,7 @@
         <!-- Mining Card -->
         <div class="mine-card">
             <div class="crystal-progress">
-                <div class="mine-button" onclick="mine()" id="mineButton">
+                <div class="mine-button" onclick="window.mine()" id="mineButton">
                     <div class="mine-emoji">⛏️</div>
                     <div class="mine-text" id="mineText">تعدين!</div>
                     <div class="mine-subtext" id="mineSubtext">اضغط لاستخراج 1 كريستال</div>
@@ -866,7 +866,7 @@
 
         <!-- Action Cards -->
         <div class="action-cards">
-            <div class="action-card" onclick="openBuyModal()" id="buyCard">
+            <div class="action-card" onclick="window.openBuyModal()" id="buyCard">
                 <div class="card-icon">⭐</div>
                 <div class="card-title" id="buyTitle">شراء بالنجوم</div>
                 <div class="card-price" id="buyPrice">10 ⭐ = 1 💎</div>
@@ -887,11 +887,11 @@
 
         <!-- Tabs -->
         <div class="modern-tabs">
-            <div class="modern-tab active" onclick="switchTab(event, 'buy')" id="tabBuy">⭐ <span>شراء</span></div>
-            <div class="modern-tab" onclick="switchTab(event, 'orders')" id="tabOrders">📋 <span>مشترياتي</span></div>
-            <div class="modern-tab" onclick="switchTab(event, 'invite')" id="tabInvite">👥 <span>دعوة</span></div>
-            <div class="modern-tab" onclick="switchTab(event, 'leaderboard')" id="tabLeaderboard">🏆 <span>المتصدرين</span></div>
-            <div class="modern-tab" onclick="switchTab(event, 'stats')" id="tabStats">📊 <span>إحصائياتي</span></div>
+            <div class="modern-tab active" onclick="window.switchTab(event, 'buy')" id="tabBuy">⭐ <span>شراء</span></div>
+            <div class="modern-tab" onclick="window.switchTab(event, 'orders')" id="tabOrders">📋 <span>مشترياتي</span></div>
+            <div class="modern-tab" onclick="window.switchTab(event, 'invite')" id="tabInvite">👥 <span>دعوة</span></div>
+            <div class="modern-tab" onclick="window.switchTab(event, 'leaderboard')" id="tabLeaderboard">🏆 <span>المتصدرين</span></div>
+            <div class="modern-tab" onclick="window.switchTab(event, 'stats')" id="tabStats">📊 <span>إحصائياتي</span></div>
         </div>
 
         <!-- Buy Section -->
@@ -930,7 +930,7 @@
                     </div>
                 </div>
                 
-                <button class="button-modern" onclick="buyWithStars()" id="buyStarsBtn" disabled style="opacity: 0.5;">
+                <button class="button-modern" onclick="window.buyWithStars()" id="buyStarsBtn" disabled style="opacity: 0.5;">
                     ⭐ <span id="payButtonText">ادفع بالنجوم</span>
                 </button>
                 
@@ -1000,10 +1000,10 @@
                 
                 <div class="wallet-address-box" id="inviteLink" style="margin-bottom: 15px; direction: ltr;">جاري تحميل رابط الدعوة...</div>
                 
-                <button class="button-modern" onclick="copyInviteLink()" style="margin-bottom: 10px;">
+                <button class="button-modern" onclick="window.copyInviteLink()" style="margin-bottom: 10px;">
                     📋 <span id="copyLinkText">نسخ رابط الدعوة</span>
                 </button>
-                <button class="button-modern button-outline" onclick="shareInviteLink()">
+                <button class="button-modern button-outline" onclick="window.shareInviteLink()">
                     🔗 <span id="shareLinkText">مشاركة الرابط</span>
                 </button>
                 
@@ -1073,22 +1073,25 @@
     </div>
 
     <script>
+        // ========== تهيئة Telegram WebApp ==========
         let tg = window.Telegram.WebApp;
-        let userId = null;
-        let userData = null;
-        let systemData = null;
-        let miningFraction = 0;
-        let lastMineTime = null;
-        let selectedStars = 0;
-        let selectedCrystals = 0;
-        let selectedPackageElement = null;
-        let currentLanguage = 'ar';
-
         tg.expand();
         tg.ready();
         tg.setHeaderColor('#0b0e14');
         tg.setBackgroundColor('#0b0e14');
+        tg.enableClosingConfirmation();
 
+        // ========== المتغيرات العامة ==========
+        let userId = null;
+        let userData = null;
+        let systemData = null;
+        let currentLanguage = 'ar';
+        let selectedStars = 0;
+        let selectedCrystals = 0;
+        let selectedPackageElement = null;
+        let lastMineTime = null;
+
+        // ========== الترجمات ==========
         const translations = {
             ar: {
                 balanceLabel: 'رصيد الكريستال',
@@ -1228,162 +1231,216 @@
             }
         };
 
-        function setLanguage(lang) {
-            currentLanguage = lang;
-            document.body.dir = lang === 'ar' ? 'rtl' : 'ltr';
-            document.getElementById('langAr').classList.toggle('active', lang === 'ar');
-            document.getElementById('langEn').classList.toggle('active', lang === 'en');
-            updateUIText();
-            if (userId) {
-                apiRequest('/api/set-language', {
-                    method: 'POST',
-                    body: JSON.stringify({ language: lang })
-                });
-            }
-        }
-
-        function updateUIText() {
-            const t = translations[currentLanguage];
-            for (const [key, value] of Object.entries(t)) {
-                const el = document.getElementById(key);
-                if (el) {
-                    if (el.tagName === 'SPAN' || el.tagName === 'DIV' || el.tagName === 'H1' || 
-                        el.tagName === 'H2' || el.tagName === 'H3' || el.tagName === 'H4' || 
-                        el.tagName === 'P' || el.tagName === 'BUTTON') {
-                        if (key === 'badgeText' || key === 'supplyTitle' || key === 'soldLabel' || 
-                            key === 'remainingLabel' || key === 'miningProgressLabel' || key === 'mineText' ||
-                            key === 'mineSubtext' || key === 'miningLimitText' || key === 'miningEndedText' ||
-                            key === 'buyTitle' || key === 'buyPrice' || key === 'buySectionTitle' ||
-                            key === 'buySectionDesc' || key === 'selectedLabel' || key === 'youGetLabel' ||
-                            key === 'payButtonText' || key === 'paymentInfoText' || key === 'certificateInfoText' ||
-                            key === 'purchaseHistoryTitle' || key === 'verifiedBadge' || key === 'soldOutTitle' ||
-                            key === 'soldOutText' || key === 'soldOutSub' || key === 'withdrawTitle' ||
-                            key === 'withdrawPrice' || key === 'listingTitle' || key === 'listingText' ||
-                            key === 'listingSmall' || key === 'inviteTitle' || key === 'inviteDesc' ||
-                            key === 'rewardBuy' || key === 'rewardNoBuy' || key === 'invitesCountLabel' ||
-                            key === 'rewardsTotalLabel' || key === 'copyLinkText' || key === 'shareLinkText' ||
-                            key === 'recentInvitesTitle' || key === 'leaderboardTitle' || key === 'leaderboardDesc' ||
-                            key === 'leaderboardNote' || key === 'statsTitle' || key === 'statMined' ||
-                            key === 'statStreak' || key === 'statStarPurchases' || key === 'statBought' ||
-                            key === 'statInvites' || key === 'statRank' || key === 'certificateNote') {
-                            el.innerHTML = value;
-                        }
-                    }
-                }
-            }
-            document.getElementById('balanceLabel').innerHTML = t.balanceLabel;
-            document.getElementById('titleText').innerHTML = t.titleText;
-            document.getElementById('badgeText').innerHTML = t.badgeText;
-            document.getElementById('instantPayment').innerHTML = t.instantPayment;
-            document.getElementById('supplyTitle').innerHTML = t.supplyTitle;
-            document.getElementById('soldLabel').innerHTML = t.soldLabel;
-            document.getElementById('remainingLabel').innerHTML = t.remainingLabel;
-            document.getElementById('miningProgressLabel').innerHTML = t.miningProgressLabel;
-            document.getElementById('mineText').innerHTML = t.mineText;
-            document.getElementById('mineSubtext').innerHTML = t.mineSubtext;
-            document.getElementById('miningLimitText').innerHTML = t.miningLimitText + ' ' + (systemData?.miningRemaining?.toLocaleString() || '1,000,000') + ' 💎';
-            document.getElementById('miningEndedText').innerHTML = t.miningEndedText;
-            document.getElementById('buyTitle').innerHTML = t.buyTitle;
-            document.getElementById('buyPrice').innerHTML = t.buyPrice;
-            document.getElementById('buySectionTitle').innerHTML = t.buySectionTitle;
-            document.getElementById('buySectionDesc').innerHTML = t.buySectionDesc;
-            document.getElementById('selectedLabel').innerHTML = t.selectedLabel;
-            document.getElementById('youGetLabel').innerHTML = t.youGetLabel;
-            document.getElementById('payButtonText').innerHTML = t.payButtonText;
-            document.getElementById('paymentInfoText').innerHTML = t.paymentInfoText;
-            document.getElementById('certificateInfoText').innerHTML = t.certificateInfoText;
-            document.getElementById('purchaseHistoryTitle').innerHTML = t.purchaseHistoryTitle;
-            document.getElementById('verifiedBadge').innerHTML = t.verifiedBadge;
-            document.getElementById('soldOutTitle').innerHTML = t.soldOutTitle;
-            document.getElementById('soldOutText').innerHTML = t.soldOutText;
-            document.getElementById('soldOutSub').innerHTML = t.soldOutSub;
-            document.getElementById('withdrawTitle').innerHTML = t.withdrawTitle;
-            document.getElementById('withdrawPrice').innerHTML = t.withdrawPrice;
-            document.getElementById('listingTitle').innerHTML = t.listingTitle;
-            document.getElementById('listingText').innerHTML = t.listingText;
-            document.getElementById('listingSmall').innerHTML = t.listingSmall;
-            document.getElementById('tabBuy').querySelector('span').innerHTML = t.tabBuy;
-            document.getElementById('tabOrders').querySelector('span').innerHTML = t.tabOrders;
-            document.getElementById('tabInvite').querySelector('span').innerHTML = t.tabInvite;
-            document.getElementById('tabLeaderboard').querySelector('span').innerHTML = t.tabLeaderboard;
-            document.getElementById('tabStats').querySelector('span').innerHTML = t.tabStats;
-            document.getElementById('inviteTitle').innerHTML = t.inviteTitle;
-            document.getElementById('inviteDesc').innerHTML = t.inviteDesc;
-            document.getElementById('rewardBuy').innerHTML = t.rewardBuy;
-            document.getElementById('rewardNoBuy').innerHTML = t.rewardNoBuy;
-            document.getElementById('invitesCountLabel').innerHTML = t.invitesCountLabel;
-            document.getElementById('rewardsTotalLabel').innerHTML = t.rewardsTotalLabel;
-            document.getElementById('copyLinkText').innerHTML = t.copyLinkText;
-            document.getElementById('shareLinkText').innerHTML = t.shareLinkText;
-            document.getElementById('recentInvitesTitle').innerHTML = t.recentInvitesTitle;
-            document.getElementById('leaderboardTitle').innerHTML = t.leaderboardTitle;
-            document.getElementById('leaderboardDesc').innerHTML = t.leaderboardDesc;
-            document.getElementById('leaderboardNote').innerHTML = t.leaderboardNote;
-            document.getElementById('statsTitle').innerHTML = t.statsTitle;
-            document.getElementById('statMined').innerHTML = t.statMined;
-            document.getElementById('statStreak').innerHTML = t.statStreak;
-            document.getElementById('statStarPurchases').innerHTML = t.statStarPurchases;
-            document.getElementById('statBought').innerHTML = t.statBought;
-            document.getElementById('statInvites').innerHTML = t.statInvites;
-            document.getElementById('statRank').innerHTML = t.statRank;
-            document.getElementById('certificateNote').innerHTML = t.certificateNote;
-        }
-
-        async function apiRequest(endpoint, options = {}) {
-            const headers = {
-                'Content-Type': 'application/json',
-                'Authorization': `Telegram ${tg.initData}`,
-                ...options.headers
-            };
+        // ========== دالة API آمنة ==========
+        window.apiRequest = async function(endpoint, options = {}) {
             try {
-                const response = await fetch(endpoint, { ...options, headers });
-                if (!response.ok) return { success: false };
-                return await response.json();
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Telegram ${tg.initData}`,
+                    ...options.headers
+                };
+                
+                console.log(`📡 API Request: ${endpoint}`);
+                const response = await fetch(endpoint, { 
+                    ...options, 
+                    headers,
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    console.error(`❌ API Error ${response.status}: ${endpoint}`);
+                    return { success: false, error: 'network_error' };
+                }
+                
+                const data = await response.json();
+                console.log(`✅ API Success: ${endpoint}`, data);
+                return data;
             } catch (error) {
-                return { success: false };
+                console.error('❌ API Request Failed:', error);
+                return { success: false, error: 'connection_error' };
             }
-        }
+        };
 
-        function showToast(message, isSuccess = true) {
+        // ========== دالة عرض الإشعارات ==========
+        window.showToast = function(message, isSuccess = true) {
             const toast = document.createElement('div');
             toast.className = 'toast-notification';
             toast.innerHTML = `${isSuccess ? '✅' : '❌'} ${message}`;
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 3000);
-        }
+        };
 
-        if (tg.initDataUnsafe?.user?.id) {
-            userId = tg.initDataUnsafe.user.id.toString();
-            loadSystemStats();
-            loadUserData();
-            loadStarOrders();
-            loadInviteInfo();
-            loadLeaderboard();
-            setInterval(() => {
-                loadSystemStats();
-                loadUserData();
-                updateMiningProgress();
-            }, 1000);
-        }
-
-        function createParticles() {
-            const bg = document.getElementById('particleBackground');
-            for (let i = 0; i < 20; i++) {
-                const p = document.createElement('div');
-                p.className = 'crystal-particle';
-                p.style.left = Math.random() * 100 + '%';
-                p.style.top = Math.random() * 100 + '%';
-                p.style.animationDelay = Math.random() * 10 + 's';
-                p.style.animationDuration = (15 + Math.random() * 10) + 's';
-                p.innerHTML = ['💎', '⭐', '✨', '💠'][Math.floor(Math.random() * 4)];
-                bg.appendChild(p);
+        // ========== دوال التعدين والشراء ==========
+        window.mine = async function() {
+            console.log('⛏️ Mining button clicked');
+            
+            if (!userId) {
+                window.showToast(currentLanguage === 'ar' ? '❌ يرجى تسجيل الدخول' : '❌ Please login', false);
+                return;
             }
-        }
-        createParticles();
-        loadStarPackages();
+            
+            try {
+                const data = await window.apiRequest('/api/mine', { method: 'POST', body: '{}' });
+                
+                if (data.success) {
+                    window.showToast(data.message_ar || data.message_en || '✅ تم التعدين!', true);
+                    await loadUserData();
+                    await loadSystemStats();
+                } else {
+                    window.showToast(data.message_ar || data.message_en || '⏳ لم يحن وقت التعدين بعد', false);
+                }
+            } catch (error) {
+                console.error('❌ Mine error:', error);
+                window.showToast('❌ حدث خطأ', false);
+            }
+        };
 
+        window.selectStarPackage = function(stars, crystals, element) {
+            console.log(`⭐ Selected package: ${stars} stars = ${crystals} crystals`);
+            
+            if (!systemData || systemData.remainingSupply < crystals) {
+                window.showToast(currentLanguage === 'ar' ? '💰 نفدت الكمية!' : '💰 Sold out!', false);
+                return;
+            }
+            
+            selectedStars = stars;
+            selectedCrystals = crystals;
+            
+            if (selectedPackageElement) {
+                selectedPackageElement.classList.remove('selected');
+            }
+            
+            element.classList.add('selected');
+            selectedPackageElement = element;
+            
+            document.getElementById('selectedPackage').textContent = `${stars} ⭐`;
+            document.getElementById('selectedCrystals').textContent = `${crystals} 💎`;
+            
+            const buyBtn = document.getElementById('buyStarsBtn');
+            buyBtn.disabled = false;
+            buyBtn.style.opacity = '1';
+        };
+
+        window.buyWithStars = async function() {
+            console.log('⭐ Buy with stars clicked');
+            
+            if (!selectedStars) {
+                window.showToast(currentLanguage === 'ar' ? '❌ اختر باقة أولاً' : '❌ Select a package first', false);
+                return;
+            }
+            
+            if (!userId) {
+                window.showToast(currentLanguage === 'ar' ? '❌ يرجى تسجيل الدخول' : '❌ Please login', false);
+                return;
+            }
+            
+            try {
+                const data = await window.apiRequest('/api/buy-with-stars', {
+                    method: 'POST',
+                    body: JSON.stringify({ starAmount: selectedStars })
+                });
+                
+                if (data.success && data.invoiceUrl) {
+                    window.showToast(currentLanguage === 'ar' ? '⭐ جاري فتح صفحة الدفع...' : '⭐ Opening payment page...', true);
+                    tg.openTelegramLink(data.invoiceUrl);
+                } else {
+                    window.showToast(data.message_ar || data.message_en || '❌ فشل إنشاء الفاتورة', false);
+                }
+            } catch (error) {
+                console.error('❌ Buy error:', error);
+                window.showToast('❌ حدث خطأ', false);
+            }
+        };
+
+        window.viewSecureCertificate = function(orderId) {
+            console.log(`🔐 View certificate: ${orderId}`);
+            window.location.href = `/certificate.html?id=${orderId}`;
+        };
+
+        window.copyInviteLink = async function() {
+            console.log('📋 Copy invite link');
+            try {
+                const data = await window.apiRequest('/api/user/me');
+                const link = `https://t.me/${data.username}?start=invite_${userId}`;
+                await navigator.clipboard.writeText(link);
+                document.getElementById('inviteLink').textContent = link;
+                window.showToast(currentLanguage === 'ar' ? '✅ تم نسخ الرابط' : '✅ Link copied', true);
+            } catch (error) {
+                console.error('❌ Copy error:', error);
+                window.showToast('❌ فشل النسخ', false);
+            }
+        };
+
+        window.shareInviteLink = function() {
+            const link = document.getElementById('inviteLink')?.textContent;
+            if (link && !link.includes('جاري')) {
+                const text = encodeURIComponent(currentLanguage === 'ar'
+                    ? `💎 انضم إلي في كريستال التعدين!\n${link}`
+                    : `💎 Join me in Crystal Mining!\n${link}`);
+                tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${text}`);
+            }
+        };
+
+        window.switchTab = function(event, tab) {
+            console.log(`📱 Switch tab: ${tab}`);
+            
+            document.querySelectorAll('.modern-tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            document.getElementById('buySection')?.classList.add('hidden');
+            document.getElementById('ordersSection')?.classList.add('hidden');
+            document.getElementById('inviteSection')?.classList.add('hidden');
+            document.getElementById('leaderboardSection')?.classList.add('hidden');
+            document.getElementById('statsSection')?.classList.add('hidden');
+            
+            if (tab === 'buy') {
+                document.getElementById('buySection').classList.remove('hidden');
+            } else if (tab === 'orders') {
+                document.getElementById('ordersSection').classList.remove('hidden');
+                loadAllOrders();
+            } else if (tab === 'invite') {
+                document.getElementById('inviteSection').classList.remove('hidden');
+                window.copyInviteLink();
+                loadInviteInfo();
+            } else if (tab === 'leaderboard') {
+                document.getElementById('leaderboardSection').classList.remove('hidden');
+                loadLeaderboard();
+            } else if (tab === 'stats') {
+                document.getElementById('statsSection').classList.remove('hidden');
+            }
+        };
+
+        window.openBuyModal = function() {
+            const firstTab = document.querySelector('.modern-tab');
+            if (firstTab) window.switchTab({ target: firstTab }, 'buy');
+        };
+
+        window.setLanguage = function(lang) {
+            console.log(`🌐 Set language: ${lang}`);
+            currentLanguage = lang;
+            document.body.dir = lang === 'ar' ? 'rtl' : 'ltr';
+            document.getElementById('langAr')?.classList.toggle('active', lang === 'ar');
+            document.getElementById('langEn')?.classList.toggle('active', lang === 'en');
+            updateUIText();
+            
+            if (userId) {
+                window.apiRequest('/api/set-language', {
+                    method: 'POST',
+                    body: JSON.stringify({ language: lang })
+                });
+            }
+        };
+
+        // ========== تعيين اللغة الابتدائية ==========
+        if (tg.initDataUnsafe?.user?.language_code?.startsWith('ar')) {
+            window.setLanguage('ar');
+        } else {
+            window.setLanguage('en');
+        }
+
+        // ========== دوال التحميل ==========
         async function loadSystemStats() {
-            const data = await apiRequest('/api/system-stats');
+            const data = await window.apiRequest('/api/system-stats');
             if (data.success) {
                 systemData = data.system;
                 updateSupplyUI();
@@ -1429,7 +1486,8 @@
         }
 
         async function loadUserData() {
-            const data = await apiRequest(`/api/user/${userId}`);
+            if (!userId) return;
+            const data = await window.apiRequest(`/api/user/${userId}`);
             if (data.success) {
                 userData = data.user;
                 lastMineTime = data.user.last_mine_click;
@@ -1485,25 +1543,6 @@
             }
         }
 
-        async function mine() {
-            if (!systemData || systemData.minedSupply >= systemData.maxMining) {
-                showToast(translations[currentLanguage].miningEnded, false);
-                return;
-            }
-            const data = await apiRequest('/api/mine', { method: 'POST', body: '{}' });
-            if (data.success) {
-                userData.balance = parseFloat(data.newBalance);
-                userData.total_mined = parseFloat(data.totalMined);
-                lastMineTime = Date.now();
-                loadSystemStats();
-                updateMiningProgress();
-                loadLeaderboard();
-                showToast(`${translations[currentLanguage].miningSuccess}${data.minedAmount} 💎`, true);
-            } else {
-                showToast(data.message_ar || data.message_en || translations[currentLanguage].miningCooldown, false);
-            }
-        }
-
         function loadStarPackages() {
             const packages = [
                 { stars: 10, crystals: 1, icon: '⭐' },
@@ -1515,7 +1554,7 @@
             ];
             let html = '';
             packages.forEach(p => {
-                html += `<div class="star-package" onclick="selectStarPackage(${p.stars}, ${p.crystals}, this)">
+                html += `<div class="star-package" onclick="window.selectStarPackage(${p.stars}, ${p.crystals}, this)">
                     <div class="star-icon">${p.icon}</div>
                     <div class="star-amount">${p.stars}</div>
                     <div class="crystal-amount">${p.crystals} 💎</div>
@@ -1524,56 +1563,9 @@
             document.getElementById('packageGrid').innerHTML = html;
         }
 
-        function selectStarPackage(stars, crystals, el) {
-            if (!systemData || systemData.remainingSupply < crystals) {
-                showToast(translations[currentLanguage].supplyExhausted, false);
-                return;
-            }
-            selectedStars = stars;
-            selectedCrystals = crystals;
-            if (selectedPackageElement) selectedPackageElement.classList.remove('selected');
-            el.classList.add('selected');
-            selectedPackageElement = el;
-            document.getElementById('selectedPackage').textContent = `${stars} ⭐`;
-            document.getElementById('selectedCrystals').textContent = `${crystals} 💎`;
-            document.getElementById('buyStarsBtn').disabled = false;
-            document.getElementById('buyStarsBtn').style.opacity = '1';
-        }
-
-        async function buyWithStars() {
-            if (!selectedStars) {
-                showToast('❌ ' + (currentLanguage === 'ar' ? 'اختر باقة أولاً' : 'Select a package first'), false);
-                return;
-            }
-            if (systemData && systemData.remainingSupply < selectedCrystals) {
-                showToast(translations[currentLanguage].supplyExhausted, false);
-                return;
-            }
-            const data = await apiRequest('/api/buy-with-stars', {
-                method: 'POST',
-                body: JSON.stringify({ starAmount: selectedStars })
-            });
-            if (data.success) {
-                window.location.href = data.invoiceUrl;
-                showToast(translations[currentLanguage].buySuccess, true);
-                setTimeout(() => {
-                    loadStarOrders();
-                    loadUserData();
-                    loadSystemStats();
-                    loadLeaderboard();
-                }, 5000);
-            } else {
-                showToast(data.message_ar || data.message_en || translations[currentLanguage].buyError, false);
-            }
-        }
-
-        function viewSecureCertificate(orderId) {
-            window.location.href = `/certificate.html?id=${orderId}`;
-        }
-
         async function loadStarOrders() {
             if (!userId) return;
-            const data = await apiRequest(`/api/star-orders/${userId}`);
+            const data = await window.apiRequest(`/api/star-orders/${userId}`);
             if (data.success) {
                 let html = '';
                 const t = translations[currentLanguage];
@@ -1604,7 +1596,7 @@
                                 </div>
                             </div>`;
                         if (o.status === 'completed') {
-                            html += `<button onclick="viewSecureCertificate('${o.payload}')" 
+                            html += `<button onclick="window.viewSecureCertificate('${o.payload}')" 
                                 style="background: transparent; border: 1px solid #4facfe; color: #4facfe; padding: 8px 16px; border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer;">
                                 🔐 ${t.certificateBtn}
                             </button>`;
@@ -1620,7 +1612,7 @@
 
         async function loadAllOrders() {
             if (!userId) return;
-            const data = await apiRequest(`/api/star-orders/${userId}`);
+            const data = await window.apiRequest(`/api/star-orders/${userId}`);
             if (data.success) {
                 let html = '';
                 const t = translations[currentLanguage];
@@ -1651,7 +1643,7 @@
                                 </div>
                             </div>`;
                         if (o.status === 'completed') {
-                            html += `<button onclick="viewSecureCertificate('${o.payload}')" 
+                            html += `<button onclick="window.viewSecureCertificate('${o.payload}')" 
                                 style="background: transparent; border: 1px solid #4facfe; color: #4facfe; padding: 8px 16px; border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer;">
                                 🔐 ${t.certificateBtn}
                             </button>`;
@@ -1665,7 +1657,7 @@
 
         async function loadInviteInfo() {
             if (!userId) return;
-            const data = await apiRequest(`/api/invite-info/${userId}`);
+            const data = await window.apiRequest(`/api/invite-info/${userId}`);
             if (data.success) {
                 document.getElementById('totalInvites').textContent = data.totalInvites || 0;
                 document.getElementById('totalInviteRewards').textContent = `${(data.totalRewards || 0).toFixed(1)} 💎`;
@@ -1687,7 +1679,6 @@
                         }
                         const reward = i.rewardAmount ? `+${i.rewardAmount} 💎` : (currentLanguage === 'ar' ? 'في الانتظار' : 'Pending');
                         
-                        // 🔐 استخدام textContent للأسماء لمنع XSS
                         const nameSpan = document.createElement('span');
                         nameSpan.style.fontWeight = '700';
                         nameSpan.textContent = i.invitedName;
@@ -1740,27 +1731,8 @@
             }
         }
 
-        async function copyInviteLink() {
-            const data = await apiRequest('/api/user/me');
-            const link = `https://t.me/${data.username}?start=invite_${userId}`;
-            document.getElementById('inviteLink').textContent = link;
-            await navigator.clipboard.writeText(link);
-            showToast(translations[currentLanguage].copySuccess, true);
-        }
-
-        function shareInviteLink() {
-            const link = document.getElementById('inviteLink').textContent;
-            if (link && !link.includes('جاري')) {
-                const text = encodeURIComponent(currentLanguage === 'ar'
-                    ? `💎 انضم إلي في كريستال التعدين!\n${link}`
-                    : `💎 Join me in Crystal Mining!\n${link}`);
-                window.open(`https://t.me/share/url?url=${link}&text=${text}`, '_blank');
-            }
-        }
-
-        // ========== 🏆 المتصدرين - محمي ضد XSS وآمن تماماً ==========
         async function loadLeaderboard() {
-            const data = await apiRequest('/api/top');
+            const data = await window.apiRequest('/api/top');
             if (data.success && data.topUsers) {
                 let html = '';
                 data.topUsers.forEach((u, i) => {
@@ -1768,7 +1740,6 @@
                     let color = i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#aaa';
                     let bg = i < 3 ? `rgba(${i === 0 ? '255,215,0' : i === 1 ? '192,192,192' : '205,127,50'},0.15)` : 'rgba(255,255,255,0.05)';
                     
-                    // 🔐 استخدام textContent للأسماء لمنع XSS
                     const nameDiv = document.createElement('div');
                     nameDiv.style.fontWeight = '800';
                     nameDiv.style.color = '#fff';
@@ -1814,7 +1785,6 @@
                     
                     html += rankDiv.outerHTML;
                     
-                    // تحديث ترتيب المستخدم الحالي (آمن)
                     if (u.user_id === userId) {
                         document.getElementById('userRank').textContent = `#${i+1}`;
                     }
@@ -1826,45 +1796,110 @@
             }
         }
 
-        function switchTab(event, tab) {
-            document.querySelectorAll('.modern-tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-            document.getElementById('buySection')?.classList.add('hidden');
-            document.getElementById('ordersSection')?.classList.add('hidden');
-            document.getElementById('inviteSection')?.classList.add('hidden');
-            document.getElementById('leaderboardSection')?.classList.add('hidden');
-            document.getElementById('statsSection')?.classList.add('hidden');
-            if (tab === 'buy') document.getElementById('buySection').classList.remove('hidden');
-            else if (tab === 'orders') {
-                document.getElementById('ordersSection').classList.remove('hidden');
-                loadAllOrders();
-            } else if (tab === 'invite') {
-                document.getElementById('inviteSection').classList.remove('hidden');
-                loadInviteInfo();
-                copyInviteLink();
-            } else if (tab === 'leaderboard') {
-                document.getElementById('leaderboardSection').classList.remove('hidden');
-                loadLeaderboard();
-            } else if (tab === 'stats') document.getElementById('statsSection').classList.remove('hidden');
+        function updateUIText() {
+            const t = translations[currentLanguage];
+            
+            document.getElementById('balanceLabel').innerHTML = t.balanceLabel;
+            document.getElementById('titleText').innerHTML = t.titleText;
+            document.getElementById('badgeText').innerHTML = t.badgeText;
+            document.getElementById('instantPayment').innerHTML = t.instantPayment;
+            document.getElementById('supplyTitle').innerHTML = t.supplyTitle;
+            document.getElementById('soldLabel').innerHTML = t.soldLabel;
+            document.getElementById('remainingLabel').innerHTML = t.remainingLabel;
+            document.getElementById('miningProgressLabel').innerHTML = t.miningProgressLabel;
+            document.getElementById('mineText').innerHTML = t.mineText;
+            document.getElementById('mineSubtext').innerHTML = t.mineSubtext;
+            document.getElementById('miningEndedText').innerHTML = t.miningEndedText;
+            document.getElementById('buyTitle').innerHTML = t.buyTitle;
+            document.getElementById('buyPrice').innerHTML = t.buyPrice;
+            document.getElementById('buySectionTitle').innerHTML = t.buySectionTitle;
+            document.getElementById('buySectionDesc').innerHTML = t.buySectionDesc;
+            document.getElementById('selectedLabel').innerHTML = t.selectedLabel;
+            document.getElementById('youGetLabel').innerHTML = t.youGetLabel;
+            document.getElementById('payButtonText').innerHTML = t.payButtonText;
+            document.getElementById('paymentInfoText').innerHTML = t.paymentInfoText;
+            document.getElementById('certificateInfoText').innerHTML = t.certificateInfoText;
+            document.getElementById('purchaseHistoryTitle').innerHTML = t.purchaseHistoryTitle;
+            document.getElementById('verifiedBadge').innerHTML = t.verifiedBadge;
+            document.getElementById('soldOutTitle').innerHTML = t.soldOutTitle;
+            document.getElementById('soldOutText').innerHTML = t.soldOutText;
+            document.getElementById('soldOutSub').innerHTML = t.soldOutSub;
+            document.getElementById('withdrawTitle').innerHTML = t.withdrawTitle;
+            document.getElementById('withdrawPrice').innerHTML = t.withdrawPrice;
+            document.getElementById('listingTitle').innerHTML = t.listingTitle;
+            document.getElementById('listingText').innerHTML = t.listingText;
+            document.getElementById('listingSmall').innerHTML = t.listingSmall;
+            document.getElementById('tabBuy').querySelector('span').innerHTML = t.tabBuy;
+            document.getElementById('tabOrders').querySelector('span').innerHTML = t.tabOrders;
+            document.getElementById('tabInvite').querySelector('span').innerHTML = t.tabInvite;
+            document.getElementById('tabLeaderboard').querySelector('span').innerHTML = t.tabLeaderboard;
+            document.getElementById('tabStats').querySelector('span').innerHTML = t.tabStats;
+            document.getElementById('inviteTitle').innerHTML = t.inviteTitle;
+            document.getElementById('inviteDesc').innerHTML = t.inviteDesc;
+            document.getElementById('rewardBuy').innerHTML = t.rewardBuy;
+            document.getElementById('rewardNoBuy').innerHTML = t.rewardNoBuy;
+            document.getElementById('invitesCountLabel').innerHTML = t.invitesCountLabel;
+            document.getElementById('rewardsTotalLabel').innerHTML = t.rewardsTotalLabel;
+            document.getElementById('copyLinkText').innerHTML = t.copyLinkText;
+            document.getElementById('shareLinkText').innerHTML = t.shareLinkText;
+            document.getElementById('recentInvitesTitle').innerHTML = t.recentInvitesTitle;
+            document.getElementById('leaderboardTitle').innerHTML = t.leaderboardTitle;
+            document.getElementById('leaderboardDesc').innerHTML = t.leaderboardDesc;
+            document.getElementById('leaderboardNote').innerHTML = t.leaderboardNote;
+            document.getElementById('statsTitle').innerHTML = t.statsTitle;
+            document.getElementById('statMined').innerHTML = t.statMined;
+            document.getElementById('statStreak').innerHTML = t.statStreak;
+            document.getElementById('statStarPurchases').innerHTML = t.statStarPurchases;
+            document.getElementById('statBought').innerHTML = t.statBought;
+            document.getElementById('statInvites').innerHTML = t.statInvites;
+            document.getElementById('statRank').innerHTML = t.statRank;
+            document.getElementById('certificateNote').innerHTML = t.certificateNote;
         }
 
-        function openBuyModal() {
-            switchTab({ target: document.querySelector('.modern-tab') }, 'buy');
+        function createParticles() {
+            const bg = document.getElementById('particleBackground');
+            for (let i = 0; i < 20; i++) {
+                const p = document.createElement('div');
+                p.className = 'crystal-particle';
+                p.style.left = Math.random() * 100 + '%';
+                p.style.top = Math.random() * 100 + '%';
+                p.style.animationDelay = Math.random() * 10 + 's';
+                p.style.animationDuration = (15 + Math.random() * 10) + 's';
+                p.innerHTML = ['💎', '⭐', '✨', '💠'][Math.floor(Math.random() * 4)];
+                bg.appendChild(p);
+            }
         }
 
-        window.setLanguage = setLanguage;
-        window.mine = mine;
-        window.selectStarPackage = selectStarPackage;
-        window.buyWithStars = buyWithStars;
-        window.openBuyModal = openBuyModal;
-        window.switchTab = switchTab;
-        window.viewSecureCertificate = viewSecureCertificate;
-        window.copyInviteLink = copyInviteLink;
-        window.shareInviteLink = shareInviteLink;
-        window.loadLeaderboard = loadLeaderboard;
+        // ========== تحميل البيانات الأساسية ==========
+        async function loadInitialData() {
+            console.log('🚀 Loading initial data...');
+            
+            if (tg.initDataUnsafe?.user?.id) {
+                userId = tg.initDataUnsafe.user.id.toString();
+                console.log(`👤 User ID: ${userId}`);
+                
+                await Promise.all([
+                    loadSystemStats(),
+                    loadUserData(),
+                    loadStarOrders(),
+                    loadInviteInfo(),
+                    loadLeaderboard()
+                ]);
+                
+                console.log('✅ Initial data loaded');
+            } else {
+                console.error('❌ No user data from Telegram');
+                window.showToast('❌ خطأ في التحقق من هوية المستخدم', false);
+            }
+        }
 
-        if (tg.initDataUnsafe?.user?.language_code?.startsWith('ar')) setLanguage('ar');
-        else setLanguage('en');
+        // ========== بدء التطبيق ==========
+        window.addEventListener('load', () => {
+            console.log('📱 WebApp loaded');
+            createParticles();
+            loadStarPackages();
+            loadInitialData();
+        });
     </script>
 </body>
 </html>
