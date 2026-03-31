@@ -14,14 +14,12 @@ const userSchema = new mongoose.Schema({
     lastMiningTime: { type: Date, default: null },
     referrerId: { type: Number, default: null },
     referralCount: { type: Number, default: 0 },
-    isBanned: { type: Boolean, default: false },
-    createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now }
 });
 
 // نموذج المعاملات
 const transactionSchema = new mongoose.Schema({
-    userId: { type: Number, required: true, index: true },
+    userId: { type: Number, required: true },
     type: { type: String, enum: ['mining', 'purchase', 'upgrade', 'reward'], required: true },
     amount: { type: Number, default: 0 },
     usdtAmount: { type: Number, default: 0 },
@@ -34,28 +32,26 @@ const transactionSchema = new mongoose.Schema({
 
 // نموذج طلبات الترقية
 const upgradeRequestSchema = new mongoose.Schema({
-    userId: { type: Number, required: true, index: true },
+    userId: { type: Number, required: true },
     currentLevel: { type: Number, required: true },
     requestedLevel: { type: Number, required: true },
     usdtAmount: { type: Number, required: true },
     status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
     transactionHash: { type: String, default: '' },
     approvedBy: { type: Number, default: null },
-    createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now }
 });
 
 // نموذج طلبات الشراء
 const purchaseRequestSchema = new mongoose.Schema({
-    userId: { type: Number, required: true, index: true },
+    userId: { type: Number, required: true },
     crystalAmount: { type: Number, required: true },
     usdtAmount: { type: Number, required: true },
     status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending' },
     transactionHash: { type: String, default: '' },
     paymentAddress: { type: String, default: '' },
     approvedBy: { type: Number, default: null },
-    createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now }
 });
 
 // نموذج السيولة
