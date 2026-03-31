@@ -44,6 +44,12 @@
             margin: 10px 0;
         }
 
+        .usdt-value {
+            font-size: 18px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
         .mining-rate {
             font-size: 18px;
             opacity: 0.9;
@@ -230,16 +236,15 @@
             color: #666;
         }
 
-        .error-message {
-            color: red;
-            text-align: center;
-            padding: 10px;
-        }
-
-        .success-message {
-            color: green;
-            text-align: center;
-            padding: 10px;
+        .copy-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
         }
     </style>
 </head>
@@ -248,6 +253,7 @@
         <div class="card balance-card">
             <h2>💎 رصيد الكريستال</h2>
             <div class="balance-amount" id="balance">0</div>
+            <div class="usdt-value">💰 <span id="usdtValue">0</span> USDT</div>
             <div class="mining-rate">⚡ معدل التعدين: <span id="miningRate">1</span>x</div>
         </div>
 
@@ -275,16 +281,16 @@
                     </div>
                     <div class="stat-item">
                         <div class="stat-label">تعدين اليوم</div>
-                        <div class="stat-value" id="dailyMined">0/4</div>
+                        <div class="stat-value" id="dailyMined">0/700</div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-label">المتبقي اليوم</div>
-                        <div class="stat-value" id="dailyRemaining">4</div>
+                        <div class="stat-value" id="dailyRemaining">700</div>
                     </div>
                 </div>
 
                 <button class="buy-button" onclick="upgradeMining()" style="background: #ff9800; margin-top: 15px;">
-                    ⚡ تطوير معدل التعدين (5 USDT)
+                    ⚡ تطوير معدل التعدين
                 </button>
             </div>
         </div>
@@ -308,11 +314,12 @@
                 <div class="buy-section">
                     <input type="number" id="crystalAmount" placeholder="أدخل عدد الكريستال المطلوب" class="buy-input">
                     <button class="buy-button" onclick="initiatePurchase()">
-                        💵 شراء بالـ USDT
+                        💵 شراء بالـ USDT (TRC20)
                     </button>
                 </div>
                 <div style="margin-top: 10px; font-size: 12px; color: #666; text-align: center;">
-                    ⚠️ الحد الأدنى: 10 USDT (1000 كريستال)
+                    ⚠️ الحد الأدنى: 10 USDT (1000 كريستال)<br>
+                    📤 الدفع عبر شبكة TRON (TRC20)
                 </div>
             </div>
         </div>
@@ -327,13 +334,12 @@
         let lastMiningTime = null;
         let miningInterval = null;
         
-        // الحصول على عنوان الخادم (نفس الرابط الحالي)
         const API_URL = window.location.origin;
-        const DAILY_LIMIT = 4;
+        const DAILY_LIMIT = 700;
+        const CRYSTAL_PRICE = 0.01;
         
         console.log('🌐 API_URL:', API_URL);
         
-        // تسجيل المستخدم
         async function registerUser() {
             try {
                 const userId = tg.initDataUnsafe.user.id;
@@ -347,7 +353,8 @@
                     body: JSON.stringify({
                         user_id: userId,
                         username: tg.initDataUnsafe.user.username || '',
-                        first_name: tg.initDataUnsafe.user.first_name || ''
+                        first_name: tg.initDataUnsafe.user.first_name || '',
+                        language: 'ar'
                     })
                 });
                 
@@ -358,7 +365,6 @@
             }
         }
         
-        // تحميل بيانات المستخدم
         async function loadUserData() {
             try {
                 const userId = tg.initDataUnsafe.user.id;
@@ -371,7 +377,6 @@
                 userData = data;
                 updateUI();
                 
-                // تحميل معلومات اليوم
                 const dailyResponse = await fetch(`${API_URL}/api/user/daily/${userId}`);
                 const dailyData = await dailyResponse.json();
                 console.log('✅ Daily data:', dailyData);
@@ -384,9 +389,12 @@
             }
         }
         
-        // تحديث واجهة المستخدم
         function updateUI() {
-            document.getElementById('balance').textContent = userData.balance?.toFixed(2) || '0';
+            const balance = userData.balance || 0;
+            const usdtValue = balance * CRYSTAL_PRICE;
+            
+            document.getElementById('balance').textContent = balance.toFixed(2);
+            document.getElementById('usdtValue').textContent = usdtValue.toFixed(2);
             document.getElementById('miningRate').textContent = userData.miningRate || '1';
             document.getElementById('miningLevel').textContent = userData.miningLevel || '1';
             document.getElementById('totalMined').textContent = userData.totalMined?.toFixed(2) || '0';
@@ -399,7 +407,6 @@
             }
         }
         
-        // تحديث المؤقت
         function updateTimer() {
             if (!lastMiningTime) return;
             
@@ -418,7 +425,6 @@
             }
         }
         
-        // بدء التعدين
         async function startMining() {
             try {
                 const userId = tg.initDataUnsafe.user.id;
@@ -451,8 +457,6 @@
                     const minutes = Math.floor(result.remaining / 60);
                     const seconds = Math.floor(result.remaining % 60);
                     tg.showAlert(result.message || `⏰ انتظر ${minutes}:${seconds.toString().padStart(2, '0')}`);
-                } else if (result.dailyLimit) {
-                    tg.showAlert(result.message);
                 } else {
                     tg.showAlert(result.message || 'حدث خطأ، حاول مرة أخرى');
                 }
@@ -462,7 +466,6 @@
             }
         }
         
-        // عرض مكافأة التعدين
         function showReward(amount) {
             const popup = document.createElement('div');
             popup.className = 'reward-popup';
@@ -475,7 +478,6 @@
             setTimeout(() => popup.remove(), 3000);
         }
         
-        // ترقية التعدين
         async function upgradeMining() {
             try {
                 const userId = tg.initDataUnsafe.user.id;
@@ -506,7 +508,6 @@
             }
         }
         
-        // تحميل لوحة المتصدرين
         async function loadLeaderboard() {
             try {
                 console.log('🏆 Loading leaderboard...');
@@ -536,7 +537,6 @@
             }
         }
         
-        // تحميل معلومات السيولة
         async function loadLiquidity() {
             try {
                 console.log('💰 Loading liquidity...');
@@ -549,11 +549,12 @@
                 const soldPercent = ((data.total_sold / data.total_liquidity) * 100).toFixed(2);
                 
                 container.innerHTML = `
-                    <div>💰 سعر العملة: 0.01 USDT لكل CRYSTAL</div>
-                    <div>💎 إجمالي السيولة: ${data.total_liquidity?.toFixed(2) || 100000} CRYSTAL</div>
+                    <div>💰 سعر العملة: ${CRYSTAL_PRICE} USDT لكل CRYSTAL</div>
+                    <div>💎 إجمالي السيولة: ${data.total_liquidity?.toFixed(2) || 1000000} CRYSTAL</div>
                     <div>📊 السيولة المتاحة: ${available?.toFixed(2) || 0} CRYSTAL</div>
                     <div>💵 تم البيع: ${data.total_sold?.toFixed(2) || 0} CRYSTAL</div>
                     <div>📈 نسبة البيع: ${soldPercent || 0}%</div>
+                    <div>🌐 شبكة الدفع: TRON (TRC20)</div>
                 `;
             } catch (error) {
                 console.error('❌ Error loading liquidity:', error);
@@ -561,7 +562,6 @@
             }
         }
         
-        // بدء عملية الشراء
         async function initiatePurchase() {
             const amount = document.getElementById('crystalAmount').value;
             if (!amount || amount <= 0) {
@@ -569,7 +569,7 @@
                 return;
             }
             
-            const usdtAmount = amount * 0.01;
+            const usdtAmount = amount * CRYSTAL_PRICE;
             if (usdtAmount < 10) {
                 tg.showAlert(`الحد الأدنى للشراء هو 10 USDT (1000 كريستال)\nالمبلغ الحالي: ${usdtAmount} USDT`);
                 return;
@@ -598,6 +598,7 @@
 ✅ تم إنشاء طلب الشراء!
 💎 الكمية: ${result.crystal_amount} CRYSTAL
 💰 المبلغ: ${result.usdt_amount} USDT
+🌐 الشبكة: TRON (TRC20)
 📤 أرسل المبلغ إلى: ${result.payment_address}
 
 بعد التحويل أرسل إلى البوت:
@@ -612,7 +613,6 @@
             }
         }
         
-        // تبديل التبويبات
         function switchTab(tab) {
             document.querySelectorAll('.tab-content').forEach(content => {
                 content.classList.remove('active');
@@ -631,7 +631,6 @@
             }
         }
         
-        // تهيئة التطبيق
         console.log('🚀 Initializing Mini App...');
         console.log('👤 User:', tg.initDataUnsafe.user);
         
@@ -639,7 +638,6 @@
         loadUserData();
         loadLiquidity();
         
-        // إعداد زر الإغلاق
         tg.MainButton.setText("🚀 فتح البوت");
         tg.MainButton.onClick(() => {
             tg.close();
