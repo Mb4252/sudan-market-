@@ -229,6 +229,18 @@
             padding: 20px;
             color: #666;
         }
+
+        .error-message {
+            color: red;
+            text-align: center;
+            padding: 10px;
+        }
+
+        .success-message {
+            color: green;
+            text-align: center;
+            padding: 10px;
+        }
     </style>
 </head>
 <body>
@@ -315,42 +327,60 @@
         let lastMiningTime = null;
         let miningInterval = null;
         
+        // الحصول على عنوان الخادم (نفس الرابط الحالي)
         const API_URL = window.location.origin;
         const DAILY_LIMIT = 4;
+        
+        console.log('🌐 API_URL:', API_URL);
         
         // تسجيل المستخدم
         async function registerUser() {
             try {
-                await fetch(`${API_URL}/api/register`, {
+                const userId = tg.initDataUnsafe.user.id;
+                console.log('📝 Registering user:', userId);
+                
+                const response = await fetch(`${API_URL}/api/register`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json'
+                    },
                     body: JSON.stringify({
-                        user_id: tg.initDataUnsafe.user.id,
-                        username: tg.initDataUnsafe.user.username,
-                        first_name: tg.initDataUnsafe.user.first_name
+                        user_id: userId,
+                        username: tg.initDataUnsafe.user.username || '',
+                        first_name: tg.initDataUnsafe.user.first_name || ''
                     })
                 });
+                
+                const result = await response.json();
+                console.log('✅ Register response:', result);
             } catch (error) {
-                console.error('Error registering user:', error);
+                console.error('❌ Error registering user:', error);
             }
         }
         
         // تحميل بيانات المستخدم
         async function loadUserData() {
             try {
-                const response = await fetch(`${API_URL}/api/user/${tg.initDataUnsafe.user.id}`);
+                const userId = tg.initDataUnsafe.user.id;
+                console.log('📥 Loading user data for:', userId);
+                
+                const response = await fetch(`${API_URL}/api/user/${userId}`);
                 const data = await response.json();
+                console.log('✅ User data:', data);
+                
                 userData = data;
                 updateUI();
                 
                 // تحميل معلومات اليوم
-                const dailyResponse = await fetch(`${API_URL}/api/user/daily/${tg.initDataUnsafe.user.id}`);
+                const dailyResponse = await fetch(`${API_URL}/api/user/daily/${userId}`);
                 const dailyData = await dailyResponse.json();
+                console.log('✅ Daily data:', dailyData);
+                
                 document.getElementById('dailyMined').textContent = `${dailyData.daily_mined || 0}/${DAILY_LIMIT}`;
                 document.getElementById('dailyRemaining').textContent = dailyData.remaining || DAILY_LIMIT;
                 
             } catch (error) {
-                console.error('Error loading user data:', error);
+                console.error('❌ Error loading user data:', error);
             }
         }
         
@@ -391,13 +421,21 @@
         // بدء التعدين
         async function startMining() {
             try {
+                const userId = tg.initDataUnsafe.user.id;
+                console.log('⛏️ Starting mining for:', userId);
+                
                 const response = await fetch(`${API_URL}/api/mine`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
+                    headers: { 
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        user_id: userId
+                    })
                 });
                 
                 const result = await response.json();
+                console.log('⛏️ Mining result:', result);
                 
                 if (result.success) {
                     showReward(result.reward);
@@ -419,8 +457,8 @@
                     tg.showAlert(result.message || 'حدث خطأ، حاول مرة أخرى');
                 }
             } catch (error) {
-                console.error('Error mining:', error);
-                tg.showAlert('حدث خطأ، حاول مرة أخرى');
+                console.error('❌ Error mining:', error);
+                tg.showAlert('حدث خطأ في الاتصال، حاول مرة أخرى');
             }
         }
         
@@ -431,7 +469,7 @@
             popup.innerHTML = `
                 <h2>🎉 مبروك!</h2>
                 <div class="reward-amount">+${amount} CRYSTAL</div>
-                <button onclick="this.parentElement.remove()">حسناً</button>
+                <button onclick="this.parentElement.remove()" style="padding: 10px 20px; margin-top: 10px; background: #667eea; color: white; border: none; border-radius: 10px; cursor: pointer;">حسناً</button>
             `;
             document.body.appendChild(popup);
             setTimeout(() => popup.remove(), 3000);
@@ -440,30 +478,41 @@
         // ترقية التعدين
         async function upgradeMining() {
             try {
+                const userId = tg.initDataUnsafe.user.id;
+                console.log('⚡ Upgrading mining for:', userId);
+                
                 const response = await fetch(`${API_URL}/api/upgrade`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
+                    headers: { 
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        user_id: userId
+                    })
                 });
                 
                 const result = await response.json();
+                console.log('⚡ Upgrade result:', result);
                 
                 if (result.success) {
                     tg.showAlert(result.message);
+                    await loadUserData();
                 } else {
                     tg.showAlert(result.message || 'حدث خطأ');
                 }
             } catch (error) {
-                console.error('Error upgrading:', error);
-                tg.showAlert('حدث خطأ، حاول مرة أخرى');
+                console.error('❌ Error upgrading:', error);
+                tg.showAlert('حدث خطأ في الاتصال، حاول مرة أخرى');
             }
         }
         
         // تحميل لوحة المتصدرين
         async function loadLeaderboard() {
             try {
+                console.log('🏆 Loading leaderboard...');
                 const response = await fetch(`${API_URL}/api/leaderboard`);
                 const leaders = await response.json();
+                console.log('🏆 Leaderboard:', leaders);
                 
                 const container = document.getElementById('leaderboardList');
                 if (!leaders || leaders.length === 0) {
@@ -476,13 +525,13 @@
                     return `
                         <div class="leader-item">
                             <div class="leader-rank">${medal}</div>
-                            <div class="leader-name">${leader.name}</div>
-                            <div class="leader-balance">${leader.balance.toFixed(2)} CRYSTAL</div>
+                            <div class="leader-name">${leader.name || 'مستخدم'}</div>
+                            <div class="leader-balance">${leader.balance?.toFixed(2) || 0} CRYSTAL</div>
                         </div>
                     `;
                 }).join('');
             } catch (error) {
-                console.error('Error loading leaderboard:', error);
+                console.error('❌ Error loading leaderboard:', error);
                 document.getElementById('leaderboardList').innerHTML = '<div style="text-align: center; padding: 20px;">خطأ في التحميل</div>';
             }
         }
@@ -490,8 +539,10 @@
         // تحميل معلومات السيولة
         async function loadLiquidity() {
             try {
+                console.log('💰 Loading liquidity...');
                 const response = await fetch(`${API_URL}/api/liquidity`);
                 const data = await response.json();
+                console.log('💰 Liquidity data:', data);
                 
                 const container = document.getElementById('liquidityInfo');
                 const available = data.available || (data.total_liquidity - data.total_sold);
@@ -499,13 +550,13 @@
                 
                 container.innerHTML = `
                     <div>💰 سعر العملة: 0.01 USDT لكل CRYSTAL</div>
-                    <div>💎 إجمالي السيولة: ${data.total_liquidity.toFixed(2)} CRYSTAL</div>
-                    <div>📊 السيولة المتاحة: ${available.toFixed(2)} CRYSTAL</div>
-                    <div>💵 تم البيع: ${data.total_sold.toFixed(2)} CRYSTAL</div>
-                    <div>📈 نسبة البيع: ${soldPercent}%</div>
+                    <div>💎 إجمالي السيولة: ${data.total_liquidity?.toFixed(2) || 100000} CRYSTAL</div>
+                    <div>📊 السيولة المتاحة: ${available?.toFixed(2) || 0} CRYSTAL</div>
+                    <div>💵 تم البيع: ${data.total_sold?.toFixed(2) || 0} CRYSTAL</div>
+                    <div>📈 نسبة البيع: ${soldPercent || 0}%</div>
                 `;
             } catch (error) {
-                console.error('Error loading liquidity:', error);
+                console.error('❌ Error loading liquidity:', error);
                 document.getElementById('liquidityInfo').innerHTML = '<div>خطأ في تحميل معلومات السيولة</div>';
             }
         }
@@ -525,16 +576,22 @@
             }
             
             try {
+                const userId = tg.initDataUnsafe.user.id;
+                console.log('💰 Initiating purchase:', { userId, amount });
+                
                 const response = await fetch(`${API_URL}/api/purchase`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json'
+                    },
                     body: JSON.stringify({
-                        user_id: tg.initDataUnsafe.user.id,
+                        user_id: userId,
                         amount: parseFloat(amount)
                     })
                 });
                 
                 const result = await response.json();
+                console.log('💰 Purchase result:', result);
                 
                 if (result.success) {
                     tg.showAlert(`
@@ -550,8 +607,8 @@
                     tg.showAlert(result.message || 'حدث خطأ');
                 }
             } catch (error) {
-                console.error('Error purchasing:', error);
-                tg.showAlert('حدث خطأ، حاول مرة أخرى');
+                console.error('❌ Error purchasing:', error);
+                tg.showAlert('حدث خطأ في الاتصال، حاول مرة أخرى');
             }
         }
         
@@ -575,15 +632,21 @@
         }
         
         // تهيئة التطبيق
+        console.log('🚀 Initializing Mini App...');
+        console.log('👤 User:', tg.initDataUnsafe.user);
+        
         registerUser();
         loadUserData();
         loadLiquidity();
         
+        // إعداد زر الإغلاق
         tg.MainButton.setText("🚀 فتح البوت");
         tg.MainButton.onClick(() => {
             tg.close();
         });
         tg.MainButton.show();
+        
+        console.log('✅ Mini App ready');
     </script>
 </body>
 </html>
