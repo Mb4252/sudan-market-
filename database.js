@@ -17,7 +17,6 @@ class Database {
             this.connected = true;
             console.log('✅ MongoDB connected successfully');
             
-            // تهيئة السيولة إذا لم تكن موجودة
             const liquidity = await Liquidity.findOne();
             if (!liquidity) {
                 await Liquidity.create({ totalLiquidity: 100000, totalSold: 0 });
@@ -29,7 +28,6 @@ class Database {
         }
     }
 
-    // تسجيل مستخدم جديد
     async registerUser(userId, username, firstName, referrerId = null) {
         await this.connect();
         
@@ -45,10 +43,8 @@ class Database {
                 referrerId
             });
             
-            // تحديث الإحصائيات اليومية
             await this.updateDailyStats('totalUsers');
             
-            // مكافأة الإحالة
             if (referrerId) {
                 await this.updateReferralReward(referrerId);
             }
@@ -57,7 +53,6 @@ class Database {
         return false;
     }
 
-    // تحديث مكافأة الإحالة
     async updateReferralReward(referrerId) {
         const referrer = await User.findOne({ userId: referrerId });
         if (!referrer) return false;
@@ -65,20 +60,17 @@ class Database {
         const newCount = (referrer.referralCount || 0) + 1;
         await User.updateOne({ userId: referrerId }, { referralCount: newCount });
         
-        // إذا وصل لـ 5 إحالات، أعطه 10 كريستال
         if (newCount === 5) {
             await this.addCrystals(referrerId, 10, 'مكافأة إحالة 5 أشخاص');
         }
         return true;
     }
 
-    // الحصول على مستخدم
     async getUser(userId) {
         await this.connect();
         return await User.findOne({ userId });
     }
 
-    // إضافة كريستال
     async addCrystals(userId, amount, reason) {
         await this.connect();
         
@@ -95,17 +87,12 @@ class Database {
         return true;
     }
 
-    // عملية التعدين
     async mine(userId) {
         await this.connect();
         
         const user = await User.findOne({ userId });
         if (!user) {
             return { success: false, message: 'المستخدم غير موجود' };
-        }
-        
-        if (user.isBanned) {
-            return { success: false, message: '⚠️ تم حظر حسابك، تواصل مع الدعم' };
         }
 
         const today = new Date().toISOString().split('T')[0];
@@ -114,12 +101,10 @@ class Database {
         
         let dailyMined = user.dailyMined || 0;
         
-        // إعادة تعيين إذا كان يوم جديد
         if (user.lastMiningDate !== today) {
             dailyMined = 0;
         }
         
-        // التحقق من الحد اليومي
         if (dailyMined >= DAILY_LIMIT) {
             return { 
                 success: false, 
@@ -128,7 +113,6 @@ class Database {
             };
         }
         
-        // التحقق من وقت التعدين
         const now = new Date();
         const lastMine = user.lastMiningTime ? new Date(user.lastMiningTime) : new Date(0);
         const diffMinutes = (now - lastMine) / 1000 / 60;
@@ -142,10 +126,8 @@ class Database {
             };
         }
         
-        // حساب المكافأة (1-4 كريستال)
         let reward = Math.floor(Math.random() * 4) + 1;
         
-        // تطبيق معدل التعدين
         if (user.miningRate > 1) {
             const bonusChance = Math.random();
             if (bonusChance < 0.3 * (user.miningRate - 1)) {
@@ -153,7 +135,6 @@ class Database {
             }
         }
         
-        // التأكد من عدم تجاوز الحد اليومي
         if (dailyMined + reward > DAILY_LIMIT) {
             reward = DAILY_LIMIT - dailyMined;
         }
@@ -165,8 +146,7 @@ class Database {
             $set: {
                 dailyMined: newDailyMined,
                 lastMiningDate: today,
-                lastMiningTime: now,
-                updatedAt: now
+                lastMiningTime: now
             }
         });
         
@@ -177,7 +157,6 @@ class Database {
             status: 'completed'
         });
         
-        // تحديث الإحصائيات اليومية
         await this.updateDailyStats('totalMined', reward);
         
         return { 
@@ -188,17 +167,12 @@ class Database {
         };
     }
 
-    // طلب ترقية
     async requestUpgrade(userId, usdtAmount) {
         await this.connect();
         
         const user = await User.findOne({ userId });
         if (!user) {
             return { success: false, message: 'المستخدم غير موجود' };
-        }
-        
-        if (user.isBanned) {
-            return { success: false, message: '⚠️ تم حظر حسابك' };
         }
         
         const currentLevel = user.miningLevel;
@@ -222,7 +196,6 @@ class Database {
         };
     }
 
-    // تأكيد الترقية
     async confirmUpgrade(requestId, transactionHash, adminId) {
         await this.connect();
         
@@ -236,8 +209,7 @@ class Database {
         await User.updateOne({ userId: request.userId }, {
             $set: {
                 miningRate: newMiningRate,
-                miningLevel: request.requestedLevel,
-                updatedAt: new Date()
+                miningLevel: request.requestedLevel
             }
         });
         
@@ -245,8 +217,7 @@ class Database {
             $set: {
                 status: 'approved',
                 transactionHash: transactionHash,
-                approvedBy: adminId,
-                updatedAt: new Date()
+                approvedBy: adminId
             }
         });
         
@@ -272,7 +243,6 @@ class Database {
         };
     }
 
-    // الحصول على طلبات الترقية المعلقة
     async getPendingUpgrades() {
         await this.connect();
         
@@ -296,7 +266,6 @@ class Database {
         }));
     }
 
-    // طلب شراء كريستال
     async requestPurchase(userId, crystalAmount) {
         await this.connect();
         
@@ -332,7 +301,6 @@ class Database {
         };
     }
 
-    // تأكيد شراء كريستال
     async confirmPurchase(requestId, transactionHash, adminId) {
         await this.connect();
         
@@ -349,8 +317,7 @@ class Database {
             $set: {
                 status: 'completed',
                 transactionHash: transactionHash,
-                approvedBy: adminId,
-                updatedAt: new Date()
+                approvedBy: adminId
             }
         });
         
@@ -377,7 +344,6 @@ class Database {
         };
     }
 
-    // الحصول على طلبات الشراء المعلقة
     async getPendingPurchases() {
         await this.connect();
         
@@ -400,18 +366,16 @@ class Database {
         }));
     }
 
-    // قائمة المتصدرين
     async getLeaderboard(limit = 10) {
         await this.connect();
         
-        return await User.find({ isBanned: false })
+        return await User.find({})
             .sort({ crystalBalance: -1 })
             .limit(limit)
             .select('userId username firstName crystalBalance totalMined miningLevel')
             .lean();
     }
 
-    // إحصائيات المستخدم
     async getUserStats(userId) {
         await this.connect();
         
@@ -435,12 +399,10 @@ class Database {
             dailyRemaining: DAILY_LIMIT - dailyMined,
             referralCount: user.referralCount,
             referralsCount: referralsCount,
-            isBanned: user.isBanned,
             createdAt: user.createdAt
         };
     }
 
-    // معلومات السيولة
     async getLiquidity() {
         await this.connect();
         
@@ -451,12 +413,10 @@ class Database {
         return liquidity;
     }
 
-    // إحصائيات عامة
     async getGlobalStats() {
         await this.connect();
         
         const stats = await User.aggregate([
-            { $match: { isBanned: false } },
             {
                 $group: {
                     _id: null,
@@ -484,7 +444,6 @@ class Database {
         };
     }
 
-    // تحديث الإحصائيات اليومية
     async updateDailyStats(type, value = 1) {
         const today = new Date().toISOString().split('T')[0];
         
@@ -495,40 +454,18 @@ class Database {
         
         const update = {};
         if (type === 'totalUsers') update.totalUsers = stats.totalUsers + 1;
-        if (type === 'totalMined') update.totalMined = stats.totalMined + value;
-        if (type === 'totalPurchases') update.totalPurchases = stats.totalPurchases + 1;
-        if (type === 'totalUpgrades') update.totalUpgrades = stats.totalUpgrades + 1;
+        if (type === 'totalMined') update.totalMined = (stats.totalMined || 0) + value;
+        if (type === 'totalPurchases') update.totalPurchases = (stats.totalPurchases || 0) + 1;
+        if (type === 'totalUpgrades') update.totalUpgrades = (stats.totalUpgrades || 0) + 1;
         
         await DailyStats.updateOne({ date: today }, { $inc: update });
     }
 
-    // الحصول على إحصائيات اليوم
     async getTodayStats() {
         const today = new Date().toISOString().split('T')[0];
         return await DailyStats.findOne({ date: today });
     }
 
-    // حظر مستخدم
-    async banUser(userId, adminId) {
-        await this.connect();
-        const user = await User.findOne({ userId });
-        if (!user) return { success: false, message: 'المستخدم غير موجود' };
-        
-        await User.updateOne({ userId }, { isBanned: true });
-        return { success: true, message: `✅ تم حظر المستخدم ${user.firstName || userId}` };
-    }
-
-    // إلغاء حظر مستخدم
-    async unbanUser(userId, adminId) {
-        await this.connect();
-        const user = await User.findOne({ userId });
-        if (!user) return { success: false, message: 'المستخدم غير موجود' };
-        
-        await User.updateOne({ userId }, { isBanned: false });
-        return { success: true, message: `✅ تم إلغاء حظر المستخدم ${user.firstName || userId}` };
-    }
-
-    // البحث عن مستخدمين
     async searchUsers(query, limit = 20) {
         await this.connect();
         
@@ -540,7 +477,7 @@ class Database {
             ]
         })
         .limit(limit)
-        .select('userId username firstName crystalBalance miningLevel isBanned')
+        .select('userId username firstName crystalBalance miningLevel')
         .lean();
     }
 }
