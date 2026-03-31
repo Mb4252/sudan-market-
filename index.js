@@ -2,27 +2,43 @@ require('dotenv').config();
 const { Telegraf, Markup } = require('telegraf');
 const db = require('./database');
 
+// الاتصال بقاعدة البيانات
+(async () => {
+    try {
+        await db.connect();
+        console.log('✅ Database connected successfully');
+    } catch (error) {
+        console.error('❌ Database connection failed:', error);
+        process.exit(1);
+    }
+})();
+
 const bot = new Telegraf(process.env.BOT_TOKEN);
-const WEBAPP_URL = process.env.WEBAPP_URL;
-const ADMIN_ID = parseInt(process.env.ADMIN_ID) || 6701743450;
+const WEBAPP_URL = process.env.WEBAPP_URL || 'https://your-app.onrender.com';
+const ADMIN_ID = parseInt(process.env.ADMIN_ID);
+const UPGRADE_USDT_PRICE = parseFloat(process.env.UPGRADE_USDT_PRICE) || 5;
 const CRYSTAL_PRICE = parseFloat(process.env.CRYSTAL_PRICE) || 0.01;
-const UPGRADE_USDT_PRICE = 5; // سعر الترقية بـ USDT
+const DAILY_LIMIT = parseInt(process.env.DAILY_LIMIT) || 4;
 
 // قائمة الأزرار الرئيسية
 const mainKeyboard = Markup.inlineKeyboard([
     [Markup.button.webApp('🚀 فتح تطبيق التعدين', WEBAPP_URL)],
-    [Markup.button.callback('📊 لوحة المتصدرين', 'leaderboard')],
-    [Markup.button.callback('💰 شراء كريستال', 'buy_crystal')],
-    [Markup.button.callback('⚡ ترقية بـ USDT', 'upgrade_usdt')],
+    [Markup.button.callback('⛏️ تعدين', 'mine_action')],
+    [Markup.button.callback('🏆 المتصدرين', 'leaderboard')],
+    [Markup.button.callback('💰 شراء كريستال', 'buy_menu')],
+    [Markup.button.callback('⚡ ترقية بـ USDT', 'upgrade_menu')],
     [Markup.button.callback('👥 نظام الإحالة', 'referral_system')],
     [Markup.button.callback('📈 إحصائياتي', 'my_stats')],
-    [Markup.button.callback('ℹ️ معلومات السيولة', 'liquidity')]
+    [Markup.button.callback('ℹ️ معلومات', 'info_menu')]
 ]);
 
 // قائمة أدمن
 const adminKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('📋 طلبات الترقية', 'pending_upgrades')],
+    [Markup.button.callback('💰 طلبات الشراء', 'pending_purchases')],
     [Markup.button.callback('📊 إحصائيات عامة', 'global_stats')],
+    [Markup.button.callback('📅 إحصائيات اليوم', 'today_stats')],
+    [Markup.button.callback('🔍 بحث عن مستخدم', 'search_user')],
     [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
 ]);
 
@@ -33,28 +49,26 @@ bot.start(async (ctx) => {
     
     await db.registerUser(user.id, user.username, user.first_name, referrerId);
     
-    const userData = await db.getUser(user.id);
-    const balance = userData?.crystal_balance || 0;
-    const miningRate = userData?.mining_rate || 1;
-    const miningLevel = userData?.mining_level || 1;
-    const dailyMined = userData?.daily_mined || 0;
+    const stats = await db.getUserStats(user.id);
+    const referralLink = `https://t.me/${ctx.botInfo.username}?start=${user.id}`;
     
     const welcomeText = `
 ✨ *مرحباً بك في بوت تعدين CRYSTAL!* ✨
 
 👤 *المستخدم:* ${user.first_name}
-💎 *رصيد الكريستال:* ${balance.toFixed(2)} CRYSTAL
-⚡ *معدل التعدين:* ${miningRate}x
-📈 *مستوى التعدين:* ${miningLevel}
-📊 *تم التعدين اليوم:* ${dailyMined}/4 CRYSTAL
+💎 *الرصيد:* ${stats.crystalBalance.toFixed(2)} CRYSTAL
+⚡ *معدل التعدين:* ${stats.miningRate}x
+📈 *المستوى:* ${stats.miningLevel}
+📊 *تعدين اليوم:* ${stats.dailyMined}/${DAILY_LIMIT}
 
-💰 *سعر العملة:* ${CRYSTAL_PRICE} USDT لكل CRYSTAL
+💰 *سعر العملة:* ${CRYSTAL_PRICE} USDT
+⚡ *سعر الترقية:* ${UPGRADE_USDT_PRICE} USDT
 
-🚀 *ابدأ التعدين الآن من خلال التطبيق المصغر!*
+🎁 *مكافآت الإحالة:* ادعُ 5 أصدقاء واحصل على 10 كريستال!
+🔗 *رابط الإحالة الخاص بك:*
+\`${referralLink}\`
 
-🎁 *مكافآت الإحالة:* 
-• ادعُ 5 أصدقاء واحصل على 10 كريستال مجاناً!
-• رابط الإحالة الخاص بك: \`https://t.me/${ctx.botInfo.username}?start=${user.id}\`
+🚀 *ابدأ التعدين الآن!*
     `;
     
     await ctx.reply(welcomeText, { 
@@ -63,216 +77,259 @@ bot.start(async (ctx) => {
     });
 });
 
+// تعدين مباشر
+bot.action('mine_action', async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const result = await db.mine(ctx.from.id);
+    
+    if (result.success) {
+        const text = `
+🎉 *تم التعدين بنجاح!*
+
+⛏️ *حصلت على:* ${result.reward} CRYSTAL
+💎 *الرصيد الحالي:* ${(await db.getUser(ctx.from.id)).crystalBalance.toFixed(2)}
+📊 *المتبقي اليوم:* ${result.dailyRemaining}/${DAILY_LIMIT}
+
+✅ استمر في التعدين كل ساعة!
+        `;
+        await ctx.editMessageText(text, {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+        });
+    } else {
+        await ctx.editMessageText(result.message, {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+        });
+    }
+});
+
 // لوحة المتصدرين
 bot.action('leaderboard', async (ctx) => {
     await ctx.answerCbQuery();
     
-    const leaders = await db.getLeaderboard(10);
+    const leaders = await db.getLeaderboard(15);
+    
+    if (!leaders || leaders.length === 0) {
+        await ctx.editMessageText('🏆 لا يوجد متصدرين بعد! ابدأ التعدين الآن 🚀', {
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+        });
+        return;
+    }
     
     let leaderboardText = '🏆 *قائمة المتصدرين* 🏆\n\n';
     
     for (let i = 0; i < leaders.length; i++) {
         const leader = leaders[i];
-        const name = leader.first_name || leader.username || `مستخدم ${leader.user_id}`;
-        leaderboardText += `${i + 1}. ${name}\n`;
-        leaderboardText += `   💎 الرصيد: ${leader.crystal_balance.toFixed(2)} CRYSTAL\n`;
-        leaderboardText += `   ⛏️ تم التعدين: ${leader.total_mined.toFixed(2)} CRYSTAL\n`;
-        leaderboardText += `   📈 المستوى: ${leader.mining_level}\n`;
-        if (leader.referral_count > 0) {
-            leaderboardText += `   👥 إحالات: ${leader.referral_count}\n`;
-        }
-        leaderboardText += `\n`;
+        const name = leader.firstName || leader.username || `مستخدم ${leader.userId}`;
+        const medal = i === 0 ? '👑 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : `${i + 1}. `;
+        leaderboardText += `${medal} *${name}*\n`;
+        leaderboardText += `   💎 ${leader.crystalBalance.toFixed(2)} CRYSTAL\n`;
+        leaderboardText += `   ⛏️ المستوى ${leader.miningLevel}\n\n`;
     }
-    
-    const backKeyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-    ]);
     
     await ctx.editMessageText(leaderboardText, {
         parse_mode: 'Markdown',
-        ...backKeyboard
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
     });
 });
 
-// شراء العملة
-bot.action('buy_crystal', async (ctx) => {
+// قائمة الشراء
+bot.action('buy_menu', async (ctx) => {
     await ctx.answerCbQuery();
     
     const liquidity = await db.getLiquidity();
-    const available = liquidity.total_liquidity - liquidity.total_sold;
+    const available = liquidity.totalLiquidity - liquidity.totalSold;
     
     const text = `
 💰 *شراء عملة CRYSTAL* 💰
 
-💰 *سعر العملة:* ${CRYSTAL_PRICE} USDT لكل CRYSTAL
+💎 *السعر:* ${CRYSTAL_PRICE} USDT لكل CRYSTAL
 📊 *السيولة المتاحة:* ${available.toFixed(2)} CRYSTAL
-💰 *إجمالي السيولة:* ${liquidity.total_liquidity.toFixed(2)} CRYSTAL
-💵 *تم البيع:* ${liquidity.total_sold.toFixed(2)} CRYSTAL
+💵 *الحد الأدنى:* 10 USDT (1000 CRYSTAL)
 
 📝 *للشراء:*
-1. أرسل المبلغ الذي تريد شراءه بالكريستال
-2. سيتم إنشاء عنوان دفع USDT لك
-3. قم بالتحويل وأرسل رابط المعاملة للتأكيد
+أرسل الأمر التالي مع الكمية:
+\`/buy 1000\` (لشراء 1000 كريستال)
 
-⚠️ *الحد الأدنى للشراء:* 10 USDT
+⚠️ *سيتم إنشاء طلب شراء وستحصل على عنوان الدفع*
     `;
-    
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🔙 رجوع', 'back_to_menu')],
-        [Markup.button.callback('💵 شراء', 'initiate_purchase')]
-    ]);
     
     await ctx.editMessageText(text, {
         parse_mode: 'Markdown',
-        ...keyboard
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
     });
 });
 
-// شراء الترقية بـ USDT
-bot.action('upgrade_usdt', async (ctx) => {
+// أمر شراء
+bot.command('buy', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length !== 2) {
+        await ctx.reply('❌ الصيغة: /buy [الكمية]\nمثال: /buy 1000');
+        return;
+    }
+    
+    const amount = parseFloat(args[1]);
+    if (isNaN(amount) || amount <= 0) {
+        await ctx.reply('❌ الرجاء إدخال كمية صحيحة');
+        return;
+    }
+    
+    const result = await db.requestPurchase(ctx.from.id, amount);
+    
+    if (result.success) {
+        await ctx.reply(result.message, { parse_mode: 'Markdown' });
+        
+        await bot.telegram.sendMessage(ADMIN_ID, `
+🔔 *طلب شراء جديد!*
+
+👤 المستخدم: ${ctx.from.first_name} (@${ctx.from.username || 'لا يوجد'})
+🆔 المعرف: ${ctx.from.id}
+💎 الكمية: ${result.crystal_amount} CRYSTAL
+💰 المبلغ: ${result.usdt_amount} USDT
+📋 رقم الطلب: \`${result.request_id}\`
+
+للتأكيد:
+\`/confirm_purchase ${result.request_id} [رابط المعاملة]\`
+        `, { parse_mode: 'Markdown' });
+    } else {
+        await ctx.reply(`❌ ${result.message}`);
+    }
+});
+
+// تأكيد شراء (للأدمن)
+bot.command('confirm_purchase', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) {
+        await ctx.reply('⛔ هذا الأمر للأدمن فقط!');
+        return;
+    }
+    
+    const args = ctx.message.text.split(' ');
+    if (args.length !== 3) {
+        await ctx.reply('❌ الصيغة: /confirm_purchase [رقم الطلب] [رابط المعاملة]');
+        return;
+    }
+    
+    const requestId = args[1];
+    const transactionHash = args[2];
+    
+    const result = await db.confirmPurchase(requestId, transactionHash, ctx.from.id);
+    
+    if (result.success) {
+        await ctx.reply(result.message, { parse_mode: 'Markdown' });
+    } else {
+        await ctx.reply(`❌ ${result.message}`);
+    }
+});
+
+// قائمة الترقية
+bot.action('upgrade_menu', async (ctx) => {
     await ctx.answerCbQuery();
     
-    const user = await db.getUser(ctx.from.id);
-    const currentLevel = user?.mining_level || 1;
-    const nextRate = (currentLevel + 0.5).toFixed(1);
+    const stats = await db.getUserStats(ctx.from.id);
+    const nextRate = (stats.miningRate + 0.5).toFixed(1);
     
     const text = `
-⚡ *ترقية معدل التعدين بـ USDT* ⚡
+⚡ *ترقية معدل التعدين* ⚡
 
-📊 *مستواك الحالي:* ${currentLevel}
-⚡ *المعدل الحالي:* ${user?.mining_rate || 1}x
+📊 *مستواك:* ${stats.miningLevel}
+⚡ *المعدل الحالي:* ${stats.miningRate}x
 📈 *المعدل بعد الترقية:* ${nextRate}x
-💰 *سعر الترقية:* ${UPGRADE_USDT_PRICE} USDT
+💰 *السعر:* ${UPGRADE_USDT_PRICE} USDT
 
-✨ *فوائد الترقية:*
-• زيادة فرصة الحصول على مكافآت أعلى
-• وصول أسرع للمتصدرين
-• زيادة الحد الأقصى اليومي المحتمل
+📝 *للترقية:*
+أرسل الأمر:
+\`/upgrade\`
 
-📝 *طريقة الشراء:*
-1. اضغط على "طلب ترقية"
-2. سيتم إنشاء طلب وستحصل على عنوان الدفع
-3. أرسل ${UPGRADE_USDT_PRICE} USDT إلى العنوان
-4. أرسل رابط المعاملة للتأكيد
-5. سيتم مراجعة طلبك من قبل الأدمن
+⚠️ *سيتم إنشاء طلب ترقية وسيتم مراجعته من قبل الأدمن*
     `;
-    
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('📝 طلب ترقية', 'request_upgrade')],
-        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-    ]);
     
     await ctx.editMessageText(text, {
         parse_mode: 'Markdown',
-        ...keyboard
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
     });
 });
 
-// طلب ترقية
-bot.action('request_upgrade', async (ctx) => {
-    await ctx.answerCbQuery();
-    
+// أمر طلب ترقية
+bot.command('upgrade', async (ctx) => {
     const result = await db.requestUpgrade(ctx.from.id, UPGRADE_USDT_PRICE);
     
     if (result.success) {
-        const keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-        ]);
+        await ctx.reply(result.message, { parse_mode: 'Markdown' });
         
-        await ctx.editMessageText(result.message, {
-            parse_mode: 'Markdown',
-            ...keyboard
-        });
-        
-        // إشعار الأدمن
         await bot.telegram.sendMessage(ADMIN_ID, `
 🔔 *طلب ترقية جديد!*
 
-👤 *المستخدم:* ${ctx.from.first_name} (@${ctx.from.username || 'لا يوجد'})
-🆔 *المعرف:* ${ctx.from.id}
-📋 *رقم الطلب:* ${result.request_id}
-📊 *المستوى الحالي:* ${result.current_level}
-📈 *المستوى المطلوب:* ${result.requested_level}
-💰 *المبلغ:* ${result.usdt_amount} USDT
-📤 *عنوان الدفع:* \`TCZ2NGDSvxznADHTvvkedJTcbbGbD5RhfR\`
+👤 المستخدم: ${ctx.from.first_name} (@${ctx.from.username || 'لا يوجد'})
+🆔 المعرف: ${ctx.from.id}
+📊 المستوى الحالي: ${result.current_level}
+📈 المستوى المطلوب: ${result.requested_level}
+💰 المبلغ: ${result.usdt_amount} USDT
+📋 رقم الطلب: \`${result.request_id}\`
 
-استخدم الأزرار أدناه للموافقة أو الرفض:
-        `, Markup.inlineKeyboard([
-            [Markup.button.callback('✅ موافقة', `approve_upgrade_${result.request_id}`)],
-            [Markup.button.callback('❌ رفض', `reject_upgrade_${result.request_id}`)]
-        ]));
+للتأكيد:
+\`/confirm_upgrade ${result.request_id} [رابط المعاملة]\`
+        `, { parse_mode: 'Markdown' });
     } else {
-        await ctx.editMessageText(`❌ ${result.message}`, {
-            parse_mode: 'Markdown'
-        });
+        await ctx.reply(`❌ ${result.message}`);
     }
 });
 
-// موافقة الأدمن على الترقية
-bot.action(/approve_upgrade_(\d+)/, async (ctx) => {
+// تأكيد ترقية (للأدمن)
+bot.command('confirm_upgrade', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) {
-        await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
+        await ctx.reply('⛔ هذا الأمر للأدمن فقط!');
         return;
     }
     
-    const requestId = parseInt(ctx.match[1]);
-    
-    await ctx.answerCbQuery();
-    
-    // طلب رابط المعاملة
-    ctx.session = { state: 'awaiting_transaction_hash', requestId };
-    await ctx.reply(`📝 الرجاء إرسال رابط المعاملة (Transaction Hash) للطلب #${requestId}:`);
-});
-
-// رفض طلب الترقية
-bot.action(/reject_upgrade_(\d+)/, async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) {
-        await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
+    const args = ctx.message.text.split(' ');
+    if (args.length !== 3) {
+        await ctx.reply('❌ الصيغة: /confirm_upgrade [رقم الطلب] [رابط المعاملة]');
         return;
     }
     
-    const requestId = parseInt(ctx.match[1]);
-    const result = await db.rejectUpgrade(requestId, ctx.from.id);
+    const requestId = args[1];
+    const transactionHash = args[2];
     
-    await ctx.answerCbQuery();
-    await ctx.reply(result.message);
+    const result = await db.confirmUpgrade(requestId, transactionHash, ctx.from.id);
     
-    // إشعار المستخدم
-    const request = await db.getPendingUpgrades();
-    // يمكن إضافة إشعار للمستخدم هنا
+    if (result.success) {
+        await ctx.reply(result.message, { parse_mode: 'Markdown' });
+        
+        await bot.telegram.sendMessage(result.user_id, result.message, { parse_mode: 'Markdown' });
+    } else {
+        await ctx.reply(`❌ ${result.message}`);
+    }
 });
 
 // نظام الإحالة
 bot.action('referral_system', async (ctx) => {
     await ctx.answerCbQuery();
     
-    const user = await db.getUserStats(ctx.from.id);
+    const stats = await db.getUserStats(ctx.from.id);
     const referralLink = `https://t.me/${ctx.botInfo.username}?start=${ctx.from.id}`;
     
     const text = `
 👥 *نظام الإحالة* 👥
 
-🎁 *مكافآت الإحالة:*
+🎁 *المكافآت:*
 • ادعُ 5 أصدقاء واحصل على 10 كريستال مجاناً!
 • كل صديق يدخل عن طريقك يحصل على مكافأة ترحيبية
 
 📊 *إحصائياتك:*
-• عدد الإحالات: ${user?.referral_count || 0}/5
-• المكافأة المستحقة: ${user?.referral_count >= 5 ? '✅ تم الحصول على 10 كريستال' : '❌ لم يتم الوصول بعد'}
+• عدد الإحالات: ${stats.referralsCount}/5
+• المكافأة: ${stats.referralsCount >= 5 ? '✅ تم الحصول على 10 كريستال' : '❌ لم تتحقق بعد'}
 
 🔗 *رابط الإحالة الخاص بك:*
 \`${referralLink}\`
 
-💡 *نصيحة:* شارك الرابط مع أصدقائك لتحصل على المكافأة!
+💡 *انشر الرابط لأصدقائك واكسب المكافآت!*
     `;
-    
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-    ]);
     
     await ctx.editMessageText(text, {
         parse_mode: 'Markdown',
-        ...keyboard
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
     });
 });
 
@@ -280,73 +337,70 @@ bot.action('referral_system', async (ctx) => {
 bot.action('my_stats', async (ctx) => {
     await ctx.answerCbQuery();
     
-    const user = await db.getUserStats(ctx.from.id);
-    if (!user) {
+    const stats = await db.getUserStats(ctx.from.id);
+    if (!stats) {
         await ctx.reply('❌ لم يتم العثور على بياناتك');
         return;
     }
     
-    const today = new Date().toISOString().split('T')[0];
-    const isNewDay = user.last_mining_date !== today;
-    const dailyRemaining = isNewDay ? 4 : (4 - (user.daily_mined || 0));
-    
     const text = `
 📊 *إحصائياتك الشخصية* 📊
 
-👤 *الاسم:* ${user.first_name}
-💎 *رصيد الكريستال:* ${user.crystal_balance.toFixed(2)}
-⚡ *معدل التعدين:* ${user.mining_rate}x
-📈 *مستوى التعدين:* ${user.mining_level}
-⛏️ *إجمالي ما تم تعدينه:* ${user.total_mined.toFixed(2)}
-📅 *تم التعدين اليوم:* ${user.daily_mined || 0}/4 CRYSTAL
-⏰ *المتبقي اليوم:* ${dailyRemaining} كريستال
+👤 *الاسم:* ${stats.firstName}
+💎 *الرصيد:* ${stats.crystalBalance.toFixed(2)} CRYSTAL
+⚡ *معدل التعدين:* ${stats.miningRate}x
+📈 *المستوى:* ${stats.miningLevel}
+⛏️ *إجمالي التعدين:* ${stats.totalMined.toFixed(2)} CRYSTAL
+📅 *تعدين اليوم:* ${stats.dailyMined}/${DAILY_LIMIT}
+⏰ *المتبقي اليوم:* ${stats.dailyRemaining} كريستال
 
-👥 *نظام الإحالة:*
-• عدد الإحالات: ${user.referral_count || 0}
-• مكافأة 5 إحالات: ${user.referral_count >= 5 ? '✅ تم الحصول عليها' : '❌ لم تتحقق بعد'}
+👥 *الإحالات:* ${stats.referralsCount}/5
+🎁 *مكافأة الإحالات:* ${stats.referralsCount >= 5 ? '✅ تم الحصول عليها' : '❌ لم تتحقق بعد'}
 
-🎯 *نصيحة:* قم بالتعدين كل ساعة للحصول على أقصى استفادة!
+📅 *تاريخ التسجيل:* ${new Date(stats.createdAt).toLocaleDateString('ar')}
     `;
-    
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-    ]);
     
     await ctx.editMessageText(text, {
         parse_mode: 'Markdown',
-        ...keyboard
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
     });
 });
 
-// معلومات السيولة
-bot.action('liquidity', async (ctx) => {
+// معلومات عامة
+bot.action('info_menu', async (ctx) => {
     await ctx.answerCbQuery();
     
     const liquidity = await db.getLiquidity();
-    const available = liquidity.total_liquidity - liquidity.total_sold;
-    const soldPercentage = (liquidity.total_sold / liquidity.total_liquidity * 100).toFixed(2);
+    const available = liquidity.totalLiquidity - liquidity.totalSold;
     
     const text = `
-💰 *معلومات السيولة* 💰
+ℹ️ *معلومات البوت* ℹ️
 
-💎 *إجمالي السيولة:* ${liquidity.total_liquidity.toFixed(2)} CRYSTAL
-📊 *السيولة المتاحة:* ${available.toFixed(2)} CRYSTAL
-💵 *تم البيع:* ${liquidity.total_sold.toFixed(2)} CRYSTAL
-📈 *نسبة البيع:* ${soldPercentage}%
-
-💎 *سعر العملة:* ${CRYSTAL_PRICE} USDT لكل CRYSTAL
+💰 *سعر العملة:* ${CRYSTAL_PRICE} USDT
 ⚡ *سعر الترقية:* ${UPGRADE_USDT_PRICE} USDT
+📊 *الحد اليومي:* ${DAILY_LIMIT} كريستال
+⏰ *وقت التعدين:* كل ساعة
 
-✅ *السيولة كافية وآمنة!*
+💎 *معلومات السيولة:*
+• إجمالي السيولة: ${liquidity.totalLiquidity.toFixed(2)} CRYSTAL
+• المتاحة: ${available.toFixed(2)} CRYSTAL
+• تم البيع: ${liquidity.totalSold.toFixed(2)} CRYSTAL
+• عدد الترقيات: ${liquidity.totalUpgrades || 0}
+
+🎁 *مكافآت الإحالة:*
+• ادعُ 5 أصدقاء = 10 كريستال مجاناً
+
+📝 *الأوامر المتاحة:*
+/start - القائمة الرئيسية
+/buy [الكمية] - شراء كريستال
+/upgrade - طلب ترقية
+/mine - تعدين مباشر
+/stats - إحصائياتي
     `;
-    
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-    ]);
     
     await ctx.editMessageText(text, {
         parse_mode: 'Markdown',
-        ...keyboard
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
     });
 });
 
@@ -361,11 +415,9 @@ bot.action('pending_upgrades', async (ctx) => {
     
     const pending = await db.getPendingUpgrades();
     
-    if (pending.length === 0) {
-        await ctx.editMessageText('📭 لا توجد طلبات ترقية معلقة حالياً', {
-            ...Markup.inlineKeyboard([
-                [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-            ])
+    if (!pending || pending.length === 0) {
+        await ctx.editMessageText('📭 لا توجد طلبات ترقية معلقة', {
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
         });
         return;
     }
@@ -373,22 +425,56 @@ bot.action('pending_upgrades', async (ctx) => {
     let text = '📋 *طلبات الترقية المعلقة*\n\n';
     
     for (const req of pending) {
-        text += `🆔 *رقم الطلب:* ${req.id}\n`;
-        text += `👤 *المستخدم:* ${req.first_name || req.username}\n`;
-        text += `📊 *المستوى الحالي:* ${req.current_level}\n`;
-        text += `📈 *المستوى المطلوب:* ${req.requested_level}\n`;
-        text += `💰 *المبلغ:* ${req.usdt_amount} USDT\n`;
-        text += `📅 *التاريخ:* ${new Date(req.created_at).toLocaleString()}\n`;
-        text += `───────────────────\n`;
+        text += `🆔 الطلب: \`${req.id}\`\n`;
+        text += `👤 المستخدم: ${req.firstName || req.username}\n`;
+        text += `📊 ${req.currentLevel} → ${req.requestedLevel}\n`;
+        text += `💰 ${req.usdtAmount} USDT\n`;
+        text += `📅 ${new Date(req.createdAt).toLocaleString()}\n`;
+        text += `━━━━━━━━━━━━━━━━━━\n`;
     }
     
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-    ]);
+    text += `\n📝 *للتأكيد:* /confirm_upgrade [الرقم] [رابط المعاملة]`;
     
     await ctx.editMessageText(text, {
         parse_mode: 'Markdown',
-        ...keyboard
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+    });
+});
+
+// طلبات الشراء المعلقة (للأدمن)
+bot.action('pending_purchases', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) {
+        await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
+        return;
+    }
+    
+    await ctx.answerCbQuery();
+    
+    const pending = await db.getPendingPurchases();
+    
+    if (!pending || pending.length === 0) {
+        await ctx.editMessageText('📭 لا توجد طلبات شراء معلقة', {
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+        });
+        return;
+    }
+    
+    let text = '💰 *طلبات الشراء المعلقة*\n\n';
+    
+    for (const req of pending) {
+        text += `🆔 الطلب: \`${req.id}\`\n`;
+        text += `👤 المستخدم: ${req.firstName || req.username}\n`;
+        text += `💎 ${req.crystalAmount} CRYSTAL\n`;
+        text += `💰 ${req.usdtAmount} USDT\n`;
+        text += `📅 ${new Date(req.createdAt).toLocaleString()}\n`;
+        text += `━━━━━━━━━━━━━━━━━━\n`;
+    }
+    
+    text += `\n📝 *للتأكيد:* /confirm_purchase [الرقم] [رابط المعاملة]`;
+    
+    await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
     });
 });
 
@@ -402,51 +488,148 @@ bot.action('global_stats', async (ctx) => {
     await ctx.answerCbQuery();
     
     const stats = await db.getGlobalStats();
-    const liquidity = await db.getLiquidity();
     
     const text = `
-📊 *إحصائيات عامة للبوت* 📊
+📊 *إحصائيات عامة* 📊
 
-👥 *إجمالي المستخدمين:* ${stats.total_users || 0}
-💎 *إجمالي الكريستال المتداول:* ${(stats.total_crystals || 0).toFixed(2)}
-⛏️ *إجمالي ما تم تعدينه:* ${(stats.total_mined || 0).toFixed(2)}
-📈 *متوسط مستوى التعدين:* ${(stats.avg_level || 1).toFixed(2)}
+👥 *المستخدمين:* ${stats.users}
+💎 *إجمالي الكريستال:* ${stats.totalCrystals}
+⛏️ *إجمالي التعدين:* ${stats.totalMined}
+📈 *متوسط المستوى:* ${stats.avgLevel}
+⚡ *متوسط المعدل:* ${stats.avgRate}x
 
-💰 *معلومات السيولة:*
-• إجمالي السيولة: ${liquidity.total_liquidity.toFixed(2)} CRYSTAL
-• تم البيع: ${liquidity.total_sold.toFixed(2)} CRYSTAL
-• السيولة المتاحة: ${(liquidity.total_liquidity - liquidity.total_sold).toFixed(2)} CRYSTAL
+💰 *السيولة:*
+• إجمالي السيولة: ${stats.liquidity.toFixed(2)} CRYSTAL
+• تم البيع: ${stats.sold.toFixed(2)} CRYSTAL
+• المتاحة: ${stats.available.toFixed(2)} CRYSTAL
+• عدد الترقيات: ${stats.upgrades}
+
+📊 *نسبة البيع:* ${((stats.sold / stats.liquidity) * 100).toFixed(2)}%
     `;
-    
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-    ]);
     
     await ctx.editMessageText(text, {
         parse_mode: 'Markdown',
-        ...keyboard
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
     });
+});
+
+// إحصائيات اليوم (للأدمن)
+bot.action('today_stats', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) {
+        await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
+        return;
+    }
+    
+    await ctx.answerCbQuery();
+    
+    const stats = await db.getTodayStats();
+    
+    const text = `
+📅 *إحصائيات اليوم* 📅
+${new Date().toLocaleDateString('ar')}
+
+👥 *مستخدمين جدد:* ${stats?.totalUsers || 0}
+⛏️ *تم التعدين:* ${stats?.totalMined?.toFixed(2) || 0} CRYSTAL
+💰 *عمليات شراء:* ${stats?.totalPurchases || 0}
+⚡ *عمليات ترقية:* ${stats?.totalUpgrades || 0}
+    `;
+    
+    await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+    });
+});
+
+// بحث عن مستخدم (للأدمن)
+bot.action('search_user', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) {
+        await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
+        return;
+    }
+    
+    await ctx.answerCbQuery();
+    await ctx.reply('🔍 الرجاء إرسال اسم المستخدم أو المعرف للبحث:');
+    ctx.session = { state: 'search_user' };
+});
+
+// معالجة البحث
+bot.on('text', async (ctx) => {
+    if (ctx.session?.state === 'search_user' && ctx.from.id === ADMIN_ID) {
+        const query = ctx.message.text;
+        const users = await db.searchUsers(query);
+        
+        if (users.length === 0) {
+            await ctx.reply('❌ لم يتم العثور على مستخدمين');
+        } else {
+            let text = '🔍 *نتائج البحث:*\n\n';
+            for (const user of users) {
+                text += `👤 ${user.firstName || user.username || user.userId}\n`;
+                text += `🆔 \`${user.userId}\`\n`;
+                text += `💎 ${user.crystalBalance.toFixed(2)} CRYSTAL\n`;
+                text += `📈 المستوى ${user.miningLevel}\n`;
+                text += `🚫 ${user.isBanned ? 'محظور' : 'نشط'}\n`;
+                text += `━━━━━━━━━━━━━━━━━━\n`;
+            }
+            await ctx.reply(text, { parse_mode: 'Markdown' });
+        }
+        
+        delete ctx.session.state;
+    }
+});
+
+// أمر تعدين مباشر
+bot.command('mine', async (ctx) => {
+    const result = await db.mine(ctx.from.id);
+    
+    if (result.success) {
+        const stats = await db.getUserStats(ctx.from.id);
+        await ctx.reply(`
+🎉 *تم التعدين بنجاح!*
+
+⛏️ *حصلت على:* ${result.reward} CRYSTAL
+💎 *الرصيد الحالي:* ${stats.crystalBalance.toFixed(2)}
+📊 *المتبقي اليوم:* ${result.dailyRemaining}/${DAILY_LIMIT}
+        `, { parse_mode: 'Markdown' });
+    } else {
+        await ctx.reply(result.message, { parse_mode: 'Markdown' });
+    }
+});
+
+// أمر إحصائيات
+bot.command('stats', async (ctx) => {
+    const stats = await db.getUserStats(ctx.from.id);
+    
+    const text = `
+📊 *إحصائياتك* 📊
+
+💎 *الرصيد:* ${stats.crystalBalance.toFixed(2)}
+⚡ *معدل التعدين:* ${stats.miningRate}x
+📈 *المستوى:* ${stats.miningLevel}
+⛏️ *إجمالي التعدين:* ${stats.totalMined.toFixed(2)}
+📅 *تعدين اليوم:* ${stats.dailyMined}/${DAILY_LIMIT}
+👥 *الإحالات:* ${stats.referralsCount}
+    `;
+    
+    await ctx.reply(text, { parse_mode: 'Markdown' });
 });
 
 // العودة للقائمة الرئيسية
 bot.action('back_to_menu', async (ctx) => {
     await ctx.answerCbQuery();
     
-    const user = await db.getUser(ctx.from.id);
-    const balance = user?.crystal_balance || 0;
-    const miningRate = user?.mining_rate || 1;
-    const dailyMined = user?.daily_mined || 0;
+    const stats = await db.getUserStats(ctx.from.id);
+    const referralLink = `https://t.me/${ctx.botInfo.username}?start=${ctx.from.id}`;
     
     const text = `
 ✨ *قائمة CRYSTAL الرئيسية* ✨
 
 👤 *المستخدم:* ${ctx.from.first_name}
-💎 *رصيد الكريستال:* ${balance.toFixed(2)} CRYSTAL
-⚡ *معدل التعدين:* ${miningRate}x
-📊 *تم التعدين اليوم:* ${dailyMined}/4 CRYSTAL
-💰 *سعر العملة:* ${CRYSTAL_PRICE} USDT لكل CRYSTAL
+💎 *الرصيد:* ${stats.crystalBalance.toFixed(2)} CRYSTAL
+⚡ *معدل التعدين:* ${stats.miningRate}x
+📊 *تعدين اليوم:* ${stats.dailyMined}/${DAILY_LIMIT}
 
-🎁 *مكافآت الإحالة:* ادعُ 5 أصدقاء واحصل على 10 كريستال!
+🎁 *رابط الإحالة الخاص بك:*
+\`${referralLink}\`
     `;
     
     const keyboard = ctx.from.id === ADMIN_ID ? adminKeyboard : mainKeyboard;
@@ -457,36 +640,15 @@ bot.action('back_to_menu', async (ctx) => {
     });
 });
 
-// معالجة تأكيد الدفع من الأدمن
-bot.on('text', async (ctx) => {
-    if (ctx.session?.state === 'awaiting_transaction_hash' && ctx.from.id === ADMIN_ID) {
-        const transactionHash = ctx.message.text;
-        const requestId = ctx.session.requestId;
-        
-        const result = await db.confirmUpgrade(requestId, transactionHash, ctx.from.id);
-        
-        if (result.success) {
-            await ctx.reply(result.message);
-            
-            // الحصول على معلومات الطلب لإشعار المستخدم
-            const request = await db.getPendingUpgrades();
-            // يمكن إضافة إشعار للمستخدم هنا
-        } else {
-            await ctx.reply(`❌ ${result.message}`);
-        }
-        
-        delete ctx.session.state;
-    }
-});
-
 // تشغيل البوت
 bot.launch().then(() => {
     console.log('🚀 Bot is running...');
     console.log('👑 Admin ID:', ADMIN_ID);
+    console.log('💎 Crystal Price:', CRYSTAL_PRICE, 'USDT');
+    console.log('⚡ Upgrade Price:', UPGRADE_USDT_PRICE, 'USDT');
 }).catch((err) => {
     console.error('Error starting bot:', err);
 });
 
-// إيقاف التشغيل بشكل نظيف
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
