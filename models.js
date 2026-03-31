@@ -5,14 +5,13 @@ const userSchema = new mongoose.Schema({
     userId: { type: Number, required: true, unique: true },
     username: { type: String, default: '' },
     firstName: { type: String, default: '' },
-    language: { type: String, default: 'ar' }, // ar / en
+    language: { type: String, default: 'ar' },
     crystalBalance: { type: Number, default: 0 },
     miningRate: { type: Number, default: 1 },
     miningLevel: { type: Number, default: 1 },
     totalMined: { type: Number, default: 0 },
     dailyMined: { type: Number, default: 0 },
     dailyLimit: { type: Number, default: 700 },
-    dailyProgress: { type: Number, default: 0 },
     lastMiningTime: { type: Date, default: null },
     miningStartTime: { type: Date, default: null },
     referrerId: { type: Number, default: null },
@@ -71,7 +70,7 @@ const p2pOfferSchema = new mongoose.Schema({
 
 // نموذج السيولة
 const liquiditySchema = new mongoose.Schema({
-    totalLiquidity: { type: Number, default: 100000 },
+    totalLiquidity: { type: Number, default: 1000000 },
     totalSold: { type: Number, default: 0 },
     totalUpgrades: { type: Number, default: 0 },
     lastUpdated: { type: Date, default: Date.now }
