@@ -1,556 +1,281 @@
-import asyncio
-import sqlite3
-import json
-import random
-import hashlib
-from datetime import datetime, timedelta
-from typing import Optional
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
-from telegram.constants import ParseMode
-import logging
+require('dotenv').config();
+const { Telegraf, Markup } = require('telegraf');
+const db = require('./database');
 
-# إعداد التسجيل
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
+const bot = new Telegraf(process.env.BOT_TOKEN);
+const WEBAPP_URL = process.env.WEBAPP_URL;
+const CRYSTAL_PRICE = parseFloat(process.env.CRYSTAL_PRICE) || 0.01;
+const MIN_PURCHASE = parseFloat(process.env.MIN_PURCHASE) || 10;
 
-# توكن البوت
-BOT_TOKEN = "8231977249:AAFCIBzTa8sw4iBLniWLbp_k2uCnCcIJ2UM"
-ADMIN_ID = 6701743450
+// قائمة الأزرار الرئيسية
+const mainKeyboard = Markup.inlineKeyboard([
+    [Markup.button.webApp('🚀 فتح تطبيق التعدين', WEBAPP_URL)],
+    [Markup.button.callback('📊 لوحة المتصدرين', 'leaderboard')],
+    [Markup.button.callback('💰 شراء كريستال', 'buy_crystal')],
+    [Markup.button.callback('⚡ تطوير معدل التعدين', 'upgrade')],
+    [Markup.button.callback('ℹ️ معلومات السيولة', 'liquidity')]
+]);
 
-# سعر العملة بالدولار
-CRYSTAL_PRICE_USDT = 0.01  # 1 كريستال = 0.01 USDT
-MIN_PURCHASE_USDT = 10  # الحد الأدنى للشراء 10 USDT
+// أمر /start
+bot.start(async (ctx) => {
+    const user = ctx.from;
+    const referrerId = ctx.startPayload ? parseInt(ctx.startPayload) : null;
+    
+    await db.registerUser(user.id, user.username, user.first_name, referrerId);
+    
+    const userData = await db.getUser(user.id);
+    const balance = userData?.crystal_balance || 0;
+    const miningRate = userData?.mining_rate || 1;
+    
+    const welcomeText = `
+✨ *مرحباً بك في بوت تعدين CRYSTAL!* ✨
 
-class MiningBot:
-    def __init__(self):
-        self.setup_database()
-        
-    def setup_database(self):
-        """إعداد قاعدة البيانات"""
-        self.conn = sqlite3.connect('mining_bot.db', check_same_thread=False)
-        self.cursor = self.conn.cursor()
-        
-        # جدول المستخدمين
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                username TEXT,
-                first_name TEXT,
-                crystal_balance REAL DEFAULT 0,
-                mining_rate REAL DEFAULT 1,
-                mining_level INTEGER DEFAULT 1,
-                last_mining_time TIMESTAMP,
-                total_mined REAL DEFAULT 0,
-                referrer_id INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # جدول المعاملات
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                type TEXT,
-                amount REAL,
-                usdt_amount REAL,
-                status TEXT,
-                transaction_hash TEXT,
-                payment_address TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # جدول تحسينات التعدين
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS upgrades (
-                user_id INTEGER,
-                upgrade_type TEXT,
-                level INTEGER DEFAULT 1,
-                price REAL,
-                PRIMARY KEY (user_id, upgrade_type)
-            )
-        ''')
-        
-        # جدول السيولة
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS liquidity (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                total_liquidity REAL DEFAULT 0,
-                total_sold REAL DEFAULT 0,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # إضافة السيولة الابتدائية
-        self.cursor.execute('SELECT * FROM liquidity')
-        if not self.cursor.fetchone():
-            self.cursor.execute('INSERT INTO liquidity (total_liquidity, total_sold) VALUES (100000, 0)')
-        
-        self.conn.commit()
-        
-    def get_user(self, user_id):
-        """الحصول على بيانات المستخدم"""
-        self.cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
-        return self.cursor.fetchone()
-    
-    def register_user(self, user_id, username, first_name, referrer_id=None):
-        """تسجيل مستخدم جديد"""
-        if not self.get_user(user_id):
-            self.cursor.execute('''
-                INSERT INTO users (user_id, username, first_name, mining_rate, last_mining_time, referrer_id)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (user_id, username, first_name, 1, datetime.now(), referrer_id))
-            self.conn.commit()
-            
-            if referrer_id:
-                self.add_crystals(referrer_id, 50, "مكافأة إحالة")
-            return True
-        return False
-    
-    def add_crystals(self, user_id, amount, reason):
-        """إضافة كريستال للمستخدم"""
-        self.cursor.execute('''
-            UPDATE users 
-            SET crystal_balance = crystal_balance + ? 
-            WHERE user_id = ?
-        ''', (amount, user_id))
-        self.conn.commit()
-        
-        self.cursor.execute('''
-            INSERT INTO transactions (user_id, type, amount, status)
-            VALUES (?, ?, ?, ?)
-        ''', (user_id, 'mining', amount, 'completed'))
-        self.conn.commit()
-        
-    def mine_crystals(self, user_id):
-        """عملية التعدين"""
-        user = self.get_user(user_id)
-        if not user:
-            return 0, None
-            
-        last_mining = datetime.strptime(user[5], '%Y-%m-%d %H:%M:%S.%f') if user[5] else datetime.now()
-        time_diff = (datetime.now() - last_mining).total_seconds()
-        
-        if time_diff < 3600:
-            remaining = 3600 - time_diff
-            return 0, remaining
-            
-        mining_rate = user[3]
-        base_reward = 10 * mining_rate
-        random_bonus = random.randint(0, int(5 * mining_rate))
-        total_reward = base_reward + random_bonus
-        
-        self.cursor.execute('''
-            UPDATE users 
-            SET crystal_balance = crystal_balance + ?, 
-                total_mined = total_mined + ?,
-                last_mining_time = ?
-            WHERE user_id = ?
-        ''', (total_reward, total_reward, datetime.now(), user_id))
-        self.conn.commit()
-        
-        self.cursor.execute('''
-            INSERT INTO transactions (user_id, type, amount, status)
-            VALUES (?, ?, ?, ?)
-        ''', (user_id, 'mining', total_reward, 'completed'))
-        self.conn.commit()
-        
-        return total_reward, None
-    
-    def get_leaderboard(self, limit=10):
-        """الحصول على قائمة المتصدرين"""
-        self.cursor.execute('''
-            SELECT user_id, username, first_name, crystal_balance, total_mined
-            FROM users 
-            ORDER BY crystal_balance DESC 
-            LIMIT ?
-        ''', (limit,))
-        return self.cursor.fetchall()
-    
-    def get_liquidity_info(self):
-        """الحصول على معلومات السيولة"""
-        self.cursor.execute('SELECT total_liquidity, total_sold FROM liquidity ORDER BY id DESC LIMIT 1')
-        result = self.cursor.fetchone()
-        if result:
-            return {'total_liquidity': result[0], 'total_sold': result[1]}
-        return {'total_liquidity': 100000, 'total_sold': 0}
-    
-    def create_purchase_order(self, user_id, crystal_amount):
-        """إنشاء أمر شراء"""
-        usdt_amount = crystal_amount * CRYSTAL_PRICE_USDT
-        
-        if usdt_amount < MIN_PURCHASE_USDT:
-            return None, f"الحد الأدنى للشراء هو {MIN_PURCHASE_USDT} USDT"
-        
-        # التحقق من السيولة
-        liquidity = self.get_liquidity_info()
-        if crystal_amount > liquidity['total_liquidity'] - liquidity['total_sold']:
-            return None, "عذراً، السيولة غير كافية حالياً"
-        
-        # إنشاء عنوان دفع مؤقت
-        payment_address = self.generate_payment_address(user_id)
-        
-        self.cursor.execute('''
-            INSERT INTO transactions (user_id, type, amount, usdt_amount, status, payment_address)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, 'purchase', crystal_amount, usdt_amount, 'pending', payment_address))
-        self.conn.commit()
-        
-        transaction_id = self.cursor.lastrowid
-        
-        return {
-            'transaction_id': transaction_id,
-            'crystal_amount': crystal_amount,
-            'usdt_amount': usdt_amount,
-            'payment_address': payment_address
-        }, None
-    
-    def generate_payment_address(self, user_id):
-        """توليد عنوان دفع مؤقت"""
-        # في التطبيق الحقيقي، يجب استخدام API لمحفظة حقيقية
-        return f"T{hashlib.sha256(f'{user_id}{datetime.now()}'.encode()).hexdigest()[:34]}"
-    
-    def confirm_payment(self, transaction_id, transaction_hash):
-        """تأكيد الدفع"""
-        self.cursor.execute('''
-            SELECT user_id, amount FROM transactions 
-            WHERE id = ? AND status = 'pending'
-        ''', (transaction_id,))
-        transaction = self.cursor.fetchone()
-        
-        if not transaction:
-            return False, "المعاملة غير موجودة أو تم معالجتها مسبقاً"
-        
-        user_id, crystal_amount = transaction
-        
-        # تحديث رصيد المستخدم
-        self.cursor.execute('''
-            UPDATE users 
-            SET crystal_balance = crystal_balance + ? 
-            WHERE user_id = ?
-        ''', (crystal_amount, user_id))
-        
-        # تحديث حالة المعاملة
-        self.cursor.execute('''
-            UPDATE transactions 
-            SET status = 'completed', transaction_hash = ? 
-            WHERE id = ?
-        ''', (transaction_hash, transaction_id))
-        
-        # تحديث السيولة
-        self.cursor.execute('''
-            UPDATE liquidity 
-            SET total_sold = total_sold + ? 
-            WHERE id = (SELECT id FROM liquidity ORDER BY id DESC LIMIT 1)
-        ''', (crystal_amount,))
-        
-        self.conn.commit()
-        
-        return True, "تم شراء العملة بنجاح!"
-    
-    def upgrade_mining(self, user_id, upgrade_type):
-        """ترقية معدل التعدين"""
-        self.cursor.execute('''
-            SELECT level, price FROM upgrades 
-            WHERE user_id = ? AND upgrade_type = ?
-        ''', (user_id, upgrade_type))
-        upgrade = self.cursor.fetchone()
-        
-        if upgrade:
-            level = upgrade[0]
-            price = 100 * (level + 1)  # سعر الترقية
-        else:
-            level = 0
-            price = 100  # السعر الابتدائي
-        
-        user = self.get_user(user_id)
-        if user[2] < price:  # crystal_balance
-            return False, f"رصيدك غير كافي! تحتاج {price} كريستال"
-        
-        # خصم الكريستال
-        self.cursor.execute('''
-            UPDATE users 
-            SET crystal_balance = crystal_balance - ? 
-            WHERE user_id = ?
-        ''', (price, user_id))
-        
-        # تحديث معدل التعدين
-        new_mining_rate = user[3] + 0.5
-        
-        self.cursor.execute('''
-            UPDATE users 
-            SET mining_rate = ?, mining_level = mining_level + 1 
-            WHERE user_id = ?
-        ''', (new_mining_rate, user_id))
-        
-        # تحديث جدول الترقيات
-        if upgrade:
-            self.cursor.execute('''
-                UPDATE upgrades 
-                SET level = level + 1, price = ? 
-                WHERE user_id = ? AND upgrade_type = ?
-            ''', (100 * (level + 2), user_id, upgrade_type))
-        else:
-            self.cursor.execute('''
-                INSERT INTO upgrades (user_id, upgrade_type, level, price)
-                VALUES (?, ?, ?, ?)
-            ''', (user_id, upgrade_type, 1, 200))
-        
-        self.conn.commit()
-        
-        return True, f"تمت الترقية! معدل التعدين الجديد: {new_mining_rate}x"
+👤 *المستخدم:* ${user.first_name}
+💎 *رصيد الكريستال:* ${balance.toFixed(2)} CRYSTAL
+⚡ *معدل التعدين:* ${miningRate}x
+💰 *سعر العملة:* ${CRYSTAL_PRICE} USDT لكل CRYSTAL
 
-# إنشاء البوت
-mining_bot = MiningBot()
-app = Application.builder().token(BOT_TOKEN).build()
+🚀 *ابدأ التعدين الآن من خلال التطبيق المصغر!*
+    `;
+    
+    await ctx.reply(welcomeText, { 
+        parse_mode: 'Markdown',
+        ...mainKeyboard 
+    });
+});
 
-# إعداد WebApp
-WEBAPP_URL = "https://your-domain.com/mining-app"  # غيّر هذا لرابط التطبيق المصغر
+// لوحة المتصدرين
+bot.action('leaderboard', async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const leaders = await db.getLeaderboard(10);
+    
+    let leaderboardText = '🏆 *قائمة المتصدرين* 🏆\n\n';
+    
+    for (let i = 0; i < leaders.length; i++) {
+        const leader = leaders[i];
+        const name = leader.first_name || leader.username || `مستخدم ${leader.user_id}`;
+        leaderboardText += `${i + 1}. ${name}\n`;
+        leaderboardText += `   💎 الرصيد: ${leader.crystal_balance.toFixed(2)} CRYSTAL\n`;
+        leaderboardText += `   ⛏️ تم التعدين: ${leader.total_mined.toFixed(2)} CRYSTAL\n\n`;
+    }
+    
+    const backKeyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
+    ]);
+    
+    await ctx.editMessageText(leaderboardText, {
+        parse_mode: 'Markdown',
+        ...backKeyboard
+    });
+});
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """رسالة الترحيب"""
-    user = update.effective_user
-    mining_bot.register_user(user.id, user.username, user.first_name)
+// شراء العملة
+bot.action('buy_crystal', async (ctx) => {
+    await ctx.answerCbQuery();
     
-    keyboard = [
-        [InlineKeyboardButton("🚀 فتح تطبيق التعدين", web_app=WebAppInfo(url=WEBAPP_URL))],
-        [InlineKeyboardButton("📊 لوحة المتصدرين", callback_data="leaderboard")],
-        [InlineKeyboardButton("💰 شراء كريستال", callback_data="buy_crystal")],
-        [InlineKeyboardButton("⚡ تطوير معدل التعدين", callback_data="upgrade")],
-        [InlineKeyboardButton("ℹ️ معلومات السيولة", callback_data="liquidity")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    const liquidity = await db.getLiquidity();
+    const available = liquidity.total_liquidity - liquidity.total_sold;
     
-    user_data = mining_bot.get_user(user.id)
-    crystal_balance = user_data[2] if user_data else 0
-    mining_rate = user_data[3] if user_data else 1
-    
-    welcome_text = f"""
-✨ **مرحباً بك في بوت تعدين CRYSTAL!** ✨
+    const text = `
+💰 *شراء عملة CRYSTAL* 💰
 
-👤 **المستخدم:** {user.first_name}
-💎 **رصيد الكريستال:** {crystal_balance:,.2f} CRYSTAL
-⚡ **معدل التعدين:** {mining_rate}x
-💰 **سعر العملة:** {CRYSTAL_PRICE_USDT} USDT لكل CRYSTAL
+💰 *سعر العملة:* ${CRYSTAL_PRICE} USDT لكل CRYSTAL
+📊 *السيولة المتاحة:* ${available.toFixed(2)} CRYSTAL
+💰 *إجمالي السيولة:* ${liquidity.total_liquidity.toFixed(2)} CRYSTAL
+💵 *تم البيع:* ${liquidity.total_sold.toFixed(2)} CRYSTAL
 
-🚀 **ابدأ التعدين الآن من خلال التطبيق المصغر!**
-    """
-    
-    await update.message.reply_text(welcome_text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
-
-async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض قائمة المتصدرين"""
-    query = update.callback_query
-    await query.answer()
-    
-    leaders = mining_bot.get_leaderboard(10)
-    
-    leaderboard_text = "🏆 **قائمة المتصدرين** 🏆\n\n"
-    for i, leader in enumerate(leaders, 1):
-        user_id, username, first_name, balance, total_mined = leader
-        name = first_name or username or f"مستخدم {user_id}"
-        leaderboard_text += f"{i}. {name}\n"
-        leaderboard_text += f"   💎 الرصيد: {balance:,.2f} CRYSTAL\n"
-        leaderboard_text += f"   ⛏️ تم التعدين: {total_mined:,.2f} CRYSTAL\n\n"
-    
-    keyboard = [[InlineKeyboardButton("🔙 رجوع", callback_data="back_to_menu")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(leaderboard_text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
-
-async def buy_crystal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """شراء العملة"""
-    query = update.callback_query
-    await query.answer()
-    
-    liquidity = mining_bot.get_liquidity_info()
-    available = liquidity['total_liquidity'] - liquidity['total_sold']
-    
-    text = f"""
-💎 **شراء عملة CRYSTAL** 💎
-
-💰 **سعر العملة:** {CRYSTAL_PRICE_USDT} USDT لكل CRYSTAL
-📊 **السيولة المتاحة:** {available:,.2f} CRYSTAL
-💰 **إجمالي السيولة:** {liquidity['total_liquidity']:,.2f} CRYSTAL
-💵 **تم البيع:** {liquidity['total_sold']:,.2f} CRYSTAL
-
-📝 **للشراء:**
+📝 *للشراء:*
 1. أرسل المبلغ الذي تريد شراءه بالكريستال
 2. سيتم إنشاء عنوان دفع USDT لك
 3. قم بالتحويل وأرسل رابط المعاملة للتأكيد
 
-⚠️ **الحد الأدنى للشراء:** {MIN_PURCHASE_USDT} USDT
-    """
+⚠️ *الحد الأدنى للشراء:* ${MIN_PURCHASE} USDT
+    `;
     
-    keyboard = [
-        [InlineKeyboardButton("🔙 رجوع", callback_data="back_to_menu")],
-        [InlineKeyboardButton("💵 شراء", callback_data="initiate_purchase")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🔙 رجوع', 'back_to_menu')],
+        [Markup.button.callback('💵 شراء', 'initiate_purchase')]
+    ]);
     
-    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+    await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        ...keyboard
+    });
+});
 
-async def handle_purchase_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة طلب الشراء"""
-    user = update.effective_user
-    try:
-        crystal_amount = float(update.message.text)
-        
-        order, error = mining_bot.create_purchase_order(user.id, crystal_amount)
-        
-        if error:
-            await update.message.reply_text(f"❌ {error}")
-            return
-        
-        text = f"""
-✅ **تم إنشاء طلب الشراء!**
-
-💎 **الكمية:** {order['crystal_amount']:,.2f} CRYSTAL
-💰 **المبلغ:** {order['usdt_amount']:,.2f} USDT
-🆔 **رقم العملية:** {order['transaction_id']}
-
-📤 **ارسل المبلغ إلى العنوان التالي:**
-`{order['payment_address']}`
-
-⚠️ **بعد التحويل، أرسل رابط المعاملة (Transaction Hash)**
-📝 **الصيغة:** /confirm [رقم العملية] [رابط المعاملة]
-        """
-        
-        await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
-        
-    except ValueError:
-        await update.message.reply_text("❌ الرجاء إدخال رقم صحيح")
-
-async def confirm_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تأكيد الدفع"""
-    if len(context.args) != 2:
-        await update.message.reply_text("❌ الصيغة: /confirm [رقم العملية] [رابط المعاملة]")
-        return
+// بدء عملية الشراء
+bot.action('initiate_purchase', async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.reply('📝 الرجاء إرسال عدد الكريستال الذي تريد شراءه:');
     
-    try:
-        transaction_id = int(context.args[0])
-        transaction_hash = context.args[1]
+    // تخزين حالة المستخدم
+    ctx.session = { state: 'awaiting_purchase_amount' };
+});
+
+// معالجة رسائل الشراء
+bot.on('text', async (ctx) => {
+    if (ctx.session?.state === 'awaiting_purchase_amount') {
+        const amount = parseFloat(ctx.message.text);
         
-        success, message = mining_bot.confirm_payment(transaction_id, transaction_hash)
+        if (isNaN(amount) || amount <= 0) {
+            await ctx.reply('❌ الرجاء إدخال رقم صحيح');
+            return;
+        }
         
-        if success:
-            await update.message.reply_text(f"✅ {message}")
-        else:
-            await update.message.reply_text(f"❌ {message}")
+        const order = await db.createPurchaseOrder(ctx.from.id, amount, CRYSTAL_PRICE, MIN_PURCHASE);
+        
+        if (!order.success) {
+            await ctx.reply(`❌ ${order.error}`);
+        } else {
+            const text = `
+✅ *تم إنشاء طلب الشراء!*
+
+💎 *الكمية:* ${order.crystal_amount.toFixed(2)} CRYSTAL
+💰 *المبلغ:* ${order.usdt_amount.toFixed(2)} USDT
+🆔 *رقم العملية:* ${order.transaction_id}
+
+📤 *ارسل المبلغ إلى العنوان التالي:*
+\`${order.payment_address}\`
+
+⚠️ *بعد التحويل، أرسل:* 
+/confirm ${order.transaction_id} [رابط المعاملة]
+            `;
             
-    except ValueError:
-        await update.message.reply_text("❌ رقم العملية غير صحيح")
+            await ctx.reply(text, { parse_mode: 'Markdown' });
+        }
+        
+        delete ctx.session.state;
+    }
+});
 
-async def upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ترقية معدل التعدين"""
-    query = update.callback_query
-    await query.answer()
+// تأكيد الدفع
+bot.command('confirm', async (ctx) => {
+    const args = ctx.message.text.split(' ');
     
-    user = mining_bot.get_user(query.from_user.id)
-    current_rate = user[3] if user else 1
-    upgrade_cost = 100 * (user[4] if user else 1)  # mining_level
+    if (args.length !== 3) {
+        await ctx.reply('❌ الصيغة: /confirm [رقم العملية] [رابط المعاملة]');
+        return;
+    }
     
-    text = f"""
-⚡ **تطوير معدل التعدين** ⚡
+    const transactionId = parseInt(args[1]);
+    const transactionHash = args[2];
+    
+    const result = await db.confirmPayment(transactionId, transactionHash);
+    
+    if (result.success) {
+        await ctx.reply(`✅ ${result.message}`);
+    } else {
+        await ctx.reply(`❌ ${result.message}`);
+    }
+});
 
-📊 **المعدل الحالي:** {current_rate}x
-💰 **تكلفة الترقية:** {upgrade_cost} CRYSTAL
-📈 **المعدل بعد الترقية:** {current_rate + 0.5}x
+// ترقية التعدين
+bot.action('upgrade', async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const user = await db.getUser(ctx.from.id);
+    const currentRate = user?.mining_rate || 1;
+    const upgradeCost = 100 * (user?.mining_level || 1);
+    
+    const text = `
+⚡ *تطوير معدل التعدين* ⚡
 
-**فوائد الترقية:**
+📊 *المعدل الحالي:* ${currentRate}x
+💰 *تكلفة الترقية:* ${upgradeCost} CRYSTAL
+📈 *المعدل بعد الترقية:* ${currentRate + 0.5}x
+
+*فوائد الترقية:*
 • زيادة سرعة التعدين
 • زيادة المكافآت العشوائية
 • وصول أسرع للمتصدرين
-    """
+    `;
     
-    keyboard = [
-        [InlineKeyboardButton("⚡ ترقية الآن", callback_data="do_upgrade")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="back_to_menu")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('⚡ ترقية الآن', 'do_upgrade')],
+        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
+    ]);
     
-    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+    await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        ...keyboard
+    });
+});
 
-async def do_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تنفيذ الترقية"""
-    query = update.callback_query
-    await query.answer()
+// تنفيذ الترقية
+bot.action('do_upgrade', async (ctx) => {
+    await ctx.answerCbQuery();
     
-    success, message = mining_bot.upgrade_mining(query.from_user.id, "mining_speed")
+    const result = await db.upgradeMining(ctx.from.id);
     
-    if success:
-        await query.edit_message_text(f"✅ {message}\n\n🔙 اضغط رجوع للعودة")
-    else:
-        await query.edit_message_text(f"❌ {message}\n\n🔙 اضغط رجوع للعودة")
+    if (result.success) {
+        await ctx.editMessageText(`✅ ${result.message}\n\n🔙 اضغط رجوع للعودة`);
+    } else {
+        await ctx.editMessageText(`❌ ${result.message}\n\n🔙 اضغط رجوع للعودة`);
+    }
+});
 
-async def liquidity_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض معلومات السيولة"""
-    query = update.callback_query
-    await query.answer()
+// معلومات السيولة
+bot.action('liquidity', async (ctx) => {
+    await ctx.answerCbQuery();
     
-    liquidity = mining_bot.get_liquidity_info()
-    available = liquidity['total_liquidity'] - liquidity['total_sold']
+    const liquidity = await db.getLiquidity();
+    const available = liquidity.total_liquidity - liquidity.total_sold;
+    const soldPercentage = (liquidity.total_sold / liquidity.total_liquidity * 100).toFixed(2);
     
-    text = f"""
-💰 **معلومات السيولة** 💰
+    const text = `
+💰 *معلومات السيولة* 💰
 
-💎 **إجمالي السيولة:** {liquidity['total_liquidity']:,.2f} CRYSTAL
-📊 **السيولة المتاحة:** {available:,.2f} CRYSTAL
-💵 **تم البيع:** {liquidity['total_sold']:,.2f} CRYSTAL
-📈 **نسبة البيع:** {(liquidity['total_sold'] / liquidity['total_liquidity'] * 100):.2f}%
+💎 *إجمالي السيولة:* ${liquidity.total_liquidity.toFixed(2)} CRYSTAL
+📊 *السيولة المتاحة:* ${available.toFixed(2)} CRYSTAL
+💵 *تم البيع:* ${liquidity.total_sold.toFixed(2)} CRYSTAL
+📈 *نسبة البيع:* ${soldPercentage}%
 
-💎 **سعر العملة:** {CRYSTAL_PRICE_USDT} USDT لكل CRYSTAL
+💎 *سعر العملة:* ${CRYSTAL_PRICE} USDT لكل CRYSTAL
 
-✅ **السيولة كافية وآمنة!**
-    """
+✅ *السيولة كافية وآمنة!*
+    `;
     
-    keyboard = [[InlineKeyboardButton("🔙 رجوع", callback_data="back_to_menu")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
+    ]);
     
-    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+    await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        ...keyboard
+    });
+});
 
-async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """العودة للقائمة الرئيسية"""
-    query = update.callback_query
-    await query.answer()
+// العودة للقائمة الرئيسية
+bot.action('back_to_menu', async (ctx) => {
+    await ctx.answerCbQuery();
     
-    user = mining_bot.get_user(query.from_user.id)
-    crystal_balance = user[2] if user else 0
-    mining_rate = user[3] if user else 1
+    const user = await db.getUser(ctx.from.id);
+    const balance = user?.crystal_balance || 0;
+    const miningRate = user?.mining_rate || 1;
     
-    keyboard = [
-        [InlineKeyboardButton("🚀 فتح تطبيق التعدين", web_app=WebAppInfo(url=WEBAPP_URL))],
-        [InlineKeyboardButton("📊 لوحة المتصدرين", callback_data="leaderboard")],
-        [InlineKeyboardButton("💰 شراء كريستال", callback_data="buy_crystal")],
-        [InlineKeyboardButton("⚡ تطوير معدل التعدين", callback_data="upgrade")],
-        [InlineKeyboardButton("ℹ️ معلومات السيولة", callback_data="liquidity")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    text = f"""
-✨ **قائمة CRYSTAL الرئيسية** ✨
+    const text = `
+✨ *قائمة CRYSTAL الرئيسية* ✨
 
-👤 **المستخدم:** {query.from_user.first_name}
-💎 **رصيد الكريستال:** {crystal_balance:,.2f} CRYSTAL
-⚡ **معدل التعدين:** {mining_rate}x
-💰 **سعر العملة:** {CRYSTAL_PRICE_USDT} USDT لكل CRYSTAL
-    """
+👤 *المستخدم:* ${ctx.from.first_name}
+💎 *رصيد الكريستال:* ${balance.toFixed(2)} CRYSTAL
+⚡ *معدل التعدين:* ${miningRate}x
+💰 *سعر العملة:* ${CRYSTAL_PRICE} USDT لكل CRYSTAL
+    `;
     
-    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+    await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        ...mainKeyboard
+    });
+});
 
-# إضافة معالج الرسائل
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(leaderboard, pattern="^leaderboard$"))
-app.add_handler(CallbackQueryHandler(buy_crystal, pattern="^buy_crystal$"))
-app.add_handler(CallbackQueryHandler(upgrade, pattern="^upgrade$"))
-app.add_handler(CallbackQueryHandler(liquidity_info, pattern="^liquidity$"))
-app.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
-app.add_handler(CallbackQueryHandler(do_upgrade, pattern="^do_upgrade$"))
-app.add_handler(CommandHandler("confirm", confirm_payment))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_purchase_amount))
+// تشغيل البوت
+bot.launch().then(() => {
+    console.log('🚀 Bot is running...');
+}).catch((err) => {
+    console.error('Error starting bot:', err);
+});
 
-if __name__ == "__main__":
-    print("🚀 Bot is starting...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+// إيقاف التشغيل بشكل نظيف
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
