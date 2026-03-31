@@ -1,436 +1,406 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+const mongoose = require('mongoose');
 
+// ================= Schema Definitions =================
+const userSchema = new mongoose.Schema({
+    user_id: { type: Number, required: true, unique: true },
+    username: String,
+    first_name: String,
+    crystal_balance: { type: Number, default: 0 },
+    mining_rate: { type: Number, default: 1 },
+    mining_level: { type: Number, default: 1 },
+    total_mined: { type: Number, default: 0 },
+    daily_mined: { type: Number, default: 0 },
+    last_mining_date: String,
+    last_mining_time: Date,
+    referrer_id: Number,
+    referral_count: { type: Number, default: 0 },
+    created_at: { type: Date, default: Date.now }
+});
+
+const transactionSchema = new mongoose.Schema({
+    user_id: Number,
+    type: String,
+    amount: Number,
+    usdt_amount: Number,
+    status: String,
+    transaction_hash: String,
+    payment_address: String,
+    admin_approved: { type: Number, default: 0 },
+    approved_by: Number,
+    created_at: { type: Date, default: Date.now }
+});
+
+const upgradeRequestSchema = new mongoose.Schema({
+    req_id: { type: Number, unique: true }, // بديل للـ AUTOINCREMENT في SQLite
+    user_id: Number,
+    current_level: Number,
+    requested_level: Number,
+    usdt_amount: Number,
+    status: { type: String, default: 'pending' },
+    transaction_hash: String,
+    approved_by: Number,
+    created_at: { type: Date, default: Date.now }
+});
+
+const liquiditySchema = new mongoose.Schema({
+    total_liquidity: { type: Number, default: 100000 },
+    total_sold: { type: Number, default: 0 },
+    last_updated: { type: Date, default: Date.now }
+});
+
+// Models
+const User = mongoose.model('User', userSchema);
+const Transaction = mongoose.model('Transaction', transactionSchema);
+const UpgradeRequest = mongoose.model('UpgradeRequest', upgradeRequestSchema);
+const Liquidity = mongoose.model('Liquidity', liquiditySchema);
+
+// ================= Database Class =================
 class Database {
     constructor() {
-        const dbPath = process.env.NODE_ENV === 'production' 
-            ? '/tmp/crystal_mining.db' 
-            : path.join(__dirname, 'crystal_mining.db');
-        
-        this.db = new sqlite3.Database(dbPath);
         this.init();
     }
 
-    init() {
-        // جدول المستخدمين
-        this.db.run(`
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                username TEXT,
-                first_name TEXT,
-                crystal_balance REAL DEFAULT 0,
-                mining_rate REAL DEFAULT 1,
-                mining_level INTEGER DEFAULT 1,
-                total_mined REAL DEFAULT 0,
-                daily_mined REAL DEFAULT 0,
-                last_mining_date DATE,
-                last_mining_time DATETIME,
-                referrer_id INTEGER,
-                referral_count INTEGER DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
-
-        // جدول المعاملات
-        this.db.run(`
-            CREATE TABLE IF NOT EXISTS transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                type TEXT,
-                amount REAL,
-                usdt_amount REAL,
-                status TEXT,
-                transaction_hash TEXT,
-                payment_address TEXT,
-                admin_approved INTEGER DEFAULT 0,
-                approved_by INTEGER,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
-
-        // جدول طلبات الترقية
-        this.db.run(`
-            CREATE TABLE IF NOT EXISTS upgrade_requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                current_level INTEGER,
-                requested_level INTEGER,
-                usdt_amount REAL,
-                status TEXT DEFAULT 'pending',
-                transaction_hash TEXT,
-                approved_by INTEGER,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
-
-        // جدول السيولة
-        this.db.run(`
-            CREATE TABLE IF NOT EXISTS liquidity (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                total_liquidity REAL DEFAULT 100000,
-                total_sold REAL DEFAULT 0,
-                last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
-
-        // إضافة السيولة الابتدائية
-        this.db.get('SELECT * FROM liquidity', (err, row) => {
-            if (!row) {
-                this.db.run('INSERT INTO liquidity (total_liquidity, total_sold) VALUES (100000, 0)');
-            }
-        });
-
-        console.log('✅ Database initialized');
-    }
-
-    // تسجيل مستخدم جديد
-    registerUser(userId, username, firstName, referrerId = null) {
-        return new Promise((resolve, reject) => {
-            this.db.get('SELECT * FROM users WHERE user_id = ?', [userId], async (err, user) => {
-                if (err) reject(err);
-                
-                if (!user) {
-                    this.db.run(`
-                        INSERT INTO users (user_id, username, first_name, mining_rate, last_mining_date, referrer_id)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    `, [userId, username, firstName, 1, new Date().toISOString().split('T')[0], referrerId], async (err) => {
-                        if (err) reject(err);
-                        
-                        // مكافأة الإحالة
-                        if (referrerId) {
-                            await this.updateReferralReward(referrerId);
-                        }
-                        resolve(true);
-                    });
-                } else {
-                    resolve(false);
-                }
-            });
-        });
-    }
-
-    // تحديث مكافأة الإحالة
-    async updateReferralReward(referrerId) {
-        // زيادة عدد الإحالات
-        await new Promise((resolve, reject) => {
-            this.db.run(`
-                UPDATE users 
-                SET referral_count = referral_count + 1 
-                WHERE user_id = ?
-            `, [referrerId], (err) => {
-                if (err) reject(err);
-                resolve();
-            });
-        });
-
-        // التحقق من مكافأة 5 إحالات
-        const user = await this.getUser(referrerId);
-        if (user.referral_count === 5) {
-            await this.addCrystals(referrerId, 10, 'مكافأة إحالة 5 أشخاص');
-        }
-    }
-
-    // الحصول على مستخدم
-    getUser(userId) {
-        return new Promise((resolve, reject) => {
-            this.db.get('SELECT * FROM users WHERE user_id = ?', [userId], (err, row) => {
-                if (err) reject(err);
-                resolve(row);
-            });
-        });
-    }
-
-    // إضافة كريستال
-    addCrystals(userId, amount, reason) {
-        return new Promise((resolve, reject) => {
-            this.db.run(`
-                UPDATE users 
-                SET crystal_balance = crystal_balance + ? 
-                WHERE user_id = ?
-            `, [amount, userId], (err) => {
-                if (err) reject(err);
-                
-                this.db.run(`
-                    INSERT INTO transactions (user_id, type, amount, status)
-                    VALUES (?, ?, ?, ?)
-                `, [userId, 'reward', amount, 'completed']);
-                
-                resolve(true);
-            });
-        });
-    }
-
-    // عملية التعدين (محدودة بـ 4 كريستال يومياً)
-    async mine(userId) {
-        const user = await this.getUser(userId);
-        if (!user) return { success: false, message: 'User not found' };
-
-        const today = new Date().toISOString().split('T')[0];
-        const lastMiningDate = user.last_mining_date;
-        
-        // إعادة تعيين الكمية اليومية إذا كان يوم جديد
-        let dailyMined = user.daily_mined || 0;
-        if (lastMiningDate !== today) {
-            dailyMined = 0;
-        }
-        
-        // التحقق من الحد اليومي (4 كريستال)
-        if (dailyMined >= 4) {
-            return { 
-                success: false, 
-                message: '⚠️ لقد وصلت للحد الأقصى اليومي (4 كريستال)\n⏰ انتظر حتى الغد للتعدين مرة أخرى!',
-                dailyLimit: true
-            };
-        }
-        
-        const now = new Date();
-        const lastMine = user.last_mining_time ? new Date(user.last_mining_time) : new Date(0);
-        const diffMinutes = (now - lastMine) / 1000 / 60;
-        
-        // التحقق من وقت التعدين (كل ساعة)
-        if (diffMinutes < 60) {
-            const remaining = Math.floor((60 - diffMinutes) * 60);
-            return { 
-                success: false, 
-                remaining: remaining,
-                message: `⏰ يجب الانتظار ${Math.floor(remaining/60)} دقيقة و ${remaining%60} ثانية`
-            };
-        }
-        
-        // مكافأة التعدين (1-4 كريستال)
-        const minReward = 1;
-        const maxReward = 4;
-        let reward = Math.floor(Math.random() * (maxReward - minReward + 1) + minReward);
-        
-        // تطبيق معدل التعدين (زيادة فرصة الحصول على مكافأة أعلى)
-        if (user.mining_rate > 1) {
-            const bonus = Math.random() * (user.mining_rate - 1);
-            reward = Math.min(maxReward, reward + Math.floor(bonus));
-        }
-        
-        // التأكد من عدم تجاوز الحد اليومي
-        if (dailyMined + reward > 4) {
-            reward = 4 - dailyMined;
-        }
-        
-        if (reward <= 0) {
-            return { 
-                success: false, 
-                message: '⚠️ لقد وصلت للحد الأقصى اليومي!',
-                dailyLimit: true
-            };
-        }
-        
-        const newDailyMined = dailyMined + reward;
-        
-        return new Promise((resolve, reject) => {
-            this.db.run(`
-                UPDATE users 
-                SET crystal_balance = crystal_balance + ?,
-                    total_mined = total_mined + ?,
-                    daily_mined = ?,
-                    last_mining_date = ?,
-                    last_mining_time = ?
-                WHERE user_id = ?
-            `, [reward, reward, newDailyMined, today, now.toISOString(), userId], (err) => {
-                if (err) reject(err);
-                
-                this.db.run(`
-                    INSERT INTO transactions (user_id, type, amount, status)
-                    VALUES (?, ?, ?, ?)
-                `, [userId, 'mining', reward, 'completed']);
-                
-                resolve({ 
-                    success: true, 
-                    reward: reward.toFixed(0),
-                    dailyRemaining: 4 - newDailyMined,
-                    dailyMined: newDailyMined
-                });
-            });
-        });
-    }
-
-    // طلب ترقية بـ USDT
-    requestUpgrade(userId, usdtAmount) {
-        return new Promise(async (resolve, reject) => {
-            const user = await this.getUser(userId);
-            if (!user) {
-                resolve({ success: false, message: 'المستخدم غير موجود' });
+    async init() {
+        try {
+            // جلب رابط قاعدة البيانات من إعدادات البيئة
+            const mongoURI = process.env.MONGODB_URI;
+            if (!mongoURI) {
+                console.error('❌ MONGODB_URI is not defined in environment variables!');
                 return;
             }
+
+            await mongoose.connect(mongoURI);
+            console.log('✅ Connected to MongoDB successfully');
+
+            // إضافة السيولة الابتدائية إذا لم تكن موجودة
+            const liq = await Liquidity.findOne();
+            if (!liq) {
+                await Liquidity.create({ total_liquidity: 100000, total_sold: 0 });
+                console.log('💧 Initial liquidity created');
+            }
+        } catch (error) {
+            console.error('❌ MongoDB Connection Error:', error);
+        }
+    }
+
+    async registerUser(userId, username, firstName, referrerId = null) {
+        try {
+            const existingUser = await User.findOne({ user_id: userId });
+            if (!existingUser) {
+                await User.create({
+                    user_id: userId,
+                    username: username,
+                    first_name: firstName,
+                    mining_rate: 1,
+                    last_mining_date: new Date().toISOString().split('T')[0],
+                    referrer_id: referrerId
+                });
+
+                if (referrerId) {
+                    await this.updateReferralReward(referrerId);
+                }
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.error(error);
+            return false;
+        }
+    }
+
+    async updateReferralReward(referrerId) {
+        try {
+            await User.updateOne({ user_id: referrerId }, { $inc: { referral_count: 1 } });
+            const user = await User.findOne({ user_id: referrerId });
+            
+            if (user && user.referral_count === 5) {
+                await this.addCrystals(referrerId, 10, 'مكافأة إحالة 5 أشخاص');
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async getUser(userId) {
+        return await User.findOne({ user_id: userId }).lean();
+    }
+
+    async addCrystals(userId, amount, reason) {
+        try {
+            await User.updateOne(
+                { user_id: userId },
+                { $inc: { crystal_balance: amount } }
+            );
+            await Transaction.create({
+                user_id: userId,
+                type: 'reward',
+                amount: amount,
+                status: 'completed'
+            });
+            return true;
+        } catch (error) {
+            console.error(error);
+            return false;
+        }
+    }
+
+    async mine(userId) {
+        try {
+            const user = await User.findOne({ user_id: userId });
+            if (!user) return { success: false, message: 'User not found' };
+
+            const today = new Date().toISOString().split('T')[0];
+            const lastMiningDate = user.last_mining_date;
+            
+            let dailyMined = user.daily_mined || 0;
+            if (lastMiningDate !== today) {
+                dailyMined = 0;
+            }
+            
+            if (dailyMined >= 4) {
+                return { 
+                    success: false, 
+                    message: '⚠️ لقد وصلت للحد الأقصى اليومي (4 كريستال)\n⏰ انتظر حتى الغد للتعدين مرة أخرى!',
+                    dailyLimit: true
+                };
+            }
+            
+            const now = new Date();
+            const lastMine = user.last_mining_time ? new Date(user.last_mining_time) : new Date(0);
+            const diffMinutes = (now - lastMine) / 1000 / 60;
+            
+            if (diffMinutes < 60) {
+                const remaining = Math.floor((60 - diffMinutes) * 60);
+                return { 
+                    success: false, 
+                    remaining: remaining,
+                    message: `⏰ يجب الانتظار ${Math.floor(remaining/60)} دقيقة و ${remaining%60} ثانية`
+                };
+            }
+            
+            const minReward = 1;
+            const maxReward = 4;
+            let reward = Math.floor(Math.random() * (maxReward - minReward + 1) + minReward);
+            
+            if (user.mining_rate > 1) {
+                const bonus = Math.random() * (user.mining_rate - 1);
+                reward = Math.min(maxReward, reward + Math.floor(bonus));
+            }
+            
+            if (dailyMined + reward > 4) {
+                reward = 4 - dailyMined;
+            }
+            
+            if (reward <= 0) {
+                return { 
+                    success: false, 
+                    message: '⚠️ لقد وصلت للحد الأقصى اليومي!',
+                    dailyLimit: true
+                };
+            }
+            
+            const newDailyMined = dailyMined + reward;
+            
+            await User.updateOne(
+                { user_id: userId },
+                { 
+                    $inc: { crystal_balance: reward, total_mined: reward },
+                    $set: { daily_mined: newDailyMined, last_mining_date: today, last_mining_time: now }
+                }
+            );
+            
+            await Transaction.create({
+                user_id: userId,
+                type: 'mining',
+                amount: reward,
+                status: 'completed'
+            });
+            
+            return { 
+                success: true, 
+                reward: reward.toFixed(0),
+                dailyRemaining: 4 - newDailyMined,
+                dailyMined: newDailyMined
+            };
+        } catch (error) {
+            console.error(error);
+            return { success: false, message: 'حدث خطأ في قاعدة البيانات' };
+        }
+    }
+
+    async requestUpgrade(userId, usdtAmount) {
+        try {
+            const user = await User.findOne({ user_id: userId });
+            if (!user) return { success: false, message: 'المستخدم غير موجود' };
             
             const currentLevel = user.mining_level;
             const requestedLevel = currentLevel + 1;
-            
-            // عنوان الدفع الثابت TRON
             const paymentAddress = 'TCZ2NGDSvxznADHTvvkedJTcbbGbD5RhfR';
             
-            this.db.run(`
-                INSERT INTO upgrade_requests (user_id, current_level, requested_level, usdt_amount, status)
-                VALUES (?, ?, ?, ?, ?)
-            `, [userId, currentLevel, requestedLevel, usdtAmount, 'pending'], function(err) {
-                if (err) reject(err);
-                
-                resolve({
-                    success: true,
-                    request_id: this.lastID,
-                    current_level: currentLevel,
-                    requested_level: requestedLevel,
-                    usdt_amount: usdtAmount,
-                    payment_address: paymentAddress,
-                    message: `📝 تم إنشاء طلب ترقية رقم #${this.lastID}\n💰 المبلغ: ${usdtAmount} USDT\n📤 أرسل المبلغ إلى:\n\`${paymentAddress}\`\n\n📎 بعد التحويل، أرسل /confirm_upgrade ${this.lastID} [رابط المعاملة]\n\n⚠️ سيتم مراجعة طلبك من قبل الأدمن`
-                });
+            // إنشاء رقم طلب فريد
+            const requestId = Math.floor(Date.now() / 1000); 
+            
+            await UpgradeRequest.create({
+                req_id: requestId,
+                user_id: userId,
+                current_level: currentLevel,
+                requested_level: requestedLevel,
+                usdt_amount: usdtAmount,
+                status: 'pending'
             });
-        });
+            
+            return {
+                success: true,
+                request_id: requestId,
+                current_level: currentLevel,
+                requested_level: requestedLevel,
+                usdt_amount: usdtAmount,
+                payment_address: paymentAddress,
+                message: `📝 تم إنشاء طلب ترقية رقم #${requestId}\n💰 المبلغ: ${usdtAmount} USDT\n📤 أرسل المبلغ إلى:\n\`${paymentAddress}\`\n\n⚠️ سيتم مراجعة طلبك من قبل الأدمن`
+            };
+        } catch (error) {
+            console.error(error);
+            return { success: false, message: 'حدث خطأ أثناء إنشاء الطلب' };
+        }
     }
 
-    // تأكيد طلب الترقية من الأدمن
     async confirmUpgrade(requestId, transactionHash, adminId) {
-        return new Promise((resolve, reject) => {
-            this.db.get('SELECT * FROM upgrade_requests WHERE id = ? AND status = ?', 
-                [requestId, 'pending'], async (err, request) => {
-                if (err || !request) {
-                    resolve({ success: false, message: 'طلب الترقية غير موجود أو تم معالجته مسبقاً' });
-                    return;
-                }
-                
-                // ترقية المستخدم
-                const upgradeCost = 100 * request.current_level;
-                const newMiningRate = request.current_level + 0.5;
-                
-                this.db.run(`
-                    UPDATE users 
-                    SET mining_rate = ?,
-                        mining_level = ?
-                    WHERE user_id = ?
-                `, [newMiningRate, request.requested_level, request.user_id], (err) => {
-                    if (err) reject(err);
-                    
-                    // تحديث حالة الطلب
-                    this.db.run(`
-                        UPDATE upgrade_requests 
-                        SET status = 'approved', 
-                            transaction_hash = ?,
-                            approved_by = ?
-                        WHERE id = ?
-                    `, [transactionHash, adminId, requestId]);
-                    
-                    // تسجيل المعاملة
-                    this.db.run(`
-                        INSERT INTO transactions (user_id, type, amount, usdt_amount, status, transaction_hash)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    `, [request.user_id, 'upgrade', upgradeCost, request.usdt_amount, 'completed', transactionHash]);
-                    
-                    resolve({ 
-                        success: true, 
-                        message: `✅ تمت الموافقة على طلب الترقية #${requestId}\n⚡ معدل التعدين الجديد: ${newMiningRate}x\n📈 المستوى الجديد: ${request.requested_level}`
-                    });
-                });
+        try {
+            const request = await UpgradeRequest.findOne({ req_id: requestId, status: 'pending' });
+            if (!request) return { success: false, message: 'طلب الترقية غير موجود أو تم معالجته مسبقاً' };
+            
+            const upgradeCost = 100 * request.current_level;
+            const newMiningRate = request.current_level + 0.5;
+            
+            await User.updateOne(
+                { user_id: request.user_id },
+                { $set: { mining_rate: newMiningRate, mining_level: request.requested_level } }
+            );
+            
+            await UpgradeRequest.updateOne(
+                { req_id: requestId },
+                { $set: { status: 'approved', transaction_hash: transactionHash, approved_by: adminId } }
+            );
+            
+            await Transaction.create({
+                user_id: request.user_id,
+                type: 'upgrade',
+                amount: upgradeCost,
+                usdt_amount: request.usdt_amount,
+                status: 'completed',
+                transaction_hash: transactionHash
             });
-        });
+            
+            return { 
+                success: true, 
+                message: `✅ تمت الموافقة على طلب الترقية #${requestId}\n⚡ معدل التعدين الجديد: ${newMiningRate}x\n📈 المستوى الجديد: ${request.requested_level}`
+            };
+        } catch (error) {
+            console.error(error);
+            return { success: false, message: 'حدث خطأ أثناء تأكيد الطلب' };
+        }
     }
 
-    // رفض طلب الترقية
-    rejectUpgrade(requestId, adminId) {
-        return new Promise((resolve, reject) => {
-            this.db.run(`
-                UPDATE upgrade_requests 
-                SET status = 'rejected', 
-                    approved_by = ?
-                WHERE id = ? AND status = 'pending'
-            `, [adminId, requestId], function(err) {
-                if (err) reject(err);
-                
-                if (this.changes === 0) {
-                    resolve({ success: false, message: 'الطلب غير موجود أو تم معالجته' });
-                } else {
-                    resolve({ success: true, message: 'تم رفض طلب الترقية' });
-                }
-            });
-        });
-    }
-
-    // الحصول على طلبات الترقية المعلقة
-    getPendingUpgrades() {
-        return new Promise((resolve, reject) => {
-            this.db.all(`
-                SELECT u.*, users.username, users.first_name 
-                FROM upgrade_requests u
-                JOIN users ON u.user_id = users.user_id
-                WHERE u.status = 'pending'
-                ORDER BY u.created_at DESC
-            `, (err, rows) => {
-                if (err) reject(err);
-                resolve(rows);
-            });
-        });
-    }
-
-    // قائمة المتصدرين
-    getLeaderboard(limit = 10) {
-        return new Promise((resolve, reject) => {
-            this.db.all(`
-                SELECT user_id, username, first_name, crystal_balance, total_mined, mining_level, referral_count
-                FROM users 
-                ORDER BY crystal_balance DESC 
-                LIMIT ?
-            `, [limit], (err, rows) => {
-                if (err) reject(err);
-                resolve(rows);
-            });
-        });
-    }
-
-    // إحصائيات المستخدم
-    getUserStats(userId) {
-        return new Promise(async (resolve, reject) => {
-            const user = await this.getUser(userId);
-            if (!user) {
-                resolve(null);
-                return;
+    async rejectUpgrade(requestId, adminId) {
+        try {
+            const result = await UpgradeRequest.updateOne(
+                { req_id: requestId, status: 'pending' },
+                { $set: { status: 'rejected', approved_by: adminId } }
+            );
+            
+            if (result.modifiedCount === 0) {
+                return { success: false, message: 'الطلب غير موجود أو تم معالجته' };
             }
+            return { success: true, message: 'تم رفض طلب الترقية' };
+        } catch (error) {
+            console.error(error);
+            return { success: false, message: 'حدث خطأ' };
+        }
+    }
+
+    async getPendingUpgrades() {
+        try {
+            const requests = await UpgradeRequest.find({ status: 'pending' }).sort({ created_at: -1 }).lean();
+            const result = [];
             
-            // عدد الإحالات الناجحة
-            const referrals = await new Promise((resolve, reject) => {
-                this.db.all('SELECT user_id FROM users WHERE referrer_id = ?', [userId], (err, rows) => {
-                    if (err) reject(err);
-                    resolve(rows);
+            for (let req of requests) {
+                const user = await User.findOne({ user_id: req.user_id }).lean();
+                result.push({
+                    ...req,
+                    id: req.req_id, // ليتوافق مع كود index.js القديم
+                    username: user?.username,
+                    first_name: user?.first_name
                 });
-            });
+            }
+            return result;
+        } catch (error) {
+            console.error(error);
+            return [];
+        }
+    }
+
+    async getLeaderboard(limit = 10) {
+        try {
+            return await User.find()
+                .sort({ crystal_balance: -1 })
+                .limit(limit)
+                .lean();
+        } catch (error) {
+            console.error(error);
+            return [];
+        }
+    }
+
+    async getUserStats(userId) {
+        try {
+            const user = await User.findOne({ user_id: userId }).lean();
+            if (!user) return null;
             
-            resolve({
+            const referrals = await User.find({ referrer_id: userId }, 'user_id').lean();
+            
+            return {
                 ...user,
                 referrals_count: referrals.length,
                 referrals_list: referrals
-            });
-        });
+            };
+        } catch (error) {
+            console.error(error);
+            return null;
+        }
     }
 
-    // معلومات السيولة
-    getLiquidity() {
-        return new Promise((resolve, reject) => {
-            this.db.get('SELECT total_liquidity, total_sold FROM liquidity ORDER BY id DESC LIMIT 1', (err, row) => {
-                if (err) reject(err);
-                resolve(row || { total_liquidity: 100000, total_sold: 0 });
-            });
-        });
+    async getLiquidity() {
+        try {
+            let liq = await Liquidity.findOne().sort({ last_updated: -1 }).lean();
+            return liq || { total_liquidity: 100000, total_sold: 0 };
+        } catch (error) {
+            console.error(error);
+            return { total_liquidity: 100000, total_sold: 0 };
+        }
     }
 
-    // الحصول على إحصائيات عامة
-    getGlobalStats() {
-        return new Promise((resolve, reject) => {
-            this.db.get(`
-                SELECT 
-                    COUNT(*) as total_users,
-                    SUM(crystal_balance) as total_crystals,
-                    SUM(total_mined) as total_mined,
-                    AVG(mining_level) as avg_level
-                FROM users
-            `, (err, row) => {
-                if (err) reject(err);
-                resolve(row);
-            });
-        });
+    async getGlobalStats() {
+        try {
+            const stats = await User.aggregate([
+                {
+                    $group: {
+                        _id: null,
+                        total_users: { $sum: 1 },
+                        total_crystals: { $sum: "$crystal_balance" },
+                        total_mined: { $sum: "$total_mined" },
+                        avg_level: { $avg: "$mining_level" }
+                    }
+                }
+            ]);
+            
+            if (stats.length > 0) {
+                return stats[0];
+            }
+            return { total_users: 0, total_crystals: 0, total_mined: 0, avg_level: 1 };
+        } catch (error) {
+            console.error(error);
+            return { total_users: 0, total_crystals: 0, total_mined: 0, avg_level: 1 };
+        }
     }
 }
 
