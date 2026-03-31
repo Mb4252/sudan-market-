@@ -2,7 +2,6 @@ require('dotenv').config();
 const { Telegraf, Markup } = require('telegraf');
 const db = require('./database');
 
-// الاتصال بقاعدة البيانات
 (async () => {
     try {
         await db.connect();
@@ -20,7 +19,6 @@ const UPGRADE_USDT_PRICE = parseFloat(process.env.UPGRADE_USDT_PRICE) || 5;
 const CRYSTAL_PRICE = parseFloat(process.env.CRYSTAL_PRICE) || 0.01;
 const DAILY_LIMIT = parseInt(process.env.DAILY_LIMIT) || 4;
 
-// قائمة الأزرار الرئيسية
 const mainKeyboard = Markup.inlineKeyboard([
     [Markup.button.webApp('🚀 فتح تطبيق التعدين', WEBAPP_URL)],
     [Markup.button.callback('⛏️ تعدين', 'mine_action')],
@@ -32,7 +30,6 @@ const mainKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('ℹ️ معلومات', 'info_menu')]
 ]);
 
-// قائمة أدمن
 const adminKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('📋 طلبات الترقية', 'pending_upgrades')],
     [Markup.button.callback('💰 طلبات الشراء', 'pending_purchases')],
@@ -42,7 +39,6 @@ const adminKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
 ]);
 
-// أمر /start
 bot.start(async (ctx) => {
     const user = ctx.from;
     const referrerId = ctx.startPayload ? parseInt(ctx.startPayload) : null;
@@ -77,7 +73,6 @@ bot.start(async (ctx) => {
     });
 });
 
-// تعدين مباشر
 bot.action('mine_action', async (ctx) => {
     await ctx.answerCbQuery();
     
@@ -105,7 +100,6 @@ bot.action('mine_action', async (ctx) => {
     }
 });
 
-// لوحة المتصدرين
 bot.action('leaderboard', async (ctx) => {
     await ctx.answerCbQuery();
     
@@ -135,7 +129,6 @@ bot.action('leaderboard', async (ctx) => {
     });
 });
 
-// قائمة الشراء
 bot.action('buy_menu', async (ctx) => {
     await ctx.answerCbQuery();
     
@@ -162,7 +155,6 @@ bot.action('buy_menu', async (ctx) => {
     });
 });
 
-// أمر شراء
 bot.command('buy', async (ctx) => {
     const args = ctx.message.text.split(' ');
     if (args.length !== 2) {
@@ -198,7 +190,6 @@ bot.command('buy', async (ctx) => {
     }
 });
 
-// تأكيد شراء (للأدمن)
 bot.command('confirm_purchase', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) {
         await ctx.reply('⛔ هذا الأمر للأدمن فقط!');
@@ -223,7 +214,6 @@ bot.command('confirm_purchase', async (ctx) => {
     }
 });
 
-// قائمة الترقية
 bot.action('upgrade_menu', async (ctx) => {
     await ctx.answerCbQuery();
     
@@ -251,7 +241,6 @@ bot.action('upgrade_menu', async (ctx) => {
     });
 });
 
-// أمر طلب ترقية
 bot.command('upgrade', async (ctx) => {
     const result = await db.requestUpgrade(ctx.from.id, UPGRADE_USDT_PRICE);
     
@@ -276,7 +265,6 @@ bot.command('upgrade', async (ctx) => {
     }
 });
 
-// تأكيد ترقية (للأدمن)
 bot.command('confirm_upgrade', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) {
         await ctx.reply('⛔ هذا الأمر للأدمن فقط!');
@@ -303,7 +291,6 @@ bot.command('confirm_upgrade', async (ctx) => {
     }
 });
 
-// نظام الإحالة
 bot.action('referral_system', async (ctx) => {
     await ctx.answerCbQuery();
     
@@ -333,7 +320,6 @@ bot.action('referral_system', async (ctx) => {
     });
 });
 
-// إحصائياتي
 bot.action('my_stats', async (ctx) => {
     await ctx.answerCbQuery();
     
@@ -366,7 +352,6 @@ bot.action('my_stats', async (ctx) => {
     });
 });
 
-// معلومات عامة
 bot.action('info_menu', async (ctx) => {
     await ctx.answerCbQuery();
     
@@ -404,7 +389,6 @@ bot.action('info_menu', async (ctx) => {
     });
 });
 
-// طلبات الترقية المعلقة (للأدمن)
 bot.action('pending_upgrades', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) {
         await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
@@ -441,7 +425,6 @@ bot.action('pending_upgrades', async (ctx) => {
     });
 });
 
-// طلبات الشراء المعلقة (للأدمن)
 bot.action('pending_purchases', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) {
         await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
@@ -478,7 +461,6 @@ bot.action('pending_purchases', async (ctx) => {
     });
 });
 
-// إحصائيات عامة (للأدمن)
 bot.action('global_stats', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) {
         await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
@@ -513,7 +495,6 @@ bot.action('global_stats', async (ctx) => {
     });
 });
 
-// إحصائيات اليوم (للأدمن)
 bot.action('today_stats', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) {
         await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
@@ -540,7 +521,6 @@ ${new Date().toLocaleDateString('ar')}
     });
 });
 
-// بحث عن مستخدم (للأدمن)
 bot.action('search_user', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) {
         await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
@@ -552,7 +532,6 @@ bot.action('search_user', async (ctx) => {
     ctx.session = { state: 'search_user' };
 });
 
-// معالجة البحث
 bot.on('text', async (ctx) => {
     if (ctx.session?.state === 'search_user' && ctx.from.id === ADMIN_ID) {
         const query = ctx.message.text;
@@ -567,7 +546,6 @@ bot.on('text', async (ctx) => {
                 text += `🆔 \`${user.userId}\`\n`;
                 text += `💎 ${user.crystalBalance.toFixed(2)} CRYSTAL\n`;
                 text += `📈 المستوى ${user.miningLevel}\n`;
-                text += `🚫 ${user.isBanned ? 'محظور' : 'نشط'}\n`;
                 text += `━━━━━━━━━━━━━━━━━━\n`;
             }
             await ctx.reply(text, { parse_mode: 'Markdown' });
@@ -577,7 +555,6 @@ bot.on('text', async (ctx) => {
     }
 });
 
-// أمر تعدين مباشر
 bot.command('mine', async (ctx) => {
     const result = await db.mine(ctx.from.id);
     
@@ -595,7 +572,6 @@ bot.command('mine', async (ctx) => {
     }
 });
 
-// أمر إحصائيات
 bot.command('stats', async (ctx) => {
     const stats = await db.getUserStats(ctx.from.id);
     
@@ -613,7 +589,6 @@ bot.command('stats', async (ctx) => {
     await ctx.reply(text, { parse_mode: 'Markdown' });
 });
 
-// العودة للقائمة الرئيسية
 bot.action('back_to_menu', async (ctx) => {
     await ctx.answerCbQuery();
     
@@ -640,7 +615,6 @@ bot.action('back_to_menu', async (ctx) => {
     });
 });
 
-// تشغيل البوت
 bot.launch().then(() => {
     console.log('🚀 Bot is running...');
     console.log('👑 Admin ID:', ADMIN_ID);
