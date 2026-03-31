@@ -276,8 +276,7 @@
             <div class="card">
                 <h3>💰 شراء CRYSTAL</h3>
                 <div class="liquidity-info" id="liquidityInfo">
-                    <div>💰 سعر العملة: 0.01 USDT لكل CRYSTAL</div>
-                    <div>📊 جاري تحميل معلومات السيولة...</div>
+                    <div>💰 جاري تحميل معلومات السيولة...</div>
                 </div>
                 
                 <div class="buy-section">
@@ -299,10 +298,30 @@
         let lastMiningTime = null;
         let miningInterval = null;
         
+        // الحصول على عنوان الخادم
+        const API_URL = window.location.origin;
+        
+        // تسجيل المستخدم
+        async function registerUser() {
+            try {
+                await fetch(`${API_URL}/api/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: tg.initDataUnsafe.user.id,
+                        username: tg.initDataUnsafe.user.username,
+                        first_name: tg.initDataUnsafe.user.first_name
+                    })
+                });
+            } catch (error) {
+                console.error('Error registering user:', error);
+            }
+        }
+        
         // تحميل بيانات المستخدم
         async function loadUserData() {
             try {
-                const response = await fetch('/api/user/' + tg.initDataUnsafe.user.id);
+                const response = await fetch(`${API_URL}/api/user/${tg.initDataUnsafe.user.id}`);
                 const data = await response.json();
                 userData = data;
                 updateUI();
@@ -348,7 +367,7 @@
         // بدء التعدين
         async function startMining() {
             try {
-                const response = await fetch('/api/mine', {
+                const response = await fetch(`${API_URL}/api/mine`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
@@ -360,7 +379,6 @@
                     showReward(result.reward);
                     await loadUserData();
                     
-                    // تحديث المؤقت
                     lastMiningTime = new Date();
                     updateTimer();
                     if (miningInterval) clearInterval(miningInterval);
@@ -369,7 +387,7 @@
                     tg.showAlert(`🎉 حصلت على ${result.reward} كريستال!`);
                 } else if (result.remaining) {
                     const minutes = Math.floor(result.remaining / 60);
-                    const seconds = result.remaining % 60;
+                    const seconds = Math.floor(result.remaining % 60);
                     tg.showAlert(`⏰ يجب الانتظار ${minutes}:${seconds.toString().padStart(2, '0')}`);
                 }
             } catch (error) {
@@ -394,7 +412,7 @@
         // ترقية التعدين
         async function upgradeMining() {
             try {
-                const response = await fetch('/api/upgrade', {
+                const response = await fetch(`${API_URL}/api/upgrade`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
@@ -417,7 +435,7 @@
         // تحميل لوحة المتصدرين
         async function loadLeaderboard() {
             try {
-                const response = await fetch('/api/leaderboard');
+                const response = await fetch(`${API_URL}/api/leaderboard`);
                 const leaders = await response.json();
                 
                 const container = document.getElementById('leaderboardList');
@@ -441,16 +459,19 @@
         // تحميل معلومات السيولة
         async function loadLiquidity() {
             try {
-                const response = await fetch('/api/liquidity');
+                const response = await fetch(`${API_URL}/api/liquidity`);
                 const data = await response.json();
                 
                 const container = document.getElementById('liquidityInfo');
+                const available = data.total_liquidity - data.total_sold;
+                const soldPercent = ((data.total_sold / data.total_liquidity) * 100).toFixed(2);
+                
                 container.innerHTML = `
                     <div>💰 سعر العملة: 0.01 USDT لكل CRYSTAL</div>
                     <div>💎 إجمالي السيولة: ${data.total_liquidity.toFixed(2)} CRYSTAL</div>
-                    <div>📊 السيولة المتاحة: ${(data.total_liquidity - data.total_sold).toFixed(2)} CRYSTAL</div>
+                    <div>📊 السيولة المتاحة: ${available.toFixed(2)} CRYSTAL</div>
                     <div>💵 تم البيع: ${data.total_sold.toFixed(2)} CRYSTAL</div>
-                    <div>📈 نسبة البيع: ${((data.total_sold / data.total_liquidity) * 100).toFixed(2)}%</div>
+                    <div>📈 نسبة البيع: ${soldPercent}%</div>
                 `;
             } catch (error) {
                 console.error('Error loading liquidity:', error);
@@ -466,7 +487,7 @@
             }
             
             try {
-                const response = await fetch('/api/purchase', {
+                const response = await fetch(`${API_URL}/api/purchase`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -479,12 +500,12 @@
                 
                 if (result.success) {
                     tg.showAlert(`
-                        ✅ تم إنشاء طلب الشراء!
-                        💎 الكمية: ${result.crystal_amount} CRYSTAL
-                        💰 المبلغ: ${result.usdt_amount} USDT
-                        📤 ارسل المبلغ إلى: ${result.payment_address}
-                        
-                        بعد التحويل أرسل /confirm ${result.transaction_id} [رابط المعاملة]
+✅ تم إنشاء طلب الشراء!
+💎 الكمية: ${result.crystal_amount} CRYSTAL
+💰 المبلغ: ${result.usdt_amount} USDT
+📤 ارسل المبلغ إلى: ${result.payment_address}
+
+بعد التحويل أرسل /confirm ${result.transaction_id} [رابط المعاملة]
                     `);
                 } else {
                     tg.showAlert(result.error);
@@ -515,6 +536,7 @@
         }
         
         // تهيئة التطبيق
+        registerUser();
         loadUserData();
         loadLiquidity();
         
