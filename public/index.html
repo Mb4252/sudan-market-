@@ -121,7 +121,7 @@
         .leader-rank {
             font-weight: bold;
             color: #667eea;
-            width: 40px;
+            width: 50px;
         }
 
         .leader-name {
@@ -223,6 +223,12 @@
             color: #f5576c;
             margin: 10px 0;
         }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -248,17 +254,25 @@
                 
                 <div class="stats-grid">
                     <div class="stat-item">
-                        <div class="stat-label">إجمالي المكدس</div>
+                        <div class="stat-label">إجمالي التعدين</div>
                         <div class="stat-value" id="totalMined">0</div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-label">مستوى التعدين</div>
                         <div class="stat-value" id="miningLevel">1</div>
                     </div>
+                    <div class="stat-item">
+                        <div class="stat-label">تعدين اليوم</div>
+                        <div class="stat-value" id="dailyMined">0/4</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">المتبقي اليوم</div>
+                        <div class="stat-value" id="dailyRemaining">4</div>
+                    </div>
                 </div>
 
                 <button class="buy-button" onclick="upgradeMining()" style="background: #ff9800; margin-top: 15px;">
-                    ⚡ تطوير معدل التعدين
+                    ⚡ تطوير معدل التعدين (5 USDT)
                 </button>
             </div>
         </div>
@@ -267,7 +281,7 @@
             <div class="card">
                 <h3>🏆 قائمة المتصدرين</h3>
                 <div class="leaderboard" id="leaderboardList">
-                    <div style="text-align: center; padding: 20px;">جاري التحميل...</div>
+                    <div class="loading">جاري التحميل...</div>
                 </div>
             </div>
         </div>
@@ -276,7 +290,7 @@
             <div class="card">
                 <h3>💰 شراء CRYSTAL</h3>
                 <div class="liquidity-info" id="liquidityInfo">
-                    <div>💰 جاري تحميل معلومات السيولة...</div>
+                    <div class="loading">جاري تحميل معلومات السيولة...</div>
                 </div>
                 
                 <div class="buy-section">
@@ -284,6 +298,9 @@
                     <button class="buy-button" onclick="initiatePurchase()">
                         💵 شراء بالـ USDT
                     </button>
+                </div>
+                <div style="margin-top: 10px; font-size: 12px; color: #666; text-align: center;">
+                    ⚠️ الحد الأدنى: 10 USDT (1000 كريستال)
                 </div>
             </div>
         </div>
@@ -298,8 +315,8 @@
         let lastMiningTime = null;
         let miningInterval = null;
         
-        // الحصول على عنوان الخادم
         const API_URL = window.location.origin;
+        const DAILY_LIMIT = 4;
         
         // تسجيل المستخدم
         async function registerUser() {
@@ -325,6 +342,13 @@
                 const data = await response.json();
                 userData = data;
                 updateUI();
+                
+                // تحميل معلومات اليوم
+                const dailyResponse = await fetch(`${API_URL}/api/user/daily/${tg.initDataUnsafe.user.id}`);
+                const dailyData = await dailyResponse.json();
+                document.getElementById('dailyMined').textContent = `${dailyData.daily_mined || 0}/${DAILY_LIMIT}`;
+                document.getElementById('dailyRemaining').textContent = dailyData.remaining || DAILY_LIMIT;
+                
             } catch (error) {
                 console.error('Error loading user data:', error);
             }
@@ -388,7 +412,11 @@
                 } else if (result.remaining) {
                     const minutes = Math.floor(result.remaining / 60);
                     const seconds = Math.floor(result.remaining % 60);
-                    tg.showAlert(`⏰ يجب الانتظار ${minutes}:${seconds.toString().padStart(2, '0')}`);
+                    tg.showAlert(result.message || `⏰ انتظر ${minutes}:${seconds.toString().padStart(2, '0')}`);
+                } else if (result.dailyLimit) {
+                    tg.showAlert(result.message);
+                } else {
+                    tg.showAlert(result.message || 'حدث خطأ، حاول مرة أخرى');
                 }
             } catch (error) {
                 console.error('Error mining:', error);
@@ -421,10 +449,9 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    await loadUserData();
                     tg.showAlert(result.message);
                 } else {
-                    tg.showAlert(result.message);
+                    tg.showAlert(result.message || 'حدث خطأ');
                 }
             } catch (error) {
                 console.error('Error upgrading:', error);
@@ -439,20 +466,24 @@
                 const leaders = await response.json();
                 
                 const container = document.getElementById('leaderboardList');
-                if (leaders.length === 0) {
-                    container.innerHTML = '<div style="text-align: center;">لا يوجد متصدرين بعد</div>';
+                if (!leaders || leaders.length === 0) {
+                    container.innerHTML = '<div style="text-align: center; padding: 20px;">لا يوجد متصدرين بعد</div>';
                     return;
                 }
                 
-                container.innerHTML = leaders.map((leader, index) => `
-                    <div class="leader-item">
-                        <div class="leader-rank">#${index + 1}</div>
-                        <div class="leader-name">${leader.name}</div>
-                        <div class="leader-balance">${leader.balance.toFixed(2)} CRYSTAL</div>
-                    </div>
-                `).join('');
+                container.innerHTML = leaders.map((leader, index) => {
+                    const medal = index === 0 ? '👑' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`;
+                    return `
+                        <div class="leader-item">
+                            <div class="leader-rank">${medal}</div>
+                            <div class="leader-name">${leader.name}</div>
+                            <div class="leader-balance">${leader.balance.toFixed(2)} CRYSTAL</div>
+                        </div>
+                    `;
+                }).join('');
             } catch (error) {
                 console.error('Error loading leaderboard:', error);
+                document.getElementById('leaderboardList').innerHTML = '<div style="text-align: center; padding: 20px;">خطأ في التحميل</div>';
             }
         }
         
@@ -463,7 +494,7 @@
                 const data = await response.json();
                 
                 const container = document.getElementById('liquidityInfo');
-                const available = data.total_liquidity - data.total_sold;
+                const available = data.available || (data.total_liquidity - data.total_sold);
                 const soldPercent = ((data.total_sold / data.total_liquidity) * 100).toFixed(2);
                 
                 container.innerHTML = `
@@ -475,6 +506,7 @@
                 `;
             } catch (error) {
                 console.error('Error loading liquidity:', error);
+                document.getElementById('liquidityInfo').innerHTML = '<div>خطأ في تحميل معلومات السيولة</div>';
             }
         }
         
@@ -483,6 +515,12 @@
             const amount = document.getElementById('crystalAmount').value;
             if (!amount || amount <= 0) {
                 tg.showAlert('الرجاء إدخال كمية صحيحة');
+                return;
+            }
+            
+            const usdtAmount = amount * 0.01;
+            if (usdtAmount < 10) {
+                tg.showAlert(`الحد الأدنى للشراء هو 10 USDT (1000 كريستال)\nالمبلغ الحالي: ${usdtAmount} USDT`);
                 return;
             }
             
@@ -503,12 +541,13 @@
 ✅ تم إنشاء طلب الشراء!
 💎 الكمية: ${result.crystal_amount} CRYSTAL
 💰 المبلغ: ${result.usdt_amount} USDT
-📤 ارسل المبلغ إلى: ${result.payment_address}
+📤 أرسل المبلغ إلى: ${result.payment_address}
 
-بعد التحويل أرسل /confirm ${result.transaction_id} [رابط المعاملة]
+بعد التحويل أرسل إلى البوت:
+/confirm_purchase ${result.request_id} [رابط المعاملة]
                     `);
                 } else {
-                    tg.showAlert(result.error);
+                    tg.showAlert(result.message || 'حدث خطأ');
                 }
             } catch (error) {
                 console.error('Error purchasing:', error);
