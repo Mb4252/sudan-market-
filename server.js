@@ -5,7 +5,7 @@ const path = require('path');
 const db = require('./database');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 // اتصال قاعدة البيانات
 (async () => {
@@ -136,6 +136,6 @@ app.get('/api/user/daily/:userId', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🌐 Server running on http://localhost:${PORT}`);
-    console.log(`📱 WebApp URL: ${process.env.WEBAPP_URL || `http://localhost:${PORT}`}`);
+    console.log(`🌐 Web server running on port ${PORT}`);
+    console.log(`📱 WebApp URL: https://sdm-security-bot.onrender.com`);
 });
