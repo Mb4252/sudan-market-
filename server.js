@@ -26,6 +26,11 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'mining-app', 'index.html'));
 });
 
+// Health check - مهم لـ Render
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // API المستخدم
 app.get('/api/user/:userId', async (req, res) => {
     try {
@@ -135,7 +140,8 @@ app.get('/api/user/daily/:userId', async (req, res) => {
     }
 });
 
+// تشغيل الخادم
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 Web server running on port ${PORT}`);
-    console.log(`📱 WebApp URL: https://sdm-security-bot.onrender.com`);
+    console.log(`📱 WebApp URL: ${process.env.WEBAPP_URL || `http://localhost:${PORT}`}`);
 });
