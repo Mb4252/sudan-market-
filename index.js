@@ -28,36 +28,34 @@ app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().
 app.get('/api/global_stats', async (req, res) => res.json(await db.getGlobalStats()));
 app.get('/api/user/:userId', async (req, res) => {
     const u = await db.getUser(parseInt(req.params.userId));
-    res.json(u || { usdBalance: 0, crystalBalance: 0 });
+    res.json(u || { usdBalance: 0 });
 });
-app.post('/api/trade', async (req, res) => res.json(await db.trade(parseInt(req.body.user_id), req.body.type, req.body.currency, parseFloat(req.body.amount))));
-app.get('/api/prices', async (req, res) => res.json(await db.getAllPrices()));
+app.get('/api/user/stats/:userId', async (req, res) => res.json(await db.getUserStats(parseInt(req.params.userId))));
 app.get('/api/leaderboard', async (req, res) => {
     const l = await db.getLeaderboard(15);
-    res.json(l.map(x => ({ name: x.firstName || x.username || `مستخدم ${x.userId}`, balance: x.crystalBalance || 0, usd: x.usdBalance || 0 })));
+    res.json(l.map(x => ({ name: x.firstName || x.username || `مستخدم ${x.userId}`, trades: x.totalTraded || 0, rating: x.rating || 5, verified: x.isVerified, merchant: x.isMerchant })));
 });
-app.get('/api/liquidity', async (req, res) => {
-    const l = await db.getLiquidity();
-    res.json({ total_supply: l.totalCrystalSupply, circulating: l.circulatingCrystal, price: l.crystalPrice });
-});
-app.post('/api/register', async (req, res) => {
-    await db.registerUser(parseInt(req.body.user_id), req.body.username, req.body.first_name, null, req.body.language || 'ar');
-    res.json({ success: true });
-});
-app.post('/api/set_language', async (req, res) => { await db.setLanguage(parseInt(req.body.user_id), req.body.language); res.json({ success: true }); });
-app.get('/api/user/stats/:userId', async (req, res) => res.json(await db.getUserStats(parseInt(req.params.userId))));
-app.get('/api/wallet/:userId', async (req, res) => {
-    const w = await db.getUserWallet(parseInt(req.params.userId));
-    res.json({ addresses: { bnb: w.bnbAddress, polygon: w.polygonAddress, solana: w.solanaAddress, aptos: w.aptosAddress }, usdBalance: w.usdBalance });
-});
+app.get('/api/offers', async (req, res) => res.json(await db.getOffers(req.query.type, req.query.currency, req.query.sortBy, req.query.order)));
+app.post('/api/offer/create', async (req, res) => res.json(await db.createOffer(parseInt(req.body.user_id), req.body.type, req.body.currency, parseFloat(req.body.fiatAmount), parseFloat(req.body.price), req.body.paymentMethod, req.body.paymentDetails, req.body.bankName, req.body.bankAccountNumber, req.body.bankAccountName, parseFloat(req.body.minAmount), parseFloat(req.body.maxAmount))));
+app.post('/api/offer/cancel', async (req, res) => res.json(await db.cancelOffer(req.body.offer_id, parseInt(req.body.user_id))));
+app.post('/api/trade/start', async (req, res) => res.json(await db.startTrade(req.body.offer_id, parseInt(req.body.user_id))));
+app.post('/api/trade/confirm', async (req, res) => res.json(await db.confirmPayment(req.body.trade_id, parseInt(req.body.user_id), req.body.proof_image)));
+app.post('/api/trade/release', async (req, res) => res.json(await db.releaseCrystals(req.body.trade_id, parseInt(req.body.user_id))));
+app.post('/api/trade/dispute', async (req, res) => res.json(await db.openDispute(req.body.trade_id, parseInt(req.body.user_id), req.body.reason)));
+app.post('/api/trade/rate', async (req, res) => res.json(await db.addReview(req.body.trade_id, parseInt(req.body.user_id), parseInt(req.body.rating), req.body.comment)));
 app.post('/api/deposit', async (req, res) => res.json(await db.requestDeposit(parseInt(req.body.user_id), parseFloat(req.body.amount), req.body.currency, req.body.network)));
 app.post('/api/withdraw', async (req, res) => res.json(await db.requestWithdraw(parseInt(req.body.user_id), parseFloat(req.body.amount), req.body.currency, req.body.network, req.body.address)));
-app.post('/api/daily_task', async (req, res) => res.json(await db.completeDailyTask(parseInt(req.body.user_id))));
-app.post('/api/complete_twitter_task', async (req, res) => res.json(await db.completeTwitterTask(parseInt(req.body.user_id))));
-app.get('/api/p2p/offers', async (req, res) => res.json(await db.getP2pOffers(req.query.type, req.query.currency)));
-app.post('/api/p2p/create', async (req, res) => res.json(await db.createP2pOffer(parseInt(req.body.user_id), req.body.type, req.body.currency, parseFloat(req.body.fiatAmount), parseFloat(req.body.crystalAmount), req.body.paymentMethod, req.body.bankDetails)));
-app.post('/api/p2p/start', async (req, res) => res.json(await db.startP2pTrade(req.body.offer_id, parseInt(req.body.user_id))));
-app.post('/api/p2p/confirm', async (req, res) => res.json(await db.confirmP2pTrade(req.body.offer_id, parseInt(req.body.user_id), req.body.proof_image)));
+app.post('/api/register', async (req, res) => {
+    await db.registerUser(parseInt(req.body.user_id), req.body.username, req.body.first_name, req.body.last_name, req.body.phone, req.body.email, req.body.country, req.body.city, null, req.body.language || 'ar');
+    res.json({ success: true });
+});
+app.post('/api/update_bank', async (req, res) => res.json(await db.updateBankDetails(parseInt(req.body.user_id), req.body.bankName, req.body.accountNumber, req.body.accountName)));
+app.post('/api/set_language', async (req, res) => { await db.setLanguage(parseInt(req.body.user_id), req.body.language); res.json({ success: true }); });
+app.get('/api/wallet/:userId', async (req, res) => {
+    const w = await db.getUserWallet(parseInt(req.params.userId));
+    const u = await db.getUser(parseInt(req.params.userId));
+    res.json({ addresses: { bnb: w.bnbAddress, polygon: w.polygonAddress, solana: w.solanaAddress, aptos: w.aptosAddress }, usdBalance: w.usdBalance, bankName: u?.bankName, bankAccountNumber: u?.bankAccountNumber, bankAccountName: u?.bankAccountName });
+});
 
 app.listen(PORT, '0.0.0.0', () => console.log(`🌐 Web server on port ${PORT}`));
 
@@ -68,13 +66,10 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 const WEBAPP_URL = process.env.WEBAPP_URL || `https://sdm-security-bot.onrender.com`;
 const ADMIN_ID = parseInt(process.env.ADMIN_ID);
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'hmood19931130';
-const TWITTER_URL = process.env.TWITTER_URL || 'https://x.com/AlmBd37526';
-const COMMISSION_ADDRESSES = {
-    bnb: process.env.COMMISSION_ADDRESS_BNB,
-    polygon: process.env.COMMISSION_ADDRESS_POLYGON,
-    solana: process.env.COMMISSION_ADDRESS_SOLANA,
-    aptos: process.env.COMMISSION_ADDRESS_APTOS
-};
+const PLATFORM_FEE = parseFloat(process.env.PLATFORM_FEE_PERCENT);
+const SUPPORTED_CURRENCIES = process.env.SUPPORTED_CURRENCIES.split(',');
+const PAYMENT_METHODS = process.env.PAYMENT_METHODS.split(',');
+const SUDAN_BANKS = process.env.SUDAN_BANKS.split(',');
 
 // ========== نظام منع الإغراق ==========
 const userLastAction = new Map(), userLastMessage = new Map(), userActionCount = new Map(), userWarningCount = new Map(), bannedUsers = new Map();
@@ -142,26 +137,29 @@ async function messageRateLimitMiddleware(ctx, next) {
 }
 
 // ========== القوائم ==========
-const startKeyboard = Markup.inlineKeyboard([[Markup.button.webApp('🚀 فتح تطبيق التداول', WEBAPP_URL)]]);
+const startKeyboard = Markup.inlineKeyboard([[Markup.button.webApp('🚀 فتح منصة P2P', WEBAPP_URL)]]);
 
 const mainKeyboard = Markup.inlineKeyboard([
-    [Markup.button.webApp('🚀 فتح تطبيق التداول', WEBAPP_URL)],
-    [Markup.button.callback('💰 الرصيد', 'show_balance')],
-    [Markup.button.callback('📈 تداول', 'trade_menu')],
-    [Markup.button.callback('🏆 المتصدرين', 'leaderboard')],
-    [Markup.button.callback('📊 P2P محلي', 'p2p_menu')],
+    [Markup.button.webApp('🚀 فتح منصة P2P', WEBAPP_URL)],
+    [Markup.button.callback('💰 رصيدي', 'my_balance')],
+    [Markup.button.callback('📊 عروض البيع', 'offers_sell')],
+    [Markup.button.callback('📊 عروض الشراء', 'offers_buy')],
+    [Markup.button.callback('➕ إنشاء عرض', 'create_offer')],
+    [Markup.button.callback('📋 صفقاتي', 'my_trades')],
     [Markup.button.callback('💼 محفظتي', 'my_wallet')],
-    [Markup.button.callback('📋 مهام', 'tasks_menu')],
+    [Markup.button.callback('🏦 بيانات البنك', 'bank_details')],
+    [Markup.button.callback('🏆 المتصدرين', 'leaderboard')],
     [Markup.button.callback('🌐 اللغة', 'change_language')],
-    [Markup.button.callback('📞 الدعم', 'support')],
-    [Markup.button.callback('📈 إحصائياتي', 'my_stats')]
+    [Markup.button.callback('📞 الدعم', 'support')]
 ]);
 
 const adminKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('💰 طلبات السحب', 'pending_withdraws')],
-    [Markup.button.callback('📊 صفقات P2P', 'pending_p2p')],
+    [Markup.button.callback('📤 طلبات الإيداع', 'pending_deposits')],
+    [Markup.button.callback('⚠️ النزاعات', 'pending_disputes')],
     [Markup.button.callback('📊 إحصائيات عامة', 'global_stats')],
     [Markup.button.callback('📅 إحصائيات اليوم', 'today_stats')],
+    [Markup.button.callback('🔍 بحث عن مستخدم', 'search_user')],
     [Markup.button.callback('🚫 مستخدمين محظورين', 'banned_users')],
     [Markup.button.callback('🔓 رفع الحظر', 'unban_all')],
     [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
@@ -170,173 +168,223 @@ const adminKeyboard = Markup.inlineKeyboard([
 bot.start(async (ctx) => {
     const user = ctx.from;
     const referrer = ctx.startPayload ? parseInt(ctx.startPayload) : null;
-    await db.registerUser(user.id, user.username, user.first_name, referrer, 'ar');
+    await db.registerUser(user.id, user.username, user.first_name, '', '', '', 'SD', '', referrer, 'ar');
     const stats = await db.getUserStats(user.id);
     await ctx.reply(
-        `✨ *مرحباً بك في منصة CRYSTAL للتداول!* ✨\n\n` +
+        `✨ *مرحباً بك في منصة P2P للتداول بالدولار!* ✨\n\n` +
         `👤 *المستخدم:* ${user.first_name}\n` +
         `💵 *الرصيد:* ${stats.usdBalance.toFixed(2)} USD\n` +
-        `💎 *الكرستال:* ${stats.crystalBalance.toFixed(2)} CRYSTAL\n` +
-        `💰 *القيمة:* ${stats.usdtValue.toFixed(2)} USD\n` +
-        `📊 *سعر CRYSTAL:* ${stats.crystalPrice.toFixed(6)} USD\n\n` +
+        `📊 *إجمالي التداول:* ${stats.totalTraded.toFixed(2)} USD\n` +
+        `⭐ *التقييم:* ${stats.rating.toFixed(1)}/5\n` +
+        `✅ *الصفقات المكتملة:* ${stats.completedTrades}\n\n` +
         `🚀 *اضغط على الزر أدناه لفتح منصة التداول*`,
         { parse_mode: 'Markdown', ...startKeyboard }
     );
 });
 
-// ========== الأزرار ==========
-bot.action('show_balance', rateLimitMiddleware, async (ctx) => {
+// ========== الرصيد ==========
+bot.action('my_balance', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
-    const s = await db.getUserStats(ctx.from.id);
+    const stats = await db.getUserStats(ctx.from.id);
     await ctx.editMessageText(
         `💰 *رصيدك*\n\n` +
-        `💵 *USD:* ${s.usdBalance.toFixed(2)}\n` +
-        `💎 *CRYSTAL:* ${s.crystalBalance.toFixed(2)}\n` +
-        `💰 *القيمة الإجمالية:* ${s.usdtValue.toFixed(2)} USD\n` +
-        `📊 *سعر CRYSTAL:* ${s.crystalPrice.toFixed(6)} USD`,
+        `💵 *USD:* ${stats.usdBalance.toFixed(2)}\n` +
+        `📊 *إجمالي التداول:* ${stats.totalTraded.toFixed(2)} USD\n` +
+        `⭐ *التقييم:* ${stats.rating.toFixed(1)}/5\n` +
+        `✅ *الصفقات المكتملة:* ${stats.completedTrades}\n` +
+        `📋 *العروض النشطة:* ${stats.activeOffers}\n` +
+        `⏳ *صفقات معلقة:* ${stats.pendingTrades}`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
 });
 
-bot.action('trade_menu', rateLimitMiddleware, async (ctx) => {
+// ========== عروض البيع ==========
+bot.action('offers_sell', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
-    const prices = await db.getAllPrices();
-    const s = await db.getUserStats(ctx.from.id);
+    const offers = await db.getOffers('sell', null, 'price', 'asc', 20);
+    if (!offers.length) {
+        await ctx.editMessageText('📭 لا توجد عروض بيع حالياً', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+        return;
+    }
+    let text = '🟢 *عروض البيع* 🟢\n\n';
+    for (const o of offers) {
+        const verifiedIcon = o.isVerified ? '✅' : '❌';
+        const merchantIcon = o.isMerchant ? '👑' : '';
+        text += `👤 ${o.firstName || o.username} ${verifiedIcon}${merchantIcon} | ⭐ ${o.rating.toFixed(1)}\n`;
+        text += `💰 ${o.fiatAmount.toFixed(2)} ${o.currency} | 📊 ${o.price.toFixed(2)} ${o.currency}/USD\n`;
+        text += `💵 القيمة: ${(o.fiatAmount / o.price).toFixed(2)} USD\n`;
+        text += `🏦 ${o.paymentMethod}\n`;
+        text += `🆔 \`${o._id}\`\n`;
+        text += `━━━━━━━━━━━━━━━━━━\n`;
+    }
+    text += `\n📝 /buy_offer [رقم العرض] - لشراء عرض`;
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔄 تحديث', 'offers_sell'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+});
+
+// ========== عروض الشراء ==========
+bot.action('offers_buy', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    const offers = await db.getOffers('buy', null, 'price', 'desc', 20);
+    if (!offers.length) {
+        await ctx.editMessageText('📭 لا توجد عروض شراء حالياً', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+        return;
+    }
+    let text = '🔴 *عروض الشراء* 🔴\n\n';
+    for (const o of offers) {
+        const verifiedIcon = o.isVerified ? '✅' : '❌';
+        const merchantIcon = o.isMerchant ? '👑' : '';
+        text += `👤 ${o.firstName || o.username} ${verifiedIcon}${merchantIcon} | ⭐ ${o.rating.toFixed(1)}\n`;
+        text += `💰 ${o.fiatAmount.toFixed(2)} ${o.currency} | 📊 ${o.price.toFixed(2)} ${o.currency}/USD\n`;
+        text += `💵 القيمة: ${(o.fiatAmount / o.price).toFixed(2)} USD\n`;
+        text += `🏦 ${o.paymentMethod}\n`;
+        text += `🆔 \`${o._id}\`\n`;
+        text += `━━━━━━━━━━━━━━━━━━\n`;
+    }
+    text += `\n📝 /sell_offer [رقم العرض] - لبيع عرض`;
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔄 تحديث', 'offers_buy'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+});
+
+// ========== إنشاء عرض ==========
+bot.action('create_offer', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    const currencyList = SUPPORTED_CURRENCIES.map(c => `• ${c}`).join('\n');
+    const paymentList = PAYMENT_METHODS.map(p => `• ${p}`).join('\n');
+    const banksList = SUDAN_BANKS.map(b => `• ${b}`).join('\n');
     await ctx.editMessageText(
-        `📈 *سوق التداول*\n\n` +
-        `💰 *رصيدك:* ${s.usdBalance.toFixed(2)} USD\n` +
-        `💎 *رصيد CRYSTAL:* ${s.crystalBalance.toFixed(2)}\n` +
-        `📊 *سعر CRYSTAL:* ${s.crystalPrice.toFixed(6)} USD\n\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `🟠 *BTC:* ${prices.BTC.price.toFixed(2)} USD (${prices.BTC.change24h > 0 ? `+${prices.BTC.change24h.toFixed(2)}%` : `${prices.BTC.change24h.toFixed(2)}%`})\n` +
-        `🔵 *ETH:* ${prices.ETH.price.toFixed(2)} USD (${prices.ETH.change24h > 0 ? `+${prices.ETH.change24h.toFixed(2)}%` : `${prices.ETH.change24h.toFixed(2)}%`})\n` +
-        `🟢 *SOL:* ${prices.SOL.price.toFixed(2)} USD\n` +
-        `🟡 *BNB:* ${prices.BNB.price.toFixed(2)} USD\n` +
-        `━━━━━━━━━━━━━━━━━━\n\n` +
-        `📝 *الأوامر:*\n` +
-        `/buy [المبلغ بالدولار] - شراء CRYSTAL\n` +
-        `/sell [المبلغ بالدولار] - بيع CRYSTAL\n\n` +
-        `💸 *العمولة:* 0.5%`,
+        `➕ *إنشاء عرض جديد*\n\n` +
+        `📝 *الأوامر:*\n\n` +
+        `*لإنشاء عرض بيع:*\n` +
+        `/sell [العملة] [المبلغ] [السعر] [طريقة الدفع] [تفاصيل الدفع]\n\n` +
+        `*لإنشاء عرض شراء:*\n` +
+        `/buy [العملة] [المبلغ] [السعر] [طريقة الدفع] [تفاصيل الدفع]\n\n` +
+        `📊 *مثال:*\n` +
+        `/sell SDG 100000 560 بنكي "بنك الخرطوم - 123456 - أحمد"\n\n` +
+        `🌍 *العملات المدعومة:*\n${currencyList}\n\n` +
+        `🏦 *طرق الدفع:*\n${paymentList}\n\n` +
+        `🏛️ *البنوك السودانية:*\n${banksList}`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
+});
+
+// ========== أوامر إنشاء العروض ==========
+bot.command('sell', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 6) return ctx.reply('❌ /sell [العملة] [المبلغ] [السعر] [طريقة الدفع] [تفاصيل الدفع]\nمثال: /sell SDG 100000 560 بنكي "بنك الخرطوم - 123456 - أحمد"');
+    const currency = args[1].toUpperCase();
+    const fiatAmount = parseFloat(args[2]);
+    const price = parseFloat(args[3]);
+    const paymentMethod = args[4];
+    const paymentDetails = args.slice(5).join(' ');
+    if (!SUPPORTED_CURRENCIES.includes(currency)) return ctx.reply(`❌ عملة غير مدعومة. المدعومة: ${SUPPORTED_CURRENCIES.join(', ')}`);
+    if (isNaN(fiatAmount) || fiatAmount <= 0) return ctx.reply('❌ المبلغ غير صحيح');
+    if (isNaN(price) || price <= 0) return ctx.reply('❌ السعر غير صحيح');
+    const result = await db.createOffer(ctx.from.id, 'sell', currency, fiatAmount, price, paymentMethod, paymentDetails, '', '', '', 10, 100000);
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
 });
 
 bot.command('buy', async (ctx) => {
     const args = ctx.message.text.split(' ');
-    if (args.length !== 2) return ctx.reply('❌ /buy [المبلغ بالدولار]\nمثال: /buy 100');
-    const amount = parseFloat(args[1]);
-    if (isNaN(amount) || amount <= 0) return ctx.reply('❌ المبلغ غير صحيح');
-    const result = await db.trade(ctx.from.id, 'buy', 'CRYSTAL', amount);
+    if (args.length < 6) return ctx.reply('❌ /buy [العملة] [المبلغ] [السعر] [طريقة الدفع] [تفاصيل الدفع]\nمثال: /buy SDG 100000 560 بنكي "بنك الخرطوم - 123456 - أحمد"');
+    const currency = args[1].toUpperCase();
+    const fiatAmount = parseFloat(args[2]);
+    const price = parseFloat(args[3]);
+    const paymentMethod = args[4];
+    const paymentDetails = args.slice(5).join(' ');
+    if (!SUPPORTED_CURRENCIES.includes(currency)) return ctx.reply(`❌ عملة غير مدعومة. المدعومة: ${SUPPORTED_CURRENCIES.join(', ')}`);
+    if (isNaN(fiatAmount) || fiatAmount <= 0) return ctx.reply('❌ المبلغ غير صحيح');
+    if (isNaN(price) || price <= 0) return ctx.reply('❌ السعر غير صحيح');
+    const result = await db.createOffer(ctx.from.id, 'buy', currency, fiatAmount, price, paymentMethod, paymentDetails, '', '', '', 10, 100000);
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
 });
 
-bot.command('sell', async (ctx) => {
+// ========== شراء/بيع عرض ==========
+bot.command('buy_offer', async (ctx) => {
+    const id = ctx.message.text.split(' ')[1];
+    if (!id) return ctx.reply('❌ /buy_offer [رقم العرض]');
+    const result = await db.startTrade(id, ctx.from.id);
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
+});
+
+bot.command('sell_offer', async (ctx) => {
+    const id = ctx.message.text.split(' ')[1];
+    if (!id) return ctx.reply('❌ /sell_offer [رقم العرض]');
+    const result = await db.startTrade(id, ctx.from.id);
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
+});
+
+// ========== تأكيد الدفع ==========
+bot.command('send_proof', async (ctx) => {
     const args = ctx.message.text.split(' ');
-    if (args.length !== 2) return ctx.reply('❌ /sell [المبلغ بالدولار]\nمثال: /sell 100');
-    const amount = parseFloat(args[1]);
-    if (isNaN(amount) || amount <= 0) return ctx.reply('❌ المبلغ غير صحيح');
-    const result = await db.trade(ctx.from.id, 'sell', 'CRYSTAL', amount);
+    if (args.length !== 3) return ctx.reply('❌ /send_proof [رقم الصفقة] [رابط الصورة]');
+    const result = await db.confirmPayment(args[1], ctx.from.id, args[2]);
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
+    if (result.sellerId) {
+        await bot.telegram.sendMessage(result.sellerId, result.message, { parse_mode: 'Markdown' });
+    }
+});
+
+// ========== تحرير العملة ==========
+bot.command('release_crystals', async (ctx) => {
+    const id = ctx.message.text.split(' ')[1];
+    if (!id) return ctx.reply('❌ /release_crystals [رقم الصفقة]');
+    const result = await db.releaseCrystals(id, ctx.from.id);
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
+    if (result.buyerId) {
+        await bot.telegram.sendMessage(result.buyerId, result.message, { parse_mode: 'Markdown' });
+    }
+});
+
+// ========== نزاع ==========
+bot.command('dispute', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 3) return ctx.reply('❌ /dispute [رقم الصفقة] [السبب]');
+    const result = await db.openDispute(args[1], ctx.from.id, args.slice(2).join(' '));
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
+    await bot.telegram.sendMessage(ADMIN_ID, `⚠️ *نزاع جديد*\n👤 المستخدم: ${ctx.from.first_name}\n📋 الصفقة: ${args[1]}\n📝 السبب: ${args.slice(2).join(' ')}`);
+});
+
+// ========== تقييم ==========
+bot.command('rate', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 3) return ctx.reply('❌ /rate [رقم الصفقة] [التقييم 1-5] [تعليق اختياري]');
+    const rating = parseInt(args[2]);
+    if (rating < 1 || rating > 5) return ctx.reply('❌ التقييم من 1 إلى 5');
+    const comment = args.slice(3).join(' ');
+    const result = await db.addReview(args[1], ctx.from.id, rating, comment);
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
 });
 
-bot.command('price', async (ctx) => {
-    const p = await db.getAllPrices();
-    const liq = await db.getLiquidity();
-    await ctx.reply(
-        `📊 *الأسعار الحالية*\n\n` +
-        `💎 *CRYSTAL:* ${liq.crystalPrice.toFixed(6)} USD\n` +
-        `🟠 *BTC:* ${p.BTC.price.toFixed(2)} USD\n` +
-        `🔵 *ETH:* ${p.ETH.price.toFixed(2)} USD\n` +
-        `🟢 *SOL:* ${p.SOL.price.toFixed(2)} USD\n` +
-        `🟡 *BNB:* ${p.BNB.price.toFixed(2)} USD\n` +
-        `🟣 *MATIC:* ${p.MATIC.price.toFixed(2)} USD\n` +
-        `🔷 *APT:* ${p.APT.price.toFixed(2)} USD`,
-        { parse_mode: 'Markdown' }
-    );
-});
-
-// ========== P2P محلي ==========
-bot.action('p2p_menu', rateLimitMiddleware, async (ctx) => {
+// ========== صفقاتي ==========
+bot.action('my_trades', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
+    const stats = await db.getUserStats(ctx.from.id);
     await ctx.editMessageText(
-        `📊 *سوق P2P المحلي* 📊\n\n` +
-        `يمكنك شراء أو بيع CRYSTAL مباشرة مع مستخدمين آخرين\n\n` +
-        `🏦 *العملات المدعومة:* USD, EUR, SAR, AED, EGP\n` +
-        `🏧 *طرق الدفع:* تحويل بنكي, باي بال, فودافون كاش, أورنج كاش\n\n` +
-        `📝 *الأوامر:*\n` +
-        `/p2p_sell [المبلغ] [العملة] [السعر] [طريقة الدفع] - عرض بيع\n` +
-        `/p2p_buy [المبلغ] [العملة] [السعر] [طريقة الدفع] - عرض شراء\n` +
-        `/p2p_offers [sell/buy] [العملة] - عرض العروض\n\n` +
-        `⚠️ *الحد الأدنى:* 10 USD`,
+        `📋 *صفقاتي*\n\n` +
+        `✅ *المكتملة:* ${stats.completedTrades}\n` +
+        `💰 *إجمالي التداول:* ${stats.totalTraded.toFixed(2)} USD\n` +
+        `⭐ *التقييم:* ${stats.rating.toFixed(1)}/5\n\n` +
+        `📝 *لعرض تفاصيل الصفقات، استخدم:*\n` +
+        `/trades - عرض آخر 10 صفقات`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
 });
 
-bot.command('p2p_sell', async (ctx) => {
-    const args = ctx.message.text.split(' ');
-    if (args.length < 5) return ctx.reply('❌ /p2p_sell [المبلغ] [العملة] [السعر] [طريقة الدفع]\nمثال: /p2p_sell 100 USD 0.01 بنكي');
-    const fiatAmount = parseFloat(args[1]);
-    const currency = args[2].toUpperCase();
-    const price = parseFloat(args[3]);
-    const paymentMethod = args.slice(4).join(' ');
-    const crystalAmount = fiatAmount / price;
-    const result = await db.createP2pOffer(ctx.from.id, 'sell', currency, fiatAmount, crystalAmount, paymentMethod, '');
-    await ctx.reply(result.message, { parse_mode: 'Markdown' });
-});
-
-bot.command('p2p_buy', async (ctx) => {
-    const args = ctx.message.text.split(' ');
-    if (args.length < 5) return ctx.reply('❌ /p2p_buy [المبلغ] [العملة] [السعر] [طريقة الدفع]\nمثال: /p2p_buy 100 USD 0.01 بنكي');
-    const fiatAmount = parseFloat(args[1]);
-    const currency = args[2].toUpperCase();
-    const price = parseFloat(args[3]);
-    const paymentMethod = args.slice(4).join(' ');
-    const crystalAmount = fiatAmount / price;
-    const result = await db.createP2pOffer(ctx.from.id, 'buy', currency, fiatAmount, crystalAmount, paymentMethod, '');
-    await ctx.reply(result.message, { parse_mode: 'Markdown' });
-});
-
-bot.command('p2p_offers', async (ctx) => {
-    const args = ctx.message.text.split(' ');
-    const type = args[1] || 'sell';
-    const currency = args[2] || 'USD';
-    const offers = await db.getP2pOffers(type, currency);
-    if (!offers.length) return ctx.reply('📭 لا توجد عروض');
-    let text = `📊 *عروض ${type === 'sell' ? 'البيع' : 'الشراء'} (${currency})*\n\n`;
-    for (const o of offers) {
-        text += `👤 ${o.firstName || o.username}\n💎 ${o.crystalAmount.toFixed(2)} CRYSTAL\n💰 ${o.fiatAmount} ${o.currency}\n📊 ${o.pricePerCrystal.toFixed(4)} ${o.currency}/CRYSTAL\n🏦 ${o.paymentMethod}\n🆔 \`${o._id}\`\n━━━━━━━━━━━━━━━━━━\n`;
-    }
-    text += `\n📝 /buy_offer [رقم العرض] - شراء\n/sell_offer [رقم العرض] - بيع`;
-    await ctx.reply(text, { parse_mode: 'Markdown' });
-});
-
-bot.command('buy_offer', async (ctx) => {
-    const id = ctx.message.text.split(' ')[1];
-    if (!id) return ctx.reply('❌ /buy_offer [رقم العرض]');
-    const r = await db.startP2pTrade(id, ctx.from.id);
-    await ctx.reply(r.message, { parse_mode: 'Markdown' });
-});
-
-// ========== محفظة المستخدم ==========
+// ========== محفظتي ==========
 bot.action('my_wallet', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const w = await db.getUserWallet(ctx.from.id);
-    const s = await db.getUserStats(ctx.from.id);
+    const stats = await db.getUserStats(ctx.from.id);
     await ctx.editMessageText(
         `💼 *محفظتي*\n\n` +
-        `💵 *USD:* ${s.usdBalance.toFixed(2)}\n` +
-        `💎 *CRYSTAL:* ${s.crystalBalance.toFixed(2)}\n` +
-        `💰 *القيمة:* ${s.usdtValue.toFixed(2)} USD\n\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `🌐 *عناوين استقبال العملات:*\n\n` +
+        `💵 *USD:* ${stats.usdBalance.toFixed(2)}\n` +
+        `🔑 *بصمة المحفظة:* \`${w.walletSignature.slice(0, 16)}...\`\n\n` +
+        `📤 *عناوين استقبال العملات:*\n\n` +
         `🟡 *BNB:*\n\`${w.bnbAddress}\`\n\n` +
         `🟣 *POLYGON:*\n\`${w.polygonAddress}\`\n\n` +
         `🟢 *SOLANA:*\n\`${w.solanaAddress}\`\n\n` +
         `🔷 *APTOS:*\n\`${w.aptosAddress}\`\n\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `📝 *الأوامر:*\n` +
-        `/deposit [العملة] [الشبكة] - عنوان للإيداع\n` +
-        `/withdraw [العملة] [الشبكة] [المبلغ] [العنوان] - سحب`,
+        `📝 *لإيداع العملات:* /deposit [العملة] [المبلغ] [الشبكة]\n` +
+        `📝 *لسحب العملات:* /withdraw [العملة] [المبلغ] [الشبكة] [العنوان]`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('📋 نسخ العناوين', 'copy_addresses'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
 });
@@ -354,75 +402,54 @@ bot.action('copy_addresses', rateLimitMiddleware, async (ctx) => {
     );
 });
 
+// ========== بيانات البنك ==========
+bot.action('bank_details', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    const user = await db.getUser(ctx.from.id);
+    await ctx.editMessageText(
+        `🏦 *بيانات البنك*\n\n` +
+        `🏛️ *البنك:* ${user.bankName || 'غير محدد'}\n` +
+        `🔢 *رقم الحساب:* ${user.bankAccountNumber || 'غير محدد'}\n` +
+        `👤 *اسم الحساب:* ${user.bankAccountName || 'غير محدد'}\n\n` +
+        `📝 *لتحديث البيانات:*\n` +
+        `/set_bank [البنك] [رقم الحساب] [اسم الحساب]\n\n` +
+        `🏛️ *البنوك المتاحة:*\n${SUDAN_BANKS.map(b => `• ${b}`).join('\n')}`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
+    );
+});
+
+bot.command('set_bank', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 4) return ctx.reply('❌ /set_bank [البنك] [رقم الحساب] [اسم الحساب]');
+    const bankName = args[1];
+    const accountNumber = args[2];
+    const accountName = args.slice(3).join(' ');
+    await db.updateBankDetails(ctx.from.id, bankName, accountNumber, accountName);
+    await ctx.reply(`✅ *تم تحديث بيانات البنك*\n\n🏛️ *البنك:* ${bankName}\n🔢 *رقم الحساب:* ${accountNumber}\n👤 *اسم الحساب:* ${accountName}`, { parse_mode: 'Markdown' });
+});
+
+// ========== إيداع وسحب ==========
 bot.command('deposit', async (ctx) => {
     const args = ctx.message.text.split(' ');
-    if (args.length < 3) return ctx.reply('❌ /deposit [العملة] [الشبكة]\nمثال: /deposit USDT bnb');
+    if (args.length < 4) return ctx.reply('❌ /deposit [العملة] [المبلغ] [الشبكة]\nمثال: /deposit USDT 100 bnb');
     const currency = args[1].toUpperCase();
-    const network = args[2].toLowerCase();
-    const r = await db.requestDeposit(ctx.from.id, 0, currency, network);
-    await ctx.reply(r.message, { parse_mode: 'Markdown' });
+    const amount = parseFloat(args[2]);
+    const network = args[3].toLowerCase();
+    if (isNaN(amount) || amount <= 0) return ctx.reply('❌ المبلغ غير صحيح');
+    const result = await db.requestDeposit(ctx.from.id, amount, currency, network);
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
 });
 
 bot.command('withdraw', async (ctx) => {
     const args = ctx.message.text.split(' ');
-    if (args.length < 5) return ctx.reply('❌ /withdraw [العملة] [الشبكة] [المبلغ] [العنوان]\nمثال: /withdraw USDT bnb 10 0x...');
+    if (args.length < 5) return ctx.reply('❌ /withdraw [العملة] [المبلغ] [الشبكة] [العنوان]\nمثال: /withdraw USDT 100 bnb 0x...');
     const currency = args[1].toUpperCase();
-    const network = args[2].toLowerCase();
-    const amount = parseFloat(args[3]);
+    const amount = parseFloat(args[2]);
+    const network = args[3].toLowerCase();
     const address = args[4];
     if (isNaN(amount) || amount <= 0) return ctx.reply('❌ المبلغ غير صحيح');
-    const r = await db.requestWithdraw(ctx.from.id, amount, currency, network, address);
-    await ctx.reply(r.message, { parse_mode: 'Markdown' });
-});
-
-// ========== المهام ==========
-bot.action('tasks_menu', rateLimitMiddleware, async (ctx) => {
-    await ctx.answerCbQuery();
-    const s = await db.getUserStats(ctx.from.id);
-    const twitterDone = s.twitterTaskCompleted;
-    await ctx.editMessageText(
-        `📋 *المهام*\n\n` +
-        `📅 *المهمة اليومية*\n` +
-        `🎁 المكافأة: ${5 + (s.dailyTasks?.streak || 0)} USD\n` +
-        `📈 السلسلة: ${s.dailyTasks?.streak || 0} يوم\n\n` +
-        `🐦 *متابعة تويتر*\n` +
-        `🎁 المكافأة: 15 USD\n` +
-        `✅ الحالة: ${twitterDone ? 'مكتملة ✅' : 'غير مكتملة ❌'}\n\n` +
-        `🔗 ${TWITTER_URL}`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
-            [Markup.button.callback('📅 إكمال المهمة اليومية', 'daily_task')],
-            [Markup.button.callback('🐦 إكمال مهمة تويتر', 'twitter_task')],
-            [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-        ]) }
-    );
-});
-
-bot.action('daily_task', rateLimitMiddleware, async (ctx) => {
-    await ctx.answerCbQuery();
-    const r = await db.completeDailyTask(ctx.from.id);
-    await ctx.editMessageText(r.message, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'tasks_menu')]]) });
-});
-
-bot.action('twitter_task', rateLimitMiddleware, async (ctx) => {
-    await ctx.answerCbQuery();
-    const s = await db.getUserStats(ctx.from.id);
-    if (s.twitterTaskCompleted) return ctx.editMessageText('✅ لقد أكملت هذه المهمة بالفعل!', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'tasks_menu')]]) });
-    await ctx.editMessageText(
-        `🐦 *مهمة متابعة تويتر*\n\n📌 الخطوات:\n1. اضغط على الرابط أدناه\n2. اضغط "متابعة" (Follow)\n3. عد واضغط "تم المتابعة"\n\n🎁 المكافأة: 15 USD\n\n🔗 ${TWITTER_URL}`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
-            [Markup.button.url('🔗 الذهاب إلى تويتر', TWITTER_URL)],
-            [Markup.button.callback('✅ تم المتابعة', 'confirm_twitter')],
-            [Markup.button.callback('🔙 رجوع', 'tasks_menu')]
-        ]) }
-    );
-});
-
-bot.action('confirm_twitter', rateLimitMiddleware, async (ctx) => {
-    await ctx.answerCbQuery();
-    const r = await db.completeTwitterTask(ctx.from.id);
-    const s = await db.getUserStats(ctx.from.id);
-    if (r.success) await ctx.editMessageText(`✅ *تم إكمال المهمة!*\n🎁 +15 USD\n💵 رصيدك: ${s.usdBalance.toFixed(2)} USD`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'tasks_menu')]]) });
-    else await ctx.editMessageText(r.message, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'tasks_menu')]]) });
+    const result = await db.requestWithdraw(ctx.from.id, amount, currency, network, address);
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
 });
 
 // ========== المتصدرين ==========
@@ -431,34 +458,19 @@ bot.action('leaderboard', rateLimitMiddleware, async (ctx) => {
     const leaders = await db.getLeaderboard(15);
     const stats = await db.getGlobalStats();
     if (!leaders.length) return ctx.editMessageText('🏆 لا يوجد متصدرين', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
-    let text = `🏆 *قائمة المتصدرين* 🏆\n👥 *المستخدمين:* ${stats.users}\n💎 *إجمالي CRYSTAL:* ${stats.totalCrystals}\n💵 *إجمالي USD:* ${stats.totalUsd}\n━━━━━━━━━━━━━━━━━━\n\n`;
-    const max = leaders[0].crystalBalance;
+    let text = `🏆 *قائمة المتصدرين* 🏆\n👥 *المستخدمين:* ${stats.users}\n💰 *إجمالي التداول:* ${stats.totalTraded} USD\n━━━━━━━━━━━━━━━━━━\n\n`;
     for (let i = 0; i < leaders.length; i++) {
         const l = leaders[i];
         const name = l.firstName || l.username || `مستخدم ${l.userId}`;
         const medal = i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
-        const bar = '█'.repeat(Math.floor((l.crystalBalance / max) * 20)) + '░'.repeat(20 - Math.floor((l.crystalBalance / max) * 20));
-        text += `${medal} *${name}*\n   💎 ${l.crystalBalance.toFixed(2)} CRYSTAL\n   💵 ${l.usdBalance.toFixed(2)} USD\n   📊 [${bar}] ${Math.floor((l.crystalBalance / max) * 100)}%\n━━━━━━━━━━━━━━━━━━\n`;
+        const verifiedIcon = l.isVerified ? '✅' : '';
+        const merchantIcon = l.isMerchant ? '👑' : '';
+        text += `${medal} *${name}* ${verifiedIcon}${merchantIcon}\n`;
+        text += `   💰 التداول: ${l.totalTraded.toFixed(2)} USD\n`;
+        text += `   ⭐ التقييم: ${l.rating.toFixed(1)}/5\n`;
+        text += `   ✅ الصفقات: ${l.completedTrades}\n━━━━━━━━━━━━━━━━━━\n`;
     }
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔄 تحديث', 'leaderboard'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
-});
-
-// ========== إحصائياتي ==========
-bot.action('my_stats', rateLimitMiddleware, async (ctx) => {
-    await ctx.answerCbQuery();
-    const s = await db.getUserStats(ctx.from.id);
-    await ctx.editMessageText(
-        `📊 *إحصائياتي*\n\n` +
-        `👤 *${s.firstName}*\n` +
-        `💵 *USD:* ${s.usdBalance.toFixed(2)}\n` +
-        `💎 *CRYSTAL:* ${s.crystalBalance.toFixed(2)}\n` +
-        `💰 *القيمة:* ${s.usdtValue.toFixed(2)} USD\n` +
-        `📊 *سعر CRYSTAL:* ${s.crystalPrice.toFixed(6)} USD\n` +
-        `📈 *إجمالي التداول:* ${s.totalTraded.toFixed(2)} USD\n` +
-        `👥 *الإحالات:* ${s.referralCount}/10\n` +
-        `📅 *تاريخ التسجيل:* ${new Date(s.createdAt).toLocaleDateString('ar')}`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
-    );
 });
 
 // ========== اللغة ==========
@@ -486,7 +498,14 @@ bot.action('lang_en', rateLimitMiddleware, async (ctx) => {
 bot.action('support', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.editMessageText(
-        `📞 *الدعم الفني*\n\n👤 *الأدمن:* @${ADMIN_USERNAME}\n🆔 *المعرف:* ${ADMIN_ID}\n\n💸 *عناوين العمولات:*\n🟡 BNB: \`${COMMISSION_ADDRESSES.bnb}\`\n🟣 POLYGON: \`${COMMISSION_ADDRESSES.polygon}\`\n🟢 SOLANA: \`${COMMISSION_ADDRESSES.solana}\`\n🔷 APTOS: \`${COMMISSION_ADDRESSES.aptos}\``,
+        `📞 *الدعم الفني*\n\n` +
+        `👤 *الأدمن:* @${ADMIN_USERNAME}\n` +
+        `🆔 *المعرف:* ${ADMIN_ID}\n\n` +
+        `💸 *عناوين العمولات:*\n` +
+        `🟡 BNB: \`${process.env.COMMISSION_WALLET_BNB}\`\n` +
+        `🟣 POLYGON: \`${process.env.COMMISSION_WALLET_POLYGON}\`\n` +
+        `🟢 SOLANA: \`${process.env.COMMISSION_WALLET_SOLANA}\`\n` +
+        `🔷 APTOS: \`${process.env.COMMISSION_WALLET_APTOS}\``,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.url('📨 تواصل', `https://t.me/${ADMIN_USERNAME}`)], [Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
 });
@@ -494,8 +513,8 @@ bot.action('support', rateLimitMiddleware, async (ctx) => {
 // ========== العودة للقائمة ==========
 bot.action('back_to_menu', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
-    const s = await db.getUserStats(ctx.from.id);
-    const text = `✨ *القائمة الرئيسية*\n👤 ${ctx.from.first_name}\n💵 ${s.usdBalance.toFixed(2)} USD\n💎 ${s.crystalBalance.toFixed(2)} CRYSTAL\n💰 ${s.usdtValue.toFixed(2)} USD\n📊 سعر CRYSTAL: ${s.crystalPrice.toFixed(6)} USD`;
+    const stats = await db.getUserStats(ctx.from.id);
+    const text = `✨ *القائمة الرئيسية*\n👤 ${ctx.from.first_name}\n💵 ${stats.usdBalance.toFixed(2)} USD\n⭐ ${stats.rating.toFixed(1)}/5\n✅ ${stats.completedTrades} صفقة`;
     const kb = ctx.from.id === ADMIN_ID ? adminKeyboard : mainKeyboard;
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb });
 });
@@ -519,30 +538,44 @@ bot.command('confirm_withdraw', async (ctx) => {
     await ctx.reply(r.message);
 });
 
-bot.action('pending_p2p', async (ctx) => {
+bot.action('pending_deposits', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return ctx.answerCbQuery('⛔ للأدمن فقط');
-    const p = await db.getPendingP2p();
-    if (!p.length) return ctx.editMessageText('📭 لا صفقات P2P معلقة', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
-    let text = '📊 *صفقات P2P المعلقة*\n\n';
-    p.forEach(r => { text += `🆔 \`${r._id}\`\n👤 البائع: ${r.userId}\n👤 المشتري: ${r.counterpartyId}\n💎 ${r.crystalAmount} CRYSTAL\n💰 ${r.fiatAmount} ${r.currency}\n━━━━━━━━━━━━━━━━━━\n`; });
+    const p = await db.getPendingDeposits();
+    if (!p.length) return ctx.editMessageText('📭 لا طلبات إيداع', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    let text = '📤 *طلبات الإيداع*\n\n';
+    p.forEach(r => { text += `🆔 \`${r._id}\` | 👤 ${r.userId}\n💰 ${r.amount} ${r.currency}\n🌐 ${r.network}\n📤 ${r.address}\n━━━━━━━━━━━━━━━━━━\n`; });
+    text += `\n📝 /confirm_deposit [الرقم] [رابط]`;
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+});
+
+bot.command('confirm_deposit', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+    const [_, id, hash] = ctx.message.text.split(' ');
+    if (!id || !hash) return ctx.reply('❌ /confirm_deposit [id] [hash]');
+    const r = await db.confirmDeposit(id, hash, ctx.from.id);
+    await ctx.reply(r.message);
+});
+
+bot.action('pending_disputes', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return ctx.answerCbQuery('⛔ للأدمن فقط');
+    const p = await db.getDisputedTrades();
+    if (!p.length) return ctx.editMessageText('📭 لا نزاعات', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    let text = '⚠️ *النزاعات*\n\n';
+    p.forEach(r => { text += `🆔 \`${r._id}\`\n👤 المشتري: ${r.buyerId}\n👤 البائع: ${r.sellerId}\n💰 ${r.amount} ${r.currency}\n📝 السبب: ${r.disputeReason}\n━━━━━━━━━━━━━━━━━━\n`; });
+    text += `\n📝 /resolve_dispute [الرقم] [buyer/seller]`;
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
 
 bot.action('global_stats', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return ctx.answerCbQuery('⛔ للأدمن فقط');
     const s = await db.getGlobalStats();
-    const liq = await db.getLiquidity();
     await ctx.editMessageText(
         `📊 *إحصائيات عامة*\n\n` +
         `👥 *المستخدمين:* ${s.users}\n` +
-        `💎 *إجمالي CRYSTAL:* ${s.totalCrystals}\n` +
-        `💵 *إجمالي USD:* ${s.totalUsd}\n` +
-        `📈 *حجم التداول:* ${s.totalTraded} USD\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `💎 *CRYSTAL:*\n` +
-        `• الإجمالي: ${liq.totalCrystalSupply.toLocaleString()}\n` +
-        `• المتداول: ${liq.circulatingCrystal.toLocaleString()}\n` +
-        `• السعر: ${liq.crystalPrice.toFixed(6)} USD`,
+        `💰 *إجمالي التداول:* ${s.totalTraded} USD\n` +
+        `⭐ *متوسط التقييم:* ${s.avgRating}/5\n` +
+        `📊 *العروض النشطة:* ${s.activeOffers}\n` +
+        `⏳ *الصفقات المعلقة:* ${s.pendingTrades}`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
 });
@@ -552,14 +585,20 @@ bot.action('today_stats', async (ctx) => {
     const s = await db.getTodayStats();
     await ctx.editMessageText(
         `📅 *إحصائيات اليوم*\n${new Date().toLocaleDateString('ar')}\n\n` +
-        `👥 مستخدمين جدد: ${s?.totalUsers || 0}\n` +
-        `📈 صفقات: ${s?.totalTrades || 0}\n` +
-        `💰 حجم التداول: ${s?.totalVolume?.toFixed(2) || 0} USD\n` +
-        `💸 عمولات: ${s?.totalCommission?.toFixed(2) || 0} USD\n` +
-        `🔄 صفقات P2P: ${s?.p2pTrades || 0}\n` +
-        `👥 إحالات: ${s?.totalReferrals || 0}`,
+        `👥 *مستخدمين جدد:* ${s?.newUsers || 0}\n` +
+        `📈 *الصفقات:* ${s?.totalTrades || 0}\n` +
+        `💰 *حجم التداول:* ${s?.totalVolume?.toFixed(2) || 0} USD\n` +
+        `💸 *العمولات:* ${s?.totalCommission?.toFixed(2) || 0} USD\n` +
+        `📊 *العروض النشطة:* ${s?.activeOffers || 0}`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
+});
+
+bot.action('search_user', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return ctx.answerCbQuery('⛔ للأدمن فقط');
+    await ctx.answerCbQuery();
+    await ctx.reply('🔍 الرجاء إرسال اسم المستخدم أو المعرف للبحث:');
+    ctx.session = { state: 'search_user' };
 });
 
 bot.action('banned_users', async (ctx) => {
@@ -579,20 +618,34 @@ bot.action('unban_all', async (ctx) => {
     await ctx.editMessageText('✅ تم رفع الحظر', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
 
-// ========== معالجة الرسائل النصية ==========
+// ========== معالجة البحث ==========
 bot.on('text', messageRateLimitMiddleware, async (ctx) => {
-    if (ctx.session?.state === 'p2p_create') {
-        // معالجة إنشاء عرض P2P
+    if (ctx.session?.state === 'search_user' && ctx.from.id === ADMIN_ID) {
+        const query = ctx.message.text;
+        const users = await db.searchUsers(query);
+        if (users.length === 0) return ctx.reply('❌ لم يتم العثور على مستخدمين');
+        let text = '🔍 *نتائج البحث:*\n\n';
+        for (const u of users) {
+            text += `👤 ${u.firstName || u.username || u.userId}\n`;
+            text += `🆔 \`${u.userId}\`\n`;
+            text += `📞 ${u.phoneNumber || 'لا يوجد'}\n`;
+            text += `📧 ${u.email || 'لا يوجد'}\n`;
+            text += `⭐ ${u.rating.toFixed(1)}/5\n`;
+            text += `✅ ${u.isVerified ? 'موثق ✅' : 'غير موثق ❌'}\n`;
+            text += `👑 ${u.isMerchant ? 'تاجر' : 'مستخدم عادي'}\n━━━━━━━━━━━━━━━━━━\n`;
+        }
+        await ctx.reply(text, { parse_mode: 'Markdown' });
         delete ctx.session.state;
     }
 });
 
 // تشغيل البوت
 bot.launch().then(() => {
-    console.log('🚀 Bot running');
+    console.log('🚀 P2P Exchange Bot running');
     console.log('👑 Admin:', ADMIN_ID);
-    console.log('💎 Total CRYSTAL Supply: 30,000,000');
-    console.log('📊 Crystal price linked to BTC');
+    console.log('💵 Platform Fee:', PLATFORM_FEE, '%');
+    console.log('🌍 Supported Currencies:', SUPPORTED_CURRENCIES.length);
+    console.log('🏦 Sudanese Banks:', SUDAN_BANKS.length);
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
