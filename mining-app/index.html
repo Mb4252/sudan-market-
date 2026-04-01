@@ -3,454 +3,124 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>CRYSTAL Mining - تعدين الكريستال</title>
+    <title>CRYSTAL - منصة التداول</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-        }
-
-        .card {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-        }
-
-        .balance-card {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            color: white;
-            text-align: center;
-        }
-
-        .balance-amount {
-            font-size: 48px;
-            font-weight: bold;
-            margin: 10px 0;
-        }
-
-        .usdt-value {
-            font-size: 18px;
-            opacity: 0.9;
-            margin-top: 5px;
-        }
-
-        .mining-rate {
-            font-size: 18px;
-            opacity: 0.9;
-            margin-top: 5px;
-        }
-
-        .progress-bar {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 10px;
-            height: 10px;
-            overflow: hidden;
-            margin: 15px 0 5px;
-        }
-
-        .progress-fill {
-            background: #4CAF50;
-            height: 100%;
-            width: 0%;
-            transition: width 0.5s;
-        }
-
-        .progress-text {
-            font-size: 14px;
-            margin-top: 5px;
-        }
-
-        .mine-button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 20px;
-            font-size: 24px;
-            font-weight: bold;
-            border-radius: 50px;
-            width: 100%;
-            cursor: pointer;
-            transition: transform 0.2s;
-            margin: 20px 0;
-        }
-
-        .mine-button:active {
-            transform: scale(0.95);
-        }
-
-        .mine-button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .timer {
-            text-align: center;
-            font-size: 20px;
-            margin: 10px 0;
-            color: #666;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin-top: 15px;
-        }
-
-        .stat-item {
-            background: #f5f5f5;
-            padding: 15px;
-            border-radius: 15px;
-            text-align: center;
-        }
-
-        .stat-label {
-            font-size: 14px;
-            color: #666;
-            margin-bottom: 5px;
-        }
-
-        .stat-value {
-            font-size: 20px;
-            font-weight: bold;
-            color: #333;
-        }
-
-        .tab-buttons {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-
-        .tab-button {
-            flex: 1;
-            padding: 12px;
-            background: rgba(255, 255, 255, 0.2);
-            border: none;
-            border-radius: 10px;
-            color: white;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .tab-button.active {
-            background: white;
-            color: #667eea;
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        .leader-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            border-bottom: 1px solid #eee;
-        }
-
-        .leader-rank {
-            font-weight: bold;
-            color: #667eea;
-            width: 50px;
-        }
-
-        .leader-name {
-            flex: 1;
-            margin: 0 10px;
-        }
-
-        .leader-balance {
-            font-weight: bold;
-            color: #f5576c;
-        }
-
-        .buy-input, .withdraw-input {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #ddd;
-            border-radius: 10px;
-            font-size: 16px;
-            margin: 10px 0;
-            direction: rtl;
-        }
-
-        .buy-button, .p2p-button, .task-button, .wallet-button, .withdraw-button, .trade-button {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 12px;
-            border-radius: 10px;
-            width: 100%;
-            font-size: 16px;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-
-        .p2p-button { background: #2196F3; }
-        .task-button { background: #ff9800; }
-        .wallet-button { background: #9C27B0; }
-        .withdraw-button { background: #f44336; }
-        .trade-button { background: #00bcd4; }
-
-        .liquidity-info, .wallet-info, .trade-info {
-            background: #e3f2fd;
-            padding: 15px;
-            border-radius: 10px;
-            margin: 10px 0;
-        }
-
-        .language-selector {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            margin-bottom: 15px;
-        }
-
-        .lang-btn {
-            background: #667eea;
-            color: white;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 20px;
-            cursor: pointer;
-        }
-
-        .copy-btn {
-            background: #2196F3;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            margin-top: 10px;
-            margin-right: 5px;
-        }
-
-        .task-item {
-            background: #f9f9f9;
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .task-icon { font-size: 32px; }
-        .task-info { flex: 1; }
-        .task-info h4 { margin-bottom: 5px; }
-        .task-info p { color: #666; font-size: 12px; }
-        .task-status { font-size: 12px; margin-top: 5px; }
-        .task-btn { background: #ff9800; padding: 8px 16px; border-radius: 8px; border: none; color: white; cursor: pointer; }
-
-        .vip-badge {
-            background: gold;
-            color: #333;
-            border-radius: 20px;
-            padding: 2px 8px;
-            font-size: 10px;
-            margin-left: 5px;
-        }
-
-        .reward-popup {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 30px;
-            border-radius: 20px;
-            text-align: center;
-            z-index: 1000;
-            animation: shake 0.5s;
-        }
-
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-5px); }
-            75% { transform: translateX(5px); }
-        }
-
-        .loading { text-align: center; padding: 20px; color: #666; }
-        .address-box { background: #f0f0f0; padding: 8px; border-radius: 8px; font-family: monospace; font-size: 12px; word-break: break-all; margin: 5px 0; }
-        .network-tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: bold; margin-right: 5px; }
-        .bnb-tag { background: #F3BA2F; color: #000; }
-        .polygon-tag { background: #8247E5; color: #fff; }
-        .solana-tag { background: #14F195; color: #000; }
-        .aptos-tag { background: #000; color: #fff; }
-        .btc-tag { background: #F7931A; color: #fff; }
-        .eth-tag { background: #627EEA; color: #fff; }
-
-        .bet-item {
-            background: #f9f9f9;
-            border-radius: 12px;
-            padding: 12px;
-            margin-bottom: 10px;
-            border-right: 4px solid #00bcd4;
-        }
-        .bet-win { border-right-color: #4CAF50; }
-        .bet-loss { border-right-color: #f44336; }
-        .bet-active { border-right-color: #ff9800; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .card { background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 20px; padding: 20px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.2); }
+        .balance-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-align: center; }
+        .balance-amount { font-size: 48px; font-weight: bold; margin: 10px 0; }
+        .price-info { font-size: 14px; opacity: 0.9; margin-top: 5px; }
+        .tab-buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab-button { flex: 1; padding: 12px; background: rgba(255,255,255,0.1); border: none; border-radius: 10px; color: white; font-size: 14px; cursor: pointer; transition: all 0.3s; }
+        .tab-button.active { background: #667eea; color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .trade-input { width: 100%; padding: 12px; border: none; border-radius: 10px; margin: 10px 0; background: rgba(255,255,255,0.9); }
+        .trade-btn { background: #4CAF50; color: white; border: none; padding: 12px; border-radius: 10px; width: 100%; font-size: 16px; cursor: pointer; margin-top: 10px; }
+        .sell-btn { background: #f44336; }
+        .price-row { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .leader-item { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); color: white; }
+        .lang-btn { background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; margin: 0 5px; }
+        .copy-btn { background: #2196F3; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; margin-top: 10px; }
+        .address-box { background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; font-family: monospace; font-size: 12px; word-break: break-all; margin: 5px 0; color: #fff; }
+        .loading { text-align: center; padding: 20px; color: #aaa; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="card balance-card">
-            <h2 id="balanceTitle">💎 رصيد الكريستال</h2>
-            <div class="balance-amount" id="balance">0</div>
-            <div class="usdt-value">💰 <span id="usdtValue">0</span> USDT</div>
-            <div class="mining-rate">⚡ <span id="miningRateLabel">معدل التعدين</span>: <span id="miningRate">1</span>x</div>
-            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-            <div class="progress-text" id="progressText">نسبة التقدم: 0%</div>
+            <h2>💎 CRYSTAL</h2>
+            <div class="balance-amount" id="crystalBalance">0</div>
+            <div class="price-info">💰 <span id="usdBalance">0</span> USD | 📊 <span id="crystalPrice">0</span> USD</div>
         </div>
 
-        <div class="language-selector">
+        <div style="text-align: center; margin-bottom: 15px;">
             <button class="lang-btn" onclick="setLanguage('ar')">🇸🇦 العربية</button>
             <button class="lang-btn" onclick="setLanguage('en')">🇬🇧 English</button>
         </div>
 
         <div class="tab-buttons">
-            <button class="tab-button active" onclick="switchTab('mine')"><span id="tabMine">⛏️ تعدين</span></button>
-            <button class="tab-button" onclick="switchTab('trade')"><span id="tabTrade">📈 تداول</span></button>
-            <button class="tab-button" onclick="switchTab('leaderboard')"><span id="tabLeaderboard">🏆 متصدرين</span></button>
-            <button class="tab-button" onclick="switchTab('buy')"><span id="tabBuy">💰 شراء</span></button>
-            <button class="tab-button" onclick="switchTab('p2p')"><span id="tabP2P">📊 P2P</span></button>
-            <button class="tab-button" onclick="switchTab('tasks')"><span id="tabTasks">📋 مهام</span></button>
-            <button class="tab-button" onclick="switchTab('vip')"><span id="tabVip">👑 VIP</span></button>
-            <button class="tab-button" onclick="switchTab('wallet')"><span id="tabWallet">💼 محفظتي</span></button>
-            <button class="tab-button" onclick="switchTab('support')"><span id="tabSupport">📞 دعم</span></button>
-        </div>
-
-        <!-- تعدين -->
-        <div id="mine-tab" class="tab-content active">
-            <div class="card">
-                <button class="mine-button" id="mineBtn" onclick="startMining()"><span id="mineBtnText">⛏️ اضغط للتعدين</span></button>
-                <div class="timer" id="timer"></div>
-                <div class="stats-grid">
-                    <div class="stat-item"><div class="stat-label" id="totalMinedLabel">إجمالي التعدين</div><div class="stat-value" id="totalMined">0</div></div>
-                    <div class="stat-item"><div class="stat-label" id="miningLevelLabel">مستوى التعدين</div><div class="stat-value" id="miningLevel">1</div></div>
-                    <div class="stat-item"><div class="stat-label" id="dailyMinedLabel">تعدين اليوم</div><div class="stat-value" id="dailyMined">0/70</div></div>
-                    <div class="stat-item"><div class="stat-label" id="dailyRemainingLabel">المتبقي اليوم</div><div class="stat-value" id="dailyRemaining">70</div></div>
-                    <div class="stat-item"><div class="stat-label" id="comboLabel">الكومبو</div><div class="stat-value" id="comboCount">0 يوم</div></div>
-                    <div class="stat-item"><div class="stat-label" id="vipLabel">VIP</div><div class="stat-value" id="vipLevel">0</div></div>
-                </div>
-                <button class="buy-button" onclick="upgradeMining()" style="background:#ff9800"><span id="upgradeBtn">⚡ تطوير معدل التعدين</span></button>
-            </div>
+            <button class="tab-button active" onclick="switchTab('trade')">📈 تداول</button>
+            <button class="tab-button" onclick="switchTab('p2p')">📊 P2P</button>
+            <button class="tab-button" onclick="switchTab('wallet')">💼 محفظتي</button>
+            <button class="tab-button" onclick="switchTab('leaderboard')">🏆 متصدرين</button>
+            <button class="tab-button" onclick="switchTab('prices')">📊 الأسعار</button>
         </div>
 
         <!-- تداول -->
-        <div id="trade-tab" class="tab-content">
+        <div id="trade-tab" class="tab-content active">
             <div class="card">
-                <h3 id="tradeTitle">📈 سوق التداول</h3>
-                <div class="trade-info" id="priceInfo"><div class="loading">جاري تحميل الأسعار...</div></div>
-                <div id="betStats" style="margin: 10px 0; font-size: 12px; color: #666;"></div>
-                <div class="bet-section">
-                    <select id="betCurrency" class="buy-input">
-                        <option value="BTC">BTC - بيتكوين</option>
-                        <option value="ETH">ETH - إيثريوم</option>
-                    </select>
-                    <select id="betType" class="buy-input">
-                        <option value="up">⬆️ صاعد - توقع ارتفاع السعر</option>
-                        <option value="down">⬇️ هابط - توقع انخفاض السعر</option>
-                    </select>
-                    <select id="betDuration" class="buy-input">
-                        <option value="60">1 دقيقة</option>
-                        <option value="300">5 دقائق</option>
-                        <option value="900">15 دقيقة</option>
-                    </select>
-                    <input type="number" id="betAmount" placeholder="المبلغ بالكريستال (الحد الأدنى 10)" class="buy-input">
-                    <button class="trade-button" onclick="placeBet()"><span id="betBtnText">🎲 وضع رهان</span></button>
+                <h3 style="color:white">📈 شراء / بيع CRYSTAL</h3>
+                <input type="number" id="tradeAmount" placeholder="المبلغ بالدولار" class="trade-input">
+                <button class="trade-btn" onclick="buyCrystal()">🟢 شراء CRYSTAL</button>
+                <button class="trade-btn sell-btn" onclick="sellCrystal()">🔴 بيع CRYSTAL</button>
+                <div style="margin-top: 15px; color: #aaa; font-size: 12px; text-align: center;">
+                    💸 العمولة: 0.5% | 📊 سعر CRYSTAL يتغير مع BTC
                 </div>
-                <div style="font-size:12px;color:#666;text-align:center;margin-top:10px">
-                    💰 المكافأة: 80% أرباح | 💸 العمولة: 5%<br>
-                    📊 الأسعار من Binance مباشرة
+            </div>
+        </div>
+
+        <!-- P2P -->
+        <div id="p2p-tab" class="tab-content">
+            <div class="card">
+                <h3 style="color:white">📊 سوق P2P المحلي</h3>
+                <select id="p2pType" class="trade-input">
+                    <option value="sell">🟢 عروض البيع</option>
+                    <option value="buy">🔴 عروض الشراء</option>
+                </select>
+                <select id="p2pCurrency" class="trade-input">
+                    <option value="USD">USD دولار أمريكي</option>
+                    <option value="EUR">EUR يورو</option>
+                    <option value="SAR">SAR ريال سعودي</option>
+                    <option value="AED">AED درهم إماراتي</option>
+                    <option value="EGP">EGP جنيه مصري</option>
+                </select>
+                <button class="trade-btn" onclick="loadP2POffers()">🔍 عرض العروض</button>
+                <div id="p2pOffersList" style="margin-top: 15px;"><div class="loading">اختر نوع العرض</div></div>
+                <button class="trade-btn" onclick="showCreateOffer()" style="background:#ff9800">➕ إنشاء عرض جديد</button>
+            </div>
+        </div>
+
+        <!-- محفظتي -->
+        <div id="wallet-tab" class="tab-content">
+            <div class="card">
+                <h3 style="color:white">💼 محفظتي</h3>
+                <div id="walletInfo"><div class="loading">جاري التحميل...</div></div>
+                <div style="margin-top: 15px;">
+                    <h4 style="color:white">💰 سحب العملات</h4>
+                    <select id="withdrawNetwork" class="trade-input">
+                        <option value="bnb">BNB (BEP-20)</option>
+                        <option value="polygon">POLYGON (MATIC)</option>
+                        <option value="solana">SOLANA (SOL)</option>
+                        <option value="aptos">APTOS (APT)</option>
+                    </select>
+                    <input type="number" id="withdrawAmount" placeholder="المبلغ" class="trade-input">
+                    <input type="text" id="withdrawAddress" placeholder="عنوان المحفظة المستلم" class="trade-input">
+                    <button class="trade-btn" onclick="withdraw()">💸 سحب</button>
                 </div>
-                <div id="recentBets" style="margin-top: 15px;"></div>
-                <button class="p2p-button" onclick="loadRecentBets()" style="background:#00bcd4; margin-top:10px"><span id="refreshBetsBtn">🔄 تحديث الرهانات</span></button>
             </div>
         </div>
 
         <!-- متصدرين -->
         <div id="leaderboard-tab" class="tab-content">
-            <div class="card"><h3 id="leaderboardTitle">🏆 قائمة المتصدرين</h3><div class="leaderboard" id="leaderboardList"><div class="loading">جاري التحميل...</div></div></div>
-        </div>
-
-        <!-- شراء -->
-        <div id="buy-tab" class="tab-content">
-            <div class="card"><h3 id="buyTitle">💰 شراء CRYSTAL</h3><div class="liquidity-info" id="liquidityInfo"><div class="loading">جاري التحميل...</div></div>
-            <div class="buy-section"><input type="number" id="crystalAmount" placeholder="أدخل عدد الكريستال" class="buy-input"><button class="buy-button" onclick="initiatePurchase()"><span id="buyBtnText">💵 شراء بالـ USDT (TRC20)</span></button></div>
-            <div style="font-size:12px;color:#666;text-align:center;margin-top:10px" id="buyNote">⚠️ الحد الأدنى: 10 USDT (1000 كريستال)<br>📤 الدفع عبر شبكة TRON (TRC20)</div></div>
-        </div>
-
-        <!-- P2P -->
-        <div id="p2p-tab" class="tab-content">
-            <div class="card"><h3 id="p2pTitle">📊 سوق P2P</h3>
-            <div class="p2p-buttons"><button class="p2p-button" onclick="loadP2POffers('sell')"><span id="sellOffersBtn">🟢 عروض البيع</span></button><button class="p2p-button" onclick="loadP2POffers('buy')"><span id="buyOffersBtn">🔴 عروض الشراء</span></button><button class="p2p-button" onclick="showCreateOffer()"><span id="createOfferBtn">➕ إنشاء عرض</span></button></div>
-            <div id="p2pOffersList" style="margin-top:15px"><div class="loading">اختر نوع العرض</div></div>
-            <div style="font-size:12px;color:#666;text-align:center;margin-top:10px">⚠️ الحد الأدنى 5 USDT</div></div>
-        </div>
-
-        <!-- المهام -->
-        <div id="tasks-tab" class="tab-content">
-            <div class="card"><h3 id="tasksTitle">📋 المهام</h3>
-                <div class="task-item"><div class="task-icon">📋</div><div class="task-info"><h4 id="dailyTaskTitle">المهمة اليومية</h4><p id="dailyTaskDesc">أكمل المهمة اليومية واحصل على مكافآت</p><p id="dailyTaskReward">🎁 20-50 كريستال</p><p id="taskStreak">📈 السلسلة: 0 يوم</p></div><button class="task-btn" onclick="completeDailyTask()"><span id="completeTaskBtn">إكمال</span></button></div>
-                <div class="task-item"><div class="task-icon">🐦</div><div class="task-info"><h4 id="twitterTaskTitle">متابعة تويتر</h4><p id="twitterTaskDesc">تابع حسابنا على تويتر واحصل على 15 كريستال</p><p id="twitterTaskReward">🎁 15 كريستال</p><p id="twitterTaskStatus">⏳ لم تبدأ بعد</p></div><button class="task-btn twitter-button" onclick="startTwitterTask()" id="twitterTaskBtn" style="background:#1DA1F2"><span id="twitterTaskBtnText">بدء المهمة</span></button></div>
+            <div class="card">
+                <h3 style="color:white">🏆 قائمة المتصدرين</h3>
+                <div id="leaderboardList"><div class="loading">جاري التحميل...</div></div>
             </div>
         </div>
 
-        <!-- VIP -->
-        <div id="vip-tab" class="tab-content">
-            <div class="card"><h3 id="vipTitle">👑 نظام VIP</h3>
-            <div style="text-align:center;padding:20px"><div style="font-size:48px">👑</div><p id="vipLevelDisplay">مستوى VIP: 0</p><p id="vipExp">نقاط الخبرة: 0/1000</p><div class="progress-bar"><div class="progress-fill" id="vipProgressFill" style="width:0%"></div></div><p id="vipBenefits">✨ مزايا VIP: +0% معدل التعدين</p><button class="wallet-button" onclick="upgradeVIP()" style="background:#9C27B0"><span id="upgradeVipBtn">⭐ ترقية VIP</span></button></div></div>
-        </div>
-
-        <!-- محفظتي -->
-        <div id="wallet-tab" class="tab-content">
-            <div class="card"><h3 id="walletTitle">💼 محفظتي الرقمية</h3>
-            <div class="wallet-info" id="walletInfo"><div class="loading">جاري تحميل المحفظة...</div></div>
-            <div style="margin-top:15px">
-                <h4 id="withdrawTitle">💰 سحب العملات</h4>
-                <select id="withdrawNetwork" class="buy-input">
-                    <option value="bnb">BNB (BEP-20)</option>
-                    <option value="polygon">POLYGON (MATIC)</option>
-                    <option value="solana">SOLANA (SOL)</option>
-                    <option value="aptos">APTOS (APT)</option>
-                </select>
-                <input type="number" id="withdrawAmount" placeholder="المبلغ" class="buy-input">
-                <input type="text" id="withdrawAddress" placeholder="عنوان المحفظة المستلم" class="buy-input">
-                <button class="withdraw-button" onclick="withdraw()"><span id="withdrawBtnText">💸 سحب</span></button>
+        <!-- الأسعار -->
+        <div id="prices-tab" class="tab-content">
+            <div class="card">
+                <h3 style="color:white">📊 الأسعار الحالية</h3>
+                <div id="pricesList"><div class="loading">جاري التحميل...</div></div>
+                <div style="margin-top: 10px; font-size: 12px; color: #aaa; text-align: center;">
+                    ⏰ تحديث كل دقيقة | 📊 الأسعار من Binance
+                </div>
             </div>
-            <div style="font-size:12px;color:#666;text-align:center;margin-top:10px">⚠️ الحد الأدنى للسحب: 0.01 من كل عملة<br>📤 يتم التحويل خلال بضع دقائق<br>💸 عمولة السحب: 2%</div></div>
-        </div>
-
-        <!-- دعم -->
-        <div id="support-tab" class="tab-content">
-            <div class="card"><h3 id="supportTitle">📞 الدعم الفني</h3>
-            <div style="text-align:center;padding:20px"><p id="supportText">للتواصل مع الدعم الفني:</p><p><strong id="supportAdmin">👤 الأدمن:</strong> @hmood19931130</p><p><strong id="supportId">🆔 المعرف:</strong> 6701743450</p><button class="copy-btn" onclick="copyToClipboard('6701743450')"><span id="copyIdBtn">📋 نسخ المعرف</span></button><button class="copy-btn" onclick="window.open('https://t.me/hmood19931130','_blank')"><span id="contactAdminBtn">📨 تواصل مع الأدمن</span></button></div></div>
         </div>
     </div>
 
@@ -459,207 +129,36 @@
         tg.expand();
         tg.ready();
         
-        let userData = {}, lastMiningTime = null, miningInterval = null, currentLanguage = 'ar', walletData = null, prices = null;
+        let currentLanguage = 'ar';
         const API_URL = window.location.origin;
-        const DAILY_LIMIT = 70;
-        const CRYSTAL_PRICE = 0.01;
-        const TWITTER_URL = 'https://x.com/AlmBd37526';
-        const COMMISSION_ADDRESS = '0x2a2548117C7113eB807298D74A44d451E330AC95';
-        
-        const texts = {
-            ar: {
-                balanceTitle:'💎 رصيد الكريستال', miningRateLabel:'معدل التعدين', tabMine:'⛏️ تعدين', tabTrade:'📈 تداول', tabLeaderboard:'🏆 متصدرين', tabBuy:'💰 شراء', tabP2P:'📊 P2P', tabTasks:'📋 مهام', tabVip:'👑 VIP', tabWallet:'💼 محفظتي', tabSupport:'📞 دعم',
-                mineBtnText:'⛏️ اضغط للتعدين', totalMinedLabel:'إجمالي التعدين', miningLevelLabel:'مستوى التعدين', dailyMinedLabel:'تعدين اليوم', dailyRemainingLabel:'المتبقي اليوم', comboLabel:'الكومبو', vipLabel:'VIP', upgradeBtn:'⚡ تطوير معدل التعدين',
-                tradeTitle:'📈 سوق التداول', betBtnText:'🎲 وضع رهان', refreshBetsBtn:'🔄 تحديث الرهانات',
-                leaderboardTitle:'🏆 قائمة المتصدرين', buyTitle:'💰 شراء CRYSTAL', buyBtnText:'💵 شراء بالـ USDT (TRC20)', buyNote:'⚠️ الحد الأدنى: 10 USDT (1000 كريستال)<br>📤 الدفع عبر شبكة TRON (TRC20)',
-                p2pTitle:'📊 سوق P2P', sellOffersBtn:'🟢 عروض البيع', buyOffersBtn:'🔴 عروض الشراء', createOfferBtn:'➕ إنشاء عرض',
-                tasksTitle:'📋 المهام', dailyTaskTitle:'المهمة اليومية', dailyTaskDesc:'أكمل المهمة اليومية واحصل على مكافآت', dailyTaskReward:'🎁 20-50 كريستال', completeTaskBtn:'إكمال',
-                twitterTaskTitle:'متابعة تويتر', twitterTaskDesc:'تابع حسابنا على تويتر واحصل على 15 كريستال', twitterTaskReward:'🎁 15 كريستال', twitterTaskBtnText:'بدء المهمة',
-                vipTitle:'👑 نظام VIP', vipLevelDisplay:'مستوى VIP: 0', vipExp:'نقاط الخبرة: 0/1000', vipBenefits:'✨ مزايا VIP: +0% معدل التعدين', upgradeVipBtn:'⭐ ترقية VIP',
-                walletTitle:'💼 محفظتي الرقمية', withdrawTitle:'💰 سحب العملات', withdrawBtnText:'💸 سحب',
-                supportTitle:'📞 الدعم الفني', supportText:'للتواصل مع الدعم الفني:', supportAdmin:'👤 الأدمن:', supportId:'🆔 المعرف:', copyIdBtn:'📋 نسخ المعرف', contactAdminBtn:'📨 تواصل مع الأدمن',
-                loading:'جاري التحميل...', noLeaders:'لا يوجد متصدرين', error:'حدث خطأ', copySuccess:'✅ تم النسخ!', purchaseMin:'الحد الأدنى 10 USDT', enterValidAmount:'أدخل كمية صحيحة',
-                miningStarted:'بدأ التعدين!', miningComplete:'أكملت التعدين اليومي!', progressText:(p)=>`نسبة التقدم: ${p}%`
-            },
-            en: {
-                balanceTitle:'💎 CRYSTAL Balance', miningRateLabel:'Mining Rate', tabMine:'⛏️ Mine', tabTrade:'📈 Trade', tabLeaderboard:'🏆 Leaderboard', tabBuy:'💰 Buy', tabP2P:'📊 P2P', tabTasks:'📋 Tasks', tabVip:'👑 VIP', tabWallet:'💼 Wallet', tabSupport:'📞 Support',
-                mineBtnText:'⛏️ Start Mining', totalMinedLabel:'Total Mined', miningLevelLabel:'Mining Level', dailyMinedLabel:'Today\'s Mining', dailyRemainingLabel:'Remaining', comboLabel:'Combo', vipLabel:'VIP', upgradeBtn:'⚡ Upgrade',
-                tradeTitle:'📈 Trading Market', betBtnText:'🎲 Place Bet', refreshBetsBtn:'🔄 Refresh Bets',
-                leaderboardTitle:'🏆 Leaderboard', buyTitle:'💰 Buy CRYSTAL', buyBtnText:'💵 Buy with USDT (TRC20)', buyNote:'⚠️ Min: 10 USDT (1000 CRYSTAL)<br>📤 Send via TRON (TRC20)',
-                p2pTitle:'📊 P2P Market', sellOffersBtn:'🟢 Sell Offers', buyOffersBtn:'🔴 Buy Offers', createOfferBtn:'➕ Create Offer',
-                tasksTitle:'📋 Tasks', dailyTaskTitle:'Daily Task', dailyTaskDesc:'Complete daily task to earn rewards', dailyTaskReward:'🎁 20-50 CRYSTAL', completeTaskBtn:'Complete',
-                twitterTaskTitle:'Follow Twitter', twitterTaskDesc:'Follow us on Twitter to get 15 CRYSTAL', twitterTaskReward:'🎁 15 CRYSTAL', twitterTaskBtnText:'Start Task',
-                vipTitle:'👑 VIP System', vipLevelDisplay:'VIP Level: 0', vipExp:'Experience: 0/1000', vipBenefits:'✨ VIP Benefits: +0% mining rate', upgradeVipBtn:'⭐ Upgrade VIP',
-                walletTitle:'💼 My Wallet', withdrawTitle:'💰 Withdraw', withdrawBtnText:'💸 Withdraw',
-                supportTitle:'📞 Support', supportText:'Contact support:', supportAdmin:'👤 Admin:', supportId:'🆔 ID:', copyIdBtn:'📋 Copy ID', contactAdminBtn:'📨 Contact Admin',
-                loading:'Loading...', noLeaders:'No leaders yet', error:'Error', copySuccess:'✅ Copied!', purchaseMin:'Min 10 USDT', enterValidAmount:'Enter valid amount',
-                miningStarted:'Mining started!', miningComplete:'Daily mining completed!', progressText:(p)=>`Progress: ${p}%`
-            }
-        };
-        
-        function t(key, p=null) { let txt = texts[currentLanguage][key] || texts.ar[key]; return typeof txt === 'function' ? txt(p) : txt; }
-        
-        function updateUILanguage() {
-            const ids = ['balanceTitle','miningRateLabel','tabMine','tabTrade','tabLeaderboard','tabBuy','tabP2P','tabTasks','tabVip','tabWallet','tabSupport',
-                'mineBtnText','totalMinedLabel','miningLevelLabel','dailyMinedLabel','dailyRemainingLabel','comboLabel','vipLabel','upgradeBtn',
-                'tradeTitle','betBtnText','refreshBetsBtn','leaderboardTitle','buyTitle','buyBtnText','buyNote','p2pTitle','sellOffersBtn','buyOffersBtn','createOfferBtn',
-                'tasksTitle','dailyTaskTitle','dailyTaskDesc','dailyTaskReward','completeTaskBtn','twitterTaskTitle','twitterTaskDesc','twitterTaskReward','twitterTaskBtnText',
-                'vipTitle','vipLevelDisplay','vipExp','vipBenefits','upgradeVipBtn','walletTitle','withdrawTitle','withdrawBtnText','supportTitle','supportText','supportAdmin','supportId','copyIdBtn','contactAdminBtn'];
-            ids.forEach(id => { if(document.getElementById(id)) document.getElementById(id).innerHTML = t(id); });
-        }
-        
-        function setLanguage(lang) { currentLanguage = lang; updateUILanguage(); tg.showAlert(t('copySuccess')); localStorage.setItem('language', lang); registerUserLanguage(lang); }
-        async function registerUserLanguage(lang) { try { await fetch(`${API_URL}/api/set_language`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ user_id: tg.initDataUnsafe.user.id, language:lang }) }); } catch(e){} }
-        function copyToClipboard(txt) { navigator.clipboard.writeText(txt); tg.showAlert(t('copySuccess')); }
-        
-        async function registerUser() {
-            const saved = localStorage.getItem('language') || 'ar';
-            currentLanguage = saved; updateUILanguage();
-            try { await fetch(`${API_URL}/api/register`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ user_id: tg.initDataUnsafe.user.id, username: tg.initDataUnsafe.user.username || '', first_name: tg.initDataUnsafe.user.first_name || '', language: saved }) }); } catch(e){} }
         
         async function loadUserData() {
             try {
                 const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/user/${uid}`);
+                const res = await fetch(`${API_URL}/api/user/stats/${uid}`);
                 const data = await res.json();
-                userData = data;
-                document.getElementById('balance').textContent = (data.balance || 0).toFixed(2);
-                document.getElementById('usdtValue').textContent = ((data.balance||0)*CRYSTAL_PRICE).toFixed(2);
-                document.getElementById('miningRate').textContent = data.miningRate || '1';
-                document.getElementById('miningLevel').textContent = data.miningLevel || '1';
-                document.getElementById('totalMined').textContent = (data.totalMined || 0).toFixed(2);
-                document.getElementById('vipLevel').textContent = data.vipLevel || 0;
-                document.getElementById('comboCount').textContent = `${data.comboCount || 0} يوم`;
-                if (data.lastMiningTime) { lastMiningTime = new Date(data.lastMiningTime); updateTimer(); if(miningInterval) clearInterval(miningInterval); miningInterval = setInterval(updateTimer,1000); }
-                const dailyRes = await fetch(`${API_URL}/api/user/daily/${uid}`);
-                const daily = await dailyRes.json();
-                document.getElementById('dailyMined').textContent = `${daily.daily_mined || 0}/${DAILY_LIMIT}`;
-                document.getElementById('dailyRemaining').textContent = daily.remaining || DAILY_LIMIT;
-                const prog = ((daily.daily_mined || 0) / DAILY_LIMIT) * 100;
-                document.getElementById('progressFill').style.width = `${prog}%`;
-                document.getElementById('progressText').textContent = t('progressText', Math.floor(prog));
-                const statsRes = await fetch(`${API_URL}/api/user/stats/${uid}`);
-                const stats = await statsRes.json();
-                const twitterDone = stats.twitterTaskCompleted;
-                const twitterBtn = document.getElementById('twitterTaskBtn');
-                const twitterStatus = document.getElementById('twitterTaskStatus');
-                if (twitterDone) { twitterBtn.disabled = true; twitterBtn.style.opacity = '0.5'; twitterBtn.innerHTML = '✓ مكتملة'; twitterStatus.innerHTML = '✅ مكتملة!'; twitterStatus.style.color = '#4CAF50'; }
-                else { twitterBtn.disabled = false; twitterBtn.style.opacity = '1'; twitterBtn.innerHTML = t('twitterTaskBtnText'); twitterStatus.innerHTML = '⏳ لم تبدأ بعد'; twitterStatus.style.color = '#666'; }
-                const nextExp = ((data.vipLevel || 0) + 1) * 1000;
-                const vipProg = Math.min(100, ((data.totalMined || 0) / nextExp) * 100);
-                document.getElementById('vipProgressFill').style.width = `${vipProg}%`;
-                document.getElementById('vipLevelDisplay').innerHTML = `${t('vipLevelDisplay')} ${data.vipLevel || 0}`;
-                document.getElementById('vipExp').innerHTML = `${t('vipExp')} ${(data.totalMined || 0).toFixed(0)}/${nextExp}`;
-                document.getElementById('vipBenefits').innerHTML = `${t('vipBenefits')} ${(data.vipLevel || 0) * 10}%`;
-                const streak = data.dailyTasks?.streak || 0;
-                document.getElementById('taskStreak').innerHTML = `📈 السلسلة: ${streak} ${streak===1?'يوم':'أيام'}`;
+                document.getElementById('crystalBalance').textContent = data.crystalBalance?.toFixed(2) || '0';
+                document.getElementById('usdBalance').textContent = data.usdBalance?.toFixed(2) || '0';
+                document.getElementById('crystalPrice').textContent = data.crystalPrice?.toFixed(6) || '0';
             } catch(e) { console.error(e); }
         }
         
         async function loadPrices() {
             try {
                 const res = await fetch(`${API_URL}/api/prices`);
-                prices = await res.json();
-                const btcChange = prices.BTC.change24h > 0 ? `+${prices.BTC.change24h.toFixed(2)}%` : `${prices.BTC.change24h.toFixed(2)}%`;
-                const ethChange = prices.ETH.change24h > 0 ? `+${prices.ETH.change24h.toFixed(2)}%` : `${prices.ETH.change24h.toFixed(2)}%`;
-                document.getElementById('priceInfo').innerHTML = `
-                    <div><span class="network-tag btc-tag">BTC</span> ${prices.BTC.price.toFixed(2)} USDT (${btcChange})</div>
-                    <div style="margin-top:8px"><span class="network-tag eth-tag">ETH</span> ${prices.ETH.price.toFixed(2)} USDT (${ethChange})</div>
-                    <div style="margin-top:8px; font-size:11px; color:#888">⏰ آخر تحديث: ${new Date(prices.timestamp).toLocaleTimeString()}</div>
+                const prices = await res.json();
+                const liq = await fetch(`${API_URL}/api/liquidity`).then(r=>r.json());
+                const container = document.getElementById('pricesList');
+                container.innerHTML = `
+                    <div class="price-row"><span>💎 CRYSTAL</span><span>${liq.price?.toFixed(6) || 0} USD</span></div>
+                    <div class="price-row"><span>🟠 BTC</span><span>${prices.BTC?.price?.toFixed(2) || 0} USD (${prices.BTC?.change24h?.toFixed(2) || 0}%)</span></div>
+                    <div class="price-row"><span>🔵 ETH</span><span>${prices.ETH?.price?.toFixed(2) || 0} USD</span></div>
+                    <div class="price-row"><span>🟢 SOL</span><span>${prices.SOL?.price?.toFixed(2) || 0} USD</span></div>
+                    <div class="price-row"><span>🟡 BNB</span><span>${prices.BNB?.price?.toFixed(2) || 0} USD</span></div>
+                    <div class="price-row"><span>🟣 MATIC</span><span>${prices.MATIC?.price?.toFixed(2) || 0} USD</span></div>
+                    <div class="price-row"><span>🔷 APT</span><span>${prices.APT?.price?.toFixed(2) || 0} USD</span></div>
                 `;
-            } catch(e) { console.error(e); document.getElementById('priceInfo').innerHTML = `<div>${t('error')}</div>`; }
-        }
-        
-        async function loadBetStats() {
-            try {
-                const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/bets/${uid}`);
-                const bets = await res.json();
-                const total = bets.length;
-                const won = bets.filter(b => b.status === 'won').length;
-                const lost = bets.filter(b => b.status === 'lost').length;
-                const profit = bets.reduce((s, b) => s + (b.profit || 0), 0);
-                const winRate = total > 0 ? (won / total * 100).toFixed(1) : 0;
-                document.getElementById('betStats').innerHTML = `🎲 ${total} رهان | 🏆 ${won} فوز | 💔 ${lost} خسارة | 📈 ${winRate}% | 💰 ${profit.toFixed(2)} CRYSTAL`;
-                
-                const recent = bets.slice(-5).reverse();
-                let html = '<div style="margin-top:10px"><strong>📊 آخر رهاناتك</strong></div>';
-                for (const b of recent) {
-                    const icon = b.type === 'up' ? '⬆️' : '⬇️';
-                    const statusClass = b.status === 'won' ? 'bet-win' : (b.status === 'lost' ? 'bet-loss' : 'bet-active');
-                    const statusText = b.status === 'won' ? `✅ +${b.profit.toFixed(2)}` : (b.status === 'lost' ? `❌ -${b.amount}` : '⏳ جاري');
-                    html += `<div class="bet-item ${statusClass}">
-                        <div><strong>${b.currency}</strong> ${icon} | ${b.amount} CRYSTAL</div>
-                        <div style="font-size:11px">${new Date(b.createdAt).toLocaleString()} | ${statusText}</div>
-                    </div>`;
-                }
-                document.getElementById('recentBets').innerHTML = html;
             } catch(e) { console.error(e); }
-        }
-        
-        async function placeBet() {
-            const currency = document.getElementById('betCurrency').value;
-            const type = document.getElementById('betType').value;
-            const duration = parseInt(document.getElementById('betDuration').value);
-            const amount = parseFloat(document.getElementById('betAmount').value);
-            if (isNaN(amount) || amount < 10) { tg.showAlert('الحد الأدنى 10 كريستال'); return; }
-            try {
-                const res = await fetch(`${API_URL}/api/bet`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, currency, type, amount, duration })
-                });
-                const r = await res.json();
-                tg.showAlert(r.message);
-                if (r.success) { loadBetStats(); loadUserData(); }
-            } catch(e) { tg.showAlert(t('error')); }
-        }
-        
-        async function loadRecentBets() { await loadBetStats(); await loadPrices(); }
-        
-        function updateTimer() {
-            if(!lastMiningTime) return;
-            const now = new Date(), diff = 3600000 - (now - lastMiningTime);
-            if(diff <= 0) { document.getElementById('mineBtn').disabled = false; document.getElementById('timer').textContent = '✅ جاهز للتعدين!'; if(miningInterval) clearInterval(miningInterval); }
-            else { document.getElementById('mineBtn').disabled = true; const m = Math.floor(diff/60000), s = Math.floor((diff%60000)/1000); document.getElementById('timer').textContent = `⏰ انتظر ${m}:${s.toString().padStart(2,'0')}`; }
-        }
-        
-        async function startMining() {
-            try {
-                document.getElementById('mineBtn').disabled = true; document.getElementById('mineBtnText').innerHTML = '⏳ جاري...';
-                const res = await fetch(`${API_URL}/api/mine`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ user_id: tg.initDataUnsafe.user.id }) });
-                const r = await res.json();
-                if(r.success) {
-                    if(r.started) tg.showAlert(t('miningStarted'));
-                    else { showReward(r.reward); tg.showAlert(`🎉 +${r.reward} CRYSTAL`); }
-                    await loadUserData();
-                    if(r.progress) { document.getElementById('progressFill').style.width = `${r.progress}%`; document.getElementById('progressText').textContent = t('progressText', r.progress); }
-                    lastMiningTime = new Date(); updateTimer(); if(miningInterval) clearInterval(miningInterval); miningInterval = setInterval(updateTimer,1000);
-                } else if(r.remaining) { const m = Math.floor(r.remaining/60), s = r.remaining%60; tg.showAlert(`⏰ انتظر ${m}:${s}`); }
-                else tg.showAlert(r.message || t('error'));
-            } catch(e) { tg.showAlert(t('error')); }
-            finally { document.getElementById('mineBtn').disabled = false; document.getElementById('mineBtnText').innerHTML = t('mineBtnText'); }
-        }
-        
-        function showReward(amt) { const p = document.createElement('div'); p.className='reward-popup'; p.innerHTML=`<h2>🎉 مبروك!</h2><div class="reward-amount">+${amt} CRYSTAL</div><button onclick="this.parentElement.remove()" style="padding:10px 20px;background:#667eea;color:#fff;border:none;border-radius:10px">حسناً</button>`; document.body.appendChild(p); setTimeout(()=>p.remove(),3000); }
-        
-        async function upgradeMining() { try { const r = await fetch(`${API_URL}/api/upgrade`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ user_id: tg.initDataUnsafe.user.id }) }); const res = await r.json(); tg.showAlert(res.message); if(res.success) await loadUserData(); } catch(e){ tg.showAlert(t('error')); } }
-        async function completeDailyTask() { try { const r = await fetch(`${API_URL}/api/daily_task`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ user_id: tg.initDataUnsafe.user.id }) }); const res = await r.json(); if(res.success) { tg.showAlert(`✅ +${res.reward} CRYSTAL\n📈 سلسلة ${res.streak} أيام`); await loadUserData(); } else tg.showAlert(res.message); } catch(e){ tg.showAlert(t('error')); } }
-        async function upgradeVIP() { try { const r = await fetch(`${API_URL}/api/upgrade_vip`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ user_id: tg.initDataUnsafe.user.id }) }); const res = await r.json(); tg.showAlert(res.message); if(res.success) await loadUserData(); } catch(e){ tg.showAlert(t('error')); } }
-        
-        async function startTwitterTask() {
-            const stats = await fetch(`${API_URL}/api/user/stats/${tg.initDataUnsafe.user.id}`).then(r=>r.json());
-            if(stats.twitterTaskCompleted) { tg.showAlert('لقد أكملت هذه المهمة بالفعل!'); return; }
-            window.open(TWITTER_URL, '_blank');
-            tg.showAlert('📌 بعد المتابعة، اضغط على زر "تم المتابعة" في البوت');
-        }
-        
-        async function confirmTwitterTask() {
-            try {
-                const r = await fetch(`${API_URL}/api/complete_twitter_task`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ user_id: tg.initDataUnsafe.user.id }) });
-                const res = await r.json();
-                if(res.success) { tg.showAlert('✅ +15 CRYSTAL\n🐦 شكراً لمتابعتنا!'); await loadUserData(); }
-                else tg.showAlert(res.message);
-            } catch(e){ tg.showAlert(t('error')); }
         }
         
         async function loadLeaderboard() {
@@ -667,69 +166,16 @@
                 const res = await fetch(`${API_URL}/api/leaderboard`);
                 const leaders = await res.json();
                 const container = document.getElementById('leaderboardList');
-                if(!leaders.length) { container.innerHTML = `<div class="loading">${t('noLeaders')}</div>`; return; }
-                const max = leaders[0].balance;
-                container.innerHTML = leaders.map((l,i) => {
-                    const medal = i===0?'👑':i===1?'🥈':i===2?'🥉':`#${i+1}`;
-                    const bar = '█'.repeat(Math.floor((l.balance/max)*20)) + '░'.repeat(20-Math.floor((l.balance/max)*20));
-                    return `<div class="leader-item"><div class="leader-rank">${medal}</div><div class="leader-name">${l.name}${l.vipLevel>0?' <span class="vip-badge">VIP</span>':''}</div><div class="leader-balance">${l.balance.toFixed(2)} CRYSTAL</div></div><div class="progress-bar" style="margin:0 0 5px 0;height:3px"><div class="progress-fill" style="width:${(l.balance/max)*100}%;background:#f5576c"></div></div>`;
-                }).join('');
-            } catch(e) { document.getElementById('leaderboardList').innerHTML = `<div class="loading">${t('error')}</div>`; }
-        }
-        
-        async function loadLiquidity() {
-            try {
-                const res = await fetch(`${API_URL}/api/liquidity`);
-                const d = await res.json();
-                document.getElementById('liquidityInfo').innerHTML = `<div>💰 السعر: ${CRYSTAL_PRICE} USDT</div><div>💎 السيولة: ${d.total_liquidity?.toFixed(2)||0} CRYSTAL</div><div>📊 المتاحة: ${(d.total_liquidity - d.total_sold)?.toFixed(2)||0} CRYSTAL</div><div>🌐 شبكة TRON (TRC20)</div><div>💸 عنوان العمولات: <code>${COMMISSION_ADDRESS}</code></div>`;
-            } catch(e) { document.getElementById('liquidityInfo').innerHTML = `<div>${t('error')}</div>`; }
-        }
-        
-        async function initiatePurchase() {
-            const amt = document.getElementById('crystalAmount').value;
-            if(!amt || amt<=0) return tg.showAlert(t('enterValidAmount'));
-            if(amt*CRYSTAL_PRICE < 10) return tg.showAlert(`${t('purchaseMin')}\nالمبلغ: ${(amt*CRYSTAL_PRICE).toFixed(2)} USDT`);
-            try {
-                const r = await fetch(`${API_URL}/api/purchase`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount: parseFloat(amt) }) });
-                const res = await r.json();
-                if(res.success) tg.showAlert(`✅ طلب شراء #${res.request_id.toString().slice(-6)}\n💎 ${res.crystal_amount} CRYSTAL\n💰 ${res.usdt_amount} USDT\n📤 أرسل إلى: ${res.payment_address}\n\nبعد التحويل: /confirm_purchase ${res.request_id} [رابط]`);
-                else tg.showAlert(res.message);
-            } catch(e){ tg.showAlert(t('error')); }
-        }
-        
-        async function loadP2POffers(type) {
-            try {
-                const res = await fetch(`${API_URL}/api/p2p/offers?type=${type}`);
-                const offers = await res.json();
-                const container = document.getElementById('p2pOffersList');
-                if(!offers.length) { container.innerHTML = `<div class="loading">لا توجد عروض ${type==='sell'?'بيع':'شراء'}</div>`; return; }
-                container.innerHTML = offers.map(o => `<div style="background:#f9f9f9;border-radius:12px;padding:12px;margin-bottom:10px;border-right:4px solid ${type==='sell'?'#ff4444':'#4CAF50'}"><div><strong>👤 ${o.firstName || o.username}</strong></div><div>💎 ${o.crystalAmount} CRYSTAL</div><div>💰 ${o.usdtAmount} USDT</div><div>📊 ${(o.pricePerCrystal||0).toFixed(4)} USDT/CRYSTAL</div><div>🆔 <code>${o._id}</code></div><button class="copy-btn" onclick="copyToClipboard('${o._id}')">📋 نسخ</button><button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء</button></div>`).join('');
-            } catch(e){ document.getElementById('p2pOffersList').innerHTML = `<div class="loading">${t('error')}</div>`; }
-        }
-        
-        function showCreateOffer() {
-            const t = prompt('نوع العرض (sell/buy):', 'sell'); if(!t) return;
-            const a = prompt('الكمية:', '100'); if(!a) return;
-            const u = prompt('السعر بـ USDT (الحد الأدنى 5):', '5'); if(!u || parseFloat(u)<5) { tg.showAlert('الحد الأدنى 5 USDT'); return; }
-            createP2POffer(t, parseFloat(a), parseFloat(u));
-        }
-        
-        async function createP2POffer(type, amt, usd) {
-            try {
-                const r = await fetch(`${API_URL}/api/p2p/create`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ user_id: tg.initDataUnsafe.user.id, type, amount: amt, usdt: usd }) });
-                const res = await r.json();
-                tg.showAlert(res.message);
-                if(res.success) loadP2POffers('sell');
-            } catch(e){ tg.showAlert(t('error')); }
-        }
-        
-        async function startTrade(oid) {
-            try {
-                const r = await fetch(`${API_URL}/api/p2p/start`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: oid }) });
-                const res = await r.json();
-                tg.showAlert(res.message);
-                if(res.success) tg.showAlert(`📤 أرسل إلى:\n${process.env.TRON_ADDRESS || 'TCZ2NGDSvxznADHTvvkedJTcbbGbD5RhfR'}\n\nبعد الإرسال: /send_proof ${oid} [رابط الصورة]`);
-            } catch(e){ tg.showAlert(t('error')); }
+                if(!leaders.length) { container.innerHTML = '<div class="loading">لا يوجد متصدرين</div>'; return; }
+                container.innerHTML = leaders.map((l,i) => `
+                    <div class="leader-item">
+                        <span>${i===0?'👑':i===1?'🥈':i===2?'🥉':`#${i+1}`}</span>
+                        <span>${l.name}</span>
+                        <span>💎 ${l.balance?.toFixed(2) || 0}</span>
+                        <span>💵 ${l.usd?.toFixed(2) || 0}</span>
+                    </div>
+                `).join('');
+            } catch(e) { console.error(e); }
         }
         
         async function loadWallet() {
@@ -737,16 +183,94 @@
                 const uid = tg.initDataUnsafe.user.id;
                 const res = await fetch(`${API_URL}/api/wallet/${uid}`);
                 const data = await res.json();
-                walletData = data;
                 document.getElementById('walletInfo').innerHTML = `
-                    <div><span class="network-tag bnb-tag">BNB</span> <span class="address-box">${data.addresses.bnb}</span> <button class="copy-btn" onclick="copyToClipboard('${data.addresses.bnb}')">📋 نسخ</button><br>💰 الرصيد: ${data.balances.bnb} BNB</div>
-                    <div style="margin-top:10px"><span class="network-tag polygon-tag">POLYGON</span> <span class="address-box">${data.addresses.polygon}</span> <button class="copy-btn" onclick="copyToClipboard('${data.addresses.polygon}')">📋 نسخ</button><br>💰 الرصيد: ${data.balances.polygon} MATIC</div>
-                    <div style="margin-top:10px"><span class="network-tag solana-tag">SOLANA</span> <span class="address-box">${data.addresses.solana}</span> <button class="copy-btn" onclick="copyToClipboard('${data.addresses.solana}')">📋 نسخ</button><br>💰 الرصيد: ${data.balances.solana} SOL</div>
-                    <div style="margin-top:10px"><span class="network-tag aptos-tag">APTOS</span> <span class="address-box">${data.addresses.aptos}</span> <button class="copy-btn" onclick="copyToClipboard('${data.addresses.aptos}')">📋 نسخ</button><br>💰 الرصيد: ${data.balances.aptos} APT</div>
-                    <div style="margin-top:15px;padding-top:10px;border-top:1px solid #ddd"><strong>🔑 بصمة المحفظة:</strong> <code>${data.signature.slice(0,16)}...</code></div>
-                    <div><strong>💰 الإجمالي:</strong> ${data.balances.total.toFixed(4)} USDT</div>
+                    <div><strong>💰 USD:</strong> ${data.usdBalance?.toFixed(2) || 0}</div>
+                    <div style="margin-top:10px"><strong>🟡 BNB:</strong><div class="address-box">${data.addresses.bnb}</div><button class="copy-btn" onclick="copyToClipboard('${data.addresses.bnb}')">📋 نسخ</button></div>
+                    <div><strong>🟣 POLYGON:</strong><div class="address-box">${data.addresses.polygon}</div><button class="copy-btn" onclick="copyToClipboard('${data.addresses.polygon}')">📋 نسخ</button></div>
+                    <div><strong>🟢 SOLANA:</strong><div class="address-box">${data.addresses.solana}</div><button class="copy-btn" onclick="copyToClipboard('${data.addresses.solana}')">📋 نسخ</button></div>
+                    <div><strong>🔷 APTOS:</strong><div class="address-box">${data.addresses.aptos}</div><button class="copy-btn" onclick="copyToClipboard('${data.addresses.aptos}')">📋 نسخ</button></div>
                 `;
-            } catch(e) { console.error(e); document.getElementById('walletInfo').innerHTML = `<div class="loading">${t('error')}</div>`; }
+            } catch(e) { console.error(e); }
+        }
+        
+        async function buyCrystal() {
+            const amount = document.getElementById('tradeAmount').value;
+            if(!amount || amount<=0) return tg.showAlert('أدخل مبلغ صحيح');
+            try {
+                const res = await fetch(`${API_URL}/api/trade`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, type: 'buy', currency: 'CRYSTAL', amount: parseFloat(amount) })
+                });
+                const r = await res.json();
+                tg.showAlert(r.message);
+                if(r.success) loadUserData();
+            } catch(e) { tg.showAlert('حدث خطأ'); }
+        }
+        
+        async function sellCrystal() {
+            const amount = document.getElementById('tradeAmount').value;
+            if(!amount || amount<=0) return tg.showAlert('أدخل مبلغ صحيح');
+            try {
+                const res = await fetch(`${API_URL}/api/trade`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, type: 'sell', currency: 'CRYSTAL', amount: parseFloat(amount) })
+                });
+                const r = await res.json();
+                tg.showAlert(r.message);
+                if(r.success) loadUserData();
+            } catch(e) { tg.showAlert('حدث خطأ'); }
+        }
+        
+        async function loadP2POffers() {
+            const type = document.getElementById('p2pType').value;
+            const currency = document.getElementById('p2pCurrency').value;
+            const res = await fetch(`${API_URL}/api/p2p/offers?type=${type}&currency=${currency}`);
+            const offers = await res.json();
+            const container = document.getElementById('p2pOffersList');
+            if(!offers.length) { container.innerHTML = '<div class="loading">لا توجد عروض</div>'; return; }
+            container.innerHTML = offers.map(o => `
+                <div style="background:rgba(255,255,255,0.1); border-radius:12px; padding:12px; margin-bottom:10px">
+                    <div><strong>👤 ${o.firstName || o.username}</strong></div>
+                    <div>💎 ${o.crystalAmount?.toFixed(2) || 0} CRYSTAL</div>
+                    <div>💰 ${o.fiatAmount} ${o.currency}</div>
+                    <div>📊 ${o.pricePerCrystal?.toFixed(4) || 0} ${o.currency}/CRYSTAL</div>
+                    <div>🏦 ${o.paymentMethod}</div>
+                    <div>🆔 <code>${o._id}</code></div>
+                    <button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button>
+                </div>
+            `).join('');
+        }
+        
+        async function startTrade(offerId) {
+            const res = await fetch(`${API_URL}/api/p2p/start`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId })
+            });
+            const r = await res.json();
+            tg.showAlert(r.message);
+        }
+        
+        function showCreateOffer() {
+            const type = prompt('نوع العرض (sell للبيع / buy للشراء):', 'sell');
+            if(!type) return;
+            const currency = prompt('العملة (USD, EUR, SAR, AED, EGP):', 'USD');
+            if(!currency) return;
+            const fiatAmount = prompt('المبلغ بالعملة المحلية:', '100');
+            if(!fiatAmount) return;
+            const crystalAmount = prompt('كمية CRYSTAL:', '10000');
+            if(!crystalAmount) return;
+            const paymentMethod = prompt('طريقة الدفع (بنكي, باي بال, فودافون كاش, إلخ):', 'بنكي');
+            if(!paymentMethod) return;
+            createOffer(type, currency, parseFloat(fiatAmount), parseFloat(crystalAmount), paymentMethod);
+        }
+        
+        async function createOffer(type, currency, fiatAmount, crystalAmount, paymentMethod) {
+            const res = await fetch(`${API_URL}/api/p2p/create`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, type, currency, fiatAmount, crystalAmount, paymentMethod, bankDetails: '' })
+            });
+            const r = await res.json();
+            tg.showAlert(r.message);
         }
         
         async function withdraw() {
@@ -754,40 +278,36 @@
             const amount = parseFloat(document.getElementById('withdrawAmount').value);
             const address = document.getElementById('withdrawAddress').value;
             if(!amount || amount<=0) return tg.showAlert('أدخل مبلغ صحيح');
-            if(!address || address.length<10) return tg.showAlert('عنوان المحفظة غير صحيح');
-            if(amount < 0.01) return tg.showAlert('الحد الأدنى للسحب 0.01');
-            try {
-                const res = await fetch(`${API_URL}/api/withdraw`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ user_id: tg.initDataUnsafe.user.id, network, amount, address }) });
-                const r = await res.json();
-                if(r.success) tg.showAlert(`✅ تم طلب السحب!\n🌐 ${network.toUpperCase()}\n💰 ${amount}\n📤 إلى: ${address}\n🔗 ${r.explorer || 'جاري المعالجة'}`);
-                else tg.showAlert(r.message || 'فشل السحب');
-                await loadWallet();
-            } catch(e){ tg.showAlert(t('error')); }
+            if(!address) return tg.showAlert('أدخل عنوان المحفظة');
+            const res = await fetch(`${API_URL}/api/withdraw`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USDT', network, address })
+            });
+            const r = await res.json();
+            tg.showAlert(r.message);
         }
+        
+        function copyToClipboard(text) { navigator.clipboard.writeText(text); tg.showAlert('✅ تم النسخ'); }
+        
+        function setLanguage(lang) { currentLanguage = lang; localStorage.setItem('language', lang); tg.showAlert(`✅ اللغة: ${lang === 'ar' ? 'العربية' : 'English'}`); }
         
         function switchTab(tab) {
             document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
             document.querySelectorAll('.tab-button').forEach(b=>b.classList.remove('active'));
             document.getElementById(`${tab}-tab`).classList.add('active');
             event.target.classList.add('active');
-            if(tab==='leaderboard') loadLeaderboard();
-            else if(tab==='buy') loadLiquidity();
-            else if(tab==='p2p') loadP2POffers('sell');
-            else if(tab==='wallet') loadWallet();
-            else if(tab==='trade') { loadPrices(); loadBetStats(); }
+            if(tab === 'leaderboard') loadLeaderboard();
+            if(tab === 'wallet') loadWallet();
+            if(tab === 'prices') loadPrices();
         }
         
         registerUser();
         loadUserData();
-        loadLiquidity();
         loadPrices();
-        loadBetStats();
         
         tg.MainButton.setText("🚀 فتح البوت");
         tg.MainButton.onClick(()=>tg.close());
         tg.MainButton.show();
-        
-        window.confirmTwitterTask = confirmTwitterTask;
     </script>
 </body>
 </html>
