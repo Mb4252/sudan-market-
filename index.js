@@ -3,11 +3,22 @@ const { Telegraf, Markup } = require('telegraf');
 const db = require('./database');
 const express = require('express');
 const path = require('path');
+const rateLimit = require('express-rate-limit');
 
 // ========== إعداد خادم الويب ==========
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// منع الإغراق (Rate Limiting)
+const limiter = rateLimit({
+    windowMs: 60 * 1000, // 1 دقيقة
+    max: 30, // الحد الأقصى 30 طلب في الدقيقة
+    message: { success: false, message: '⚠️太多请求، يرجى الانتظار قليلاً' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+app.use(limiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'mining-app')));
@@ -33,13 +44,15 @@ app.get('/api/user/:userId', async (req, res) => {
                 lastMiningTime: user.lastMiningTime,
                 dailyMined: user.dailyMined,
                 lastMiningDate: user.lastMiningDate,
-                vipLevel: user.vipLevel,
-                comboCount: user.comboCount
+                vipLevel: user.vipLevel || 0,
+                comboCount: user.comboCount || 0,
+                dailyTasks: user.dailyTasks || { streak: 0 }
             });
         } else {
             res.json({ balance: 0, miningRate: 1, miningLevel: 1, totalMined: 0, vipLevel: 0, comboCount: 0 });
         }
     } catch (error) {
+        console.error('❌ User API error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -50,6 +63,7 @@ app.post('/api/mine', async (req, res) => {
         const result = await db.mine(parseInt(user_id));
         res.json(result);
     } catch (error) {
+        console.error('❌ Mine API error:', error);
         res.json({ success: false, message: error.message });
     }
 });
@@ -65,6 +79,7 @@ app.get('/api/leaderboard', async (req, res) => {
         }));
         res.json(formatted);
     } catch (error) {
+        console.error('❌ Leaderboard API error:', error);
         res.json([]);
     }
 });
@@ -78,6 +93,7 @@ app.get('/api/liquidity', async (req, res) => {
             available: (liquidity?.totalLiquidity || 1000000) - (liquidity?.totalSold || 0)
         });
     } catch (error) {
+        console.error('❌ Liquidity API error:', error);
         res.json({ total_liquidity: 1000000, total_sold: 0, available: 1000000 });
     }
 });
@@ -88,6 +104,7 @@ app.post('/api/purchase', async (req, res) => {
         const result = await db.requestPurchase(parseInt(user_id), parseFloat(amount));
         res.json(result);
     } catch (error) {
+        console.error('❌ Purchase API error:', error);
         res.json({ success: false, message: error.message });
     }
 });
@@ -98,6 +115,7 @@ app.post('/api/upgrade', async (req, res) => {
         const result = await db.upgradeMiningRate(parseInt(user_id));
         res.json(result);
     } catch (error) {
+        console.error('❌ Upgrade API error:', error);
         res.json({ success: false, message: error.message });
     }
 });
@@ -108,6 +126,7 @@ app.post('/api/register', async (req, res) => {
         await db.registerUser(parseInt(user_id), username, first_name, null, language || 'ar');
         res.json({ success: true });
     } catch (error) {
+        console.error('❌ Register API error:', error);
         res.json({ success: true });
     }
 });
@@ -118,6 +137,7 @@ app.post('/api/set_language', async (req, res) => {
         await db.setLanguage(parseInt(user_id), language);
         res.json({ success: true });
     } catch (error) {
+        console.error('❌ Set language API error:', error);
         res.json({ success: false });
     }
 });
@@ -132,68 +152,8 @@ app.get('/api/user/daily/:userId', async (req, res) => {
             progress: Math.min(100, ((stats?.dailyMined || 0) / 70) * 100)
         });
     } catch (error) {
+        console.error('❌ Daily stats API error:', error);
         res.json({ daily_mined: 0, daily_limit: 70, remaining: 70, progress: 0 });
-    }
-});
-
-// P2P API Routes
-app.get('/api/p2p/offers', async (req, res) => {
-    try {
-        const { type } = req.query;
-        const offers = await db.getP2pOffers(type);
-        res.json(offers);
-    } catch (error) {
-        res.json([]);
-    }
-});
-
-app.post('/api/p2p/create', async (req, res) => {
-    try {
-        const { user_id, type, amount, usdt } = req.body;
-        const result = await db.createP2pOffer(parseInt(user_id), type, parseFloat(amount), parseFloat(usdt));
-        res.json(result);
-    } catch (error) {
-        res.json({ success: false, message: error.message });
-    }
-});
-
-app.post('/api/p2p/start', async (req, res) => {
-    try {
-        const { user_id, offer_id } = req.body;
-        const result = await db.startP2pTrade(offer_id, parseInt(user_id));
-        res.json(result);
-    } catch (error) {
-        res.json({ success: false, message: error.message });
-    }
-});
-
-app.post('/api/p2p/proof', async (req, res) => {
-    try {
-        const { user_id, offer_id, proof_image } = req.body;
-        const result = await db.sendPaymentProof(offer_id, parseInt(user_id), proof_image);
-        res.json(result);
-    } catch (error) {
-        res.json({ success: false, message: error.message });
-    }
-});
-
-app.post('/api/p2p/release', async (req, res) => {
-    try {
-        const { user_id, offer_id } = req.body;
-        const result = await db.releaseCrystals(offer_id, parseInt(user_id));
-        res.json(result);
-    } catch (error) {
-        res.json({ success: false, message: error.message });
-    }
-});
-
-app.post('/api/p2p/dispute', async (req, res) => {
-    try {
-        const { user_id, offer_id } = req.body;
-        const result = await db.openDispute(offer_id, parseInt(user_id));
-        res.json(result);
-    } catch (error) {
-        res.json({ success: false, message: error.message });
     }
 });
 
@@ -204,6 +164,7 @@ app.post('/api/daily_task', async (req, res) => {
         const result = await db.completeDailyTask(parseInt(user_id));
         res.json(result);
     } catch (error) {
+        console.error('❌ Daily task API error:', error);
         res.json({ success: false, message: error.message });
     }
 });
@@ -215,6 +176,74 @@ app.post('/api/upgrade_vip', async (req, res) => {
         const result = await db.upgradeVIP(parseInt(user_id));
         res.json(result);
     } catch (error) {
+        console.error('❌ VIP upgrade API error:', error);
+        res.json({ success: false, message: error.message });
+    }
+});
+
+// P2P API Routes
+app.get('/api/p2p/offers', async (req, res) => {
+    try {
+        const { type } = req.query;
+        const offers = await db.getP2pOffers(type);
+        res.json(offers);
+    } catch (error) {
+        console.error('❌ P2P offers API error:', error);
+        res.json([]);
+    }
+});
+
+app.post('/api/p2p/create', async (req, res) => {
+    try {
+        const { user_id, type, amount, usdt } = req.body;
+        const result = await db.createP2pOffer(parseInt(user_id), type, parseFloat(amount), parseFloat(usdt));
+        res.json(result);
+    } catch (error) {
+        console.error('❌ P2P create API error:', error);
+        res.json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/p2p/start', async (req, res) => {
+    try {
+        const { user_id, offer_id } = req.body;
+        const result = await db.startP2pTrade(offer_id, parseInt(user_id));
+        res.json(result);
+    } catch (error) {
+        console.error('❌ P2P start API error:', error);
+        res.json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/p2p/proof', async (req, res) => {
+    try {
+        const { user_id, offer_id, proof_image } = req.body;
+        const result = await db.sendPaymentProof(offer_id, parseInt(user_id), proof_image);
+        res.json(result);
+    } catch (error) {
+        console.error('❌ P2P proof API error:', error);
+        res.json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/p2p/release', async (req, res) => {
+    try {
+        const { user_id, offer_id } = req.body;
+        const result = await db.releaseCrystals(offer_id, parseInt(user_id));
+        res.json(result);
+    } catch (error) {
+        console.error('❌ P2P release API error:', error);
+        res.json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/p2p/dispute', async (req, res) => {
+    try {
+        const { user_id, offer_id } = req.body;
+        const result = await db.openDispute(offer_id, parseInt(user_id));
+        res.json(result);
+    } catch (error) {
+        console.error('❌ P2P dispute API error:', error);
         res.json({ success: false, message: error.message });
     }
 });
@@ -223,7 +252,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 Web server running on port ${PORT}`);
 });
 
-// ========== إعداد بوت التلجرام ==========
+// ========== إعداد بوت التلجرام مع منع الإغراق ==========
 (async () => {
     try {
         await db.connect();
@@ -234,7 +263,28 @@ app.listen(PORT, '0.0.0.0', () => {
     }
 })();
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+const bot = new Telegraf(process.env.BOT_TOKEN, {
+    handlerTimeout: 90000
+});
+
+// تخزين آخر وقت لطلب كل مستخدم (منع الإغراق)
+const userLastAction = new Map();
+
+// Middleware لمنع الإغراق
+async function rateLimitMiddleware(ctx, next) {
+    const userId = ctx.from.id;
+    const now = Date.now();
+    const lastAction = userLastAction.get(userId) || 0;
+    
+    if (now - lastAction < 2000) { // 2 ثانية بين كل إجراء
+        await ctx.answerCbQuery('⚠️ يرجى الانتظار قليلاً قبل تنفيذ إجراء آخر');
+        return;
+    }
+    
+    userLastAction.set(userId, now);
+    await next();
+}
+
 const WEBAPP_URL = process.env.WEBAPP_URL || `https://sdm-security-bot.onrender.com`;
 const ADMIN_ID = 6701743450;
 const ADMIN_USERNAME = 'hmood19931130';
@@ -295,8 +345,8 @@ bot.start(async (ctx) => {
     await ctx.reply(`📊 *نسبة التعدين اليومي:* ${Math.floor(progress)}%\n💎 *المتبقي:* ${DAILY_LIMIT - stats.dailyMined} كريستال`, { parse_mode: 'Markdown' });
 });
 
-// تعدين
-bot.action('mine_action', async (ctx) => {
+// تعدين مع منع الإغراق
+bot.action('mine_action', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     
     const result = await db.mine(ctx.from.id);
@@ -315,8 +365,109 @@ bot.action('mine_action', async (ctx) => {
     }
 });
 
+// نظام VIP (معدل)
+bot.action('vip_system', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    try {
+        const stats = await db.getUserStats(ctx.from.id);
+        if (!stats) {
+            await ctx.editMessageText('❌ لم يتم العثور على بياناتك', {
+                ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+            });
+            return;
+        }
+        
+        const nextExp = (stats.vipLevel + 1) * 1000;
+        const progress = Math.min(100, (stats.totalMined / nextExp) * 100);
+        const vipBonus = stats.vipLevel * 10;
+        
+        const text = `
+👑 *نظام VIP* 👑
+
+🎖️ *مستواك:* ${stats.vipLevel}
+📊 *نقاط الخبرة:* ${stats.totalMined.toFixed(0)}/${nextExp}
+📈 *نسبة التقدم:* ${Math.floor(progress)}%
+
+✨ *مزايا VIP:*
+• VIP 1: +10% معدل التعدين
+• VIP 2: +20% معدل التعدين + مكافآت إحالة مضاعفة
+• VIP 3: +30% معدل التعدين + أولوية في P2P
+
+📝 *للترقية:* اضغط على زر الترقية أدناه
+        `;
+        
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('⭐ ترقية VIP', 'do_vip_upgrade')],
+            [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
+        ]);
+        
+        await ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard });
+    } catch (error) {
+        console.error('❌ VIP system error:', error);
+        await ctx.editMessageText('⚠️ حدث خطأ، حاول مرة أخرى', {
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+        });
+    }
+});
+
+// تنفيذ ترقية VIP
+bot.action('do_vip_upgrade', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    try {
+        const result = await db.upgradeVIP(ctx.from.id);
+        
+        if (result.success) {
+            const text = `👑 *تمت ترقية VIP!*\n\n🎖️ *المستوى الجديد:* ${result.newLevel}\n🎁 *المكافأة:* +${result.bonus} CRYSTAL\n✨ *معدل التعدين:+${result.newLevel * 10}%*`;
+            await ctx.editMessageText(text, { 
+                parse_mode: 'Markdown', 
+                ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) 
+            });
+            await ctx.reply(`🎉 مبروك! تمت ترقية حسابك إلى VIP ${result.newLevel}`);
+        } else {
+            await ctx.editMessageText(result.message, { 
+                parse_mode: 'Markdown', 
+                ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) 
+            });
+        }
+    } catch (error) {
+        console.error('❌ VIP upgrade error:', error);
+        await ctx.editMessageText('⚠️ حدث خطأ أثناء الترقية، حاول مرة أخرى', {
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+        });
+    }
+});
+
+// المهمة اليومية
+bot.action('daily_task', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    try {
+        const result = await db.completeDailyTask(ctx.from.id);
+        
+        if (result.success) {
+            const text = `✅ *المهمة اليومية مكتملة!*\n\n🎁 *المكافأة:* +${result.reward} CRYSTAL\n📈 *السلسلة:* ${result.streak} أيام`;
+            await ctx.editMessageText(text, { 
+                parse_mode: 'Markdown', 
+                ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) 
+            });
+        } else {
+            await ctx.editMessageText(result.message, { 
+                parse_mode: 'Markdown', 
+                ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) 
+            });
+        }
+    } catch (error) {
+        console.error('❌ Daily task error:', error);
+        await ctx.editMessageText('⚠️ حدث خطأ، حاول مرة أخرى', {
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+        });
+    }
+});
+
 // عرض الرصيد بـ USDT
-bot.action('show_usdt', async (ctx) => {
+bot.action('show_usdt', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     
     const stats = await db.getUserStats(ctx.from.id);
@@ -332,7 +483,7 @@ bot.action('show_usdt', async (ctx) => {
 });
 
 // المتصدرين
-bot.action('leaderboard', async (ctx) => {
+bot.action('leaderboard', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     
     const leaders = await db.getLeaderboard(15);
@@ -363,7 +514,7 @@ bot.action('leaderboard', async (ctx) => {
 });
 
 // قائمة الترقية
-bot.action('upgrade_menu', async (ctx) => {
+bot.action('upgrade_menu', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     
     const stats = await db.getUserStats(ctx.from.id);
@@ -400,15 +551,356 @@ bot.action('upgrade_menu', async (ctx) => {
 });
 
 // طلب ترقية بـ USDT
-bot.action('upgrade_usdt_request', async (ctx) => {
+bot.action('upgrade_usdt_request', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.reply('📝 الرجاء إدخال المبلغ بالدولار (الحد الأدنى 3 USDT):');
     ctx.session = { state: 'upgrade_usdt_amount' };
 });
 
-// معالجة طلب ترقية بـ USDT
+// تنفيذ الترقية بالكريستال
+bot.action('do_upgrade', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const result = await db.upgradeMiningRate(ctx.from.id);
+    
+    if (result.success) {
+        await ctx.editMessageText(result.message, {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+        });
+    } else {
+        await ctx.editMessageText(result.message, {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+        });
+    }
+});
+
+// سوق P2P
+bot.action('p2p_market', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const stats = await db.getUserStats(ctx.from.id);
+    const text = db.getText('p2pMarket', stats.language, {
+        balance: stats.crystalBalance,
+        usdt: stats.usdtValue
+    });
+    
+    const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🟢 عروض البيع', 'p2p_buy_offers')],
+        [Markup.button.callback('🔴 عروض الشراء', 'p2p_sell_offers')],
+        [Markup.button.callback('➕ إنشاء عرض', 'p2p_create_offer')],
+        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
+    ]);
+    
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard });
+});
+
+// عرض عروض البيع
+bot.action('p2p_buy_offers', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const offers = await db.getP2pOffers('sell');
+    
+    if (offers.length === 0) {
+        await ctx.editMessageText('📭 لا توجد عروض بيع حالياً', {
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'p2p_market')]])
+        });
+        return;
+    }
+    
+    let text = '🟢 *عروض البيع* 🟢\n\n';
+    for (const offer of offers) {
+        text += `👤 ${offer.firstName || offer.username}\n`;
+        text += `💎 ${offer.crystalAmount} CRYSTAL\n`;
+        text += `💰 ${offer.usdtAmount} USDT\n`;
+        text += `📊 ${(offer.pricePerCrystal || 0).toFixed(4)} USDT/CRYSTAL\n`;
+        text += `🆔 \`${offer._id}\`\n`;
+        text += `━━━━━━━━━━━━━━━━━━\n`;
+    }
+    
+    text += `\n📝 *لشراء عرض:* /buy_offer [رقم العرض]`;
+    
+    await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'p2p_market')]])
+    });
+});
+
+// عرض عروض الشراء
+bot.action('p2p_sell_offers', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const offers = await db.getP2pOffers('buy');
+    
+    if (offers.length === 0) {
+        await ctx.editMessageText('📭 لا توجد عروض شراء حالياً', {
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'p2p_market')]])
+        });
+        return;
+    }
+    
+    let text = '🔴 *عروض الشراء* 🔴\n\n';
+    for (const offer of offers) {
+        text += `👤 ${offer.firstName || offer.username}\n`;
+        text += `💎 ${offer.crystalAmount} CRYSTAL\n`;
+        text += `💰 ${offer.usdtAmount} USDT\n`;
+        text += `📊 ${(offer.pricePerCrystal || 0).toFixed(4)} USDT/CRYSTAL\n`;
+        text += `🆔 \`${offer._id}\`\n`;
+        text += `━━━━━━━━━━━━━━━━━━\n`;
+    }
+    
+    text += `\n📝 *لشراء عرض:* /sell_offer [رقم العرض]`;
+    
+    await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'p2p_market')]])
+    });
+});
+
+// إنشاء عرض P2P
+bot.action('p2p_create_offer', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const text = `
+📝 *إنشاء عرض P2P*
+
+أرسل العرض بالصيغة التالية:
+\`sell 1000 10\` - لبيع 1000 كريستال بـ 10 USDT
+\`buy 500 5\` - لشراء 500 كريستال بـ 5 USDT
+
+📊 *سعر الوحدة:* ${CRYSTAL_PRICE} USDT (السعر الرسمي)
+⚠️ *الحد الأدنى: 5 USDT*
+
+⚠️ *ملاحظة:* يمكنك تحديد السعر حسب رغبتك
+    `;
+    
+    await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'p2p_market')]])
+    });
+    
+    ctx.session = { state: 'p2p_create' };
+});
+
+// نظام الإحالة
+bot.action('referral_system', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const stats = await db.getUserStats(ctx.from.id);
+    const referralLink = `https://t.me/${ctx.botInfo.username}?start=${ctx.from.id}`;
+    
+    const text = `
+👥 *نظام الإحالة* 👥
+
+🎁 *المكافآت:*
+• ادعُ 10 أصدقاء واحصل على 3000 كريستال مجاناً!
+• كل صديق يدخل عن طريقك يحصل على مكافأة ترحيبية
+
+📊 *إحصائياتك:*
+• عدد الإحالات: ${stats.referralsCount}/10
+• إحالات اليوم: ${stats.todayReferrals || 0}/10
+• المكافأة: ${stats.referralsCount >= 10 ? '✅ تم الحصول على 3000 كريستال' : '❌ لم تتحقق بعد'}
+
+🔗 *رابط الإحالة الخاص بك:*
+\`${referralLink}\`
+
+💡 *انشر الرابط لأصدقائك واكسب المكافآت!*
+    `;
+    
+    const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('📤 مشاركة الرابط', 'share_referral')],
+        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
+    ]);
+    
+    await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        ...keyboard
+    });
+});
+
+// مشاركة رابط الإحالة
+bot.action('share_referral', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const referralLink = `https://t.me/${ctx.botInfo.username}?start=${ctx.from.id}`;
+    
+    await ctx.reply(`🔗 *رابط الإحالة الخاص بك:*\n\`${referralLink}\``, {
+        parse_mode: 'Markdown'
+    });
+});
+
+// إحصائياتي
+bot.action('my_stats', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const stats = await db.getUserStats(ctx.from.id);
+    if (!stats) {
+        await ctx.reply('❌ لم يتم العثور على بياناتك');
+        return;
+    }
+    
+    const progress = Math.min(100, (stats.dailyMined / DAILY_LIMIT) * 100);
+    const vipBonus = stats.vipLevel * 10;
+    
+    const text = `
+📊 *إحصائياتك الشخصية* 📊
+
+👤 *الاسم:* ${stats.firstName}
+💎 *الرصيد:* ${stats.crystalBalance.toFixed(2)} CRYSTAL
+💰 *القيمة:* ${stats.usdtValue.toFixed(2)} USDT
+⚡ *معدل التعدين:* ${stats.miningRate}x
+📈 *المستوى:* ${stats.miningLevel}
+👑 *VIP:* المستوى ${stats.vipLevel} (+${vipBonus}% مكافأة)
+⛏️ *إجمالي التعدين:* ${stats.totalMined.toFixed(2)} CRYSTAL
+📅 *تعدين اليوم:* ${stats.dailyMined}/${DAILY_LIMIT}
+📊 *نسبة الإنجاز:* ${Math.floor(progress)}%
+⏰ *المتبقي اليوم:* ${DAILY_LIMIT - stats.dailyMined} كريستال
+🔥 *الكومبو:* ${stats.comboCount || 0} يوم متتالي
+
+👥 *الإحالات:* ${stats.referralsCount}/10
+📊 *إحالات اليوم:* ${stats.todayReferrals || 0}/10
+🎁 *مكافأة الإحالات:* ${stats.referralsCount >= 10 ? '✅ تم الحصول على 3000 كريستال' : '❌ لم تتحقق بعد'}
+
+📅 *تاريخ التسجيل:* ${new Date(stats.createdAt).toLocaleDateString('ar')}
+    `;
+    
+    await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+    });
+});
+
+// تغيير اللغة
+bot.action('change_language', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🇸🇦 العربية', 'lang_ar')],
+        [Markup.button.callback('🇬🇧 English', 'lang_en')],
+        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
+    ]);
+    
+    await ctx.editMessageText('🌐 *اختر اللغة / Choose Language*', {
+        parse_mode: 'Markdown',
+        ...keyboard
+    });
+});
+
+bot.action('lang_ar', rateLimitMiddleware, async (ctx) => {
+    await db.setLanguage(ctx.from.id, 'ar');
+    await ctx.answerCbQuery('✅ تم تغيير اللغة إلى العربية');
+    await ctx.editMessageText('✅ تم تغيير اللغة إلى العربية', {
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+    });
+});
+
+bot.action('lang_en', rateLimitMiddleware, async (ctx) => {
+    await db.setLanguage(ctx.from.id, 'en');
+    await ctx.answerCbQuery('✅ Language changed to English');
+    await ctx.editMessageText('✅ Language changed to English', {
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+    });
+});
+
+// الدعم الفني
+bot.action('support', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const stats = await db.getUserStats(ctx.from.id);
+    const text = db.getText('support', stats?.language || 'ar', {
+        adminUsername: ADMIN_USERNAME,
+        adminId: ADMIN_ID
+    });
+    
+    const keyboard = Markup.inlineKeyboard([
+        [Markup.button.url('📨 تواصل مع الأدمن', `https://t.me/${ADMIN_USERNAME}`)],
+        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
+    ]);
+    
+    await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        ...keyboard
+    });
+});
+
+// العودة للقائمة الرئيسية
+bot.action('back_to_menu', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const stats = await db.getUserStats(ctx.from.id);
+    const referralLink = `https://t.me/${ctx.botInfo.username}?start=${ctx.from.id}`;
+    const progress = Math.min(100, (stats.dailyMined / DAILY_LIMIT) * 100);
+    const vipBonus = stats.vipLevel * 10;
+    
+    const text = `
+✨ *قائمة CRYSTAL الرئيسية* ✨
+
+👤 *المستخدم:* ${ctx.from.first_name}
+💎 *الرصيد:* ${stats.crystalBalance.toFixed(2)} CRYSTAL
+💰 *القيمة:* ${stats.usdtValue.toFixed(2)} USDT
+⚡ *معدل التعدين:* ${stats.miningRate}x
+👑 *VIP:* المستوى ${stats.vipLevel || 0} (+${vipBonus}% مكافأة)
+📊 *تعدين اليوم:* ${stats.dailyMined}/${DAILY_LIMIT}
+📈 *نسبة الإنجاز:* ${Math.floor(progress)}%
+🔥 *الكومبو:* ${stats.comboCount || 0} يوم
+
+🎁 *رابط الإحالة الخاص بك:*
+\`${referralLink}\`
+
+👥 *الإحالات:* ${stats.referralsCount}/10
+    `;
+    
+    const keyboard = ctx.from.id === ADMIN_ID ? adminKeyboard : mainKeyboard;
+    
+    await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        ...keyboard
+    });
+});
+
+// معالجة النصوص (منع الإغراق)
+const userLastMessage = new Map();
+
 bot.on('text', async (ctx) => {
-    if (ctx.session?.state === 'upgrade_usdt_amount') {
+    const userId = ctx.from.id;
+    const now = Date.now();
+    const lastMessage = userLastMessage.get(userId) || 0;
+    
+    if (now - lastMessage < 1000) { // 1 ثانية بين الرسائل
+        return;
+    }
+    userLastMessage.set(userId, now);
+    
+    // معالجة إنشاء عرض P2P
+    if (ctx.session?.state === 'p2p_create') {
+        const parts = ctx.message.text.split(' ');
+        if (parts.length !== 3) {
+            await ctx.reply('❌ الصيغة: [sell/buy] [الكمية] [السعر]\nمثال: sell 1000 10\n⚠️ الحد الأدنى 5 USDT');
+            delete ctx.session.state;
+            return;
+        }
+        
+        const [type, amount, usdt] = parts;
+        const crystalAmount = parseFloat(amount);
+        const usdtAmount = parseFloat(usdt);
+        
+        if (isNaN(crystalAmount) || isNaN(usdtAmount)) {
+            await ctx.reply('❌ الرجاء إدخال أرقام صحيحة');
+            delete ctx.session.state;
+            return;
+        }
+        
+        if (usdtAmount < 5) {
+            await ctx.reply('❌ الحد الأدنى للعرض هو 5 USDT');
+            delete ctx.session.state;
+            return;
+        }
+        
+        const result = await db.createP2pOffer(ctx.from.id, type, crystalAmount, usdtAmount);
+        await ctx.reply(result.message, { parse_mode: 'Markdown' });
+        delete ctx.session.state;
+    } else if (ctx.session?.state === 'upgrade_usdt_amount') {
         const amount = parseFloat(ctx.message.text);
         if (isNaN(amount) || amount < 3) {
             await ctx.reply('❌ المبلغ غير صحيح! الحد الأدنى 3 USDT');
@@ -444,25 +936,6 @@ bot.on('text', async (ctx) => {
         }
         
         delete ctx.session.state;
-    }
-});
-
-// تنفيذ الترقية بالكريستال
-bot.action('do_upgrade', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const result = await db.upgradeMiningRate(ctx.from.id);
-    
-    if (result.success) {
-        await ctx.editMessageText(result.message, {
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-        });
-    } else {
-        await ctx.editMessageText(result.message, {
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-        });
     }
 });
 
@@ -539,33 +1012,6 @@ bot.command('confirm_upgrade', async (ctx) => {
     }
 });
 
-// قائمة الشراء
-bot.action('buy_menu', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const liquidity = await db.getLiquidity();
-    const available = liquidity.totalLiquidity - liquidity.totalSold;
-    
-    const text = `
-💰 *شراء عملة CRYSTAL* 💰
-
-💎 *السعر:* ${CRYSTAL_PRICE} USDT لكل CRYSTAL
-📊 *السيولة المتاحة:* ${available.toFixed(2)} CRYSTAL
-💵 *الحد الأدنى:* 10 USDT (1000 CRYSTAL)
-
-📝 *للشراء:*
-أرسل الأمر التالي مع الكمية:
-\`/buy 1000\` (لشراء 1000 كريستال)
-
-⚠️ *سيتم إنشاء طلب شراء وستحصل على عنوان الدفع عبر شبكة TRON (TRC20)*
-    `;
-    
-    await ctx.editMessageText(text, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-    });
-});
-
 // أمر شراء
 bot.command('buy', async (ctx) => {
     const args = ctx.message.text.split(' ');
@@ -637,113 +1083,6 @@ bot.command('confirm_purchase', async (ctx) => {
     } else {
         await ctx.reply(`❌ ${result.message}`);
     }
-});
-
-// سوق P2P
-bot.action('p2p_market', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const stats = await db.getUserStats(ctx.from.id);
-    const text = db.getText('p2pMarket', stats.language, {
-        balance: stats.crystalBalance,
-        usdt: stats.usdtValue
-    });
-    
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🟢 عروض البيع', 'p2p_buy_offers')],
-        [Markup.button.callback('🔴 عروض الشراء', 'p2p_sell_offers')],
-        [Markup.button.callback('➕ إنشاء عرض', 'p2p_create_offer')],
-        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-    ]);
-    
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard });
-});
-
-// عرض عروض البيع
-bot.action('p2p_buy_offers', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const offers = await db.getP2pOffers('sell');
-    
-    if (offers.length === 0) {
-        await ctx.editMessageText('📭 لا توجد عروض بيع حالياً', {
-            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'p2p_market')]])
-        });
-        return;
-    }
-    
-    let text = '🟢 *عروض البيع* 🟢\n\n';
-    for (const offer of offers) {
-        text += `👤 ${offer.firstName || offer.username}\n`;
-        text += `💎 ${offer.crystalAmount} CRYSTAL\n`;
-        text += `💰 ${offer.usdtAmount} USDT\n`;
-        text += `📊 ${(offer.pricePerCrystal || 0).toFixed(4)} USDT/CRYSTAL\n`;
-        text += `🆔 \`${offer._id}\`\n`;
-        text += `━━━━━━━━━━━━━━━━━━\n`;
-    }
-    
-    text += `\n📝 *لشراء عرض:* /buy_offer [رقم العرض]`;
-    
-    await ctx.editMessageText(text, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'p2p_market')]])
-    });
-});
-
-// عرض عروض الشراء
-bot.action('p2p_sell_offers', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const offers = await db.getP2pOffers('buy');
-    
-    if (offers.length === 0) {
-        await ctx.editMessageText('📭 لا توجد عروض شراء حالياً', {
-            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'p2p_market')]])
-        });
-        return;
-    }
-    
-    let text = '🔴 *عروض الشراء* 🔴\n\n';
-    for (const offer of offers) {
-        text += `👤 ${offer.firstName || offer.username}\n`;
-        text += `💎 ${offer.crystalAmount} CRYSTAL\n`;
-        text += `💰 ${offer.usdtAmount} USDT\n`;
-        text += `📊 ${(offer.pricePerCrystal || 0).toFixed(4)} USDT/CRYSTAL\n`;
-        text += `🆔 \`${offer._id}\`\n`;
-        text += `━━━━━━━━━━━━━━━━━━\n`;
-    }
-    
-    text += `\n📝 *لشراء عرض:* /sell_offer [رقم العرض]`;
-    
-    await ctx.editMessageText(text, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'p2p_market')]])
-    });
-});
-
-// إنشاء عرض P2P
-bot.action('p2p_create_offer', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const text = `
-📝 *إنشاء عرض P2P*
-
-أرسل العرض بالصيغة التالية:
-\`sell 1000 10\` - لبيع 1000 كريستال بـ 10 USDT
-\`buy 500 5\` - لشراء 500 كريستال بـ 5 USDT
-
-📊 *سعر الوحدة:* ${CRYSTAL_PRICE} USDT (السعر الرسمي)
-⚠️ *الحد الأدنى: 5 USDT*
-
-⚠️ *ملاحظة:* يمكنك تحديد السعر حسب رغبتك
-    `;
-    
-    await ctx.editMessageText(text, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'p2p_market')]])
-    });
-    
-    ctx.session = { state: 'p2p_create' };
 });
 
 // أمر شراء عرض P2P
@@ -855,456 +1194,6 @@ bot.command('dispute', async (ctx) => {
     `, { parse_mode: 'Markdown' });
 });
 
-// المهمة اليومية
-bot.action('daily_task', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const result = await db.completeDailyTask(ctx.from.id);
-    
-    if (result.success) {
-        const text = `✅ *المهمة اليومية مكتملة!*\n\n🎁 *المكافأة:* +${result.reward} CRYSTAL\n📈 *السلسلة:* ${result.streak} أيام`;
-        await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
-    } else {
-        await ctx.editMessageText(result.message, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
-    }
-});
-
-// نظام VIP
-bot.action('vip_system', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const stats = await db.getUserStats(ctx.from.id);
-    const nextExp = (stats.vipLevel + 1) * 1000;
-    const progress = Math.min(100, (stats.totalMined / nextExp) * 100);
-    
-    const text = `
-👑 *نظام VIP* 👑
-
-🎖️ *مستواك:* ${stats.vipLevel}
-📊 *نقاط الخبرة:* ${stats.totalMined.toFixed(0)}/${nextExp}
-📈 *نسبة التقدم:* ${Math.floor(progress)}%
-
-✨ *مزايا VIP:*
-• VIP 1: +10% معدل التعدين
-• VIP 2: +20% معدل التعدين + مكافآت إحالة مضاعفة
-• VIP 3: +30% معدل التعدين + أولوية في P2P
-
-📝 *للترقية:* /upgrade_vip
-    `;
-    
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('⭐ ترقية VIP', 'do_vip_upgrade')],
-        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-    ]);
-    
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard });
-});
-
-// تنفيذ ترقية VIP
-bot.action('do_vip_upgrade', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const result = await db.upgradeVIP(ctx.from.id);
-    
-    if (result.success) {
-        const text = `👑 *تمت ترقية VIP!*\n\n🎖️ *المستوى الجديد:* ${result.newLevel}\n🎁 *المكافأة:* +${result.bonus} CRYSTAL`;
-        await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
-    } else {
-        await ctx.editMessageText(result.message, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
-    }
-});
-
-// أمر ترقية VIP
-bot.command('upgrade_vip', async (ctx) => {
-    const result = await db.upgradeVIP(ctx.from.id);
-    await ctx.reply(result.message, { parse_mode: 'Markdown' });
-});
-
-// نظام الإحالة
-bot.action('referral_system', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const stats = await db.getUserStats(ctx.from.id);
-    const referralLink = `https://t.me/${ctx.botInfo.username}?start=${ctx.from.id}`;
-    
-    const text = `
-👥 *نظام الإحالة* 👥
-
-🎁 *المكافآت:*
-• ادعُ 10 أصدقاء واحصل على 3000 كريستال مجاناً!
-• كل صديق يدخل عن طريقك يحصل على مكافأة ترحيبية
-
-📊 *إحصائياتك:*
-• عدد الإحالات: ${stats.referralsCount}/10
-• إحالات اليوم: ${stats.todayReferrals || 0}/10
-• المكافأة: ${stats.referralsCount >= 10 ? '✅ تم الحصول على 3000 كريستال' : '❌ لم تتحقق بعد'}
-
-🔗 *رابط الإحالة الخاص بك:*
-\`${referralLink}\`
-
-💡 *انشر الرابط لأصدقائك واكسب المكافآت!*
-    `;
-    
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('📤 مشاركة الرابط', 'share_referral')],
-        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-    ]);
-    
-    await ctx.editMessageText(text, {
-        parse_mode: 'Markdown',
-        ...keyboard
-    });
-});
-
-// مشاركة رابط الإحالة
-bot.action('share_referral', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const referralLink = `https://t.me/${ctx.botInfo.username}?start=${ctx.from.id}`;
-    
-    await ctx.reply(`🔗 *رابط الإحالة الخاص بك:*\n\`${referralLink}\``, {
-        parse_mode: 'Markdown'
-    });
-});
-
-// إحصائياتي
-bot.action('my_stats', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const stats = await db.getUserStats(ctx.from.id);
-    if (!stats) {
-        await ctx.reply('❌ لم يتم العثور على بياناتك');
-        return;
-    }
-    
-    const progress = Math.min(100, (stats.dailyMined / DAILY_LIMIT) * 100);
-    const vipBonus = stats.vipLevel * 10;
-    
-    const text = `
-📊 *إحصائياتك الشخصية* 📊
-
-👤 *الاسم:* ${stats.firstName}
-💎 *الرصيد:* ${stats.crystalBalance.toFixed(2)} CRYSTAL
-💰 *القيمة:* ${stats.usdtValue.toFixed(2)} USDT
-⚡ *معدل التعدين:* ${stats.miningRate}x
-📈 *المستوى:* ${stats.miningLevel}
-👑 *VIP:* المستوى ${stats.vipLevel} (+${vipBonus}% مكافأة)
-⛏️ *إجمالي التعدين:* ${stats.totalMined.toFixed(2)} CRYSTAL
-📅 *تعدين اليوم:* ${stats.dailyMined}/${DAILY_LIMIT}
-📊 *نسبة الإنجاز:* ${Math.floor(progress)}%
-⏰ *المتبقي اليوم:* ${DAILY_LIMIT - stats.dailyMined} كريستال
-🔥 *الكومبو:* ${stats.comboCount || 0} يوم متتالي
-
-👥 *الإحالات:* ${stats.referralsCount}/10
-📊 *إحالات اليوم:* ${stats.todayReferrals || 0}/10
-🎁 *مكافأة الإحالات:* ${stats.referralsCount >= 10 ? '✅ تم الحصول على 3000 كريستال' : '❌ لم تتحقق بعد'}
-
-📅 *تاريخ التسجيل:* ${new Date(stats.createdAt).toLocaleDateString('ar')}
-    `;
-    
-    await ctx.editMessageText(text, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-    });
-});
-
-// تغيير اللغة
-bot.action('change_language', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🇸🇦 العربية', 'lang_ar')],
-        [Markup.button.callback('🇬🇧 English', 'lang_en')],
-        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-    ]);
-    
-    await ctx.editMessageText('🌐 *اختر اللغة / Choose Language*', {
-        parse_mode: 'Markdown',
-        ...keyboard
-    });
-});
-
-bot.action('lang_ar', async (ctx) => {
-    await db.setLanguage(ctx.from.id, 'ar');
-    await ctx.answerCbQuery('✅ تم تغيير اللغة إلى العربية');
-    await ctx.editMessageText('✅ تم تغيير اللغة إلى العربية', {
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-    });
-});
-
-bot.action('lang_en', async (ctx) => {
-    await db.setLanguage(ctx.from.id, 'en');
-    await ctx.answerCbQuery('✅ Language changed to English');
-    await ctx.editMessageText('✅ Language changed to English', {
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-    });
-});
-
-// الدعم الفني
-bot.action('support', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const stats = await db.getUserStats(ctx.from.id);
-    const text = db.getText('support', stats?.language || 'ar', {
-        adminUsername: ADMIN_USERNAME,
-        adminId: ADMIN_ID
-    });
-    
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.url('📨 تواصل مع الأدمن', `https://t.me/${ADMIN_USERNAME}`)],
-        [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-    ]);
-    
-    await ctx.editMessageText(text, {
-        parse_mode: 'Markdown',
-        ...keyboard
-    });
-});
-
-// طلبات الترقية المعلقة (للأدمن)
-bot.action('pending_upgrades', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) {
-        await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
-        return;
-    }
-    
-    await ctx.answerCbQuery();
-    
-    const pending = await db.getPendingUpgrades();
-    
-    if (!pending || pending.length === 0) {
-        await ctx.editMessageText('📭 لا توجد طلبات ترقية معلقة', {
-            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-        });
-        return;
-    }
-    
-    let text = '📋 *طلبات الترقية المعلقة*\n\n';
-    
-    for (const req of pending) {
-        text += `🆔 الطلب: \`${req._id}\`\n`;
-        text += `👤 المستخدم: ${req.firstName || req.username}\n`;
-        text += `📊 ${req.currentLevel} → ${req.requestedLevel}\n`;
-        text += `💰 ${req.usdtAmount} USDT\n`;
-        text += `📅 ${new Date(req.createdAt).toLocaleString()}\n`;
-        text += `━━━━━━━━━━━━━━━━━━\n`;
-    }
-    
-    text += `\n📝 *للتأكيد:* /confirm_upgrade [الرقم] [رابط المعاملة]`;
-    
-    await ctx.editMessageText(text, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-    });
-});
-
-// طلبات الشراء المعلقة (للأدمن)
-bot.action('pending_purchases', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) {
-        await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
-        return;
-    }
-    
-    await ctx.answerCbQuery();
-    
-    const pending = await db.getPendingPurchases();
-    
-    if (!pending || pending.length === 0) {
-        await ctx.editMessageText('📭 لا توجد طلبات شراء معلقة', {
-            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-        });
-        return;
-    }
-    
-    let text = '💰 *طلبات الشراء المعلقة*\n\n';
-    
-    for (const req of pending) {
-        text += `🆔 الطلب: \`${req._id}\`\n`;
-        text += `👤 المستخدم: ${req.firstName || req.username}\n`;
-        text += `💎 ${req.crystalAmount} CRYSTAL\n`;
-        text += `💰 ${req.usdtAmount} USDT\n`;
-        text += `📅 ${new Date(req.createdAt).toLocaleString()}\n`;
-        text += `━━━━━━━━━━━━━━━━━━\n`;
-    }
-    
-    text += `\n📝 *للتأكيد:* /confirm_purchase [الرقم] [رابط المعاملة]`;
-    
-    await ctx.editMessageText(text, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-    });
-});
-
-// النزاعات المعلقة (للأدمن)
-bot.action('pending_disputes', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) {
-        await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
-        return;
-    }
-    
-    await ctx.answerCbQuery();
-    
-    const disputes = await db.getP2pOffers();
-    const pendingDisputes = disputes.filter(d => d.status === 'disputed');
-    
-    if (!pendingDisputes || pendingDisputes.length === 0) {
-        await ctx.editMessageText('📭 لا توجد نزاعات معلقة', {
-            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-        });
-        return;
-    }
-    
-    let text = '⚠️ *النزاعات المعلقة*\n\n';
-    
-    for (const dispute of pendingDisputes) {
-        text += `🆔 العرض: \`${dispute._id}\`\n`;
-        text += `👤 البائع: ${dispute.firstName || dispute.username}\n`;
-        text += `👤 المشتري: ${dispute.counterpartyId || 'غير محدد'}\n`;
-        text += `💎 ${dispute.crystalAmount} CRYSTAL\n`;
-        text += `💰 ${dispute.usdtAmount} USDT\n`;
-        text += `📅 ${new Date(dispute.createdAt).toLocaleString()}\n`;
-        text += `━━━━━━━━━━━━━━━━━━\n`;
-    }
-    
-    text += `\n📝 *للحل:* /resolve_dispute [رقم العرض] [seller/buyer]`;
-    
-    await ctx.editMessageText(text, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-    });
-});
-
-// إحصائيات عامة (للأدمن)
-bot.action('global_stats', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) {
-        await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
-        return;
-    }
-    
-    await ctx.answerCbQuery();
-    
-    const stats = await db.getGlobalStats();
-    
-    const text = `
-📊 *إحصائيات عامة* 📊
-
-👥 *المستخدمين:* ${stats.users}
-💎 *إجمالي الكريستال:* ${stats.totalCrystals}
-⛏️ *إجمالي التعدين:* ${stats.totalMined}
-📈 *متوسط المستوى:* ${stats.avgLevel}
-⚡ *متوسط المعدل:* ${stats.avgRate}x
-👑 *متوسط VIP:* ${stats.avgVip || 0}
-
-💰 *السيولة:*
-• إجمالي السيولة: ${stats.liquidity.toFixed(2)} CRYSTAL
-• تم البيع: ${stats.sold.toFixed(2)} CRYSTAL
-• المتاحة: ${stats.available.toFixed(2)} CRYSTAL
-• عدد الترقيات: ${stats.upgrades}
-
-📊 *نسبة البيع:* ${((stats.sold / stats.liquidity) * 100).toFixed(2)}%
-    `;
-    
-    await ctx.editMessageText(text, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-    });
-});
-
-// إحصائيات اليوم (للأدمن)
-bot.action('today_stats', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) {
-        await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
-        return;
-    }
-    
-    await ctx.answerCbQuery();
-    
-    const stats = await db.getTodayStats();
-    
-    const text = `
-📅 *إحصائيات اليوم* 📅
-${new Date().toLocaleDateString('ar')}
-
-👥 *مستخدمين جدد:* ${stats?.totalUsers || 0}
-⛏️ *تم التعدين:* ${stats?.totalMined?.toFixed(2) || 0} CRYSTAL
-💰 *عمليات شراء:* ${stats?.totalPurchases || 0}
-⚡ *عمليات ترقية:* ${stats?.totalUpgrades || 0}
-🔄 *صفقات P2P:* ${stats?.p2pTrades || 0}
-👥 *إحالات اليوم:* ${stats?.totalReferrals || 0}
-🔥 *الكومبو:* ${stats?.totalCombo || 0}
-    `;
-    
-    await ctx.editMessageText(text, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-    });
-});
-
-// بحث عن مستخدم (للأدمن)
-bot.action('search_user', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) {
-        await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
-        return;
-    }
-    
-    await ctx.answerCbQuery();
-    await ctx.reply('🔍 الرجاء إرسال اسم المستخدم أو المعرف للبحث:');
-    ctx.session = { state: 'search_user' };
-});
-
-// معالجة البحث
-bot.on('text', async (ctx) => {
-    if (ctx.session?.state === 'search_user' && ctx.from.id === ADMIN_ID) {
-        const query = ctx.message.text;
-        const users = await db.searchUsers(query);
-        
-        if (users.length === 0) {
-            await ctx.reply('❌ لم يتم العثور على مستخدمين');
-        } else {
-            let text = '🔍 *نتائج البحث:*\n\n';
-            for (const user of users) {
-                text += `👤 ${user.firstName || user.username || user.userId}\n`;
-                text += `🆔 \`${user.userId}\`\n`;
-                text += `💎 ${user.crystalBalance.toFixed(2)} CRYSTAL\n`;
-                text += `📈 المستوى ${user.miningLevel}\n`;
-                text += `👑 VIP ${user.vipLevel || 0}\n`;
-                text += `🔑 البصمة: \`${(user.miningSignature || '').slice(0, 16)}...\`\n`;
-                text += `━━━━━━━━━━━━━━━━━━\n`;
-            }
-            await ctx.reply(text, { parse_mode: 'Markdown' });
-        }
-        
-        delete ctx.session.state;
-    } else if (ctx.session?.state === 'p2p_create') {
-        const parts = ctx.message.text.split(' ');
-        if (parts.length !== 3) {
-            await ctx.reply('❌ الصيغة: [sell/buy] [الكمية] [السعر]\nمثال: sell 1000 10\n⚠️ الحد الأدنى 5 USDT');
-            delete ctx.session.state;
-            return;
-        }
-        
-        const [type, amount, usdt] = parts;
-        const crystalAmount = parseFloat(amount);
-        const usdtAmount = parseFloat(usdt);
-        
-        if (isNaN(crystalAmount) || isNaN(usdtAmount)) {
-            await ctx.reply('❌ الرجاء إدخال أرقام صحيحة');
-            delete ctx.session.state;
-            return;
-        }
-        
-        if (usdtAmount < 5) {
-            await ctx.reply('❌ الحد الأدنى للعرض هو 5 USDT');
-            delete ctx.session.state;
-            return;
-        }
-        
-        const result = await db.createP2pOffer(ctx.from.id, type, crystalAmount, usdtAmount);
-        await ctx.reply(result.message, { parse_mode: 'Markdown' });
-        delete ctx.session.state;
-    }
-});
-
 // أمر تعدين مباشر
 bot.command('mine', async (ctx) => {
     const result = await db.mine(ctx.from.id);
@@ -1347,41 +1236,6 @@ bot.command('stats', async (ctx) => {
     await ctx.reply(text, { parse_mode: 'Markdown' });
 });
 
-// العودة للقائمة الرئيسية
-bot.action('back_to_menu', async (ctx) => {
-    await ctx.answerCbQuery();
-    
-    const stats = await db.getUserStats(ctx.from.id);
-    const referralLink = `https://t.me/${ctx.botInfo.username}?start=${ctx.from.id}`;
-    const progress = Math.min(100, (stats.dailyMined / DAILY_LIMIT) * 100);
-    const vipBonus = stats.vipLevel * 10;
-    
-    const text = `
-✨ *قائمة CRYSTAL الرئيسية* ✨
-
-👤 *المستخدم:* ${ctx.from.first_name}
-💎 *الرصيد:* ${stats.crystalBalance.toFixed(2)} CRYSTAL
-💰 *القيمة:* ${stats.usdtValue.toFixed(2)} USDT
-⚡ *معدل التعدين:* ${stats.miningRate}x
-👑 *VIP:* المستوى ${stats.vipLevel || 0} (+${vipBonus}% مكافأة)
-📊 *تعدين اليوم:* ${stats.dailyMined}/${DAILY_LIMIT}
-📈 *نسبة الإنجاز:* ${Math.floor(progress)}%
-🔥 *الكومبو:* ${stats.comboCount || 0} يوم
-
-🎁 *رابط الإحالة الخاص بك:*
-\`${referralLink}\`
-
-👥 *الإحالات:* ${stats.referralsCount}/10
-    `;
-    
-    const keyboard = ctx.from.id === ADMIN_ID ? adminKeyboard : mainKeyboard;
-    
-    await ctx.editMessageText(text, {
-        parse_mode: 'Markdown',
-        ...keyboard
-    });
-});
-
 // تشغيل البوت
 bot.launch().then(() => {
     console.log('🚀 Bot is running...');
@@ -1390,6 +1244,7 @@ bot.launch().then(() => {
     console.log('💎 Daily Limit:', DAILY_LIMIT, 'CRYSTAL');
     console.log('💰 TRON Address:', TRON_ADDRESS);
     console.log('⚡ Upgrade Min:', UPGRADE_USDT_PRICE, 'USDT');
+    console.log('🛡️ Rate Limiting enabled (2 sec between actions)');
 }).catch((err) => {
     console.error('Error starting bot:', err);
 });
