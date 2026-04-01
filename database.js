@@ -4,7 +4,9 @@ const { ethers } = require('ethers');
 const { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } = require('@solana/web3.js');
 const { AptosClient, AptosAccount, HexString } = require('aptos');
 const CryptoJS = require('crypto-js');
-const { User, Wallet, Transaction, UpgradeRequest, PurchaseRequest, P2pOffer, Liquidity, DailyStats, DailyReferralLog } = require('./models');
+const { User, Wallet, Transaction: TransactionModel, UpgradeRequest, PurchaseRequest, P2pOffer, Liquidity, DailyStats, DailyReferralLog } = require('./models');
+
+// ملاحظة: تم تغيير اسم Transaction إلى TransactionModel لتجنب التعارض مع Transaction من @solana/web3.js
 
 class Database {
     constructor() {
@@ -124,9 +126,10 @@ class Database {
     }
 
     async getUser(userId) { return await User.findOne({ userId }); }
+    
     async addCrystals(userId, amount, reason) {
         await User.updateOne({ userId }, { $inc: { crystalBalance: amount, totalMined: amount } });
-        await Transaction.create({ userId, type: 'reward', amount, status: 'completed', signature: this.generateSignature(`reward-${userId}`), description: reason });
+        await TransactionModel.create({ userId, type: 'reward', amount, status: 'completed', signature: this.generateSignature(`reward-${userId}`), description: reason });
         return true;
     }
 
@@ -157,7 +160,7 @@ class Database {
         if (rewardData.completed) return { success: false, message: '✅ أكملت التعدين اليومي!' };
         if (rewardData.reward <= 0) return { success: false, message: '⚠️ جاري تجميع الكريستال...' };
         await User.updateOne({ userId }, { $inc: { crystalBalance: rewardData.reward, totalMined: rewardData.reward, dailyMined: rewardData.reward }, $set: { lastMiningTime: now, miningSignature: this.generateSignature(`mining-${userId}`) } });
-        await Transaction.create({ userId, type: 'mining', amount: rewardData.reward, status: 'completed' });
+        await TransactionModel.create({ userId, type: 'mining', amount: rewardData.reward, status: 'completed' });
         await this.updateDailyStats('totalMined', rewardData.reward);
         await this.updateCombo(userId);
         return { success: true, reward: rewardData.reward, dailyMined: rewardData.totalMined, dailyRemaining: rewardData.remaining, progress: rewardData.progress };
@@ -213,7 +216,7 @@ class Database {
         if (user.crystalBalance < cost) return { success: false, message: `❌ تحتاج ${cost} كريستال` };
         const newRate = user.miningRate + 0.5;
         await User.updateOne({ userId }, { $inc: { crystalBalance: -cost }, $set: { miningRate: newRate, miningLevel: user.miningLevel + 1 } });
-        await Transaction.create({ userId, type: 'upgrade', amount: cost, status: 'completed', description: `ترقية إلى المستوى ${user.miningLevel + 1}` });
+        await TransactionModel.create({ userId, type: 'upgrade', amount: cost, status: 'completed', description: `ترقية إلى المستوى ${user.miningLevel + 1}` });
         return { success: true, message: `✅ تمت الترقية!\n⚡ معدل التعدين: ${newRate}x` };
     }
 
@@ -321,6 +324,7 @@ class Database {
     }
 
     async getTodayStats() { return await DailyStats.findOne({ date: new Date().toISOString().split('T')[0] }); }
+    
     async updateDailyStats(type, value = 1) {
         const today = new Date().toISOString().split('T')[0];
         let s = await DailyStats.findOne({ date: today });
@@ -336,12 +340,15 @@ class Database {
         if (type === 'totalCombo') u.totalCombo = (s.totalCombo || 0) + 1;
         await DailyStats.updateOne({ date: today }, { $inc: u });
     }
+    
     async getPendingUpgrades() { return await UpgradeRequest.find({ status: 'pending' }).sort({ createdAt: -1 }).lean(); }
     async getPendingPurchases() { return await PurchaseRequest.find({ status: 'pending' }).sort({ createdAt: -1 }).lean(); }
+    
     async searchUsers(query) {
         const regex = new RegExp(query, 'i');
         return await User.find({ $or: [{ username: regex }, { firstName: regex }, { userId: !isNaN(query) ? parseInt(query) : -1 }] }).limit(20).select('userId username firstName crystalBalance miningLevel');
     }
+    
     async setLanguage(userId, language) { await User.updateOne({ userId }, { language }); return true; }
 }
 
