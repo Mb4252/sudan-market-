@@ -4,13 +4,19 @@ const { ethers } = require('ethers');
 const { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction: SolanaTransaction } = require('@solana/web3.js');
 const { AptosClient, AptosAccount, HexString } = require('aptos');
 const CryptoJS = require('crypto-js');
-const { User, Wallet, Transaction, UpgradeRequest, PurchaseRequest, P2pOffer, TradeBet, PriceLog, Liquidity, DailyStats, DailyReferralLog } = require('./models');
+const cron = require('node-cron');
+const { User, Wallet, Transaction, P2pLocalOffer, Trade, WithdrawRequest, Liquidity, DailyStats, Price } = require('./models');
 
 class Database {
     constructor() {
         this.connected = false;
-        this.encryptionKey = process.env.ENCRYPTION_KEY || 'default_key_32_bytes_long!!!';
-        this.commissionAddress = '0x2a2548117C7113eB807298D74A44d451E330AC95';
+        this.encryptionKey = process.env.ENCRYPTION_KEY;
+        this.commissionAddresses = {
+            bnb: process.env.COMMISSION_ADDRESS_BNB,
+            polygon: process.env.COMMISSION_ADDRESS_POLYGON,
+            solana: process.env.COMMISSION_ADDRESS_SOLANA,
+            aptos: process.env.COMMISSION_ADDRESS_APTOS
+        };
         
         this.networks = {
             bnb: { name: 'BNB (BEP-20)', symbol: 'BNB', rpc: 'https://bsc-dataseed.binance.org/', explorer: 'https://bscscan.com/tx/', decimals: 18 },
@@ -18,6 +24,11 @@ class Database {
             solana: { name: 'SOLANA', symbol: 'SOL', rpc: 'https://api.mainnet-beta.solana.com', explorer: 'https://solscan.io/tx/', decimals: 9 },
             aptos: { name: 'APTOS', symbol: 'APT', rpc: 'https://fullnode.mainnet.aptoslabs.com/v1', explorer: 'https://explorer.aptoslabs.com/txn/', decimals: 8 }
         };
+        
+        // تحديث سعر الكريستال كل دقيقة بناءً على BTC
+        cron.schedule('* * * * *', async () => {
+            await this.updateCrystalPrice();
+        });
     }
 
     generateSignature(data) {
@@ -36,219 +47,112 @@ class Database {
     async connect() {
         if (this.connected) return;
         try {
-            await mongoose.connect(process.env.MONGODB_URI, { dbName: process.env.MONGODB_DB_NAME || 'krystal_mining', serverSelectionTimeoutMS: 5000 });
+            await mongoose.connect(process.env.MONGODB_URI, { dbName: process.env.MONGODB_DB_NAME || 'krystal_trading', serverSelectionTimeoutMS: 5000 });
             this.connected = true;
             console.log('✅ MongoDB connected');
-            const liquidity = await Liquidity.findOne();
-            if (!liquidity) await Liquidity.create({ totalLiquidity: 1000000, totalSold: 0, commissionAddress: this.commissionAddress });
+            
+            let liquidity = await Liquidity.findOne();
+            if (!liquidity) {
+                liquidity = await Liquidity.create({
+                    totalCrystalSupply: 30000000,
+                    circulatingCrystal: 0,
+                    totalUsdLiquidity: 300000,
+                    crystalPrice: 0.01,
+                    priceHistory: [{ price: 0.01, timestamp: new Date() }]
+                });
+                console.log('✅ Initial liquidity created');
+            }
+            
+            // جلب أسعار العملات الأولية
+            await this.fetchAllPrices();
         } catch (error) {
             console.error('❌ MongoDB error:', error);
             throw error;
         }
     }
 
-    // ========== جلب الأسعار الحقيقية من Binance ==========
+    // ========== جلب الأسعار من Binance ==========
     async fetchBinancePrice(symbol) {
         try {
             const response = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}USDT`);
             const data = await response.json();
             return {
                 price: parseFloat(data.lastPrice),
-                open: parseFloat(data.openPrice),
-                high: parseFloat(data.highPrice),
-                low: parseFloat(data.lowPrice),
-                volume: parseFloat(data.volume),
-                change24h: parseFloat(data.priceChangePercent)
+                change24h: parseFloat(data.priceChangePercent),
+                high24h: parseFloat(data.highPrice),
+                low24h: parseFloat(data.lowPrice),
+                volume: parseFloat(data.volume)
             };
         } catch (error) {
             console.error('Binance API error:', error);
-            const lastPrice = await PriceLog.findOne({ currency: symbol }).sort({ timestamp: -1 });
+            const lastPrice = await Price.findOne({ symbol });
             return {
-                price: lastPrice ? lastPrice.price : symbol === 'BTC' ? 65000 : 3500,
-                open: lastPrice ? lastPrice.open : symbol === 'BTC' ? 64500 : 3450,
-                high: lastPrice ? lastPrice.high : symbol === 'BTC' ? 65500 : 3550,
-                low: lastPrice ? lastPrice.low : symbol === 'BTC' ? 64000 : 3400,
-                volume: 0,
-                change24h: 0
+                price: lastPrice?.price || (symbol === 'BTC' ? 65000 : 3500),
+                change24h: lastPrice?.change24h || 0,
+                high24h: lastPrice?.high24h || 0,
+                low24h: lastPrice?.low24h || 0,
+                volume: 0
             };
         }
     }
 
-    // جلب الشموع اللحظية (1m, 5m, 15m)
-    async fetchCandles(symbol, interval = '1m', limit = 20) {
-        try {
-            const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=${interval}&limit=${limit}`);
-            const data = await response.json();
-            return data.map(candle => ({
-                time: candle[0],
-                open: parseFloat(candle[1]),
-                high: parseFloat(candle[2]),
-                low: parseFloat(candle[3]),
-                close: parseFloat(candle[4]),
-                volume: parseFloat(candle[5])
-            }));
-        } catch (error) {
-            console.error('Candles API error:', error);
-            return [];
+    async fetchAllPrices() {
+        const symbols = ['BTC', 'ETH', 'SOL', 'BNB', 'MATIC', 'APT'];
+        for (const symbol of symbols) {
+            const data = await this.fetchBinancePrice(symbol);
+            await Price.findOneAndUpdate(
+                { symbol },
+                { 
+                    price: data.price,
+                    change24h: data.change24h,
+                    high24h: data.high24h,
+                    low24h: data.low24h,
+                    volume: data.volume,
+                    timestamp: new Date()
+                },
+                { upsert: true, new: true }
+            );
         }
+        console.log('✅ Prices updated');
     }
 
-    async getCurrentPrice(currency) {
-        const data = await this.fetchBinancePrice(currency);
-        await this.logPrice(currency, data.price, data.open, data.high, data.low, data.volume);
-        return data.price;
-    }
-
-    async getFullPriceData(currency) {
-        const data = await this.fetchBinancePrice(currency);
-        await this.logPrice(currency, data.price, data.open, data.high, data.low, data.volume);
-        return data;
-    }
-
-    async logPrice(currency, price, open, high, low, volume) {
-        await PriceLog.create({ currency, price, open, high, low, volume, timestamp: new Date() });
-    }
-
-    async getCandles(currency, interval = '1m', limit = 20) {
-        return await this.fetchCandles(currency, interval, limit);
-    }
-
-    // ========== نظام التداول ==========
-    async createTradeBet(userId, currency, type, amount, durationSeconds) {
-        const user = await this.getUser(userId);
-        if (!user) return { success: false, message: 'المستخدم غير موجود' };
+    // ========== تحديث سعر الكريستال بناءً على BTC ==========
+    async updateCrystalPrice() {
+        const btcPrice = await this.getPrice('BTC');
+        const liquidity = await Liquidity.findOne();
         
-        const minBet = 10;
-        if (amount < minBet) return { success: false, message: `الحد الأدنى للرهان ${minBet} كريستال` };
+        // سعر الكريستال = (سعر BTC / 1000000) * عامل التعديل
+        // السعر الأساسي 0.01 دولار عندما BTC = 65000
+        const baseBtcPrice = 65000;
+        const baseCrystalPrice = 0.01;
+        const newPrice = (btcPrice.price / baseBtcPrice) * baseCrystalPrice;
         
-        const feeRate = 0.05; // 5% عمولة
-        const fee = amount * feeRate;
-        const totalCost = amount + fee;
+        liquidity.crystalPrice = newPrice;
+        liquidity.priceHistory.push({ price: newPrice, timestamp: new Date() });
+        if (liquidity.priceHistory.length > 1000) liquidity.priceHistory.shift();
+        liquidity.lastUpdated = new Date();
+        await liquidity.save();
         
-        if (user.crystalBalance < totalCost) {
-            return { success: false, message: `❌ رصيد غير كافٍ! تحتاج ${totalCost.toFixed(2)} كريستال (شامل 5% عمولة)` };
+        console.log(`💎 Crystal price updated: $${newPrice.toFixed(6)} (BTC: $${btcPrice.price})`);
+        return newPrice;
+    }
+
+    async getPrice(symbol) {
+        return await Price.findOne({ symbol }) || { price: symbol === 'BTC' ? 65000 : 3500, change24h: 0 };
+    }
+
+    async getAllPrices() {
+        const symbols = ['BTC', 'ETH', 'SOL', 'BNB', 'MATIC', 'APT'];
+        const prices = {};
+        for (const s of symbols) {
+            prices[s] = await this.getPrice(s);
         }
-        
-        const priceData = await this.getFullPriceData(currency);
-        const currentPrice = priceData.price;
-        const endTime = new Date(Date.now() + (durationSeconds * 1000));
-        
-        await User.updateOne({ userId }, { $inc: { crystalBalance: -totalCost } });
-        
-        // تسجيل العمولة
-        await Transaction.create({
-            userId, type: 'commission', amount: fee,
-            description: `عمولة رهان ${currency} - ${amount} كريستال`
-        });
-        await Liquidity.updateOne({}, { $inc: { totalCommission: fee } });
-        await this.updateDailyStats('totalCommission', fee);
-        
-        const bet = await TradeBet.create({
-            userId, type, currency, amount, usdtAmount: amount * 0.01,
-            fee, startPrice: currentPrice, duration: durationSeconds, endTime
-        });
-        
-        await Transaction.create({
-            userId, type: 'trade_bet', amount: totalCost,
-            description: `رهان ${type === 'up' ? 'صاعد ⬆️' : 'هابط ⬇️'} على ${currency} - ${amount} كريستال`
-        });
-        await this.updateDailyStats('totalBets');
-        
-        return {
-            success: true, betId: bet._id, currency, type, amount, fee, totalCost,
-            startPrice: currentPrice, endTime,
-            message: `✅ *تم إنشاء رهان!*\n\n💰 *العملة:* ${currency}\n📈 *الاتجاه:* ${type === 'up' ? 'صاعد ⬆️' : 'هابط ⬇️'}\n💎 *المبلغ:* ${amount} CRYSTAL\n💸 *العمولة:* ${fee.toFixed(2)} CRYSTAL\n⏱️ *المدة:* ${durationSeconds} ثانية\n📊 *سعر الافتتاح:* ${currentPrice.toFixed(2)} USDT\n🎯 *نسبة الربح:* 80%\n💰 *الربح المتوقع:* ${(amount * 0.8).toFixed(2)} CRYSTAL`
-        };
+        const liquidity = await Liquidity.findOne();
+        prices['CRYSTAL'] = { price: liquidity.crystalPrice, change24h: 0 };
+        return prices;
     }
 
-    async checkActiveBets() {
-        const activeBets = await TradeBet.find({ status: 'active', endTime: { $lt: new Date() } });
-        let results = [];
-        
-        for (const bet of activeBets) {
-            const priceData = await this.getFullPriceData(bet.currency);
-            const currentPrice = priceData.price;
-            const isUp = currentPrice > bet.startPrice;
-            
-            let won = false;
-            if (bet.type === 'up' && isUp) won = true;
-            if (bet.type === 'down' && !isUp) won = true;
-            
-            if (won) {
-                const profitRate = 0.8; // 80% ربح
-                const profit = bet.amount * profitRate;
-                const totalWin = bet.amount + profit;
-                await User.updateOne({ userId: bet.userId }, { $inc: { crystalBalance: totalWin } });
-                
-                await TradeBet.updateOne({ _id: bet._id }, {
-                    status: 'won', endPrice: currentPrice, result: 'win',
-                    profit: profit, completedAt: new Date()
-                });
-                
-                await Transaction.create({
-                    userId: bet.userId, type: 'trade_win', amount: totalWin,
-                    description: `فوز رهان ${bet.currency} ${bet.type === 'up' ? 'صاعد' : 'هابط'} - ربح ${profit.toFixed(2)} كريستال`
-                });
-                results.push({ bet, result: 'win', profit });
-            } else {
-                await TradeBet.updateOne({ _id: bet._id }, {
-                    status: 'lost', endPrice: currentPrice, result: 'loss',
-                    profit: -bet.amount, completedAt: new Date()
-                });
-                
-                await Transaction.create({
-                    userId: bet.userId, type: 'trade_loss', amount: bet.amount,
-                    description: `خسارة رهان ${bet.currency} ${bet.type === 'up' ? 'صاعد' : 'هابط'} - خسارة ${bet.amount} كريستال`
-                });
-                results.push({ bet, result: 'loss', loss: bet.amount });
-            }
-        }
-        return results;
-    }
-
-    async getUserBets(userId, limit = 10) {
-        return await TradeBet.find({ userId }).sort({ createdAt: -1 }).limit(limit);
-    }
-
-    async getBetStats(userId) {
-        const bets = await TradeBet.find({ userId });
-        const totalBets = bets.length;
-        const wonBets = bets.filter(b => b.status === 'won').length;
-        const lostBets = bets.filter(b => b.status === 'lost').length;
-        const totalProfit = bets.reduce((sum, b) => sum + (b.profit || 0), 0);
-        const winRate = totalBets > 0 ? (wonBets / totalBets * 100).toFixed(1) : 0;
-        
-        return { totalBets, wonBets, lostBets, totalProfit, winRate };
-    }
-
-    async getCurrentPrices() {
-        const btc = await this.getFullPriceData('BTC');
-        const eth = await this.getFullPriceData('ETH');
-        return { BTC: btc, ETH: eth, timestamp: new Date() };
-    }
-
-    // ========== عمليات الإيداع والسحب مع العمولة ==========
-    async recordDepositFee(amount, network) {
-        const fee = amount * 0.01; // 1% عمولة إيداع
-        await Transaction.create({
-            userId: 0, type: 'deposit_fee', amount: fee,
-            description: `عمولة إيداع ${network} - ${amount}`
-        });
-        await Liquidity.updateOne({}, { $inc: { totalCommission: fee } });
-        return fee;
-    }
-
-    async recordWithdrawFee(amount, network) {
-        const fee = amount * 0.02; // 2% عمولة سحب
-        await Transaction.create({
-            userId: 0, type: 'withdraw_fee', amount: fee,
-            description: `عمولة سحب ${network} - ${amount}`
-        });
-        await Liquidity.updateOne({}, { $inc: { totalCommission: fee } });
-        return fee;
-    }
-
-    // ========== دوال أخرى (محفظة، تعدين، إلخ) ==========
+    // ========== إنشاء المحافظ ==========
     async createBnbWallet() {
         const wallet = ethers.Wallet.createRandom();
         return { address: wallet.address, encryptedPrivateKey: this.encryptPrivateKey(wallet.privateKey) };
@@ -273,16 +177,23 @@ class Database {
                 this.createBnbWallet(), this.createPolygonWallet(), this.createSolanaWallet(), this.createAptosWallet()
             ]);
             wallet = await Wallet.create({
-                userId, bnbAddress: bnb.address, bnbEncryptedPrivateKey: bnb.encryptedPrivateKey,
-                polygonAddress: polygon.address, polygonEncryptedPrivateKey: polygon.encryptedPrivateKey,
-                solanaAddress: solana.address, solanaEncryptedPrivateKey: solana.encryptedPrivateKey,
-                aptosAddress: aptos.address, aptosEncryptedPrivateKey: aptos.encryptedPrivateKey,
+                userId,
+                bnbAddress: bnb.address,
+                bnbEncryptedPrivateKey: bnb.encryptedPrivateKey,
+                polygonAddress: polygon.address,
+                polygonEncryptedPrivateKey: polygon.encryptedPrivateKey,
+                solanaAddress: solana.address,
+                solanaEncryptedPrivateKey: solana.encryptedPrivateKey,
+                aptosAddress: aptos.address,
+                aptosEncryptedPrivateKey: aptos.encryptedPrivateKey,
+                usdBalance: 0,
                 walletSignature: this.generateSignature(`wallet-${userId}`)
             });
         }
         return wallet;
     }
 
+    // ========== تسجيل المستخدم ==========
     async registerUser(userId, username, firstName, referrerId = null, language = 'ar') {
         await this.connect();
         let user = await User.findOne({ userId });
@@ -290,12 +201,13 @@ class Database {
             const wallet = await this.getUserWallet(userId);
             user = await User.create({
                 userId, username: username || '', firstName: firstName || '', language,
-                miningStartTime: new Date(), miningSignature: this.generateSignature(`mining-${userId}`),
-                referralSignature: this.generateSignature(`referral-${userId}`), referrerId, walletId: wallet._id
+                referralSignature: this.generateSignature(`referral-${userId}`),
+                referrerId, walletId: wallet._id,
+                usdBalance: 0, crystalBalance: 0
             });
             await this.updateDailyStats('totalUsers');
             if (referrerId) await this.updateReferralReward(referrerId, userId);
-            await this.addCrystals(userId, 10, 'مكافأة ترحيبية');
+            await this.addUsdBalance(userId, 10, 'مكافأة ترحيبية');
             return true;
         }
         return false;
@@ -305,212 +217,313 @@ class Database {
         const referrer = await User.findOne({ userId: referrerId });
         if (!referrer) return false;
         const today = new Date().toISOString().split('T')[0];
-        const todayReferrals = await DailyReferralLog.countDocuments({ date: today, referrerId });
+        const todayReferrals = await Transaction.countDocuments({ 
+            userId: referrerId, type: 'reward', 
+            createdAt: { $gte: new Date(today) } 
+        });
         if (todayReferrals >= 10) return false;
-        await DailyReferralLog.create({ date: today, referrerId, referredUserId, signature: this.generateSignature(`ref-${referrerId}-${referredUserId}`) });
+        
         const newCount = (referrer.referralCount || 0) + 1;
-        await User.updateOne({ userId: referrerId }, { referralCount: newCount, dailyReferrals: (referrer.dailyReferrals || 0) + 1, lastReferralDate: today });
+        await User.updateOne({ userId: referrerId }, { referralCount: newCount });
         await this.updateDailyStats('totalReferrals');
-        if (newCount === 10) await this.addCrystals(referrerId, 3000, 'مكافأة إحالة 10 أشخاص');
+        
+        if (newCount === 10) {
+            await this.addUsdBalance(referrerId, 30, 'مكافأة إحالة 10 أشخاص');
+        }
         return true;
     }
 
     async getUser(userId) { return await User.findOne({ userId }); }
     
-    async addCrystals(userId, amount, reason) {
-        await User.updateOne({ userId }, { $inc: { crystalBalance: amount, totalMined: amount } });
-        await Transaction.create({ userId, type: 'reward', amount, status: 'completed', signature: this.generateSignature(`reward-${userId}`), description: reason });
+    async addUsdBalance(userId, amount, reason) {
+        await User.updateOne({ userId }, { $inc: { usdBalance: amount } });
+        await Transaction.create({ userId, type: 'reward', amount, description: reason });
         return true;
     }
 
-    // ========== التعدين ==========
-    async calculateMiningReward(user) {
-        const now = new Date();
-        const startTime = user.miningStartTime || now;
-        const elapsedHours = Math.min(24, (now - startTime) / (1000 * 60 * 60));
-        const maxReward = 70;
-        let expectedReward = (maxReward / 24) * elapsedHours;
-        let alreadyMined = user.dailyMined || 0;
-        let newReward = Math.min(maxReward - alreadyMined, expectedReward - alreadyMined);
-        newReward = Math.max(0, Math.floor(newReward * 100) / 100) * (user.miningRate + (user.vipLevel * 0.1));
-        const progress = Math.min(100, ((alreadyMined + newReward) / maxReward) * 100);
-        return { reward: Math.min(maxReward - alreadyMined, newReward), totalMined: alreadyMined + newReward, remaining: maxReward - (alreadyMined + newReward), completed: alreadyMined + newReward >= maxReward, progress: Math.floor(progress) };
+    async addCrystalBalance(userId, amount, reason) {
+        await User.updateOne({ userId }, { $inc: { crystalBalance: amount } });
+        const liquidity = await Liquidity.findOne();
+        liquidity.circulatingCrystal += amount;
+        await liquidity.save();
+        await Transaction.create({ userId, type: 'reward', amount, description: reason });
+        return true;
     }
 
-    async mine(userId) {
+    // ========== التداول ==========
+    async trade(userId, type, currency, amountInUsd) {
         const user = await this.getUser(userId);
         if (!user) return { success: false, message: 'المستخدم غير موجود' };
-        const now = new Date();
-        const lastMine = user.lastMiningTime ? new Date(user.lastMiningTime) : new Date(0);
-        if ((now - lastMine) / 1000 / 60 < 1 && user.lastMiningDate === new Date().toISOString().split('T')[0]) {
-            const remaining = Math.floor(3600 - (now - lastMine) / 1000);
-            return { success: false, message: `⏰ انتظر ${Math.floor(remaining/60)} دقيقة`, remaining };
+        
+        const priceData = await this.getPrice(currency);
+        const crystalPrice = (await Liquidity.findOne()).crystalPrice;
+        
+        let fee = amountInUsd * 0.005; // 0.5% عمولة
+        let totalCost = amountInUsd + fee;
+        
+        if (type === 'buy') {
+            if (user.usdBalance < totalCost) {
+                return { success: false, message: `❌ رصيد غير كافٍ! تحتاج ${totalCost.toFixed(2)} USD` };
+            }
+            
+            const crystalAmount = amountInUsd / crystalPrice;
+            
+            await User.updateOne({ userId }, { $inc: { usdBalance: -totalCost, crystalBalance: crystalAmount, totalTraded: amountInUsd } });
+            
+            // تسجيل العمولة
+            await Transaction.create({ userId, type: 'commission', amount: fee, description: `عمولة شراء ${currency}` });
+            await this.updateDailyStats('totalCommission', fee);
+            
+            await Trade.create({ userId, type, currency, amount: crystalAmount, price: crystalPrice, totalUsd: amountInUsd, fee });
+            await Transaction.create({ userId, type: 'trade', amount: amountInUsd, description: `شراء ${crystalAmount.toFixed(2)} CRYSTAL بـ ${amountInUsd} USD` });
+            await this.updateDailyStats('totalTrades', 1);
+            await this.updateDailyStats('totalVolume', amountInUsd);
+            
+            return { success: true, message: `✅ تم شراء ${crystalAmount.toFixed(2)} CRYSTAL\n💰 المبلغ: ${amountInUsd} USD\n💸 العمولة: ${fee.toFixed(2)} USD\n📊 سعر CRYSTAL: ${crystalPrice.toFixed(6)} USD` };
+            
+        } else if (type === 'sell') {
+            const crystalToSell = amountInUsd / crystalPrice;
+            if (user.crystalBalance < crystalToSell) {
+                return { success: false, message: `❌ رصيد كريستال غير كافٍ! لديك ${user.crystalBalance.toFixed(2)} CRYSTAL` };
+            }
+            
+            const usdAmount = amountInUsd;
+            const totalReceive = usdAmount - fee;
+            
+            await User.updateOne({ userId }, { $inc: { usdBalance: totalReceive, crystalBalance: -crystalToSell, totalTraded: amountInUsd } });
+            
+            await Transaction.create({ userId, type: 'commission', amount: fee, description: `عمولة بيع ${currency}` });
+            await this.updateDailyStats('totalCommission', fee);
+            
+            await Trade.create({ userId, type, currency, amount: crystalToSell, price: crystalPrice, totalUsd: amountInUsd, fee });
+            await Transaction.create({ userId, type: 'trade', amount: amountInUsd, description: `بيع ${crystalToSell.toFixed(2)} CRYSTAL بـ ${amountInUsd} USD` });
+            await this.updateDailyStats('totalTrades', 1);
+            await this.updateDailyStats('totalVolume', amountInUsd);
+            
+            return { success: true, message: `✅ تم بيع ${crystalToSell.toFixed(2)} CRYSTAL\n💰 المبلغ: ${usdAmount} USD\n💸 العمولة: ${fee.toFixed(2)} USD\n📊 المستلم: ${totalReceive.toFixed(2)} USD` };
         }
-        const rewardData = await this.calculateMiningReward(user);
-        if (rewardData.completed) return { success: false, message: '✅ أكملت التعدين اليومي!' };
-        if (rewardData.reward <= 0) return { success: false, message: '⚠️ جاري تجميع الكريستال...' };
-        await User.updateOne({ userId }, { $inc: { crystalBalance: rewardData.reward, totalMined: rewardData.reward, dailyMined: rewardData.reward }, $set: { lastMiningTime: now, miningSignature: this.generateSignature(`mining-${userId}`) } });
-        await Transaction.create({ userId, type: 'mining', amount: rewardData.reward, status: 'completed' });
-        await this.updateDailyStats('totalMined', rewardData.reward);
-        await this.updateCombo(userId);
-        return { success: true, reward: rewardData.reward, dailyMined: rewardData.totalMined, dailyRemaining: rewardData.remaining, progress: rewardData.progress };
+        
+        return { success: false, message: 'نوع غير صحيح' };
     }
 
-    async updateCombo(userId) {
+    // ========== P2P محلي (مثل Binance P2P) ==========
+    async createP2pOffer(userId, type, currency, fiatAmount, crystalAmount, paymentMethod, bankDetails) {
         const user = await this.getUser(userId);
-        if (!user) return;
-        const today = new Date().toISOString().split('T')[0];
-        let combo = user.comboCount || 0;
-        if (user.lastComboDate === today) return;
-        if (user.lastComboDate && new Date(user.lastComboDate) >= new Date(Date.now() - 86400000)) combo++; else combo = 1;
-        await User.updateOne({ userId }, { comboCount: combo, lastComboDate: today });
-        if (combo % 7 === 0) await this.addCrystals(userId, 50 * (combo / 7), `مكافأة كومبو ${combo} يوم`);
-        return { combo };
+        if (!user) return { success: false, message: 'المستخدم غير موجود' };
+        
+        const pricePerCrystal = fiatAmount / crystalAmount;
+        const liquidity = await Liquidity.findOne();
+        
+        if (type === 'sell' && user.crystalBalance < crystalAmount) {
+            return { success: false, message: '❌ رصيد كريستال غير كافٍ' };
+        }
+        
+        const offer = await P2pLocalOffer.create({
+            userId, type, currency, fiatAmount, crystalAmount,
+            pricePerCrystal, paymentMethod, bankDetails
+        });
+        
+        return { success: true, offerId: offer._id, message: `✅ عرض ${type === 'sell' ? 'بيع' : 'شراء'}!\n💎 ${crystalAmount} CRYSTAL\n💰 ${fiatAmount} ${currency}\n📊 السعر: ${pricePerCrystal.toFixed(4)} ${currency}/CRYSTAL\n🏦 طريقة الدفع: ${paymentMethod}` };
     }
 
-    async completeDailyTask(userId) {
-        const user = await this.getUser(userId);
-        const today = new Date().toISOString().split('T')[0];
-        if (user.dailyTasks?.lastTaskDate === today) return { success: false, message: 'تم إكمال المهمة اليومية بالفعل' };
-        let streak = user.dailyTasks?.streak || 0;
-        if (user.dailyTasks?.lastTaskDate && new Date(user.dailyTasks.lastTaskDate) >= new Date(Date.now() - 86400000)) streak++; else streak = 1;
-        const reward = 20 + (streak * 5);
-        await this.addCrystals(userId, reward, `المهمة اليومية - سلسلة ${streak} أيام`);
-        await User.updateOne({ userId }, { $set: { 'dailyTasks.completed': true, 'dailyTasks.lastTaskDate': today, 'dailyTasks.streak': streak } });
-        await this.updateDailyStats('totalCombo');
-        return { success: true, reward, streak };
-    }
-
-    async completeTwitterTask(userId) {
-        const user = await this.getUser(userId);
-        if (user.twitterTaskCompleted) return { success: false, message: '⚠️ لقد أكملت هذه المهمة بالفعل!' };
-        await this.addCrystals(userId, 15, 'مكافأة متابعة تويتر');
-        await User.updateOne({ userId }, { twitterTaskCompleted: true });
-        await this.updateDailyStats('twitterTasks');
-        return { success: true, message: '✅ +15 CRYSTAL\n🐦 شكراً لمتابعتنا!', reward: 15 };
-    }
-
-    async upgradeVIP(userId) {
-        const user = await this.getUser(userId);
-        const expNeeded = (user.vipLevel + 1) * 1000;
-        if (user.totalMined < expNeeded) return { success: false, message: `تحتاج ${expNeeded - user.totalMined} كريستال إضافي` };
-        const newLevel = user.vipLevel + 1;
-        await User.updateOne({ userId }, { vipLevel: newLevel });
-        await this.addCrystals(userId, newLevel * 100, `مكافأة ترقية VIP المستوى ${newLevel}`);
-        return { success: true, newLevel };
-    }
-
-    async upgradeMiningRate(userId) {
-        const user = await this.getUser(userId);
-        const cost = 100 * user.miningLevel;
-        if (user.crystalBalance < cost) return { success: false, message: `❌ تحتاج ${cost} كريستال` };
-        const newRate = user.miningRate + 0.5;
-        await User.updateOne({ userId }, { $inc: { crystalBalance: -cost }, $set: { miningRate: newRate, miningLevel: user.miningLevel + 1 } });
-        await Transaction.create({ userId, type: 'upgrade', amount: cost, status: 'completed', description: `ترقية إلى المستوى ${user.miningLevel + 1}` });
-        return { success: true, message: `✅ تمت الترقية!\n⚡ معدل التعدين: ${newRate}x` };
-    }
-
-    async requestUpgrade(userId, usdtAmount) {
-        if (usdtAmount < 3) return { success: false, message: 'الحد الأدنى 3 USDT' };
-        const user = await this.getUser(userId);
-        const request = await UpgradeRequest.create({ userId, currentLevel: user.miningLevel, requestedLevel: user.miningLevel + Math.floor(usdtAmount / 3), usdtAmount });
-        return { success: true, request_id: request._id, message: `✅ طلب ترقية #${request._id.toString().slice(-6)}\n💰 ${usdtAmount} USDT\n📤 أرسل إلى:\n\`${process.env.TRON_ADDRESS || 'TCZ2NGDSvxznADHTvvkedJTcbbGbD5RhfR'}\`` };
-    }
-
-    async confirmUpgrade(requestId, transactionHash, adminId) {
-        const request = await UpgradeRequest.findOne({ _id: requestId, status: 'pending' });
-        if (!request) return { success: false, message: 'الطلب غير موجود' };
-        const newRate = request.currentLevel + (request.usdtAmount / 3) * 0.5;
-        await User.updateOne({ userId: request.userId }, { $set: { miningRate: newRate, miningLevel: request.requestedLevel } });
-        await UpgradeRequest.updateOne({ _id: requestId }, { status: 'approved', transactionHash });
-        await Liquidity.updateOne({}, { $inc: { totalUpgrades: 1 } });
-        await this.updateDailyStats('totalUpgrades');
-        return { success: true, message: `✅ تمت الترقية!\n⚡ معدل التعدين الجديد: ${newRate}x`, user_id: request.userId };
-    }
-
-    async requestPurchase(userId, crystalAmount) {
-        const usdtAmount = crystalAmount * 0.01;
-        if (usdtAmount < 10) return { success: false, message: 'الحد الأدنى 10 USDT' };
-        const liquidity = await this.getLiquidity();
-        if (crystalAmount > (liquidity.totalLiquidity - liquidity.totalSold)) return { success: false, message: 'السيولة غير كافية' };
-        const request = await PurchaseRequest.create({ userId, crystalAmount, usdtAmount, paymentAddress: process.env.TRON_ADDRESS || 'TCZ2NGDSvxznADHTvvkedJTcbbGbD5RhfR' });
-        return { success: true, request_id: request._id, crystal_amount: crystalAmount, usdt_amount: usdtAmount, message: `✅ طلب شراء #${request._id.toString().slice(-6)}\n💎 ${crystalAmount} CRYSTAL\n💰 ${usdtAmount} USDT\n📤 أرسل إلى: ${request.paymentAddress}` };
-    }
-
-    async confirmPurchase(requestId, transactionHash, adminId) {
-        const request = await PurchaseRequest.findOne({ _id: requestId, status: 'pending' });
-        if (!request) return { success: false, message: 'الطلب غير موجود' };
-        await User.updateOne({ userId: request.userId }, { $inc: { crystalBalance: request.crystalAmount } });
-        await PurchaseRequest.updateOne({ _id: requestId }, { status: 'completed', transactionHash });
-        await Liquidity.updateOne({}, { $inc: { totalSold: request.crystalAmount } });
-        await this.updateDailyStats('totalPurchases');
-        return { success: true, message: `✅ تمت إضافة ${request.crystalAmount} كريستال` };
-    }
-
-    async createP2pOffer(userId, type, crystalAmount, usdtAmount) {
-        if (usdtAmount < 5) return { success: false, message: 'الحد الأدنى 5 USDT' };
-        const user = await this.getUser(userId);
-        if (type === 'sell' && user.crystalBalance < crystalAmount) return { success: false, message: '❌ رصيدك غير كافي' };
-        const offer = await P2pOffer.create({ userId, type, crystalAmount, usdtAmount, pricePerCrystal: usdtAmount / crystalAmount });
-        return { success: true, offerId: offer._id, message: `✅ عرض ${type === 'sell' ? 'بيع' : 'شراء'}!\n💎 ${crystalAmount} CRYSTAL\n💰 ${usdtAmount} USDT` };
+    async getP2pOffers(type = null, currency = null) {
+        const query = { status: 'active' };
+        if (type) query.type = type;
+        if (currency) query.currency = currency;
+        
+        const offers = await P2pLocalOffer.find(query)
+            .sort({ pricePerCrystal: type === 'sell' ? 1 : -1 })
+            .limit(50)
+            .lean();
+        
+        const users = await User.find({ userId: { $in: offers.map(o => o.userId) } });
+        const userMap = {};
+        users.forEach(u => { userMap[u.userId] = u; });
+        
+        return offers.map(offer => ({
+            ...offer,
+            username: userMap[offer.userId]?.username,
+            firstName: userMap[offer.userId]?.firstName
+        }));
     }
 
     async startP2pTrade(offerId, buyerId) {
-        const offer = await P2pOffer.findOne({ _id: offerId, status: 'active' });
+        const offer = await P2pLocalOffer.findOne({ _id: offerId, status: 'active' });
         if (!offer) return { success: false, message: 'العرض غير موجود' };
-        await P2pOffer.updateOne({ _id: offerId }, { status: 'pending', counterpartyId: buyerId });
-        return { success: true, offerId: offer._id, crystalAmount: offer.crystalAmount, usdtAmount: offer.usdtAmount, sellerId: offer.userId, message: `🔄 بدء صفقة\n💎 ${offer.crystalAmount} CRYSTAL\n💰 ${offer.usdtAmount} USDT\n📤 أرسل إلى: ${process.env.TRON_ADDRESS}` };
+        
+        const buyer = await this.getUser(buyerId);
+        const seller = await this.getUser(offer.userId);
+        
+        if (!buyer || !seller) return { success: false, message: 'مستخدم غير موجود' };
+        
+        if (offer.type === 'sell') {
+            if (seller.crystalBalance < offer.crystalAmount) {
+                await P2pLocalOffer.updateOne({ _id: offerId }, { status: 'cancelled' });
+                return { success: false, message: 'البائع ليس لديه الكمية الكافية' };
+            }
+        }
+        
+        await P2pLocalOffer.updateOne({ _id: offerId }, { status: 'pending', counterpartyId: buyerId });
+        
+        return {
+            success: true,
+            offerId: offer._id,
+            crystalAmount: offer.crystalAmount,
+            fiatAmount: offer.fiatAmount,
+            currency: offer.currency,
+            sellerId: offer.userId,
+            sellerDetails: offer.bankDetails,
+            paymentMethod: offer.paymentMethod,
+            message: `🔄 بدء صفقة P2P\n💎 ${offer.crystalAmount} CRYSTAL\n💰 ${offer.fiatAmount} ${offer.currency}\n🏦 طريقة الدفع: ${offer.paymentMethod}\n📝 تفاصيل البائع: ${offer.bankDetails}\n\n✅ بعد التحويل، أرسل /send_p2p_proof ${offer._id} [رابط الصورة]`
+        };
     }
 
-    async sendPaymentProof(offerId, userId, proofImage) {
-        const offer = await P2pOffer.findOne({ _id: offerId, status: 'pending', counterpartyId: userId });
+    async confirmP2pTrade(offerId, buyerId, proofImage) {
+        const offer = await P2pLocalOffer.findOne({ _id: offerId, status: 'pending', counterpartyId: buyerId });
         if (!offer) return { success: false, message: 'الطلب غير موجود' };
-        await P2pOffer.updateOne({ _id: offerId }, { paymentProof: proofImage, status: 'waiting_release' });
-        return { success: true, sellerId: offer.userId, message: '✅ تم استلام إثبات الدفع! بانتظار تأكيد البائع' };
-    }
-
-    async releaseCrystals(offerId, sellerId) {
-        const offer = await P2pOffer.findOne({ _id: offerId, status: 'waiting_release', userId: sellerId });
-        if (!offer) return { success: false, message: 'الطلب غير موجود' };
-        const seller = await this.getUser(sellerId);
-        const buyer = await this.getUser(offer.counterpartyId);
-        if (seller.crystalBalance < offer.crystalAmount) return { success: false, message: '⚠️ رصيد البائع غير كاف' };
-        await User.updateOne({ userId: seller.userId }, { $inc: { crystalBalance: -offer.crystalAmount } });
-        await User.updateOne({ userId: buyer.userId }, { $inc: { crystalBalance: offer.crystalAmount } });
-        await P2pOffer.updateOne({ _id: offerId }, { status: 'completed', completedAt: new Date() });
+        
+        const buyer = await this.getUser(buyerId);
+        const seller = await this.getUser(offer.userId);
+        
+        if (offer.type === 'sell') {
+            // تحويل الكريستال من البائع للمشتري
+            await User.updateOne({ userId: seller.userId }, { $inc: { crystalBalance: -offer.crystalAmount } });
+            await User.updateOne({ userId: buyer.userId }, { $inc: { crystalBalance: offer.crystalAmount } });
+            
+            await Transaction.create({
+                userId: seller.userId, type: 'p2p_sale', amount: offer.crystalAmount,
+                description: `بيع ${offer.crystalAmount} CRYSTAL مقابل ${offer.fiatAmount} ${offer.currency}`
+            });
+            await Transaction.create({
+                userId: buyer.userId, type: 'p2p_buy', amount: offer.crystalAmount,
+                description: `شراء ${offer.crystalAmount} CRYSTAL مقابل ${offer.fiatAmount} ${offer.currency}`
+            });
+        }
+        
+        await P2pLocalOffer.updateOne({ _id: offerId }, { status: 'completed', completedAt: new Date() });
         await this.updateDailyStats('p2pTrades');
-        return { success: true, message: `✅ تم تحرير العملة!\n💎 +${offer.crystalAmount} CRYSTAL`, buyerId: buyer.userId };
+        
+        return { success: true, message: `✅ تمت الصفقة بنجاح!\n💎 +${offer.crystalAmount} CRYSTAL\n💰 ${offer.fiatAmount} ${offer.currency}` };
     }
 
-    async getP2pOffers(type = null) {
-        const query = { status: 'active' };
-        if (type) query.type = type;
-        return await P2pOffer.find(query).sort({ pricePerCrystal: type === 'sell' ? 1 : -1 }).limit(50).lean();
+    // ========== إيداع وسحب ==========
+    async requestDeposit(userId, amount, currency, network) {
+        const user = await this.getUser(userId);
+        const wallet = await this.getUserWallet(userId);
+        
+        let address;
+        switch(network) {
+            case 'bnb': address = wallet.bnbAddress; break;
+            case 'polygon': address = wallet.polygonAddress; break;
+            case 'solana': address = wallet.solanaAddress; break;
+            case 'aptos': address = wallet.aptosAddress; break;
+            default: return { success: false, message: 'شبكة غير مدعومة' };
+        }
+        
+        return {
+            success: true,
+            address,
+            network,
+            message: `📤 *إيداع ${currency}* 📤\n\n🌐 *الشبكة:* ${network.toUpperCase()}\n📤 *العنوان:*\n\`${address}\`\n\n⚠️ *ملاحظة:* أرسل فقط ${currency} على شبكة ${network.toUpperCase()}\n📎 بعد الإرسال، أرسل /confirm_deposit [رابط المعاملة]`
+        };
     }
 
+    async requestWithdraw(userId, amount, currency, network, address) {
+        const user = await this.getUser(userId);
+        const wallet = await this.getUserWallet(userId);
+        
+        let balance;
+        switch(network) {
+            case 'bnb': balance = wallet.bnbBalance; break;
+            case 'polygon': balance = wallet.polygonBalance; break;
+            case 'solana': balance = wallet.solanaBalance; break;
+            case 'aptos': balance = wallet.aptosBalance; break;
+            default: return { success: false, message: 'شبكة غير مدعومة' };
+        }
+        
+        const fee = amount * 0.02; // 2% عمولة سحب
+        const totalAmount = amount + fee;
+        
+        if (balance < totalAmount) {
+            return { success: false, message: `❌ رصيد غير كافٍ! الرصيد: ${balance} ${currency}` };
+        }
+        
+        const request = await WithdrawRequest.create({
+            userId, amount, currency, network, address, fee
+        });
+        
+        await Transaction.create({
+            userId, type: 'withdraw', amount, usdtAmount: fee,
+            description: `طلب سحب ${amount} ${currency} إلى ${address}`
+        });
+        
+        return {
+            success: true,
+            requestId: request._id,
+            message: `✅ تم إنشاء طلب سحب #${request._id.toString().slice(-6)}\n💰 ${amount} ${currency}\n💸 العمولة: ${fee.toFixed(4)} ${currency}\n📤 إلى: ${address}\n\n⏳ سيتم مراجعة الطلب من قبل الأدمن`
+        };
+    }
+
+    async confirmWithdraw(requestId, transactionHash, adminId) {
+        const request = await WithdrawRequest.findOne({ _id: requestId, status: 'pending' });
+        if (!request) return { success: false, message: 'الطلب غير موجود' };
+        
+        await WithdrawRequest.updateOne({ _id: requestId }, {
+            status: 'completed', transactionHash, approvedBy: adminId
+        });
+        
+        // خصم الرصيد من المحفظة
+        // سيتم تنفيذ التحويل الفعلي هنا
+        
+        return { success: true, message: `✅ تمت الموافقة على السحب #${requestId}` };
+    }
+
+    // ========== إحصائيات ==========
     async getLeaderboard(limit = 15) {
-        return await User.find({}).sort({ crystalBalance: -1 }).limit(limit).select('userId username firstName crystalBalance miningLevel vipLevel').lean();
+        return await User.find({}).sort({ crystalBalance: -1 }).limit(limit).select('userId username firstName crystalBalance usdBalance').lean();
     }
 
     async getUserStats(userId) {
         const user = await this.getUser(userId);
         if (!user) return null;
-        const today = new Date().toISOString().split('T')[0];
-        const dailyMined = user.lastMiningDate === today ? (user.dailyMined || 0) : 0;
         const wallet = await this.getUserWallet(userId);
-        return { ...user.toObject(), dailyMined, dailyRemaining: 70 - dailyMined, usdtValue: user.crystalBalance * 0.01, miningProgress: Math.floor((dailyMined / 70) * 100), walletAddresses: { bnb: wallet.bnbAddress, polygon: wallet.polygonAddress, solana: wallet.solanaAddress, aptos: wallet.aptosAddress } };
+        const liquidity = await Liquidity.findOne();
+        const crystalValue = user.crystalBalance * liquidity.crystalPrice;
+        
+        return {
+            ...user.toObject(),
+            usdtValue: user.usdBalance + crystalValue,
+            crystalValue,
+            crystalPrice: liquidity.crystalPrice,
+            walletAddresses: {
+                bnb: wallet.bnbAddress,
+                polygon: wallet.polygonAddress,
+                solana: wallet.solanaAddress,
+                aptos: wallet.aptosAddress
+            }
+        };
     }
 
     async getLiquidity() {
         let l = await Liquidity.findOne();
-        if (!l) l = await Liquidity.create({ totalLiquidity: 1000000, totalSold: 0, commissionAddress: this.commissionAddress });
+        if (!l) l = await Liquidity.create({ totalCrystalSupply: 30000000, circulatingCrystal: 0, totalUsdLiquidity: 300000, crystalPrice: 0.01 });
         return l;
     }
 
     async getGlobalStats() {
-        const stats = await User.aggregate([{ $group: { _id: null, totalUsers: { $sum: 1 }, totalCrystals: { $sum: '$crystalBalance' }, totalMined: { $sum: '$totalMined' }, avgLevel: { $avg: '$miningLevel' }, avgVip: { $avg: '$vipLevel' } } }]);
-        const l = await this.getLiquidity();
-        return { users: stats[0]?.totalUsers || 0, totalCrystals: stats[0]?.totalCrystals?.toFixed(2) || 0, totalMined: stats[0]?.totalMined?.toFixed(2) || 0, avgLevel: stats[0]?.avgLevel?.toFixed(2) || 1, avgVip: stats[0]?.avgVip?.toFixed(2) || 0, liquidity: l.totalLiquidity, sold: l.totalSold, available: l.totalLiquidity - l.totalSold, totalCommission: l.totalCommission || 0 };
+        const stats = await User.aggregate([
+            { $group: { _id: null, totalUsers: { $sum: 1 }, totalCrystals: { $sum: '$crystalBalance' }, totalUsd: { $sum: '$usdBalance' }, totalTraded: { $sum: '$totalTraded' } } }
+        ]);
+        const liquidity = await this.getLiquidity();
+        return {
+            users: stats[0]?.totalUsers || 0,
+            totalCrystals: stats[0]?.totalCrystals?.toFixed(2) || 0,
+            totalUsd: stats[0]?.totalUsd?.toFixed(2) || 0,
+            totalTraded: stats[0]?.totalTraded?.toFixed(2) || 0,
+            circulatingCrystal: liquidity.circulatingCrystal,
+            totalSupply: liquidity.totalCrystalSupply,
+            crystalPrice: liquidity.crystalPrice
+        };
     }
 
     async getTodayStats() { return await DailyStats.findOne({ date: new Date().toISOString().split('T')[0] }); }
@@ -521,27 +534,46 @@ class Database {
         if (!s) s = await DailyStats.create({ date: today });
         const u = {};
         if (type === 'totalUsers') u.totalUsers = (s.totalUsers || 0) + 1;
-        if (type === 'totalMined') u.totalMined = (s.totalMined || 0) + value;
-        if (type === 'totalPurchases') u.totalPurchases = (s.totalPurchases || 0) + 1;
-        if (type === 'totalUpgrades') u.totalUpgrades = (s.totalUpgrades || 0) + 1;
-        if (type === 'p2pTrades') u.p2pTrades = (s.p2pTrades || 0) + 1;
-        if (type === 'totalReferrals') u.totalReferrals = (s.totalReferrals || 0) + 1;
-        if (type === 'twitterTasks') u.twitterTasks = (s.twitterTasks || 0) + 1;
-        if (type === 'totalCombo') u.totalCombo = (s.totalCombo || 0) + 1;
-        if (type === 'totalBets') u.totalBets = (s.totalBets || 0) + 1;
+        if (type === 'totalTrades') u.totalTrades = (s.totalTrades || 0) + value;
+        if (type === 'totalVolume') u.totalVolume = (s.totalVolume || 0) + value;
+        if (type === 'totalDeposits') u.totalDeposits = (s.totalDeposits || 0) + value;
+        if (type === 'totalWithdraws') u.totalWithdraws = (s.totalWithdraws || 0) + value;
         if (type === 'totalCommission') u.totalCommission = (s.totalCommission || 0) + value;
+        if (type === 'p2pTrades') u.p2pTrades = (s.p2pTrades || 0) + value;
+        if (type === 'totalReferrals') u.totalReferrals = (s.totalReferrals || 0) + value;
         await DailyStats.updateOne({ date: today }, { $inc: u });
     }
     
-    async getPendingUpgrades() { return await UpgradeRequest.find({ status: 'pending' }).sort({ createdAt: -1 }).lean(); }
-    async getPendingPurchases() { return await PurchaseRequest.find({ status: 'pending' }).sort({ createdAt: -1 }).lean(); }
+    async getPendingWithdraws() { return await WithdrawRequest.find({ status: 'pending' }).sort({ createdAt: -1 }).lean(); }
+    async getPendingP2p() { return await P2pLocalOffer.find({ status: 'pending' }).sort({ createdAt: -1 }).lean(); }
     
     async searchUsers(query) {
         const regex = new RegExp(query, 'i');
-        return await User.find({ $or: [{ username: regex }, { firstName: regex }, { userId: !isNaN(query) ? parseInt(query) : -1 }] }).limit(20).select('userId username firstName crystalBalance miningLevel');
+        return await User.find({ $or: [{ username: regex }, { firstName: regex }, { userId: !isNaN(query) ? parseInt(query) : -1 }] }).limit(20).select('userId username firstName crystalBalance usdBalance');
     }
     
     async setLanguage(userId, language) { await User.updateOne({ userId }, { language }); return true; }
+    
+    // ========== المهام اليومية ==========
+    async completeDailyTask(userId) {
+        const user = await this.getUser(userId);
+        const today = new Date().toISOString().split('T')[0];
+        if (user.dailyTasks?.lastTaskDate === today) return { success: false, message: 'تم إكمال المهمة اليومية بالفعل' };
+        let streak = user.dailyTasks?.streak || 0;
+        if (user.dailyTasks?.lastTaskDate && new Date(user.dailyTasks.lastTaskDate) >= new Date(Date.now() - 86400000)) streak++; else streak = 1;
+        const reward = 5 + (streak * 1); // 5-15 USD
+        await this.addUsdBalance(userId, reward, `المهمة اليومية - سلسلة ${streak} أيام`);
+        await User.updateOne({ userId }, { $set: { 'dailyTasks.completed': true, 'dailyTasks.lastTaskDate': today, 'dailyTasks.streak': streak } });
+        return { success: true, reward, streak };
+    }
+
+    async completeTwitterTask(userId) {
+        const user = await this.getUser(userId);
+        if (user.twitterTaskCompleted) return { success: false, message: '⚠️ لقد أكملت هذه المهمة بالفعل!' };
+        await this.addUsdBalance(userId, 15, 'مكافأة متابعة تويتر');
+        await User.updateOne({ userId }, { twitterTaskCompleted: true });
+        return { success: true, message: '✅ +15 USD\n🐦 شكراً لمتابعتنا!', reward: 15 };
+    }
 }
 
 module.exports = new Database();
