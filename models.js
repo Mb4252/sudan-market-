@@ -30,6 +30,8 @@ const userSchema = new mongoose.Schema({
         lastTaskDate: { type: String, default: null },
         streak: { type: Number, default: 0 }
     },
+    // مهمة تويتر (مرة واحدة فقط)
+    twitterTaskCompleted: { type: Boolean, default: false },
     // نظام الكومبو
     comboCount: { type: Number, default: 0 },
     lastComboDate: { type: String, default: null },
@@ -41,7 +43,7 @@ const userSchema = new mongoose.Schema({
 // نموذج المعاملات
 const transactionSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
-    type: { type: String, enum: ['mining', 'purchase', 'upgrade', 'reward', 'p2p_sale', 'p2p_buy', 'daily_task'], required: true },
+    type: { type: String, enum: ['mining', 'purchase', 'upgrade', 'reward', 'p2p_sale', 'p2p_buy', 'daily_task', 'twitter_task'], required: true },
     amount: { type: Number, default: 0 },
     usdtAmount: { type: Number, default: 0 },
     status: { type: String, enum: ['pending', 'completed', 'failed', 'disputed'], default: 'pending' },
@@ -49,7 +51,7 @@ const transactionSchema = new mongoose.Schema({
     signature: { type: String, default: '' },
     counterpartyId: { type: Number, default: null },
     description: { type: String, default: '' },
-    proofImage: { type: String, default: '' }, // صورة إثبات الدفع
+    proofImage: { type: String, default: '' },
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -88,11 +90,11 @@ const p2pOfferSchema = new mongoose.Schema({
     crystalAmount: { type: Number, required: true },
     usdtAmount: { type: Number, required: true },
     pricePerCrystal: { type: Number, required: true },
-    minAmount: { type: Number, default: 5 }, // أقل مبلغ 5 دولار
+    minAmount: { type: Number, default: 5 },
     status: { type: String, enum: ['active', 'pending', 'completed', 'cancelled', 'disputed'], default: 'active' },
     counterpartyId: { type: Number, default: null },
-    paymentProof: { type: String, default: '' }, // صورة إثبات الدفع
-    releaseSignature: { type: String, default: '' }, // توقيع تحرير العملة
+    paymentProof: { type: String, default: '' },
+    releaseSignature: { type: String, default: '' },
     signature: { type: String, default: '' },
     createdAt: { type: Date, default: Date.now },
     completedAt: { type: Date, default: null }
@@ -116,7 +118,8 @@ const dailyStatsSchema = new mongoose.Schema({
     totalUpgrades: { type: Number, default: 0 },
     p2pTrades: { type: Number, default: 0 },
     totalReferrals: { type: Number, default: 0 },
-    totalCombo: { type: Number, default: 0 }
+    totalCombo: { type: Number, default: 0 },
+    twitterTasks: { type: Number, default: 0 }
 });
 
 // نموذج سجل الإحالات اليومية
