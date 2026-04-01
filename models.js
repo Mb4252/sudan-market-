@@ -52,7 +52,7 @@ const userSchema = new mongoose.Schema({
 // نموذج المعاملات
 const transactionSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
-    type: { type: String, enum: ['mining', 'purchase', 'upgrade', 'reward', 'p2p_sale', 'p2p_buy', 'daily_task', 'twitter_task', 'withdraw'], required: true },
+    type: { type: String, enum: ['mining', 'purchase', 'upgrade', 'reward', 'p2p_sale', 'p2p_buy', 'daily_task', 'twitter_task', 'withdraw', 'trade_bet', 'trade_win', 'trade_loss', 'commission', 'deposit_fee', 'withdraw_fee'], required: true },
     amount: { type: Number, default: 0 },
     usdtAmount: { type: Number, default: 0 },
     status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'completed' },
@@ -96,11 +96,44 @@ const p2pOfferSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
+// نموذج رهانات التداول
+const tradeBetSchema = new mongoose.Schema({
+    userId: { type: Number, required: true, index: true },
+    type: { type: String, enum: ['up', 'down'], required: true },
+    currency: { type: String, enum: ['BTC', 'ETH'], required: true },
+    amount: { type: Number, required: true },
+    usdtAmount: { type: Number, required: true },
+    fee: { type: Number, required: true },
+    startPrice: { type: Number, required: true },
+    endPrice: { type: Number, default: null },
+    status: { type: String, enum: ['active', 'won', 'lost', 'cancelled'], default: 'active' },
+    duration: { type: Number, required: true },
+    endTime: { type: Date, required: true },
+    result: { type: String, default: null },
+    profit: { type: Number, default: 0 },
+    createdAt: { type: Date, default: Date.now },
+    completedAt: { type: Date, default: null }
+});
+
+// نموذج أسعار العملات (للتخزين المؤقت)
+const priceLogSchema = new mongoose.Schema({
+    currency: { type: String, enum: ['BTC', 'ETH'], required: true },
+    price: { type: Number, required: true },
+    open: { type: Number, required: true },
+    high: { type: Number, required: true },
+    low: { type: Number, required: true },
+    volume: { type: Number, default: 0 },
+    timestamp: { type: Date, default: Date.now },
+    interval: { type: String, enum: ['1m', '5m', '15m', '1h'], default: '1m' }
+});
+
 // نموذج السيولة
 const liquiditySchema = new mongoose.Schema({
     totalLiquidity: { type: Number, default: 1000000 },
     totalSold: { type: Number, default: 0 },
     totalUpgrades: { type: Number, default: 0 },
+    totalCommission: { type: Number, default: 0 },
+    commissionAddress: { type: String, default: '0x2a2548117C7113eB807298D74A44d451E330AC95' },
     lastUpdated: { type: Date, default: Date.now }
 });
 
@@ -113,7 +146,9 @@ const dailyStatsSchema = new mongoose.Schema({
     totalUpgrades: { type: Number, default: 0 },
     p2pTrades: { type: Number, default: 0 },
     totalReferrals: { type: Number, default: 0 },
-    twitterTasks: { type: Number, default: 0 }
+    twitterTasks: { type: Number, default: 0 },
+    totalBets: { type: Number, default: 0 },
+    totalCommission: { type: Number, default: 0 }
 });
 
 // نموذج سجل الإحالات
@@ -131,8 +166,10 @@ const Transaction = mongoose.model('Transaction', transactionSchema);
 const UpgradeRequest = mongoose.model('UpgradeRequest', upgradeRequestSchema);
 const PurchaseRequest = mongoose.model('PurchaseRequest', purchaseRequestSchema);
 const P2pOffer = mongoose.model('P2pOffer', p2pOfferSchema);
+const TradeBet = mongoose.model('TradeBet', tradeBetSchema);
+const PriceLog = mongoose.model('PriceLog', priceLogSchema);
 const Liquidity = mongoose.model('Liquidity', liquiditySchema);
 const DailyStats = mongoose.model('DailyStats', dailyStatsSchema);
 const DailyReferralLog = mongoose.model('DailyReferralLog', dailyReferralLogSchema);
 
-module.exports = { User, Wallet, Transaction, UpgradeRequest, PurchaseRequest, P2pOffer, Liquidity, DailyStats, DailyReferralLog };
+module.exports = { User, Wallet, Transaction, UpgradeRequest, PurchaseRequest, P2pOffer, TradeBet, PriceLog, Liquidity, DailyStats, DailyReferralLog };
