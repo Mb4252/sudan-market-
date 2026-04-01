@@ -12,29 +12,44 @@ const userSchema = new mongoose.Schema({
     totalMined: { type: Number, default: 0 },
     dailyMined: { type: Number, default: 0 },
     dailyLimit: { type: Number, default: 70 },
-    miningSignature: { type: String, unique: true, sparse: true }, // بصمة تعدين فريدة
+    miningSignature: { type: String, unique: true, sparse: true },
     lastMiningTime: { type: Date, default: null },
     miningStartTime: { type: Date, default: null },
-    miningProgress: { type: Number, default: 0 }, // نسبة التقدم في التعدين
+    miningProgress: { type: Number, default: 0 },
     referrerId: { type: Number, default: null },
     referralCount: { type: Number, default: 0 },
-    dailyReferrals: { type: Number, default: 0 }, // عدد الإحالات اليومية
+    dailyReferrals: { type: Number, default: 0 },
     lastReferralDate: { type: String, default: null },
-    referralSignature: { type: String, unique: true, sparse: true }, // بصمة إحالة فريدة
+    referralSignature: { type: String, unique: true, sparse: true },
+    // نظام المستويات
+    vipLevel: { type: Number, default: 0 },
+    vipExp: { type: Number, default: 0 },
+    // المهام اليومية
+    dailyTasks: {
+        completed: { type: Boolean, default: false },
+        lastTaskDate: { type: String, default: null },
+        streak: { type: Number, default: 0 }
+    },
+    // نظام الكومبو
+    comboCount: { type: Number, default: 0 },
+    lastComboDate: { type: String, default: null },
+    // الإشعارات
+    notifications: { type: Boolean, default: true },
     createdAt: { type: Date, default: Date.now }
 });
 
 // نموذج المعاملات
 const transactionSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
-    type: { type: String, enum: ['mining', 'purchase', 'upgrade', 'reward', 'p2p_sale', 'p2p_buy'], required: true },
+    type: { type: String, enum: ['mining', 'purchase', 'upgrade', 'reward', 'p2p_sale', 'p2p_buy', 'daily_task'], required: true },
     amount: { type: Number, default: 0 },
     usdtAmount: { type: Number, default: 0 },
-    status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending' },
+    status: { type: String, enum: ['pending', 'completed', 'failed', 'disputed'], default: 'pending' },
     transactionHash: { type: String, default: '' },
-    signature: { type: String, default: '' }, // توقيع المعاملة
+    signature: { type: String, default: '' },
     counterpartyId: { type: Number, default: null },
     description: { type: String, default: '' },
+    proofImage: { type: String, default: '' }, // صورة إثبات الدفع
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -47,6 +62,7 @@ const upgradeRequestSchema = new mongoose.Schema({
     status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
     transactionHash: { type: String, default: '' },
     signature: { type: String, default: '' },
+    proofImage: { type: String, default: '' },
     approvedBy: { type: Number, default: null },
     createdAt: { type: Date, default: Date.now }
 });
@@ -60,6 +76,7 @@ const purchaseRequestSchema = new mongoose.Schema({
     transactionHash: { type: String, default: '' },
     paymentAddress: { type: String, default: '' },
     signature: { type: String, default: '' },
+    proofImage: { type: String, default: '' },
     approvedBy: { type: Number, default: null },
     createdAt: { type: Date, default: Date.now }
 });
@@ -71,10 +88,14 @@ const p2pOfferSchema = new mongoose.Schema({
     crystalAmount: { type: Number, required: true },
     usdtAmount: { type: Number, required: true },
     pricePerCrystal: { type: Number, required: true },
-    status: { type: String, enum: ['active', 'completed', 'cancelled'], default: 'active' },
-    signature: { type: String, default: '' },
+    minAmount: { type: Number, default: 5 }, // أقل مبلغ 5 دولار
+    status: { type: String, enum: ['active', 'pending', 'completed', 'cancelled', 'disputed'], default: 'active' },
     counterpartyId: { type: Number, default: null },
-    createdAt: { type: Date, default: Date.now }
+    paymentProof: { type: String, default: '' }, // صورة إثبات الدفع
+    releaseSignature: { type: String, default: '' }, // توقيع تحرير العملة
+    signature: { type: String, default: '' },
+    createdAt: { type: Date, default: Date.now },
+    completedAt: { type: Date, default: null }
 });
 
 // نموذج السيولة
@@ -94,7 +115,8 @@ const dailyStatsSchema = new mongoose.Schema({
     totalPurchases: { type: Number, default: 0 },
     totalUpgrades: { type: Number, default: 0 },
     p2pTrades: { type: Number, default: 0 },
-    totalReferrals: { type: Number, default: 0 }
+    totalReferrals: { type: Number, default: 0 },
+    totalCombo: { type: Number, default: 0 }
 });
 
 // نموذج سجل الإحالات اليومية
