@@ -3,84 +3,443 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>CRYSTAL - منصة التداول</title>
+    <title>P2P Exchange - منصة التداول</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); min-height: 100vh; padding: 20px; }
-        .container { max-width: 600px; margin: 0 auto; }
-        .card { background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 20px; padding: 20px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.2); }
-        .balance-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-align: center; }
-        .balance-amount { font-size: 48px; font-weight: bold; margin: 10px 0; }
-        .price-info { font-size: 14px; opacity: 0.9; margin-top: 5px; }
-        .tab-buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-        .tab-button { flex: 1; padding: 12px; background: rgba(255,255,255,0.1); border: none; border-radius: 10px; color: white; font-size: 14px; cursor: pointer; transition: all 0.3s; }
-        .tab-button.active { background: #667eea; color: white; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .trade-input { width: 100%; padding: 12px; border: none; border-radius: 10px; margin: 10px 0; background: rgba(255,255,255,0.9); }
-        .trade-btn { background: #4CAF50; color: white; border: none; padding: 12px; border-radius: 10px; width: 100%; font-size: 16px; cursor: pointer; margin-top: 10px; }
-        .sell-btn { background: #f44336; }
-        .price-row { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-        .leader-item { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); color: white; }
-        .lang-btn { background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; margin: 0 5px; }
-        .copy-btn { background: #2196F3; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; margin-top: 10px; }
-        .address-box { background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; font-family: monospace; font-size: 12px; word-break: break-all; margin: 5px 0; color: #fff; }
-        .loading { text-align: center; padding: 20px; color: #aaa; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .balance-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-align: center;
+        }
+
+        .balance-amount {
+            font-size: 48px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .price-info {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .tab-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .tab-button.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .offer-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-right: 3px solid;
+        }
+
+        .offer-sell {
+            border-right-color: #4CAF50;
+        }
+
+        .offer-buy {
+            border-right-color: #f44336;
+        }
+
+        .offer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .offer-user {
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .offer-rating {
+            font-size: 12px;
+            color: #ffc107;
+        }
+
+        .offer-amount {
+            font-size: 18px;
+            font-weight: bold;
+            margin: 8px 0;
+        }
+
+        .offer-details {
+            font-size: 12px;
+            color: #aaa;
+            margin: 5px 0;
+        }
+
+        .offer-price {
+            font-size: 14px;
+            color: #4caf50;
+        }
+
+        .verified-badge {
+            background: #4caf50;
+            color: white;
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-size: 10px;
+        }
+
+        .merchant-badge {
+            background: #ff9800;
+            color: white;
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-size: 10px;
+        }
+
+        .trade-input, .offer-input, .bank-input {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            margin: 10px 0;
+            background: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+        }
+
+        .trade-btn, .offer-btn, .action-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 10px;
+            width: 100%;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: all 0.3s;
+        }
+
+        .sell-btn {
+            background: #f44336;
+        }
+
+        .cancel-btn {
+            background: #666;
+        }
+
+        .dispute-btn {
+            background: #ff9800;
+        }
+
+        .copy-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 10px;
+            margin-right: 5px;
+        }
+
+        .address-box {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            word-break: break-all;
+            margin: 5px 0;
+            color: #fff;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #aaa;
+        }
+
+        .bank-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin: 10px 0;
+        }
+
+        .bank-item {
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            margin: 5px 0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .bank-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .currency-select, .method-select {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            margin: 10px 0;
+            background: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4caf50;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+
+        .leader-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .leader-rank {
+            font-weight: bold;
+            width: 40px;
+        }
+
+        .leader-name {
+            flex: 1;
+        }
+
+        .leader-trades {
+            color: #4caf50;
+        }
+
+        .leader-rating {
+            color: #ffc107;
+            width: 60px;
+            text-align: right;
+        }
+
+        .language-selector {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+
+        .lang-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+
+        .lang-btn.active {
+            background: #667eea;
+        }
+
+        @media (max-width: 480px) {
+            .tab-button { font-size: 12px; padding: 8px; }
+            .stat-value { font-size: 18px; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="card balance-card">
-            <h2>💎 CRYSTAL</h2>
-            <div class="balance-amount" id="crystalBalance">0</div>
-            <div class="price-info">💰 <span id="usdBalance">0</span> USD | 📊 <span id="crystalPrice">0</span> USD</div>
+            <h2>💰 P2P Exchange</h2>
+            <div class="balance-amount" id="usdBalance">0</div>
+            <div class="price-info">⭐ التقييم: <span id="userRating">5.0</span>/5 | ✅ <span id="completedTrades">0</span> صفقة</div>
         </div>
 
-        <div style="text-align: center; margin-bottom: 15px;">
-            <button class="lang-btn" onclick="setLanguage('ar')">🇸🇦 العربية</button>
+        <div class="language-selector">
+            <button class="lang-btn active" onclick="setLanguage('ar')">🇸🇦 العربية</button>
             <button class="lang-btn" onclick="setLanguage('en')">🇬🇧 English</button>
         </div>
 
         <div class="tab-buttons">
-            <button class="tab-button active" onclick="switchTab('trade')">📈 تداول</button>
-            <button class="tab-button" onclick="switchTab('p2p')">📊 P2P</button>
+            <button class="tab-button active" onclick="switchTab('market')">📊 السوق</button>
+            <button class="tab-button" onclick="switchTab('create')">➕ إنشاء عرض</button>
+            <button class="tab-button" onclick="switchTab('my')">📋 عروضي</button>
+            <button class="tab-button" onclick="switchTab('trades')">🔄 صفقاتي</button>
             <button class="tab-button" onclick="switchTab('wallet')">💼 محفظتي</button>
-            <button class="tab-button" onclick="switchTab('leaderboard')">🏆 متصدرين</button>
-            <button class="tab-button" onclick="switchTab('prices')">📊 الأسعار</button>
+            <button class="tab-button" onclick="switchTab('leaderboard')">🏆 المتصدرين</button>
+            <button class="tab-button" onclick="switchTab('bank')">🏦 بياناتي</button>
         </div>
 
-        <!-- تداول -->
-        <div id="trade-tab" class="tab-content active">
+        <!-- سوق التداول -->
+        <div id="market-tab" class="tab-content active">
             <div class="card">
-                <h3 style="color:white">📈 شراء / بيع CRYSTAL</h3>
-                <input type="number" id="tradeAmount" placeholder="المبلغ بالدولار" class="trade-input">
-                <button class="trade-btn" onclick="buyCrystal()">🟢 شراء CRYSTAL</button>
-                <button class="trade-btn sell-btn" onclick="sellCrystal()">🔴 بيع CRYSTAL</button>
-                <div style="margin-top: 15px; color: #aaa; font-size: 12px; text-align: center;">
-                    💸 العمولة: 0.5% | 📊 سعر CRYSTAL يتغير مع BTC
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <select id="marketType" class="currency-select" onchange="loadMarket()">
+                        <option value="sell">🟢 عروض البيع</option>
+                        <option value="buy">🔴 عروض الشراء</option>
+                    </select>
+                    <select id="marketCurrency" class="currency-select" onchange="loadMarket()">
+                        <option value="">جميع العملات</option>
+                        <option value="USD">🇺🇸 دولار أمريكي</option>
+                        <option value="EUR">🇪🇺 يورو</option>
+                        <option value="GBP">🇬🇧 جنيه إسترليني</option>
+                        <option value="SAR">🇸🇦 ريال سعودي</option>
+                        <option value="AED">🇦🇪 درهم إماراتي</option>
+                        <option value="EGP">🇪🇬 جنيه مصري</option>
+                        <option value="SDG">🇸🇩 جنيه سوداني</option>
+                        <option value="IQD">🇮🇶 دينار عراقي</option>
+                        <option value="JOD">🇯🇴 دينار أردني</option>
+                        <option value="KWD">🇰🇼 دينار كويتي</option>
+                        <option value="QAR">🇶🇦 ريال قطري</option>
+                        <option value="BHD">🇧🇭 دينار بحريني</option>
+                        <option value="OMR">🇴🇲 ريال عماني</option>
+                        <option value="TRY">🇹🇷 ليرة تركية</option>
+                        <option value="INR">🇮🇳 روبية هندية</option>
+                        <option value="PKR">🇵🇰 روبية باكستانية</option>
+                    </select>
                 </div>
+                <div id="offersList"><div class="loading">جاري تحميل العروض...</div></div>
             </div>
         </div>
 
-        <!-- P2P -->
-        <div id="p2p-tab" class="tab-content">
+        <!-- إنشاء عرض -->
+        <div id="create-tab" class="tab-content">
             <div class="card">
-                <h3 style="color:white">📊 سوق P2P المحلي</h3>
-                <select id="p2pType" class="trade-input">
-                    <option value="sell">🟢 عروض البيع</option>
-                    <option value="buy">🔴 عروض الشراء</option>
+                <h3 style="color:white; margin-bottom:15px">➕ إنشاء عرض جديد</h3>
+                <select id="offerType" class="currency-select">
+                    <option value="sell">🟢 بيع دولار</option>
+                    <option value="buy">🔴 شراء دولار</option>
                 </select>
-                <select id="p2pCurrency" class="trade-input">
-                    <option value="USD">USD دولار أمريكي</option>
-                    <option value="EUR">EUR يورو</option>
-                    <option value="SAR">SAR ريال سعودي</option>
-                    <option value="AED">AED درهم إماراتي</option>
-                    <option value="EGP">EGP جنيه مصري</option>
+                <select id="offerCurrency" class="currency-select">
+                    <option value="USD">🇺🇸 دولار أمريكي (USD)</option>
+                    <option value="EUR">🇪🇺 يورو (EUR)</option>
+                    <option value="GBP">🇬🇧 جنيه إسترليني (GBP)</option>
+                    <option value="SAR">🇸🇦 ريال سعودي (SAR)</option>
+                    <option value="AED">🇦🇪 درهم إماراتي (AED)</option>
+                    <option value="EGP">🇪🇬 جنيه مصري (EGP)</option>
+                    <option value="SDG">🇸🇩 جنيه سوداني (SDG)</option>
+                    <option value="IQD">🇮🇶 دينار عراقي (IQD)</option>
+                    <option value="JOD">🇯🇴 دينار أردني (JOD)</option>
+                    <option value="KWD">🇰🇼 دينار كويتي (KWD)</option>
+                    <option value="QAR">🇶🇦 ريال قطري (QAR)</option>
+                    <option value="BHD">🇧🇭 دينار بحريني (BHD)</option>
+                    <option value="OMR">🇴🇲 ريال عماني (OMR)</option>
+                    <option value="TRY">🇹🇷 ليرة تركية (TRY)</option>
+                    <option value="INR">🇮🇳 روبية هندية (INR)</option>
+                    <option value="PKR">🇵🇰 روبية باكستانية (PKR)</option>
                 </select>
-                <button class="trade-btn" onclick="loadP2POffers()">🔍 عرض العروض</button>
-                <div id="p2pOffersList" style="margin-top: 15px;"><div class="loading">اختر نوع العرض</div></div>
-                <button class="trade-btn" onclick="showCreateOffer()" style="background:#ff9800">➕ إنشاء عرض جديد</button>
+                <input type="number" id="offerAmount" placeholder="المبلغ بالعملة المحلية" class="trade-input">
+                <input type="number" id="offerPrice" placeholder="سعر العملة المحلية مقابل الدولار" class="trade-input">
+                <select id="offerPaymentMethod" class="currency-select">
+                    <option value="bank_transfer">🏦 تحويل بنكي</option>
+                    <option value="paypal">💳 باي بال</option>
+                    <option value="visa">💳 فيزا</option>
+                    <option value="mastercard">💳 ماستركارد</option>
+                    <option value="fawry">📱 فوري</option>
+                    <option value="instapay">📱 انستا باي</option>
+                    <option value="vodafone_cash">📱 فودافون كاش</option>
+                    <option value="orange_cash">📱 أورنج كاش</option>
+                </select>
+                <div id="bankFields" style="display: none;">
+                    <select id="offerBank" class="currency-select">
+                        <option value="">اختر البنك</option>
+                    </select>
+                    <input type="text" id="offerAccountNumber" placeholder="رقم الحساب البنكي" class="trade-input">
+                    <input type="text" id="offerAccountName" placeholder="اسم صاحب الحساب" class="trade-input">
+                </div>
+                <textarea id="offerDetails" placeholder="تفاصيل إضافية (اختياري)" class="trade-input" rows="2"></textarea>
+                <button class="trade-btn" onclick="createOffer()">✅ إنشاء العرض</button>
+            </div>
+        </div>
+
+        <!-- عروضي -->
+        <div id="my-tab" class="tab-content">
+            <div class="card">
+                <h3 style="color:white">📋 عروضي النشطة</h3>
+                <div id="myOffersList"><div class="loading">جاري التحميل...</div></div>
+            </div>
+        </div>
+
+        <!-- صفقاتي -->
+        <div id="trades-tab" class="tab-content">
+            <div class="card">
+                <h3 style="color:white">🔄 صفقاتي</h3>
+                <div id="myTradesList"><div class="loading">جاري التحميل...</div></div>
             </div>
         </div>
 
@@ -90,21 +449,23 @@
                 <h3 style="color:white">💼 محفظتي</h3>
                 <div id="walletInfo"><div class="loading">جاري التحميل...</div></div>
                 <div style="margin-top: 15px;">
-                    <h4 style="color:white">💰 سحب العملات</h4>
-                    <select id="withdrawNetwork" class="trade-input">
-                        <option value="bnb">BNB (BEP-20)</option>
-                        <option value="polygon">POLYGON (MATIC)</option>
-                        <option value="solana">SOLANA (SOL)</option>
-                        <option value="aptos">APTOS (APT)</option>
+                    <h4 style="color:white">💰 إيداع وسحب</h4>
+                    <select id="walletNetwork" class="currency-select">
+                        <option value="bnb">🟡 BNB (BEP-20)</option>
+                        <option value="polygon">🟣 POLYGON (MATIC)</option>
+                        <option value="solana">🟢 SOLANA (SOL)</option>
+                        <option value="aptos">🔷 APTOS (APT)</option>
                     </select>
-                    <input type="number" id="withdrawAmount" placeholder="المبلغ" class="trade-input">
+                    <input type="number" id="depositAmount" placeholder="المبلغ بالدولار" class="trade-input">
+                    <button class="trade-btn" onclick="deposit()">📤 إيداع</button>
+                    <input type="number" id="withdrawAmount" placeholder="المبلغ بالدولار" class="trade-input">
                     <input type="text" id="withdrawAddress" placeholder="عنوان المحفظة المستلم" class="trade-input">
-                    <button class="trade-btn" onclick="withdraw()">💸 سحب</button>
+                    <button class="trade-btn sell-btn" onclick="withdraw()">💸 سحب</button>
                 </div>
             </div>
         </div>
 
-        <!-- متصدرين -->
+        <!-- المتصدرين -->
         <div id="leaderboard-tab" class="tab-content">
             <div class="card">
                 <h3 style="color:white">🏆 قائمة المتصدرين</h3>
@@ -112,13 +473,19 @@
             </div>
         </div>
 
-        <!-- الأسعار -->
-        <div id="prices-tab" class="tab-content">
+        <!-- بيانات البنك -->
+        <div id="bank-tab" class="tab-content">
             <div class="card">
-                <h3 style="color:white">📊 الأسعار الحالية</h3>
-                <div id="pricesList"><div class="loading">جاري التحميل...</div></div>
-                <div style="margin-top: 10px; font-size: 12px; color: #aaa; text-align: center;">
-                    ⏰ تحديث كل دقيقة | 📊 الأسعار من Binance
+                <h3 style="color:white">🏦 بياناتي البنكية</h3>
+                <div id="bankInfo"><div class="loading">جاري التحميل...</div></div>
+                <div style="margin-top: 15px;">
+                    <h4 style="color:white">✏️ تحديث البيانات</h4>
+                    <select id="bankName" class="currency-select">
+                        <option value="">اختر البنك</option>
+                    </select>
+                    <input type="text" id="accountNumber" placeholder="رقم الحساب" class="trade-input">
+                    <input type="text" id="accountName" placeholder="اسم صاحب الحساب" class="trade-input">
+                    <button class="trade-btn" onclick="updateBank()">💾 حفظ البيانات</button>
                 </div>
             </div>
         </div>
@@ -130,33 +497,95 @@
         tg.ready();
         
         let currentLanguage = 'ar';
+        let userData = {};
         const API_URL = window.location.origin;
+        
+        // البنوك السودانية
+        const sudanBanks = [
+            "Bank of Khartoum", "Blue Nile Mashreq Bank", "Al Salam Bank", "Agricultural Bank",
+            "Al Baraka Bank", "Al Nilein Bank", "Al Shamal Islamic Bank", "Animal Resources Bank",
+            "Bank of Sudan", "Byblos Bank", "Egyptian Sudanese Bank", "Industrial Development Bank",
+            "National Bank of Abu Dhabi", "National Bank of Egypt", "National Bank of Sudan",
+            "Omdurman National Bank", "Qatar National Bank", "Saudi Sudanese Bank",
+            "Sudanese French Bank", "United Capital Bank"
+        ];
+        
+        const currencyNames = {
+            USD: "🇺🇸 دولار أمريكي", EUR: "🇪🇺 يورو", GBP: "🇬🇧 جنيه إسترليني",
+            SAR: "🇸🇦 ريال سعودي", AED: "🇦🇪 درهم إماراتي", EGP: "🇪🇬 جنيه مصري",
+            SDG: "🇸🇩 جنيه سوداني", IQD: "🇮🇶 دينار عراقي", JOD: "🇯🇴 دينار أردني",
+            KWD: "🇰🇼 دينار كويتي", QAR: "🇶🇦 ريال قطري", BHD: "🇧🇭 دينار بحريني",
+            OMR: "🇴🇲 ريال عماني", TRY: "🇹🇷 ليرة تركية", INR: "🇮🇳 روبية هندية", PKR: "🇵🇰 روبية باكستانية"
+        };
         
         async function loadUserData() {
             try {
                 const uid = tg.initDataUnsafe.user.id;
                 const res = await fetch(`${API_URL}/api/user/stats/${uid}`);
                 const data = await res.json();
-                document.getElementById('crystalBalance').textContent = data.crystalBalance?.toFixed(2) || '0';
+                userData = data;
                 document.getElementById('usdBalance').textContent = data.usdBalance?.toFixed(2) || '0';
-                document.getElementById('crystalPrice').textContent = data.crystalPrice?.toFixed(6) || '0';
+                document.getElementById('userRating').textContent = data.rating?.toFixed(1) || '5.0';
+                document.getElementById('completedTrades').textContent = data.completedTrades || '0';
             } catch(e) { console.error(e); }
         }
         
-        async function loadPrices() {
+        async function loadMarket() {
+            const type = document.getElementById('marketType').value;
+            const currency = document.getElementById('marketCurrency').value;
+            const res = await fetch(`${API_URL}/api/offers?type=${type}&currency=${currency}&sortBy=price&order=asc`);
+            const offers = await res.json();
+            const container = document.getElementById('offersList');
+            if (!offers.length) {
+                container.innerHTML = '<div class="loading">لا توجد عروض</div>';
+                return;
+            }
+            container.innerHTML = offers.map(o => `
+                <div class="offer-card ${type === 'sell' ? 'offer-sell' : 'offer-buy'}">
+                    <div class="offer-header">
+                        <div class="offer-user">
+                            👤 ${o.firstName || o.username}
+                            ${o.isVerified ? '<span class="verified-badge">موثق</span>' : ''}
+                            ${o.isMerchant ? '<span class="merchant-badge">تاجر</span>' : ''}
+                        </div>
+                        <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
+                    </div>
+                    <div class="offer-amount">💰 ${o.fiatAmount.toFixed(2)} ${o.currency} (${currencyNames[o.currency] || o.currency})</div>
+                    <div class="offer-price">📊 السعر: ${o.price.toFixed(2)} ${o.currency}/USD</div>
+                    <div class="offer-details">💵 القيمة: ${(o.fiatAmount / o.price).toFixed(2)} USD</div>
+                    <div class="offer-details">🏦 ${o.paymentMethod}</div>
+                    <div class="offer-details">✅ ${o.completedTrades || 0} صفقة</div>
+                    <div class="offer-details">🆔 <code>${o._id}</code></div>
+                    <button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button>
+                </div>
+            `).join('');
+        }
+        
+        async function loadMyOffers() {
+            // سيتم إضافة API لعرض عروض المستخدم
+            document.getElementById('myOffersList').innerHTML = '<div class="loading">جاري التحميل...</div>';
+        }
+        
+        async function loadMyTrades() {
+            // سيتم إضافة API لعرض صفقات المستخدم
+            document.getElementById('myTradesList').innerHTML = '<div class="loading">جاري التحميل...</div>';
+        }
+        
+        async function loadWallet() {
             try {
-                const res = await fetch(`${API_URL}/api/prices`);
-                const prices = await res.json();
-                const liq = await fetch(`${API_URL}/api/liquidity`).then(r=>r.json());
-                const container = document.getElementById('pricesList');
-                container.innerHTML = `
-                    <div class="price-row"><span>💎 CRYSTAL</span><span>${liq.price?.toFixed(6) || 0} USD</span></div>
-                    <div class="price-row"><span>🟠 BTC</span><span>${prices.BTC?.price?.toFixed(2) || 0} USD (${prices.BTC?.change24h?.toFixed(2) || 0}%)</span></div>
-                    <div class="price-row"><span>🔵 ETH</span><span>${prices.ETH?.price?.toFixed(2) || 0} USD</span></div>
-                    <div class="price-row"><span>🟢 SOL</span><span>${prices.SOL?.price?.toFixed(2) || 0} USD</span></div>
-                    <div class="price-row"><span>🟡 BNB</span><span>${prices.BNB?.price?.toFixed(2) || 0} USD</span></div>
-                    <div class="price-row"><span>🟣 MATIC</span><span>${prices.MATIC?.price?.toFixed(2) || 0} USD</span></div>
-                    <div class="price-row"><span>🔷 APT</span><span>${prices.APT?.price?.toFixed(2) || 0} USD</span></div>
+                const uid = tg.initDataUnsafe.user.id;
+                const res = await fetch(`${API_URL}/api/wallet/${uid}`);
+                const data = await res.json();
+                document.getElementById('walletInfo').innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-value">${data.usdBalance?.toFixed(2) || 0} USD</div>
+                        <div class="stat-label">رصيد الدولار</div>
+                    </div>
+                    <div class="address-box">🟡 BNB: ${data.addresses?.bnb || 'جاري التحميل'}</div>
+                    <div class="address-box">🟣 POLYGON: ${data.addresses?.polygon || 'جاري التحميل'}</div>
+                    <div class="address-box">🟢 SOLANA: ${data.addresses?.solana || 'جاري التحميل'}</div>
+                    <div class="address-box">🔷 APTOS: ${data.addresses?.aptos || 'جاري التحميل'}</div>
+                    <div class="offer-details" style="margin-top:10px">🔑 بصمة المحفظة: <code>${data.walletSignature?.slice(0, 16)}...</code></div>
                 `;
             } catch(e) { console.error(e); }
         }
@@ -166,147 +595,173 @@
                 const res = await fetch(`${API_URL}/api/leaderboard`);
                 const leaders = await res.json();
                 const container = document.getElementById('leaderboardList');
-                if(!leaders.length) { container.innerHTML = '<div class="loading">لا يوجد متصدرين</div>'; return; }
-                container.innerHTML = leaders.map((l,i) => `
+                if (!leaders.length) {
+                    container.innerHTML = '<div class="loading">لا يوجد متصدرين</div>';
+                    return;
+                }
+                container.innerHTML = leaders.map((l, i) => `
                     <div class="leader-item">
-                        <span>${i===0?'👑':i===1?'🥈':i===2?'🥉':`#${i+1}`}</span>
-                        <span>${l.name}</span>
-                        <span>💎 ${l.balance?.toFixed(2) || 0}</span>
-                        <span>💵 ${l.usd?.toFixed(2) || 0}</span>
+                        <div class="leader-rank">${i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`}</div>
+                        <div class="leader-name">${l.name}</div>
+                        <div class="leader-trades">💰 ${l.trades?.toFixed(0) || 0}</div>
+                        <div class="leader-rating">⭐ ${l.rating?.toFixed(1) || '5.0'}</div>
                     </div>
                 `).join('');
             } catch(e) { console.error(e); }
         }
         
-        async function loadWallet() {
+        async function loadBankInfo() {
             try {
                 const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/wallet/${uid}`);
-                const data = await res.json();
-                document.getElementById('walletInfo').innerHTML = `
-                    <div><strong>💰 USD:</strong> ${data.usdBalance?.toFixed(2) || 0}</div>
-                    <div style="margin-top:10px"><strong>🟡 BNB:</strong><div class="address-box">${data.addresses.bnb}</div><button class="copy-btn" onclick="copyToClipboard('${data.addresses.bnb}')">📋 نسخ</button></div>
-                    <div><strong>🟣 POLYGON:</strong><div class="address-box">${data.addresses.polygon}</div><button class="copy-btn" onclick="copyToClipboard('${data.addresses.polygon}')">📋 نسخ</button></div>
-                    <div><strong>🟢 SOLANA:</strong><div class="address-box">${data.addresses.solana}</div><button class="copy-btn" onclick="copyToClipboard('${data.addresses.solana}')">📋 نسخ</button></div>
-                    <div><strong>🔷 APTOS:</strong><div class="address-box">${data.addresses.aptos}</div><button class="copy-btn" onclick="copyToClipboard('${data.addresses.aptos}')">📋 نسخ</button></div>
+                const res = await fetch(`${API_URL}/api/user/${uid}`);
+                const user = await res.json();
+                document.getElementById('bankInfo').innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-value">${user.bankName || 'غير محدد'}</div>
+                        <div class="stat-label">البنك</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${user.bankAccountNumber || 'غير محدد'}</div>
+                        <div class="stat-label">رقم الحساب</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${user.bankAccountName || 'غير محدد'}</div>
+                        <div class="stat-label">اسم الحساب</div>
+                    </div>
                 `;
+                // تعبئة البنوك في القائمة المنسدلة
+                const bankSelect = document.getElementById('bankName');
+                bankSelect.innerHTML = '<option value="">اختر البنك</option>' + sudanBanks.map(b => `<option value="${b}">${b}</option>`).join('');
+                if (user.bankName) bankSelect.value = user.bankName;
+                document.getElementById('accountNumber').value = user.bankAccountNumber || '';
+                document.getElementById('accountName').value = user.bankAccountName || '';
+                
+                // تعبئة البنوك في نموذج إنشاء العرض
+                const offerBankSelect = document.getElementById('offerBank');
+                offerBankSelect.innerHTML = '<option value="">اختر البنك</option>' + sudanBanks.map(b => `<option value="${b}">${b}</option>`).join('');
             } catch(e) { console.error(e); }
         }
         
-        async function buyCrystal() {
-            const amount = document.getElementById('tradeAmount').value;
-            if(!amount || amount<=0) return tg.showAlert('أدخل مبلغ صحيح');
-            try {
-                const res = await fetch(`${API_URL}/api/trade`, {
-                    method: 'POST', headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, type: 'buy', currency: 'CRYSTAL', amount: parseFloat(amount) })
-                });
-                const r = await res.json();
-                tg.showAlert(r.message);
-                if(r.success) loadUserData();
-            } catch(e) { tg.showAlert('حدث خطأ'); }
-        }
-        
-        async function sellCrystal() {
-            const amount = document.getElementById('tradeAmount').value;
-            if(!amount || amount<=0) return tg.showAlert('أدخل مبلغ صحيح');
-            try {
-                const res = await fetch(`${API_URL}/api/trade`, {
-                    method: 'POST', headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, type: 'sell', currency: 'CRYSTAL', amount: parseFloat(amount) })
-                });
-                const r = await res.json();
-                tg.showAlert(r.message);
-                if(r.success) loadUserData();
-            } catch(e) { tg.showAlert('حدث خطأ'); }
-        }
-        
-        async function loadP2POffers() {
-            const type = document.getElementById('p2pType').value;
-            const currency = document.getElementById('p2pCurrency').value;
-            const res = await fetch(`${API_URL}/api/p2p/offers?type=${type}&currency=${currency}`);
-            const offers = await res.json();
-            const container = document.getElementById('p2pOffersList');
-            if(!offers.length) { container.innerHTML = '<div class="loading">لا توجد عروض</div>'; return; }
-            container.innerHTML = offers.map(o => `
-                <div style="background:rgba(255,255,255,0.1); border-radius:12px; padding:12px; margin-bottom:10px">
-                    <div><strong>👤 ${o.firstName || o.username}</strong></div>
-                    <div>💎 ${o.crystalAmount?.toFixed(2) || 0} CRYSTAL</div>
-                    <div>💰 ${o.fiatAmount} ${o.currency}</div>
-                    <div>📊 ${o.pricePerCrystal?.toFixed(4) || 0} ${o.currency}/CRYSTAL</div>
-                    <div>🏦 ${o.paymentMethod}</div>
-                    <div>🆔 <code>${o._id}</code></div>
-                    <button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button>
-                </div>
-            `).join('');
+        async function createOffer() {
+            const type = document.getElementById('offerType').value;
+            const currency = document.getElementById('offerCurrency').value;
+            const fiatAmount = parseFloat(document.getElementById('offerAmount').value);
+            const price = parseFloat(document.getElementById('offerPrice').value);
+            const paymentMethod = document.getElementById('offerPaymentMethod').value;
+            const bankName = document.getElementById('offerBank').value;
+            const accountNumber = document.getElementById('offerAccountNumber').value;
+            const accountName = document.getElementById('offerAccountName').value;
+            const details = document.getElementById('offerDetails').value;
+            
+            if (!fiatAmount || fiatAmount <= 0) return tg.showAlert('أدخل المبلغ');
+            if (!price || price <= 0) return tg.showAlert('أدخل السعر');
+            
+            const body = {
+                user_id: tg.initDataUnsafe.user.id,
+                type, currency, fiatAmount, price,
+                paymentMethod, paymentDetails: details,
+                bankName, bankAccountNumber: accountNumber, bankAccountName: accountName,
+                minAmount: 10, maxAmount: 100000
+            };
+            
+            const res = await fetch(`${API_URL}/api/offer/create`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body)
+            });
+            const result = await res.json();
+            tg.showAlert(result.message);
+            if (result.success) switchTab('market');
         }
         
         async function startTrade(offerId) {
-            const res = await fetch(`${API_URL}/api/p2p/start`, {
-                method: 'POST', headers: {'Content-Type':'application/json'},
+            const res = await fetch(`${API_URL}/api/trade/start`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId })
             });
-            const r = await res.json();
-            tg.showAlert(r.message);
+            const result = await res.json();
+            tg.showAlert(result.message);
+            if (result.success && result.sellerPaymentDetails) {
+                tg.showAlert(`📤 تفاصيل الدفع:\n${result.sellerPaymentDetails}\n\nبعد التحويل: /send_proof ${result.tradeId} [رابط الصورة]`);
+            }
         }
         
-        function showCreateOffer() {
-            const type = prompt('نوع العرض (sell للبيع / buy للشراء):', 'sell');
-            if(!type) return;
-            const currency = prompt('العملة (USD, EUR, SAR, AED, EGP):', 'USD');
-            if(!currency) return;
-            const fiatAmount = prompt('المبلغ بالعملة المحلية:', '100');
-            if(!fiatAmount) return;
-            const crystalAmount = prompt('كمية CRYSTAL:', '10000');
-            if(!crystalAmount) return;
-            const paymentMethod = prompt('طريقة الدفع (بنكي, باي بال, فودافون كاش, إلخ):', 'بنكي');
-            if(!paymentMethod) return;
-            createOffer(type, currency, parseFloat(fiatAmount), parseFloat(crystalAmount), paymentMethod);
-        }
-        
-        async function createOffer(type, currency, fiatAmount, crystalAmount, paymentMethod) {
-            const res = await fetch(`${API_URL}/api/p2p/create`, {
-                method: 'POST', headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, type, currency, fiatAmount, crystalAmount, paymentMethod, bankDetails: '' })
+        async function deposit() {
+            const amount = parseFloat(document.getElementById('depositAmount').value);
+            const network = document.getElementById('walletNetwork').value;
+            if (!amount || amount <= 0) return tg.showAlert('أدخل المبلغ');
+            const res = await fetch(`${API_URL}/api/deposit`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USD', network })
             });
-            const r = await res.json();
-            tg.showAlert(r.message);
+            const result = await res.json();
+            tg.showAlert(result.message);
         }
         
         async function withdraw() {
-            const network = document.getElementById('withdrawNetwork').value;
             const amount = parseFloat(document.getElementById('withdrawAmount').value);
+            const network = document.getElementById('walletNetwork').value;
             const address = document.getElementById('withdrawAddress').value;
-            if(!amount || amount<=0) return tg.showAlert('أدخل مبلغ صحيح');
-            if(!address) return tg.showAlert('أدخل عنوان المحفظة');
+            if (!amount || amount <= 0) return tg.showAlert('أدخل المبلغ');
+            if (!address) return tg.showAlert('أدخل عنوان المحفظة');
             const res = await fetch(`${API_URL}/api/withdraw`, {
-                method: 'POST', headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USDT', network, address })
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USD', network, address })
             });
-            const r = await res.json();
-            tg.showAlert(r.message);
+            const result = await res.json();
+            tg.showAlert(result.message);
         }
         
-        function copyToClipboard(text) { navigator.clipboard.writeText(text); tg.showAlert('✅ تم النسخ'); }
+        async function updateBank() {
+            const bankName = document.getElementById('bankName').value;
+            const accountNumber = document.getElementById('accountNumber').value;
+            const accountName = document.getElementById('accountName').value;
+            if (!bankName || !accountNumber || !accountName) return tg.showAlert('يرجى ملء جميع الحقول');
+            const res = await fetch(`${API_URL}/api/update_bank`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, bankName, accountNumber, accountName })
+            });
+            const result = await res.json();
+            tg.showAlert('✅ تم تحديث بيانات البنك');
+            loadBankInfo();
+        }
         
-        function setLanguage(lang) { currentLanguage = lang; localStorage.setItem('language', lang); tg.showAlert(`✅ اللغة: ${lang === 'ar' ? 'العربية' : 'English'}`); }
+        function setLanguage(lang) {
+            currentLanguage = lang;
+            document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            tg.showAlert(`✅ اللغة: ${lang === 'ar' ? 'العربية' : 'English'}`);
+        }
         
         function switchTab(tab) {
-            document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
-            document.querySelectorAll('.tab-button').forEach(b=>b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
             document.getElementById(`${tab}-tab`).classList.add('active');
             event.target.classList.add('active');
-            if(tab === 'leaderboard') loadLeaderboard();
-            if(tab === 'wallet') loadWallet();
-            if(tab === 'prices') loadPrices();
+            
+            if (tab === 'market') loadMarket();
+            if (tab === 'my') loadMyOffers();
+            if (tab === 'trades') loadMyTrades();
+            if (tab === 'wallet') loadWallet();
+            if (tab === 'leaderboard') loadLeaderboard();
+            if (tab === 'bank') loadBankInfo();
         }
+        
+        // إظهار/إخفاء حقول البنك حسب طريقة الدفع
+        document.getElementById('offerPaymentMethod').addEventListener('change', function() {
+            const bankFields = document.getElementById('bankFields');
+            if (this.value === 'bank_transfer') {
+                bankFields.style.display = 'block';
+            } else {
+                bankFields.style.display = 'none';
+            }
+        });
         
         registerUser();
         loadUserData();
-        loadPrices();
+        loadMarket();
         
         tg.MainButton.setText("🚀 فتح البوت");
-        tg.MainButton.onClick(()=>tg.close());
+        tg.MainButton.onClick(() => tg.close());
         tg.MainButton.show();
     </script>
 </body>
