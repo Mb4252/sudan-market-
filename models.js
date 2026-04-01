@@ -1,5 +1,25 @@
 const mongoose = require('mongoose');
 
+// نموذج المحفظة
+const walletSchema = new mongoose.Schema({
+    userId: { type: Number, required: true, unique: true },
+    bnbAddress: { type: String, unique: true, sparse: true },
+    bnbEncryptedPrivateKey: { type: String },
+    bnbBalance: { type: Number, default: 0 },
+    polygonAddress: { type: String, unique: true, sparse: true },
+    polygonEncryptedPrivateKey: { type: String },
+    polygonBalance: { type: Number, default: 0 },
+    solanaAddress: { type: String, unique: true, sparse: true },
+    solanaEncryptedPrivateKey: { type: String },
+    solanaBalance: { type: Number, default: 0 },
+    aptosAddress: { type: String, unique: true, sparse: true },
+    aptosEncryptedPrivateKey: { type: String },
+    aptosBalance: { type: Number, default: 0 },
+    walletSignature: { type: String, required: true, unique: true },
+    createdAt: { type: Date, default: Date.now },
+    lastUpdated: { type: Date, default: Date.now }
+});
+
 // نموذج المستخدم
 const userSchema = new mongoose.Schema({
     userId: { type: Number, required: true, unique: true },
@@ -15,43 +35,30 @@ const userSchema = new mongoose.Schema({
     miningSignature: { type: String, unique: true, sparse: true },
     lastMiningTime: { type: Date, default: null },
     miningStartTime: { type: Date, default: null },
-    miningProgress: { type: Number, default: 0 },
     referrerId: { type: Number, default: null },
     referralCount: { type: Number, default: 0 },
     dailyReferrals: { type: Number, default: 0 },
     lastReferralDate: { type: String, default: null },
     referralSignature: { type: String, unique: true, sparse: true },
-    // نظام المستويات
     vipLevel: { type: Number, default: 0 },
-    vipExp: { type: Number, default: 0 },
-    // المهام اليومية
-    dailyTasks: {
-        completed: { type: Boolean, default: false },
-        lastTaskDate: { type: String, default: null },
-        streak: { type: Number, default: 0 }
-    },
-    // مهمة تويتر (مرة واحدة فقط)
+    dailyTasks: { completed: { type: Boolean, default: false }, lastTaskDate: { type: String, default: null }, streak: { type: Number, default: 0 } },
     twitterTaskCompleted: { type: Boolean, default: false },
-    // نظام الكومبو
     comboCount: { type: Number, default: 0 },
     lastComboDate: { type: String, default: null },
-    // الإشعارات
-    notifications: { type: Boolean, default: true },
+    walletId: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet' },
     createdAt: { type: Date, default: Date.now }
 });
 
 // نموذج المعاملات
 const transactionSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
-    type: { type: String, enum: ['mining', 'purchase', 'upgrade', 'reward', 'p2p_sale', 'p2p_buy', 'daily_task', 'twitter_task'], required: true },
+    type: { type: String, enum: ['mining', 'purchase', 'upgrade', 'reward', 'p2p_sale', 'p2p_buy', 'daily_task', 'twitter_task', 'withdraw'], required: true },
     amount: { type: Number, default: 0 },
     usdtAmount: { type: Number, default: 0 },
-    status: { type: String, enum: ['pending', 'completed', 'failed', 'disputed'], default: 'pending' },
+    status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'completed' },
     transactionHash: { type: String, default: '' },
     signature: { type: String, default: '' },
-    counterpartyId: { type: Number, default: null },
     description: { type: String, default: '' },
-    proofImage: { type: String, default: '' },
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -63,9 +70,6 @@ const upgradeRequestSchema = new mongoose.Schema({
     usdtAmount: { type: Number, required: true },
     status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
     transactionHash: { type: String, default: '' },
-    signature: { type: String, default: '' },
-    proofImage: { type: String, default: '' },
-    approvedBy: { type: Number, default: null },
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -77,9 +81,6 @@ const purchaseRequestSchema = new mongoose.Schema({
     status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending' },
     transactionHash: { type: String, default: '' },
     paymentAddress: { type: String, default: '' },
-    signature: { type: String, default: '' },
-    proofImage: { type: String, default: '' },
-    approvedBy: { type: Number, default: null },
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -90,14 +91,9 @@ const p2pOfferSchema = new mongoose.Schema({
     crystalAmount: { type: Number, required: true },
     usdtAmount: { type: Number, required: true },
     pricePerCrystal: { type: Number, required: true },
-    minAmount: { type: Number, default: 5 },
-    status: { type: String, enum: ['active', 'pending', 'completed', 'cancelled', 'disputed'], default: 'active' },
+    status: { type: String, enum: ['active', 'pending', 'completed', 'cancelled'], default: 'active' },
     counterpartyId: { type: Number, default: null },
-    paymentProof: { type: String, default: '' },
-    releaseSignature: { type: String, default: '' },
-    signature: { type: String, default: '' },
-    createdAt: { type: Date, default: Date.now },
-    completedAt: { type: Date, default: null }
+    createdAt: { type: Date, default: Date.now }
 });
 
 // نموذج السيولة
@@ -112,17 +108,15 @@ const liquiditySchema = new mongoose.Schema({
 const dailyStatsSchema = new mongoose.Schema({
     date: { type: String, required: true, unique: true },
     totalUsers: { type: Number, default: 0 },
-    activeUsers: { type: Number, default: 0 },
     totalMined: { type: Number, default: 0 },
     totalPurchases: { type: Number, default: 0 },
     totalUpgrades: { type: Number, default: 0 },
     p2pTrades: { type: Number, default: 0 },
     totalReferrals: { type: Number, default: 0 },
-    totalCombo: { type: Number, default: 0 },
     twitterTasks: { type: Number, default: 0 }
 });
 
-// نموذج سجل الإحالات اليومية
+// نموذج سجل الإحالات
 const dailyReferralLogSchema = new mongoose.Schema({
     date: { type: String, required: true },
     referrerId: { type: Number, required: true },
@@ -132,6 +126,7 @@ const dailyReferralLogSchema = new mongoose.Schema({
 });
 
 const User = mongoose.model('User', userSchema);
+const Wallet = mongoose.model('Wallet', walletSchema);
 const Transaction = mongoose.model('Transaction', transactionSchema);
 const UpgradeRequest = mongoose.model('UpgradeRequest', upgradeRequestSchema);
 const PurchaseRequest = mongoose.model('PurchaseRequest', purchaseRequestSchema);
@@ -140,4 +135,4 @@ const Liquidity = mongoose.model('Liquidity', liquiditySchema);
 const DailyStats = mongoose.model('DailyStats', dailyStatsSchema);
 const DailyReferralLog = mongoose.model('DailyReferralLog', dailyReferralLogSchema);
 
-module.exports = { User, Transaction, UpgradeRequest, PurchaseRequest, P2pOffer, Liquidity, DailyStats, DailyReferralLog };
+module.exports = { User, Wallet, Transaction, UpgradeRequest, PurchaseRequest, P2pOffer, Liquidity, DailyStats, DailyReferralLog };
