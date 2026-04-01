@@ -114,11 +114,43 @@ app.get('/api/user/daily/:userId', async (req, res) => {
         const stats = await db.getUserStats(parseInt(req.params.userId));
         res.json({
             daily_mined: stats?.dailyMined || 0,
-            daily_limit: 700,
-            remaining: 700 - (stats?.dailyMined || 0)
+            daily_limit: 70,
+            remaining: 70 - (stats?.dailyMined || 0),
+            progress: Math.min(100, ((stats?.dailyMined || 0) / 70) * 100)
         });
     } catch (error) {
-        res.json({ daily_mined: 0, daily_limit: 700, remaining: 700 });
+        res.json({ daily_mined: 0, daily_limit: 70, remaining: 70, progress: 0 });
+    }
+});
+
+// P2P API Routes
+app.get('/api/p2p/offers', async (req, res) => {
+    try {
+        const { type } = req.query;
+        const offers = await db.getP2pOffers(type);
+        res.json(offers);
+    } catch (error) {
+        res.json([]);
+    }
+});
+
+app.post('/api/p2p/create', async (req, res) => {
+    try {
+        const { user_id, type, amount, usdt } = req.body;
+        const result = await db.createP2pOffer(parseInt(user_id), type, parseFloat(amount), parseFloat(usdt));
+        res.json(result);
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/p2p/trade', async (req, res) => {
+    try {
+        const { user_id, offer_id } = req.body;
+        const result = await db.executeP2pTrade(offer_id, parseInt(user_id));
+        res.json(result);
+    } catch (error) {
+        res.json({ success: false, message: error.message });
     }
 });
 
@@ -139,12 +171,12 @@ app.listen(PORT, '0.0.0.0', () => {
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const WEBAPP_URL = process.env.WEBAPP_URL || `https://sdm-security-bot.onrender.com`;
-const ADMIN_ID = parseInt(process.env.ADMIN_ID);
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'Mb4252';
+const ADMIN_ID = 6701743450;
+const ADMIN_USERNAME = 'hmood19931130';
 const UPGRADE_USDT_PRICE = 5;
 const CRYSTAL_PRICE = 0.01;
-const DAILY_LIMIT = 700;
-const TRON_ADDRESS = process.env.TRON_ADDRESS;
+const DAILY_LIMIT = 70;
+const TRON_ADDRESS = process.env.TRON_ADDRESS || 'TCZ2NGDSvxznADHTvvkedJTcbbGbD5RhfR';
 
 // قائمة الأزرار الرئيسية
 const mainKeyboard = Markup.inlineKeyboard([
@@ -189,22 +221,7 @@ bot.start(async (ctx) => {
         limit: DAILY_LIMIT
     });
     
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.webApp('🚀 فتح تطبيق التعدين', WEBAPP_URL)],
-        [Markup.button.callback('⛏️ تعدين', 'mine_action')],
-        [Markup.button.callback('💰 الرصيد بـ USDT', 'show_usdt')],
-        [Markup.button.callback('🏆 المتصدرين', 'leaderboard')],
-        [Markup.button.callback('📊 سوق P2P', 'p2p_market')],
-        [Markup.button.callback('⚡ ترقية', 'upgrade_menu')],
-        [Markup.button.callback('👥 إحالة', 'referral_system')],
-        [Markup.button.callback('🌐 اللغة', 'change_language')],
-        [Markup.button.callback('📞 الدعم', 'support')],
-        [Markup.button.callback('📈 إحصائياتي', 'my_stats')]
-    ]);
-    
-    await ctx.reply(welcomeText, { parse_mode: 'Markdown', ...keyboard });
-    
-    // إرسال رابط الإحالة
+    await ctx.reply(welcomeText, { parse_mode: 'Markdown', ...mainKeyboard });
     await ctx.reply(`🔗 *رابط الإحالة الخاص بك:*\n\`${referralLink}\``, { parse_mode: 'Markdown' });
 });
 
@@ -215,7 +232,8 @@ bot.action('mine_action', async (ctx) => {
     const result = await db.mine(ctx.from.id);
     
     if (result.success) {
-        await ctx.editMessageText(result.message, {
+        const message = result.message || `✅ تم التعدين!\n💎 +${result.reward} CRYSTAL\n📊 اليوم: ${result.dailyMined}/${DAILY_LIMIT}`;
+        await ctx.editMessageText(message, {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
         });
@@ -332,12 +350,7 @@ bot.action('do_upgrade', async (ctx) => {
 // أمر ترقية
 bot.command('upgrade', async (ctx) => {
     const result = await db.upgradeMiningRate(ctx.from.id);
-    
-    if (result.success) {
-        await ctx.reply(result.message, { parse_mode: 'Markdown' });
-    } else {
-        await ctx.reply(result.message, { parse_mode: 'Markdown' });
-    }
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
 });
 
 // قائمة الشراء
@@ -384,7 +397,6 @@ bot.command('buy', async (ctx) => {
     const result = await db.requestPurchase(ctx.from.id, amount);
     
     if (result.success) {
-        // زر نسخ العنوان
         const copyKeyboard = Markup.inlineKeyboard([
             [Markup.button.callback('📋 نسخ عنوان TRON', `copy_address_${result.payment_address}`)],
             [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
@@ -475,20 +487,10 @@ bot.action('p2p_market', async (ctx) => {
     await ctx.answerCbQuery();
     
     const stats = await db.getUserStats(ctx.from.id);
-    
-    const text = `
-📊 *سوق P2P لبيع وشراء CRYSTAL* 📊
-
-💎 *رصيدك:* ${stats.crystalBalance.toFixed(2)} CRYSTAL
-💰 *قيمته:* ${stats.usdtValue.toFixed(2)} USDT
-
-اختر ما تريد:
-• 🟢 *عروض البيع* - شراء كريستال من مستخدمين
-• 🔴 *عروض الشراء* - بيع كريستال لمستخدمين
-• ➕ *إنشاء عرض* - أنشئ عرضك الخاص
-
-⚠️ *جميع الصفقات بين المستخدمين مباشرة*
-    `;
+    const text = db.getText('p2pMarket', stats.language, {
+        balance: stats.crystalBalance,
+        usdt: stats.usdtValue
+    });
     
     const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('🟢 عروض البيع', 'p2p_buy_offers')],
@@ -656,6 +658,7 @@ bot.action('referral_system', async (ctx) => {
 
 📊 *إحصائياتك:*
 • عدد الإحالات: ${stats.referralsCount}/10
+• إحالات اليوم: ${stats.todayReferrals || 0}/10
 • المكافأة: ${stats.referralsCount >= 10 ? '✅ تم الحصول على 3000 كريستال' : '❌ لم تتحقق بعد'}
 
 🔗 *رابط الإحالة الخاص بك:*
@@ -696,6 +699,8 @@ bot.action('my_stats', async (ctx) => {
         return;
     }
     
+    const progress = Math.min(100, (stats.dailyMined / DAILY_LIMIT) * 100);
+    
     const text = `
 📊 *إحصائياتك الشخصية* 📊
 
@@ -706,9 +711,11 @@ bot.action('my_stats', async (ctx) => {
 📈 *المستوى:* ${stats.miningLevel}
 ⛏️ *إجمالي التعدين:* ${stats.totalMined.toFixed(2)} CRYSTAL
 📅 *تعدين اليوم:* ${stats.dailyMined}/${DAILY_LIMIT}
+📊 *نسبة الإنجاز:* ${Math.floor(progress)}%
 ⏰ *المتبقي اليوم:* ${DAILY_LIMIT - stats.dailyMined} كريستال
 
 👥 *الإحالات:* ${stats.referralsCount}/10
+📊 *إحالات اليوم:* ${stats.todayReferrals || 0}/10
 🎁 *مكافأة الإحالات:* ${stats.referralsCount >= 10 ? '✅ تم الحصول على 3000 كريستال' : '❌ لم تتحقق بعد'}
 
 📅 *تاريخ التسجيل:* ${new Date(stats.createdAt).toLocaleDateString('ar')}
@@ -902,6 +909,7 @@ ${new Date().toLocaleDateString('ar')}
 💰 *عمليات شراء:* ${stats?.totalPurchases || 0}
 ⚡ *عمليات ترقية:* ${stats?.totalUpgrades || 0}
 🔄 *صفقات P2P:* ${stats?.p2pTrades || 0}
+👥 *إحالات اليوم:* ${stats?.totalReferrals || 0}
     `;
     
     await ctx.editMessageText(text, {
@@ -937,6 +945,7 @@ bot.on('text', async (ctx) => {
                 text += `🆔 \`${user.userId}\`\n`;
                 text += `💎 ${user.crystalBalance.toFixed(2)} CRYSTAL\n`;
                 text += `📈 المستوى ${user.miningLevel}\n`;
+                text += `🔑 البصمة: \`${(user.miningSignature || '').slice(0, 16)}...\`\n`;
                 text += `━━━━━━━━━━━━━━━━━━\n`;
             }
             await ctx.reply(text, { parse_mode: 'Markdown' });
@@ -946,21 +955,67 @@ bot.on('text', async (ctx) => {
     }
 });
 
+// أمر تعدين مباشر
+bot.command('mine', async (ctx) => {
+    const result = await db.mine(ctx.from.id);
+    
+    if (result.success) {
+        const stats = await db.getUserStats(ctx.from.id);
+        await ctx.reply(`
+🎉 *تم التعدين بنجاح!*
+
+⛏️ *حصلت على:* ${result.reward} CRYSTAL
+💎 *الرصيد الحالي:* ${stats.crystalBalance.toFixed(2)}
+📊 *المتبقي اليوم:* ${DAILY_LIMIT - stats.dailyMined}/${DAILY_LIMIT}
+📈 *نسبة الإنجاز:* ${Math.floor((stats.dailyMined / DAILY_LIMIT) * 100)}%
+        `, { parse_mode: 'Markdown' });
+    } else {
+        await ctx.reply(result.message, { parse_mode: 'Markdown' });
+    }
+});
+
+// أمر إحصائيات
+bot.command('stats', async (ctx) => {
+    const stats = await db.getUserStats(ctx.from.id);
+    
+    const text = `
+📊 *إحصائياتك* 📊
+
+💎 *الرصيد:* ${stats.crystalBalance.toFixed(2)}
+💰 *القيمة:* ${stats.usdtValue.toFixed(2)} USDT
+⚡ *معدل التعدين:* ${stats.miningRate}x
+📈 *المستوى:* ${stats.miningLevel}
+⛏️ *إجمالي التعدين:* ${stats.totalMined.toFixed(2)}
+📅 *تعدين اليوم:* ${stats.dailyMined}/${DAILY_LIMIT}
+👥 *الإحالات:* ${stats.referralsCount}
+    `;
+    
+    await ctx.reply(text, { parse_mode: 'Markdown' });
+});
+
 // العودة للقائمة الرئيسية
 bot.action('back_to_menu', async (ctx) => {
     await ctx.answerCbQuery();
     
     const stats = await db.getUserStats(ctx.from.id);
     const referralLink = `https://t.me/${ctx.botInfo.username}?start=${ctx.from.id}`;
+    const progress = Math.min(100, (stats.dailyMined / DAILY_LIMIT) * 100);
     
-    const text = db.getText('welcome', stats.language, {
-        name: ctx.from.first_name,
-        balance: stats.crystalBalance,
-        rate: stats.miningRate,
-        level: stats.miningLevel,
-        daily: stats.dailyMined,
-        limit: DAILY_LIMIT
-    });
+    const text = `
+✨ *قائمة CRYSTAL الرئيسية* ✨
+
+👤 *المستخدم:* ${ctx.from.first_name}
+💎 *الرصيد:* ${stats.crystalBalance.toFixed(2)} CRYSTAL
+💰 *القيمة:* ${stats.usdtValue.toFixed(2)} USDT
+⚡ *معدل التعدين:* ${stats.miningRate}x
+📊 *تعدين اليوم:* ${stats.dailyMined}/${DAILY_LIMIT}
+📈 *نسبة الإنجاز:* ${Math.floor(progress)}%
+
+🎁 *رابط الإحالة الخاص بك:*
+\`${referralLink}\`
+
+👥 *الإحالات:* ${stats.referralsCount}/10
+    `;
     
     const keyboard = ctx.from.id === ADMIN_ID ? adminKeyboard : mainKeyboard;
     
@@ -968,14 +1023,13 @@ bot.action('back_to_menu', async (ctx) => {
         parse_mode: 'Markdown',
         ...keyboard
     });
-    
-    await ctx.reply(`🔗 *رابط الإحالة:*\n\`${referralLink}\``, { parse_mode: 'Markdown' });
 });
 
 // تشغيل البوت
 bot.launch().then(() => {
     console.log('🚀 Bot is running...');
     console.log('👑 Admin ID:', ADMIN_ID);
+    console.log('👑 Admin Username:', ADMIN_USERNAME);
     console.log('💎 Daily Limit:', DAILY_LIMIT, 'CRYSTAL');
     console.log('💰 TRON Address:', TRON_ADDRESS);
 }).catch((err) => {
