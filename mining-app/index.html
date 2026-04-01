@@ -198,7 +198,7 @@
             direction: rtl;
         }
 
-        .buy-button, .p2p-button, .task-button, .wallet-button, .withdraw-button {
+        .buy-button, .p2p-button, .task-button, .wallet-button, .withdraw-button, .trade-button {
             background: #4CAF50;
             color: white;
             border: none;
@@ -214,9 +214,9 @@
         .task-button { background: #ff9800; }
         .wallet-button { background: #9C27B0; }
         .withdraw-button { background: #f44336; }
-        .twitter-button { background: #1DA1F2; }
+        .trade-button { background: #00bcd4; }
 
-        .liquidity-info, .wallet-info {
+        .liquidity-info, .wallet-info, .trade-info {
             background: #e3f2fd;
             padding: 15px;
             border-radius: 10px;
@@ -302,6 +302,19 @@
         .polygon-tag { background: #8247E5; color: #fff; }
         .solana-tag { background: #14F195; color: #000; }
         .aptos-tag { background: #000; color: #fff; }
+        .btc-tag { background: #F7931A; color: #fff; }
+        .eth-tag { background: #627EEA; color: #fff; }
+
+        .bet-item {
+            background: #f9f9f9;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-right: 4px solid #00bcd4;
+        }
+        .bet-win { border-right-color: #4CAF50; }
+        .bet-loss { border-right-color: #f44336; }
+        .bet-active { border-right-color: #ff9800; }
     </style>
 </head>
 <body>
@@ -322,6 +335,7 @@
 
         <div class="tab-buttons">
             <button class="tab-button active" onclick="switchTab('mine')"><span id="tabMine">⛏️ تعدين</span></button>
+            <button class="tab-button" onclick="switchTab('trade')"><span id="tabTrade">📈 تداول</span></button>
             <button class="tab-button" onclick="switchTab('leaderboard')"><span id="tabLeaderboard">🏆 متصدرين</span></button>
             <button class="tab-button" onclick="switchTab('buy')"><span id="tabBuy">💰 شراء</span></button>
             <button class="tab-button" onclick="switchTab('p2p')"><span id="tabP2P">📊 P2P</span></button>
@@ -345,6 +359,38 @@
                     <div class="stat-item"><div class="stat-label" id="vipLabel">VIP</div><div class="stat-value" id="vipLevel">0</div></div>
                 </div>
                 <button class="buy-button" onclick="upgradeMining()" style="background:#ff9800"><span id="upgradeBtn">⚡ تطوير معدل التعدين</span></button>
+            </div>
+        </div>
+
+        <!-- تداول -->
+        <div id="trade-tab" class="tab-content">
+            <div class="card">
+                <h3 id="tradeTitle">📈 سوق التداول</h3>
+                <div class="trade-info" id="priceInfo"><div class="loading">جاري تحميل الأسعار...</div></div>
+                <div id="betStats" style="margin: 10px 0; font-size: 12px; color: #666;"></div>
+                <div class="bet-section">
+                    <select id="betCurrency" class="buy-input">
+                        <option value="BTC">BTC - بيتكوين</option>
+                        <option value="ETH">ETH - إيثريوم</option>
+                    </select>
+                    <select id="betType" class="buy-input">
+                        <option value="up">⬆️ صاعد - توقع ارتفاع السعر</option>
+                        <option value="down">⬇️ هابط - توقع انخفاض السعر</option>
+                    </select>
+                    <select id="betDuration" class="buy-input">
+                        <option value="60">1 دقيقة</option>
+                        <option value="300">5 دقائق</option>
+                        <option value="900">15 دقيقة</option>
+                    </select>
+                    <input type="number" id="betAmount" placeholder="المبلغ بالكريستال (الحد الأدنى 10)" class="buy-input">
+                    <button class="trade-button" onclick="placeBet()"><span id="betBtnText">🎲 وضع رهان</span></button>
+                </div>
+                <div style="font-size:12px;color:#666;text-align:center;margin-top:10px">
+                    💰 المكافأة: 80% أرباح | 💸 العمولة: 5%<br>
+                    📊 الأسعار من Binance مباشرة
+                </div>
+                <div id="recentBets" style="margin-top: 15px;"></div>
+                <button class="p2p-button" onclick="loadRecentBets()" style="background:#00bcd4; margin-top:10px"><span id="refreshBetsBtn">🔄 تحديث الرهانات</span></button>
             </div>
         </div>
 
@@ -372,7 +418,7 @@
         <div id="tasks-tab" class="tab-content">
             <div class="card"><h3 id="tasksTitle">📋 المهام</h3>
                 <div class="task-item"><div class="task-icon">📋</div><div class="task-info"><h4 id="dailyTaskTitle">المهمة اليومية</h4><p id="dailyTaskDesc">أكمل المهمة اليومية واحصل على مكافآت</p><p id="dailyTaskReward">🎁 20-50 كريستال</p><p id="taskStreak">📈 السلسلة: 0 يوم</p></div><button class="task-btn" onclick="completeDailyTask()"><span id="completeTaskBtn">إكمال</span></button></div>
-                <div class="task-item"><div class="task-icon">🐦</div><div class="task-info"><h4 id="twitterTaskTitle">متابعة تويتر</h4><p id="twitterTaskDesc">تابع حسابنا على تويتر واحصل على 15 كريستال</p><p id="twitterTaskReward">🎁 15 كريستال</p><p id="twitterTaskStatus">⏳ لم تبدأ بعد</p></div><button class="task-btn twitter-button" onclick="startTwitterTask()" id="twitterTaskBtn"><span id="twitterTaskBtnText">بدء المهمة</span></button></div>
+                <div class="task-item"><div class="task-icon">🐦</div><div class="task-info"><h4 id="twitterTaskTitle">متابعة تويتر</h4><p id="twitterTaskDesc">تابع حسابنا على تويتر واحصل على 15 كريستال</p><p id="twitterTaskReward">🎁 15 كريستال</p><p id="twitterTaskStatus">⏳ لم تبدأ بعد</p></div><button class="task-btn twitter-button" onclick="startTwitterTask()" id="twitterTaskBtn" style="background:#1DA1F2"><span id="twitterTaskBtnText">بدء المهمة</span></button></div>
             </div>
         </div>
 
@@ -398,7 +444,7 @@
                 <input type="text" id="withdrawAddress" placeholder="عنوان المحفظة المستلم" class="buy-input">
                 <button class="withdraw-button" onclick="withdraw()"><span id="withdrawBtnText">💸 سحب</span></button>
             </div>
-            <div style="font-size:12px;color:#666;text-align:center;margin-top:10px">⚠️ الحد الأدنى للسحب: 0.01 من كل عملة<br>📤 يتم التحويل خلال بضع دقائق</div></div>
+            <div style="font-size:12px;color:#666;text-align:center;margin-top:10px">⚠️ الحد الأدنى للسحب: 0.01 من كل عملة<br>📤 يتم التحويل خلال بضع دقائق<br>💸 عمولة السحب: 2%</div></div>
         </div>
 
         <!-- دعم -->
@@ -413,16 +459,18 @@
         tg.expand();
         tg.ready();
         
-        let userData = {}, lastMiningTime = null, miningInterval = null, currentLanguage = 'ar', walletData = null;
+        let userData = {}, lastMiningTime = null, miningInterval = null, currentLanguage = 'ar', walletData = null, prices = null;
         const API_URL = window.location.origin;
         const DAILY_LIMIT = 70;
         const CRYSTAL_PRICE = 0.01;
         const TWITTER_URL = 'https://x.com/AlmBd37526';
+        const COMMISSION_ADDRESS = '0x2a2548117C7113eB807298D74A44d451E330AC95';
         
         const texts = {
             ar: {
-                balanceTitle:'💎 رصيد الكريستال', miningRateLabel:'معدل التعدين', tabMine:'⛏️ تعدين', tabLeaderboard:'🏆 متصدرين', tabBuy:'💰 شراء', tabP2P:'📊 P2P', tabTasks:'📋 مهام', tabVip:'👑 VIP', tabWallet:'💼 محفظتي', tabSupport:'📞 دعم',
+                balanceTitle:'💎 رصيد الكريستال', miningRateLabel:'معدل التعدين', tabMine:'⛏️ تعدين', tabTrade:'📈 تداول', tabLeaderboard:'🏆 متصدرين', tabBuy:'💰 شراء', tabP2P:'📊 P2P', tabTasks:'📋 مهام', tabVip:'👑 VIP', tabWallet:'💼 محفظتي', tabSupport:'📞 دعم',
                 mineBtnText:'⛏️ اضغط للتعدين', totalMinedLabel:'إجمالي التعدين', miningLevelLabel:'مستوى التعدين', dailyMinedLabel:'تعدين اليوم', dailyRemainingLabel:'المتبقي اليوم', comboLabel:'الكومبو', vipLabel:'VIP', upgradeBtn:'⚡ تطوير معدل التعدين',
+                tradeTitle:'📈 سوق التداول', betBtnText:'🎲 وضع رهان', refreshBetsBtn:'🔄 تحديث الرهانات',
                 leaderboardTitle:'🏆 قائمة المتصدرين', buyTitle:'💰 شراء CRYSTAL', buyBtnText:'💵 شراء بالـ USDT (TRC20)', buyNote:'⚠️ الحد الأدنى: 10 USDT (1000 كريستال)<br>📤 الدفع عبر شبكة TRON (TRC20)',
                 p2pTitle:'📊 سوق P2P', sellOffersBtn:'🟢 عروض البيع', buyOffersBtn:'🔴 عروض الشراء', createOfferBtn:'➕ إنشاء عرض',
                 tasksTitle:'📋 المهام', dailyTaskTitle:'المهمة اليومية', dailyTaskDesc:'أكمل المهمة اليومية واحصل على مكافآت', dailyTaskReward:'🎁 20-50 كريستال', completeTaskBtn:'إكمال',
@@ -434,8 +482,9 @@
                 miningStarted:'بدأ التعدين!', miningComplete:'أكملت التعدين اليومي!', progressText:(p)=>`نسبة التقدم: ${p}%`
             },
             en: {
-                balanceTitle:'💎 CRYSTAL Balance', miningRateLabel:'Mining Rate', tabMine:'⛏️ Mine', tabLeaderboard:'🏆 Leaderboard', tabBuy:'💰 Buy', tabP2P:'📊 P2P', tabTasks:'📋 Tasks', tabVip:'👑 VIP', tabWallet:'💼 Wallet', tabSupport:'📞 Support',
+                balanceTitle:'💎 CRYSTAL Balance', miningRateLabel:'Mining Rate', tabMine:'⛏️ Mine', tabTrade:'📈 Trade', tabLeaderboard:'🏆 Leaderboard', tabBuy:'💰 Buy', tabP2P:'📊 P2P', tabTasks:'📋 Tasks', tabVip:'👑 VIP', tabWallet:'💼 Wallet', tabSupport:'📞 Support',
                 mineBtnText:'⛏️ Start Mining', totalMinedLabel:'Total Mined', miningLevelLabel:'Mining Level', dailyMinedLabel:'Today\'s Mining', dailyRemainingLabel:'Remaining', comboLabel:'Combo', vipLabel:'VIP', upgradeBtn:'⚡ Upgrade',
+                tradeTitle:'📈 Trading Market', betBtnText:'🎲 Place Bet', refreshBetsBtn:'🔄 Refresh Bets',
                 leaderboardTitle:'🏆 Leaderboard', buyTitle:'💰 Buy CRYSTAL', buyBtnText:'💵 Buy with USDT (TRC20)', buyNote:'⚠️ Min: 10 USDT (1000 CRYSTAL)<br>📤 Send via TRON (TRC20)',
                 p2pTitle:'📊 P2P Market', sellOffersBtn:'🟢 Sell Offers', buyOffersBtn:'🔴 Buy Offers', createOfferBtn:'➕ Create Offer',
                 tasksTitle:'📋 Tasks', dailyTaskTitle:'Daily Task', dailyTaskDesc:'Complete daily task to earn rewards', dailyTaskReward:'🎁 20-50 CRYSTAL', completeTaskBtn:'Complete',
@@ -451,31 +500,12 @@
         function t(key, p=null) { let txt = texts[currentLanguage][key] || texts.ar[key]; return typeof txt === 'function' ? txt(p) : txt; }
         
         function updateUILanguage() {
-            document.getElementById('balanceTitle').innerHTML = t('balanceTitle'); document.getElementById('miningRateLabel').innerHTML = t('miningRateLabel');
-            document.getElementById('tabMine').innerHTML = t('tabMine'); document.getElementById('tabLeaderboard').innerHTML = t('tabLeaderboard');
-            document.getElementById('tabBuy').innerHTML = t('tabBuy'); document.getElementById('tabP2P').innerHTML = t('tabP2P');
-            document.getElementById('tabTasks').innerHTML = t('tabTasks'); document.getElementById('tabVip').innerHTML = t('tabVip');
-            document.getElementById('tabWallet').innerHTML = t('tabWallet'); document.getElementById('tabSupport').innerHTML = t('tabSupport');
-            document.getElementById('mineBtnText').innerHTML = t('mineBtnText'); document.getElementById('totalMinedLabel').innerHTML = t('totalMinedLabel');
-            document.getElementById('miningLevelLabel').innerHTML = t('miningLevelLabel'); document.getElementById('dailyMinedLabel').innerHTML = t('dailyMinedLabel');
-            document.getElementById('dailyRemainingLabel').innerHTML = t('dailyRemainingLabel'); document.getElementById('comboLabel').innerHTML = t('comboLabel');
-            document.getElementById('vipLabel').innerHTML = t('vipLabel'); document.getElementById('upgradeBtn').innerHTML = t('upgradeBtn');
-            document.getElementById('leaderboardTitle').innerHTML = t('leaderboardTitle'); document.getElementById('buyTitle').innerHTML = t('buyTitle');
-            document.getElementById('buyBtnText').innerHTML = t('buyBtnText'); document.getElementById('buyNote').innerHTML = t('buyNote');
-            document.getElementById('p2pTitle').innerHTML = t('p2pTitle'); document.getElementById('sellOffersBtn').innerHTML = t('sellOffersBtn');
-            document.getElementById('buyOffersBtn').innerHTML = t('buyOffersBtn'); document.getElementById('createOfferBtn').innerHTML = t('createOfferBtn');
-            document.getElementById('tasksTitle').innerHTML = t('tasksTitle'); document.getElementById('dailyTaskTitle').innerHTML = t('dailyTaskTitle');
-            document.getElementById('dailyTaskDesc').innerHTML = t('dailyTaskDesc'); document.getElementById('dailyTaskReward').innerHTML = t('dailyTaskReward');
-            document.getElementById('completeTaskBtn').innerHTML = t('completeTaskBtn'); document.getElementById('twitterTaskTitle').innerHTML = t('twitterTaskTitle');
-            document.getElementById('twitterTaskDesc').innerHTML = t('twitterTaskDesc'); document.getElementById('twitterTaskReward').innerHTML = t('twitterTaskReward');
-            document.getElementById('twitterTaskBtnText').innerHTML = t('twitterTaskBtnText'); document.getElementById('vipTitle').innerHTML = t('vipTitle');
-            document.getElementById('vipLevelDisplay').innerHTML = t('vipLevelDisplay'); document.getElementById('vipExp').innerHTML = t('vipExp');
-            document.getElementById('vipBenefits').innerHTML = t('vipBenefits'); document.getElementById('upgradeVipBtn').innerHTML = t('upgradeVipBtn');
-            document.getElementById('walletTitle').innerHTML = t('walletTitle'); document.getElementById('withdrawTitle').innerHTML = t('withdrawTitle');
-            document.getElementById('withdrawBtnText').innerHTML = t('withdrawBtnText'); document.getElementById('supportTitle').innerHTML = t('supportTitle');
-            document.getElementById('supportText').innerHTML = t('supportText'); document.getElementById('supportAdmin').innerHTML = t('supportAdmin');
-            document.getElementById('supportId').innerHTML = t('supportId'); document.getElementById('copyIdBtn').innerHTML = t('copyIdBtn');
-            document.getElementById('contactAdminBtn').innerHTML = t('contactAdminBtn');
+            const ids = ['balanceTitle','miningRateLabel','tabMine','tabTrade','tabLeaderboard','tabBuy','tabP2P','tabTasks','tabVip','tabWallet','tabSupport',
+                'mineBtnText','totalMinedLabel','miningLevelLabel','dailyMinedLabel','dailyRemainingLabel','comboLabel','vipLabel','upgradeBtn',
+                'tradeTitle','betBtnText','refreshBetsBtn','leaderboardTitle','buyTitle','buyBtnText','buyNote','p2pTitle','sellOffersBtn','buyOffersBtn','createOfferBtn',
+                'tasksTitle','dailyTaskTitle','dailyTaskDesc','dailyTaskReward','completeTaskBtn','twitterTaskTitle','twitterTaskDesc','twitterTaskReward','twitterTaskBtnText',
+                'vipTitle','vipLevelDisplay','vipExp','vipBenefits','upgradeVipBtn','walletTitle','withdrawTitle','withdrawBtnText','supportTitle','supportText','supportAdmin','supportId','copyIdBtn','contactAdminBtn'];
+            ids.forEach(id => { if(document.getElementById(id)) document.getElementById(id).innerHTML = t(id); });
         }
         
         function setLanguage(lang) { currentLanguage = lang; updateUILanguage(); tg.showAlert(t('copySuccess')); localStorage.setItem('language', lang); registerUserLanguage(lang); }
@@ -526,22 +556,65 @@
             } catch(e) { console.error(e); }
         }
         
-        async function loadWallet() {
+        async function loadPrices() {
+            try {
+                const res = await fetch(`${API_URL}/api/prices`);
+                prices = await res.json();
+                const btcChange = prices.BTC.change24h > 0 ? `+${prices.BTC.change24h.toFixed(2)}%` : `${prices.BTC.change24h.toFixed(2)}%`;
+                const ethChange = prices.ETH.change24h > 0 ? `+${prices.ETH.change24h.toFixed(2)}%` : `${prices.ETH.change24h.toFixed(2)}%`;
+                document.getElementById('priceInfo').innerHTML = `
+                    <div><span class="network-tag btc-tag">BTC</span> ${prices.BTC.price.toFixed(2)} USDT (${btcChange})</div>
+                    <div style="margin-top:8px"><span class="network-tag eth-tag">ETH</span> ${prices.ETH.price.toFixed(2)} USDT (${ethChange})</div>
+                    <div style="margin-top:8px; font-size:11px; color:#888">⏰ آخر تحديث: ${new Date(prices.timestamp).toLocaleTimeString()}</div>
+                `;
+            } catch(e) { console.error(e); document.getElementById('priceInfo').innerHTML = `<div>${t('error')}</div>`; }
+        }
+        
+        async function loadBetStats() {
             try {
                 const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/wallet/${uid}`);
-                const data = await res.json();
-                walletData = data;
-                document.getElementById('walletInfo').innerHTML = `
-                    <div><span class="network-tag bnb-tag">BNB</span> <span class="address-box">${data.addresses.bnb}</span> <button class="copy-btn" onclick="copyToClipboard('${data.addresses.bnb}')">📋 نسخ</button><br>💰 الرصيد: ${data.balances.bnb} BNB</div>
-                    <div style="margin-top:10px"><span class="network-tag polygon-tag">POLYGON</span> <span class="address-box">${data.addresses.polygon}</span> <button class="copy-btn" onclick="copyToClipboard('${data.addresses.polygon}')">📋 نسخ</button><br>💰 الرصيد: ${data.balances.polygon} MATIC</div>
-                    <div style="margin-top:10px"><span class="network-tag solana-tag">SOLANA</span> <span class="address-box">${data.addresses.solana}</span> <button class="copy-btn" onclick="copyToClipboard('${data.addresses.solana}')">📋 نسخ</button><br>💰 الرصيد: ${data.balances.solana} SOL</div>
-                    <div style="margin-top:10px"><span class="network-tag aptos-tag">APTOS</span> <span class="address-box">${data.addresses.aptos}</span> <button class="copy-btn" onclick="copyToClipboard('${data.addresses.aptos}')">📋 نسخ</button><br>💰 الرصيد: ${data.balances.aptos} APT</div>
-                    <div style="margin-top:15px;padding-top:10px;border-top:1px solid #ddd"><strong>🔑 بصمة المحفظة:</strong> <code>${data.signature.slice(0,16)}...</code></div>
-                    <div><strong>💰 الإجمالي:</strong> ${data.balances.total.toFixed(4)} USDT</div>
-                `;
-            } catch(e) { console.error(e); document.getElementById('walletInfo').innerHTML = `<div class="loading">${t('error')}</div>`; }
+                const res = await fetch(`${API_URL}/api/bets/${uid}`);
+                const bets = await res.json();
+                const total = bets.length;
+                const won = bets.filter(b => b.status === 'won').length;
+                const lost = bets.filter(b => b.status === 'lost').length;
+                const profit = bets.reduce((s, b) => s + (b.profit || 0), 0);
+                const winRate = total > 0 ? (won / total * 100).toFixed(1) : 0;
+                document.getElementById('betStats').innerHTML = `🎲 ${total} رهان | 🏆 ${won} فوز | 💔 ${lost} خسارة | 📈 ${winRate}% | 💰 ${profit.toFixed(2)} CRYSTAL`;
+                
+                const recent = bets.slice(-5).reverse();
+                let html = '<div style="margin-top:10px"><strong>📊 آخر رهاناتك</strong></div>';
+                for (const b of recent) {
+                    const icon = b.type === 'up' ? '⬆️' : '⬇️';
+                    const statusClass = b.status === 'won' ? 'bet-win' : (b.status === 'lost' ? 'bet-loss' : 'bet-active');
+                    const statusText = b.status === 'won' ? `✅ +${b.profit.toFixed(2)}` : (b.status === 'lost' ? `❌ -${b.amount}` : '⏳ جاري');
+                    html += `<div class="bet-item ${statusClass}">
+                        <div><strong>${b.currency}</strong> ${icon} | ${b.amount} CRYSTAL</div>
+                        <div style="font-size:11px">${new Date(b.createdAt).toLocaleString()} | ${statusText}</div>
+                    </div>`;
+                }
+                document.getElementById('recentBets').innerHTML = html;
+            } catch(e) { console.error(e); }
         }
+        
+        async function placeBet() {
+            const currency = document.getElementById('betCurrency').value;
+            const type = document.getElementById('betType').value;
+            const duration = parseInt(document.getElementById('betDuration').value);
+            const amount = parseFloat(document.getElementById('betAmount').value);
+            if (isNaN(amount) || amount < 10) { tg.showAlert('الحد الأدنى 10 كريستال'); return; }
+            try {
+                const res = await fetch(`${API_URL}/api/bet`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, currency, type, amount, duration })
+                });
+                const r = await res.json();
+                tg.showAlert(r.message);
+                if (r.success) { loadBetStats(); loadUserData(); }
+            } catch(e) { tg.showAlert(t('error')); }
+        }
+        
+        async function loadRecentBets() { await loadBetStats(); await loadPrices(); }
         
         function updateTimer() {
             if(!lastMiningTime) return;
@@ -608,7 +681,7 @@
             try {
                 const res = await fetch(`${API_URL}/api/liquidity`);
                 const d = await res.json();
-                document.getElementById('liquidityInfo').innerHTML = `<div>💰 السعر: ${CRYSTAL_PRICE} USDT</div><div>💎 السيولة: ${d.total_liquidity?.toFixed(2)||0} CRYSTAL</div><div>📊 المتاحة: ${(d.total_liquidity - d.total_sold)?.toFixed(2)||0} CRYSTAL</div><div>🌐 شبكة TRON (TRC20)</div>`;
+                document.getElementById('liquidityInfo').innerHTML = `<div>💰 السعر: ${CRYSTAL_PRICE} USDT</div><div>💎 السيولة: ${d.total_liquidity?.toFixed(2)||0} CRYSTAL</div><div>📊 المتاحة: ${(d.total_liquidity - d.total_sold)?.toFixed(2)||0} CRYSTAL</div><div>🌐 شبكة TRON (TRC20)</div><div>💸 عنوان العمولات: <code>${COMMISSION_ADDRESS}</code></div>`;
             } catch(e) { document.getElementById('liquidityInfo').innerHTML = `<div>${t('error')}</div>`; }
         }
         
@@ -655,8 +728,25 @@
                 const r = await fetch(`${API_URL}/api/p2p/start`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: oid }) });
                 const res = await r.json();
                 tg.showAlert(res.message);
-                if(res.success) tg.showAlert(`📤 أرسل إلى:\nTCZ2NGDSvxznADHTvvkedJTcbbGbD5RhfR\n\nبعد الإرسال: /send_proof ${oid} [رابط الصورة]`);
+                if(res.success) tg.showAlert(`📤 أرسل إلى:\n${process.env.TRON_ADDRESS || 'TCZ2NGDSvxznADHTvvkedJTcbbGbD5RhfR'}\n\nبعد الإرسال: /send_proof ${oid} [رابط الصورة]`);
             } catch(e){ tg.showAlert(t('error')); }
+        }
+        
+        async function loadWallet() {
+            try {
+                const uid = tg.initDataUnsafe.user.id;
+                const res = await fetch(`${API_URL}/api/wallet/${uid}`);
+                const data = await res.json();
+                walletData = data;
+                document.getElementById('walletInfo').innerHTML = `
+                    <div><span class="network-tag bnb-tag">BNB</span> <span class="address-box">${data.addresses.bnb}</span> <button class="copy-btn" onclick="copyToClipboard('${data.addresses.bnb}')">📋 نسخ</button><br>💰 الرصيد: ${data.balances.bnb} BNB</div>
+                    <div style="margin-top:10px"><span class="network-tag polygon-tag">POLYGON</span> <span class="address-box">${data.addresses.polygon}</span> <button class="copy-btn" onclick="copyToClipboard('${data.addresses.polygon}')">📋 نسخ</button><br>💰 الرصيد: ${data.balances.polygon} MATIC</div>
+                    <div style="margin-top:10px"><span class="network-tag solana-tag">SOLANA</span> <span class="address-box">${data.addresses.solana}</span> <button class="copy-btn" onclick="copyToClipboard('${data.addresses.solana}')">📋 نسخ</button><br>💰 الرصيد: ${data.balances.solana} SOL</div>
+                    <div style="margin-top:10px"><span class="network-tag aptos-tag">APTOS</span> <span class="address-box">${data.addresses.aptos}</span> <button class="copy-btn" onclick="copyToClipboard('${data.addresses.aptos}')">📋 نسخ</button><br>💰 الرصيد: ${data.balances.aptos} APT</div>
+                    <div style="margin-top:15px;padding-top:10px;border-top:1px solid #ddd"><strong>🔑 بصمة المحفظة:</strong> <code>${data.signature.slice(0,16)}...</code></div>
+                    <div><strong>💰 الإجمالي:</strong> ${data.balances.total.toFixed(4)} USDT</div>
+                `;
+            } catch(e) { console.error(e); document.getElementById('walletInfo').innerHTML = `<div class="loading">${t('error')}</div>`; }
         }
         
         async function withdraw() {
@@ -684,11 +774,14 @@
             else if(tab==='buy') loadLiquidity();
             else if(tab==='p2p') loadP2POffers('sell');
             else if(tab==='wallet') loadWallet();
+            else if(tab==='trade') { loadPrices(); loadBetStats(); }
         }
         
         registerUser();
         loadUserData();
         loadLiquidity();
+        loadPrices();
+        loadBetStats();
         
         tg.MainButton.setText("🚀 فتح البوت");
         tg.MainButton.onClick(()=>tg.close());
