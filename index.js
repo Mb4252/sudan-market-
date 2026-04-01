@@ -24,6 +24,34 @@ app.use(express.static(path.join(__dirname, 'mining-app')));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'mining-app', 'index.html')));
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
+// ========== المتغيرات البيئية مع قيم افتراضية ==========
+const WEBAPP_URL = process.env.WEBAPP_URL || `https://sdm-security-bot.onrender.com`;
+const ADMIN_ID = parseInt(process.env.ADMIN_ID) || 6701743450;
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'hmood19931130';
+const PLATFORM_FEE = parseFloat(process.env.PLATFORM_FEE_PERCENT) || 0.5;
+
+// العملات المدعومة (قيم افتراضية)
+const SUPPORTED_CURRENCIES = process.env.SUPPORTED_CURRENCIES 
+    ? process.env.SUPPORTED_CURRENCIES.split(',') 
+    : ['USD', 'EUR', 'GBP', 'SAR', 'AED', 'EGP', 'SDG', 'IQD', 'JOD', 'KWD', 'QAR', 'BHD', 'OMR', 'TRY', 'INR', 'PKR'];
+
+// طرق الدفع المدعومة
+const PAYMENT_METHODS = process.env.PAYMENT_METHODS 
+    ? process.env.PAYMENT_METHODS.split(',') 
+    : ['bank_transfer', 'paypal', 'visa', 'mastercard', 'fawry', 'instapay', 'vodafone_cash', 'orange_cash'];
+
+// البنوك السودانية
+const SUDAN_BANKS = process.env.SUDAN_BANKS 
+    ? process.env.SUDAN_BANKS.split(',') 
+    : [
+        'Bank of Khartoum', 'Blue Nile Mashreq Bank', 'Al Salam Bank', 'Agricultural Bank',
+        'Al Baraka Bank', 'Al Nilein Bank', 'Al Shamal Islamic Bank', 'Animal Resources Bank',
+        'Bank of Sudan', 'Byblos Bank', 'Egyptian Sudanese Bank', 'Industrial Development Bank',
+        'National Bank of Abu Dhabi', 'National Bank of Egypt', 'National Bank of Sudan',
+        'Omdurman National Bank', 'Qatar National Bank', 'Saudi Sudanese Bank',
+        'Sudanese French Bank', 'United Capital Bank'
+    ];
+
 // ========== API Routes ==========
 app.get('/api/global_stats', async (req, res) => res.json(await db.getGlobalStats()));
 app.get('/api/user/:userId', async (req, res) => {
@@ -63,13 +91,6 @@ app.listen(PORT, '0.0.0.0', () => console.log(`🌐 Web server on port ${PORT}`)
 (async () => { try { await db.connect(); console.log('✅ Database connected'); } catch (e) { console.error('❌ DB error:', e); } })();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
-const WEBAPP_URL = process.env.WEBAPP_URL || `https://sdm-security-bot.onrender.com`;
-const ADMIN_ID = parseInt(process.env.ADMIN_ID);
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'hmood19931130';
-const PLATFORM_FEE = parseFloat(process.env.PLATFORM_FEE_PERCENT);
-const SUPPORTED_CURRENCIES = process.env.SUPPORTED_CURRENCIES.split(',');
-const PAYMENT_METHODS = process.env.PAYMENT_METHODS.split(',');
-const SUDAN_BANKS = process.env.SUDAN_BANKS.split(',');
 
 // ========== نظام منع الإغراق ==========
 const userLastAction = new Map(), userLastMessage = new Map(), userActionCount = new Map(), userWarningCount = new Map(), bannedUsers = new Map();
@@ -165,6 +186,7 @@ const adminKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
 ]);
 
+// ========== أوامر البوت ==========
 bot.start(async (ctx) => {
     const user = ctx.from;
     const referrer = ctx.startPayload ? parseInt(ctx.startPayload) : null;
@@ -502,10 +524,10 @@ bot.action('support', rateLimitMiddleware, async (ctx) => {
         `👤 *الأدمن:* @${ADMIN_USERNAME}\n` +
         `🆔 *المعرف:* ${ADMIN_ID}\n\n` +
         `💸 *عناوين العمولات:*\n` +
-        `🟡 BNB: \`${process.env.COMMISSION_WALLET_BNB}\`\n` +
-        `🟣 POLYGON: \`${process.env.COMMISSION_WALLET_POLYGON}\`\n` +
-        `🟢 SOLANA: \`${process.env.COMMISSION_WALLET_SOLANA}\`\n` +
-        `🔷 APTOS: \`${process.env.COMMISSION_WALLET_APTOS}\``,
+        `🟡 BNB: \`${process.env.COMMISSION_WALLET_BNB || '0x2a2548117C7113eB807298D74A44d451E330AC95'}\`\n` +
+        `🟣 POLYGON: \`${process.env.COMMISSION_WALLET_POLYGON || '0x2a2548117C7113eB807298D74A44d451E330AC95'}\`\n` +
+        `🟢 SOLANA: \`${process.env.COMMISSION_WALLET_SOLANA || 'HFMJRRqC76YdBE4fXDnyicYDq6ujFhkFJctBfQonStL'}\`\n` +
+        `🔷 APTOS: \`${process.env.COMMISSION_WALLET_APTOS || '0xf0713a00655788d44218e42b71343be9f18d96533d322c28ce9830dcf9022468'}\``,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.url('📨 تواصل', `https://t.me/${ADMIN_USERNAME}`)], [Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
 });
