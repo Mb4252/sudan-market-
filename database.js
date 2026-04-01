@@ -9,17 +9,37 @@ const { User, Wallet, P2pOffer, Trade, DepositRequest, WithdrawRequest, Review, 
 class Database {
     constructor() {
         this.connected = false;
-        this.encryptionKey = process.env.ENCRYPTION_KEY;
-        this.platformFee = parseFloat(process.env.PLATFORM_FEE_PERCENT) / 100;
+        this.encryptionKey = process.env.ENCRYPTION_KEY || 'default_key_32_bytes_long';
+        this.platformFee = (parseFloat(process.env.PLATFORM_FEE_PERCENT) / 100) || 0.005;
+        
         this.commissionWallets = {
-            bnb: process.env.COMMISSION_WALLET_BNB,
-            polygon: process.env.COMMISSION_WALLET_POLYGON,
-            solana: process.env.COMMISSION_WALLET_SOLANA,
-            aptos: process.env.COMMISSION_WALLET_APTOS
+            bnb: process.env.COMMISSION_WALLET_BNB || '0x2a2548117C7113eB807298D74A44d451E330AC95',
+            polygon: process.env.COMMISSION_WALLET_POLYGON || '0x2a2548117C7113eB807298D74A44d451E330AC95',
+            solana: process.env.COMMISSION_WALLET_SOLANA || 'HFMJRRqC76YdBE4fXDnyicYDq6ujFhkFJctBfQonStL',
+            aptos: process.env.COMMISSION_WALLET_APTOS || '0xf0713a00655788d44218e42b71343be9f18d96533d322c28ce9830dcf9022468'
         };
-        this.supportedCurrencies = process.env.SUPPORTED_CURRENCIES.split(',');
-        this.paymentMethods = process.env.PAYMENT_METHODS.split(',');
-        this.sudanBanks = process.env.SUDAN_BANKS.split(',');
+        
+        // العملات المدعومة (قيم افتراضية إذا لم تكن موجودة في .env)
+        this.supportedCurrencies = process.env.SUPPORTED_CURRENCIES 
+            ? process.env.SUPPORTED_CURRENCIES.split(',') 
+            : ['USD', 'EUR', 'GBP', 'SAR', 'AED', 'EGP', 'SDG', 'IQD', 'JOD', 'KWD', 'QAR', 'BHD', 'OMR', 'TRY', 'INR', 'PKR'];
+        
+        // طرق الدفع المدعومة
+        this.paymentMethods = process.env.PAYMENT_METHODS 
+            ? process.env.PAYMENT_METHODS.split(',') 
+            : ['bank_transfer', 'paypal', 'visa', 'mastercard', 'fawry', 'instapay', 'vodafone_cash', 'orange_cash'];
+        
+        // البنوك السودانية
+        this.sudanBanks = process.env.SUDAN_BANKS 
+            ? process.env.SUDAN_BANKS.split(',') 
+            : [
+                'Bank of Khartoum', 'Blue Nile Mashreq Bank', 'Al Salam Bank', 'Agricultural Bank',
+                'Al Baraka Bank', 'Al Nilein Bank', 'Al Shamal Islamic Bank', 'Animal Resources Bank',
+                'Bank of Sudan', 'Byblos Bank', 'Egyptian Sudanese Bank', 'Industrial Development Bank',
+                'National Bank of Abu Dhabi', 'National Bank of Egypt', 'National Bank of Sudan',
+                'Omdurman National Bank', 'Qatar National Bank', 'Saudi Sudanese Bank',
+                'Sudanese French Bank', 'United Capital Bank'
+            ];
     }
 
     generateSignature(data) {
@@ -55,14 +75,17 @@ class Database {
         const wallet = ethers.Wallet.createRandom();
         return { address: wallet.address, encryptedPrivateKey: this.encryptPrivateKey(wallet.privateKey) };
     }
+    
     async createPolygonWallet() {
         const wallet = ethers.Wallet.createRandom();
         return { address: wallet.address, encryptedPrivateKey: this.encryptPrivateKey(wallet.privateKey) };
     }
+    
     async createSolanaWallet() {
         const keypair = Keypair.generate();
         return { address: keypair.publicKey.toString(), encryptedPrivateKey: this.encryptPrivateKey(JSON.stringify(Array.from(keypair.secretKey))) };
     }
+    
     async createAptosWallet() {
         const account = new AptosAccount();
         return { address: account.address().hex(), encryptedPrivateKey: this.encryptPrivateKey(account.toPrivateKeyObject().privateKeyHex) };
@@ -98,9 +121,17 @@ class Database {
         if (!user) {
             const wallet = await this.getUserWallet(userId);
             user = await User.create({
-                userId, username: username || '', firstName: firstName || '', lastName: lastName || '',
-                phoneNumber: phone || '', email: email || '', country: country || 'SD', city: city || '',
-                language, walletId: wallet._id, referrerId
+                userId, 
+                username: username || '', 
+                firstName: firstName || '', 
+                lastName: lastName || '',
+                phoneNumber: phone || '', 
+                email: email || '', 
+                country: country || 'SD', 
+                city: city || '',
+                language, 
+                walletId: wallet._id, 
+                referrerId
             });
             await this.updateDailyStats('totalUsers', 'newUsers');
             if (referrerId) {
@@ -119,14 +150,19 @@ class Database {
         return true;
     }
 
-    async getUser(userId) { return await User.findOne({ userId }); }
+    async getUser(userId) { 
+        return await User.findOne({ userId }); 
+    }
     
     async getUserStats(userId) {
         const user = await this.getUser(userId);
         if (!user) return null;
         const wallet = await this.getUserWallet(userId);
         const activeOffers = await P2pOffer.countDocuments({ userId, status: 'active' });
-        const pendingTrades = await Trade.countDocuments({ $or: [{ buyerId: userId }, { sellerId: userId }], status: { $in: ['pending', 'paid'] } });
+        const pendingTrades = await Trade.countDocuments({ 
+            $or: [{ buyerId: userId }, { sellerId: userId }], 
+            status: { $in: ['pending', 'paid'] } 
+        });
         return {
             ...user.toObject(),
             usdBalance: wallet.usdBalance,
@@ -264,14 +300,12 @@ class Database {
             currency: offer.currency, amount: offer.fiatAmount,
             price: offer.price, totalUsd, fee,
             paymentMethod: offer.paymentMethod,
-            buyerBankDetails: `${buyer.bankName} - ${buyer.bankAccountNumber} - ${buyer.bankAccountName}`,
-            sellerBankDetails: `${offer.bankName} - ${offer.bankAccountNumber} - ${offer.bankAccountName}`,
+            buyerBankDetails: `${buyer.bankName || ''} - ${buyer.bankAccountNumber || ''} - ${buyer.bankAccountName || ''}`,
+            sellerBankDetails: `${offer.bankName || ''} - ${offer.bankAccountNumber || ''} - ${offer.bankAccountName || ''}`,
             status: 'pending'
         });
         
         await P2pOffer.updateOne({ _id: offerId }, { status: 'pending', counterpartyId: buyerId });
-        
-        const paymentDetails = offer.type === 'sell' ? offer.paymentDetails : buyer.bankDetails;
         
         return {
             success: true,
@@ -321,21 +355,12 @@ class Database {
         if (trade.offerId) {
             const offer = await P2pOffer.findById(trade.offerId);
             if (offer && offer.type === 'sell') {
-                const sellerWallet = await this.getUserWallet(sellerId);
                 if (sellerWallet.usdBalance < trade.totalUsd) {
                     await Trade.updateOne({ _id: tradeId }, { status: 'disputed' });
                     return { success: false, message: '⚠️ رصيد البائع غير كافٍ! تم فتح نزاع' };
                 }
                 await Wallet.updateOne({ userId: sellerId }, { $inc: { usdBalance: -trade.totalUsd } });
                 await Wallet.updateOne({ userId: trade.buyerId }, { $inc: { usdBalance: trade.totalUsd - trade.fee } });
-            } else if (offer && offer.type === 'buy') {
-                const buyerWallet = await this.getUserWallet(trade.buyerId);
-                if (buyerWallet.usdBalance < trade.totalUsd) {
-                    await Trade.updateOne({ _id: tradeId }, { status: 'disputed' });
-                    return { success: false, message: '⚠️ رصيد المشتري غير كافٍ! تم فتح نزاع' };
-                }
-                await Wallet.updateOne({ userId: trade.buyerId }, { $inc: { usdBalance: -trade.totalUsd } });
-                await Wallet.updateOne({ userId: sellerId }, { $inc: { usdBalance: trade.totalUsd - trade.fee } });
             }
         }
         
@@ -367,7 +392,11 @@ class Database {
 
     // ========== النزاعات ==========
     async openDispute(tradeId, userId, reason) {
-        const trade = await Trade.findOne({ _id: tradeId, $or: [{ buyerId: userId }, { sellerId: userId }], status: { $in: ['pending', 'paid'] } });
+        const trade = await Trade.findOne({ 
+            _id: tradeId, 
+            $or: [{ buyerId: userId }, { sellerId: userId }], 
+            status: { $in: ['pending', 'paid'] } 
+        });
         if (!trade) return { success: false, message: 'الصفقة غير موجودة' };
         
         await Trade.updateOne({ _id: tradeId }, { status: 'disputed', disputeReason: reason, disputeOpenedBy: userId });
@@ -511,17 +540,41 @@ class Database {
         await DailyStats.updateOne({ date: today }, { $inc: u });
     }
     
-    async getPendingWithdraws() { return await WithdrawRequest.find({ status: 'pending' }).sort({ createdAt: -1 }).lean(); }
-    async getPendingDeposits() { return await DepositRequest.find({ status: 'pending' }).sort({ createdAt: -1 }).lean(); }
-    async getDisputedTrades() { return await Trade.find({ status: 'disputed' }).sort({ createdAt: -1 }).lean(); }
+    async getPendingWithdraws() { 
+        return await WithdrawRequest.find({ status: 'pending' }).sort({ createdAt: -1 }).lean(); 
+    }
+    
+    async getPendingDeposits() { 
+        return await DepositRequest.find({ status: 'pending' }).sort({ createdAt: -1 }).lean(); 
+    }
+    
+    async getDisputedTrades() { 
+        return await Trade.find({ status: 'disputed' }).sort({ createdAt: -1 }).lean(); 
+    }
     
     async searchUsers(query) {
         const regex = new RegExp(query, 'i');
-        return await User.find({ $or: [{ username: regex }, { firstName: regex }, { lastName: regex }, { phoneNumber: regex }, { email: regex }, { userId: !isNaN(query) ? parseInt(query) : -1 }] }).limit(20).select('userId username firstName lastName phoneNumber email rating isVerified isMerchant');
+        return await User.find({ 
+            $or: [
+                { username: regex }, 
+                { firstName: regex }, 
+                { lastName: regex }, 
+                { phoneNumber: regex }, 
+                { email: regex }, 
+                { userId: !isNaN(query) ? parseInt(query) : -1 }
+            ] 
+        }).limit(20).select('userId username firstName lastName phoneNumber email rating isVerified isMerchant');
     }
     
-    async setLanguage(userId, language) { await User.updateOne({ userId }, { language }); return true; }
-    async updateBankDetails(userId, bankName, accountNumber, accountName) { await User.updateOne({ userId }, { bankName, bankAccountNumber: accountNumber, bankAccountName: accountName }); return true; }
+    async setLanguage(userId, language) { 
+        await User.updateOne({ userId }, { language }); 
+        return true; 
+    }
+    
+    async updateBankDetails(userId, bankName, accountNumber, accountName) { 
+        await User.updateOne({ userId }, { bankName, bankAccountNumber: accountNumber, bankAccountName: accountName }); 
+        return true; 
+    }
 }
 
 module.exports = new Database();
