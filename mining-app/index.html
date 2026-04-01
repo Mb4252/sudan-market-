@@ -6,43 +6,339 @@
     <title>CRYSTAL Mining - تعدين الكريستال</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
-        .container { max-width: 600px; margin: 0 auto; }
-        .card { background: rgba(255,255,255,0.95); border-radius: 20px; padding: 20px; margin-bottom: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
-        .balance-card { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; text-align: center; }
-        .balance-amount { font-size: 48px; font-weight: bold; margin: 10px 0; }
-        .usdt-value { font-size: 18px; opacity: 0.9; margin-top: 5px; }
-        .mining-rate { font-size: 18px; opacity: 0.9; }
-        .progress-bar { background: rgba(255,255,255,0.3); border-radius: 10px; height: 10px; overflow: hidden; margin: 10px 0; }
-        .progress-fill { background: #4CAF50; height: 100%; width: 0%; transition: width 0.5s ease; }
-        .mine-button { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 20px; font-size: 24px; font-weight: bold; border-radius: 50px; width: 100%; cursor: pointer; margin: 20px 0; transition: transform 0.2s; }
-        .mine-button:active { transform: scale(0.95); }
-        .mine-button:disabled { opacity: 0.5; cursor: not-allowed; }
-        .timer { text-align: center; font-size: 20px; margin: 10px 0; color: #666; }
-        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 15px; }
-        .stat-item { background: #f5f5f5; padding: 15px; border-radius: 15px; text-align: center; }
-        .stat-label { font-size: 14px; color: #666; margin-bottom: 5px; }
-        .stat-value { font-size: 20px; font-weight: bold; color: #333; }
-        .tab-buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-        .tab-button { flex: 1; padding: 12px; background: rgba(255,255,255,0.2); border: none; border-radius: 10px; color: white; font-size: 14px; cursor: pointer; transition: all 0.3s; }
-        .tab-button.active { background: white; color: #667eea; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .leader-item { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #eee; }
-        .leader-rank { font-weight: bold; color: #667eea; width: 50px; }
-        .leader-name { flex: 1; margin: 0 10px; }
-        .leader-balance { font-weight: bold; color: #f5576c; }
-        .buy-input { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 10px; font-size: 16px; margin: 10px 0; direction: rtl; }
-        .buy-button, .p2p-button { background: #4CAF50; color: white; border: none; padding: 12px; border-radius: 10px; width: 100%; font-size: 16px; cursor: pointer; margin-top: 10px; }
-        .p2p-button { background: #2196F3; }
-        .liquidity-info { background: #e3f2fd; padding: 15px; border-radius: 10px; margin: 10px 0; }
-        .language-selector { display: flex; gap: 10px; justify-content: center; margin-bottom: 15px; }
-        .lang-btn { background: #667eea; color: white; border: none; padding: 8px 20px; border-radius: 20px; cursor: pointer; }
-        .copy-btn { background: #2196F3; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; margin-top: 10px; }
-        .reward-popup { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 20px; text-align: center; z-index: 1000; animation: shake 0.5s; }
-        @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-5px)} 75%{transform:translateX(5px)} }
-        .loading { text-align: center; padding: 20px; color: #666; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .balance-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            text-align: center;
+        }
+
+        .balance-amount {
+            font-size: 48px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .usdt-value {
+            font-size: 18px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .mining-rate {
+            font-size: 18px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .progress-bar {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            height: 10px;
+            overflow: hidden;
+            margin: 15px 0 5px;
+        }
+
+        .progress-fill {
+            background: #4CAF50;
+            height: 100%;
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+
+        .progress-text {
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .mine-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            border-radius: 50px;
+            width: 100%;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin: 20px 0;
+        }
+
+        .mine-button:active {
+            transform: scale(0.95);
+        }
+
+        .mine-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .timer {
+            text-align: center;
+            font-size: 20px;
+            margin: 10px 0;
+            color: #666;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 15px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .leaderboard {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .leader-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .leader-rank {
+            font-weight: bold;
+            color: #667eea;
+            width: 50px;
+        }
+
+        .leader-name {
+            flex: 1;
+            margin: 0 10px;
+        }
+
+        .leader-balance {
+            font-weight: bold;
+            color: #f5576c;
+        }
+
+        .leader-vip {
+            color: gold;
+            margin-left: 5px;
+        }
+
+        .buy-section {
+            margin-top: 20px;
+        }
+
+        .buy-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            margin: 10px 0;
+            direction: rtl;
+        }
+
+        .buy-button, .p2p-button, .task-button, .vip-button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 10px;
+            width: 100%;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .p2p-button {
+            background: #2196F3;
+        }
+
+        .task-button {
+            background: #FF9800;
+        }
+
+        .vip-button {
+            background: #9C27B0;
+        }
+
+        .liquidity-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+
+        .tab-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .tab-button.active {
+            background: white;
+            color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        .reward-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            animation: shake 0.5s;
+        }
+
+        .reward-amount {
+            font-size: 36px;
+            font-weight: bold;
+            color: #f5576c;
+            margin: 10px 0;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .copy-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+            margin-right: 5px;
+        }
+
+        .language-selector {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+
+        .lang-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .offer-card {
+            background: #f9f9f9;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-right: 4px solid #4CAF50;
+        }
+
+        .offer-sell {
+            border-right-color: #ff4444;
+        }
+
+        .offer-buy {
+            border-right-color: #4CAF50;
+        }
+
+        .vip-badge {
+            background: gold;
+            color: #333;
+            border-radius: 20px;
+            padding: 2px 8px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-left: 5px;
+        }
+
+        .combo-badge {
+            background: #ff9800;
+            color: white;
+            border-radius: 20px;
+            padding: 2px 8px;
+            font-size: 10px;
+            margin-left: 5px;
+        }
     </style>
 </head>
 <body>
@@ -52,7 +348,9 @@
             <div class="balance-amount" id="balance">0</div>
             <div class="usdt-value">💰 <span id="usdtValue">0</span> USDT</div>
             <div class="mining-rate">⚡ <span id="miningRateLabel">معدل التعدين</span>: <span id="miningRate">1</span>x</div>
-            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
             <div class="progress-text" id="progressText">نسبة التقدم: 0%</div>
         </div>
 
@@ -62,34 +360,161 @@
         </div>
 
         <div class="tab-buttons">
-            <button class="tab-button active" onclick="switchTab('mine')">⛏️ <span id="tabMine">تعدين</span></button>
-            <button class="tab-button" onclick="switchTab('leaderboard')">🏆 <span id="tabLeaderboard">متصدرين</span></button>
-            <button class="tab-button" onclick="switchTab('buy')">💰 <span id="tabBuy">شراء</span></button>
-            <button class="tab-button" onclick="switchTab('p2p')">📊 <span id="tabP2P">P2P</span></button>
-            <button class="tab-button" onclick="switchTab('support')">📞 <span id="tabSupport">دعم</span></button>
+            <button class="tab-button active" onclick="switchTab('mine')"><span id="tabMine">⛏️ تعدين</span></button>
+            <button class="tab-button" onclick="switchTab('leaderboard')"><span id="tabLeaderboard">🏆 متصدرين</span></button>
+            <button class="tab-button" onclick="switchTab('buy')"><span id="tabBuy">💰 شراء</span></button>
+            <button class="tab-button" onclick="switchTab('p2p')"><span id="tabP2P">📊 P2P</span></button>
+            <button class="tab-button" onclick="switchTab('tasks')"><span id="tabTasks">📋 مهام</span></button>
+            <button class="tab-button" onclick="switchTab('vip')"><span id="tabVip">👑 VIP</span></button>
+            <button class="tab-button" onclick="switchTab('support')"><span id="tabSupport">📞 دعم</span></button>
         </div>
 
+        <!-- تعدين -->
         <div id="mine-tab" class="tab-content active">
             <div class="card">
-                <button class="mine-button" id="mineBtn" onclick="startMining()"><span id="mineBtnText">⛏️ اضغط للتعدين</span></button>
+                <button class="mine-button" id="mineBtn" onclick="startMining()">
+                    <span id="mineBtnText">⛏️ اضغط للتعدين</span>
+                </button>
                 <div class="timer" id="timer"></div>
+                
                 <div class="stats-grid">
-                    <div class="stat-item"><div class="stat-label" id="totalMinedLabel">إجمالي التعدين</div><div class="stat-value" id="totalMined">0</div></div>
-                    <div class="stat-item"><div class="stat-label" id="miningLevelLabel">مستوى التعدين</div><div class="stat-value" id="miningLevel">1</div></div>
-                    <div class="stat-item"><div class="stat-label" id="dailyMinedLabel">تعدين اليوم</div><div class="stat-value" id="dailyMined">0/70</div></div>
-                    <div class="stat-item"><div class="stat-label" id="dailyRemainingLabel">المتبقي اليوم</div><div class="stat-value" id="dailyRemaining">70</div></div>
+                    <div class="stat-item">
+                        <div class="stat-label" id="totalMinedLabel">إجمالي التعدين</div>
+                        <div class="stat-value" id="totalMined">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label" id="miningLevelLabel">مستوى التعدين</div>
+                        <div class="stat-value" id="miningLevel">1</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label" id="dailyMinedLabel">تعدين اليوم</div>
+                        <div class="stat-value" id="dailyMined">0/70</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label" id="dailyRemainingLabel">المتبقي اليوم</div>
+                        <div class="stat-value" id="dailyRemaining">70</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label" id="comboLabel">الكومبو</div>
+                        <div class="stat-value" id="comboCount">0 يوم</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label" id="vipLabel">VIP</div>
+                        <div class="stat-value" id="vipLevel">0</div>
+                    </div>
                 </div>
-                <button class="buy-button" onclick="upgradeMining()" style="background:#ff9800"><span id="upgradeBtn">⚡ تطوير معدل التعدين</span></button>
+
+                <button class="buy-button" onclick="upgradeMining()" style="background: #ff9800; margin-top: 15px;">
+                    <span id="upgradeBtn">⚡ تطوير معدل التعدين</span>
+                </button>
             </div>
         </div>
 
-        <div id="leaderboard-tab" class="tab-content"><div class="card"><h3 id="leaderboardTitle">🏆 قائمة المتصدرين</h3><div class="leaderboard" id="leaderboardList"><div class="loading">جاري التحميل...</div></div></div></div>
+        <!-- المتصدرين -->
+        <div id="leaderboard-tab" class="tab-content">
+            <div class="card">
+                <h3 id="leaderboardTitle">🏆 قائمة المتصدرين</h3>
+                <div class="leaderboard" id="leaderboardList">
+                    <div class="loading" id="loadingLeaderboard">جاري التحميل...</div>
+                </div>
+            </div>
+        </div>
 
-        <div id="buy-tab" class="tab-content"><div class="card"><h3 id="buyTitle">💰 شراء CRYSTAL</h3><div class="liquidity-info" id="liquidityInfo"><div class="loading">جاري التحميل...</div></div><div class="buy-section"><input type="number" id="crystalAmount" placeholder="أدخل عدد الكريستال المطلوب" class="buy-input"><button class="buy-button" onclick="initiatePurchase()"><span id="buyBtnText">💵 شراء بالـ USDT (TRC20)</span></button></div><div style="font-size:12px;color:#666;text-align:center;margin-top:10px" id="buyNote">⚠️ الحد الأدنى: 10 USDT (1000 كريستال)<br>📤 الدفع عبر شبكة TRON (TRC20)</div></div></div>
+        <!-- شراء -->
+        <div id="buy-tab" class="tab-content">
+            <div class="card">
+                <h3 id="buyTitle">💰 شراء CRYSTAL</h3>
+                <div class="liquidity-info" id="liquidityInfo">
+                    <div class="loading">جاري التحميل...</div>
+                </div>
+                <div class="buy-section">
+                    <input type="number" id="crystalAmount" placeholder="أدخل عدد الكريستال المطلوب" class="buy-input">
+                    <button class="buy-button" onclick="initiatePurchase()">
+                        <span id="buyBtnText">💵 شراء بالـ USDT (TRC20)</span>
+                    </button>
+                </div>
+                <div style="font-size: 12px; color: #666; text-align: center; margin-top: 10px" id="buyNote">
+                    ⚠️ الحد الأدنى: 10 USDT (1000 كريستال)<br>📤 الدفع عبر شبكة TRON (TRC20)
+                </div>
+            </div>
+        </div>
 
-        <div id="p2p-tab" class="tab-content"><div class="card"><h3 id="p2pTitle">📊 سوق P2P</h3><div class="p2p-buttons"><button class="p2p-button" onclick="loadP2POffers('sell')"><span id="sellOffersBtn">🟢 عروض البيع</span></button><button class="p2p-button" onclick="loadP2POffers('buy')"><span id="buyOffersBtn">🔴 عروض الشراء</span></button><button class="p2p-button" onclick="showCreateOffer()"><span id="createOfferBtn">➕ إنشاء عرض</span></button></div><div id="p2pOffersList" style="margin-top:15px"><div class="loading">اختر نوع العرض لعرض القائمة</div></div></div></div>
+        <!-- P2P -->
+        <div id="p2p-tab" class="tab-content">
+            <div class="card">
+                <h3 id="p2pTitle">📊 سوق P2P</h3>
+                <div class="p2p-buttons">
+                    <button class="p2p-button" onclick="loadP2POffers('sell')">
+                        <span id="sellOffersBtn">🟢 عروض البيع</span>
+                    </button>
+                    <button class="p2p-button" onclick="loadP2POffers('buy')">
+                        <span id="buyOffersBtn">🔴 عروض الشراء</span>
+                    </button>
+                    <button class="p2p-button" onclick="showCreateOffer()">
+                        <span id="createOfferBtn">➕ إنشاء عرض</span>
+                    </button>
+                </div>
+                <div id="p2pOffersList" style="margin-top: 15px">
+                    <div class="loading">اختر نوع العرض لعرض القائمة</div>
+                </div>
+                <div style="font-size: 12px; color: #666; text-align: center; margin-top: 10px">
+                    ⚠️ الحد الأدنى للعرض والصفقة: 5 USDT
+                </div>
+            </div>
+        </div>
 
-        <div id="support-tab" class="tab-content"><div class="card"><h3 id="supportTitle">📞 الدعم الفني</h3><div style="text-align:center;padding:20px"><p id="supportText">للتواصل مع الدعم الفني:</p><p><strong id="supportAdmin">👤 الأدمن:</strong> @hmood19931130</p><p><strong id="supportId">🆔 المعرف:</strong> 6701743450</p><button class="copy-btn" onclick="copyToClipboard('6701743450')"><span id="copyIdBtn">📋 نسخ المعرف</span></button><button class="copy-btn" onclick="window.open('https://t.me/hmood19931130','_blank')"><span id="contactAdminBtn">📨 تواصل مع الأدمن</span></button></div></div></div>
+        <!-- المهام اليومية -->
+        <div id="tasks-tab" class="tab-content">
+            <div class="card">
+                <h3 id="tasksTitle">📋 المهام اليومية</h3>
+                <div style="text-align: center; padding: 20px;">
+                    <div style="font-size: 48px; margin-bottom: 10px;">✅</div>
+                    <p id="taskDesc">أكمل المهمة اليومية واحصل على مكافآت يومية!</p>
+                    <p id="taskReward">🎁 المكافأة: 20-50 كريستال</p>
+                    <p id="taskStreak">📈 السلسلة الحالية: 0 يوم</p>
+                    <button class="task-button" onclick="completeDailyTask()">
+                        <span id="completeTaskBtn">📋 إكمال المهمة اليومية</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIP -->
+        <div id="vip-tab" class="tab-content">
+            <div class="card">
+                <h3 id="vipTitle">👑 نظام VIP</h3>
+                <div style="text-align: center; padding: 20px;">
+                    <div style="font-size: 48px; margin-bottom: 10px;">👑</div>
+                    <p id="vipLevelDisplay">مستوى VIP: 0</p>
+                    <p id="vipExp">نقاط الخبرة: 0/1000</p>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="vipProgressFill" style="width: 0%;"></div>
+                    </div>
+                    <p id="vipBenefits">✨ مزايا VIP: +0% معدل التعدين</p>
+                    <button class="vip-button" onclick="upgradeVIP()">
+                        <span id="upgradeVipBtn">⭐ ترقية VIP</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- الدعم -->
+        <div id="support-tab" class="tab-content">
+            <div class="card">
+                <h3 id="supportTitle">📞 الدعم الفني</h3>
+                <div style="text-align: center; padding: 20px">
+                    <p id="supportText">للتواصل مع الدعم الفني:</p>
+                    <p><strong id="supportAdmin">👤 الأدمن:</strong> @hmood19931130</p>
+                    <p><strong id="supportId">🆔 المعرف:</strong> 6701743450</p>
+                    <button class="copy-btn" onclick="copyToClipboard('6701743450')">
+                        <span id="copyIdBtn">📋 نسخ المعرف</span>
+                    </button>
+                    <button class="copy-btn" onclick="window.open('https://t.me/hmood19931130', '_blank')">
+                        <span id="contactAdminBtn">📨 تواصل مع الأدمن</span>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -110,25 +535,39 @@
             ar: {
                 balanceTitle: '💎 رصيد الكريستال',
                 miningRateLabel: 'معدل التعدين',
-                tabMine: 'تعدين',
-                tabLeaderboard: 'متصدرين',
-                tabBuy: 'شراء',
-                tabP2P: 'P2P',
-                tabSupport: 'دعم',
+                tabMine: '⛏️ تعدين',
+                tabLeaderboard: '🏆 متصدرين',
+                tabBuy: '💰 شراء',
+                tabP2P: '📊 P2P',
+                tabTasks: '📋 مهام',
+                tabVip: '👑 VIP',
+                tabSupport: '📞 دعم',
                 mineBtnText: '⛏️ اضغط للتعدين',
                 totalMinedLabel: 'إجمالي التعدين',
                 miningLevelLabel: 'مستوى التعدين',
                 dailyMinedLabel: 'تعدين اليوم',
                 dailyRemainingLabel: 'المتبقي اليوم',
+                comboLabel: 'الكومبو',
+                vipLabel: 'VIP',
                 upgradeBtn: '⚡ تطوير معدل التعدين',
                 leaderboardTitle: '🏆 قائمة المتصدرين',
                 buyTitle: '💰 شراء CRYSTAL',
                 buyBtnText: '💵 شراء بالـ USDT (TRC20)',
-                buyNote: '⚠️ الحد الأدنى: 10 USDT (1000 كريستال)\n📤 الدفع عبر شبكة TRON (TRC20)',
+                buyNote: '⚠️ الحد الأدنى: 10 USDT (1000 كريستال)<br>📤 الدفع عبر شبكة TRON (TRC20)',
                 p2pTitle: '📊 سوق P2P',
                 sellOffersBtn: '🟢 عروض البيع',
                 buyOffersBtn: '🔴 عروض الشراء',
                 createOfferBtn: '➕ إنشاء عرض',
+                tasksTitle: '📋 المهام اليومية',
+                taskDesc: 'أكمل المهمة اليومية واحصل على مكافآت يومية!',
+                taskReward: '🎁 المكافأة: 20-50 كريستال',
+                taskStreak: '📈 السلسلة الحالية: 0 يوم',
+                completeTaskBtn: '📋 إكمال المهمة اليومية',
+                vipTitle: '👑 نظام VIP',
+                vipLevelDisplay: 'مستوى VIP: 0',
+                vipExp: 'نقاط الخبرة: 0/1000',
+                vipBenefits: '✨ مزايا VIP: +0% معدل التعدين',
+                upgradeVipBtn: '⭐ ترقية VIP',
                 supportTitle: '📞 الدعم الفني',
                 supportText: 'للتواصل مع الدعم الفني:',
                 supportAdmin: '👤 الأدمن:',
@@ -144,30 +583,48 @@
                 miningStarted: 'بدأ التعدين!',
                 miningProgress: 'تحديث التعدين!',
                 miningComplete: 'أكملت التعدين اليومي!',
-                progressText: (p) => `نسبة التقدم: ${p}%`
+                progressText: (p) => `نسبة التقدم: ${p}%`,
+                taskCompleted: (reward, streak) => `✅ تم إكمال المهمة!\n🎁 المكافأة: +${reward} كريستال\n📈 السلسلة: ${streak} أيام`,
+                taskAlreadyCompleted: '⚠️ تم إكمال المهمة اليومية بالفعل!',
+                vipUpgraded: (level, bonus) => `👑 تمت ترقية VIP!\n🎖️ المستوى الجديد: ${level}\n✨ المكافأة: +${bonus} كريستال`,
+                vipNotEnough: '❌ ليس لديك نقاط خبرة كافية للترقية!'
             },
             en: {
                 balanceTitle: '💎 CRYSTAL Balance',
                 miningRateLabel: 'Mining Rate',
-                tabMine: 'Mine',
-                tabLeaderboard: 'Leaderboard',
-                tabBuy: 'Buy',
-                tabP2P: 'P2P',
-                tabSupport: 'Support',
+                tabMine: '⛏️ Mine',
+                tabLeaderboard: '🏆 Leaderboard',
+                tabBuy: '💰 Buy',
+                tabP2P: '📊 P2P',
+                tabTasks: '📋 Tasks',
+                tabVip: '👑 VIP',
+                tabSupport: '📞 Support',
                 mineBtnText: '⛏️ Start Mining',
                 totalMinedLabel: 'Total Mined',
                 miningLevelLabel: 'Mining Level',
                 dailyMinedLabel: 'Today\'s Mining',
                 dailyRemainingLabel: 'Remaining Today',
+                comboLabel: 'Combo',
+                vipLabel: 'VIP',
                 upgradeBtn: '⚡ Upgrade Mining Rate',
                 leaderboardTitle: '🏆 Leaderboard',
                 buyTitle: '💰 Buy CRYSTAL',
                 buyBtnText: '💵 Buy with USDT (TRC20)',
-                buyNote: '⚠️ Minimum: 10 USDT (1000 CRYSTAL)\n📤 Send via TRON Network (TRC20)',
+                buyNote: '⚠️ Minimum: 10 USDT (1000 CRYSTAL)<br>📤 Send via TRON Network (TRC20)',
                 p2pTitle: '📊 P2P Market',
                 sellOffersBtn: '🟢 Sell Offers',
                 buyOffersBtn: '🔴 Buy Offers',
                 createOfferBtn: '➕ Create Offer',
+                tasksTitle: '📋 Daily Tasks',
+                taskDesc: 'Complete daily tasks to earn rewards!',
+                taskReward: '🎁 Reward: 20-50 CRYSTAL',
+                taskStreak: '📈 Current streak: 0 days',
+                completeTaskBtn: '📋 Complete Daily Task',
+                vipTitle: '👑 VIP System',
+                vipLevelDisplay: 'VIP Level: 0',
+                vipExp: 'Experience: 0/1000',
+                vipBenefits: '✨ VIP Benefits: +0% mining rate',
+                upgradeVipBtn: '⭐ Upgrade VIP',
                 supportTitle: '📞 Support',
                 supportText: 'Contact support:',
                 supportAdmin: '👤 Admin:',
@@ -183,7 +640,11 @@
                 miningStarted: 'Mining started!',
                 miningProgress: 'Mining update!',
                 miningComplete: 'Daily mining completed!',
-                progressText: (p) => `Progress: ${p}%`
+                progressText: (p) => `Progress: ${p}%`,
+                taskCompleted: (reward, streak) => `✅ Task completed!\n🎁 Reward: +${reward} CRYSTAL\n📈 Streak: ${streak} days`,
+                taskAlreadyCompleted: '⚠️ Daily task already completed!',
+                vipUpgraded: (level, bonus) => `👑 VIP Upgraded!\n🎖️ New level: ${level}\n✨ Bonus: +${bonus} CRYSTAL`,
+                vipNotEnough: '❌ Not enough experience points to upgrade!'
             }
         };
         
@@ -200,12 +661,16 @@
             document.getElementById('tabLeaderboard').innerHTML = t('tabLeaderboard');
             document.getElementById('tabBuy').innerHTML = t('tabBuy');
             document.getElementById('tabP2P').innerHTML = t('tabP2P');
+            document.getElementById('tabTasks').innerHTML = t('tabTasks');
+            document.getElementById('tabVip').innerHTML = t('tabVip');
             document.getElementById('tabSupport').innerHTML = t('tabSupport');
             document.getElementById('mineBtnText').innerHTML = t('mineBtnText');
             document.getElementById('totalMinedLabel').innerHTML = t('totalMinedLabel');
             document.getElementById('miningLevelLabel').innerHTML = t('miningLevelLabel');
             document.getElementById('dailyMinedLabel').innerHTML = t('dailyMinedLabel');
             document.getElementById('dailyRemainingLabel').innerHTML = t('dailyRemainingLabel');
+            document.getElementById('comboLabel').innerHTML = t('comboLabel');
+            document.getElementById('vipLabel').innerHTML = t('vipLabel');
             document.getElementById('upgradeBtn').innerHTML = t('upgradeBtn');
             document.getElementById('leaderboardTitle').innerHTML = t('leaderboardTitle');
             document.getElementById('buyTitle').innerHTML = t('buyTitle');
@@ -215,6 +680,16 @@
             document.getElementById('sellOffersBtn').innerHTML = t('sellOffersBtn');
             document.getElementById('buyOffersBtn').innerHTML = t('buyOffersBtn');
             document.getElementById('createOfferBtn').innerHTML = t('createOfferBtn');
+            document.getElementById('tasksTitle').innerHTML = t('tasksTitle');
+            document.getElementById('taskDesc').innerHTML = t('taskDesc');
+            document.getElementById('taskReward').innerHTML = t('taskReward');
+            document.getElementById('taskStreak').innerHTML = t('taskStreak');
+            document.getElementById('completeTaskBtn').innerHTML = t('completeTaskBtn');
+            document.getElementById('vipTitle').innerHTML = t('vipTitle');
+            document.getElementById('vipLevelDisplay').innerHTML = t('vipLevelDisplay');
+            document.getElementById('vipExp').innerHTML = t('vipExp');
+            document.getElementById('vipBenefits').innerHTML = t('vipBenefits');
+            document.getElementById('upgradeVipBtn').innerHTML = t('upgradeVipBtn');
             document.getElementById('supportTitle').innerHTML = t('supportTitle');
             document.getElementById('supportText').innerHTML = t('supportText');
             document.getElementById('supportAdmin').innerHTML = t('supportAdmin');
@@ -271,6 +746,7 @@
                 const data = await response.json();
                 userData = data;
                 updateUI();
+                
                 const dailyResponse = await fetch(`${API_URL}/api/user/daily/${userId}`);
                 const dailyData = await dailyResponse.json();
                 document.getElementById('dailyMined').textContent = `${dailyData.daily_mined || 0}/${DAILY_LIMIT}`;
@@ -278,6 +754,23 @@
                 const progress = ((dailyData.daily_mined || 0) / DAILY_LIMIT) * 100;
                 document.getElementById('progressFill').style.width = `${progress}%`;
                 document.getElementById('progressText').textContent = t('progressText', Math.floor(progress));
+                
+                // VIP data
+                document.getElementById('vipLevel').textContent = userData.vipLevel || 0;
+                document.getElementById('comboCount').textContent = `${userData.comboCount || 0} يوم`;
+                
+                // VIP progress
+                const nextExp = ((userData.vipLevel || 0) + 1) * 1000;
+                const expProgress = Math.min(100, ((userData.totalMined || 0) / nextExp) * 100);
+                document.getElementById('vipProgressFill').style.width = `${expProgress}%`;
+                document.getElementById('vipLevelDisplay').innerHTML = `${t('vipLevelDisplay')} ${userData.vipLevel || 0}`;
+                document.getElementById('vipExp').innerHTML = `${t('vipExp')} ${(userData.totalMined || 0).toFixed(0)}/${nextExp}`;
+                document.getElementById('vipBenefits').innerHTML = `${t('vipBenefits')} ${(userData.vipLevel || 0) * 10}%`;
+                
+                // Task streak
+                const streak = userData.dailyTasks?.streak || 0;
+                document.getElementById('taskStreak').innerHTML = `${t('taskStreak')} ${streak} ${streak === 1 ? 'يوم' : 'أيام'}`;
+                
             } catch(e) { console.error(e); }
         }
         
@@ -364,13 +857,49 @@
             } catch(e) { console.error(e); tg.showAlert(t('error')); }
         }
         
+        async function completeDailyTask() {
+            try {
+                const response = await fetch(`${API_URL}/api/daily_task`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    tg.showAlert(t('taskCompleted', result.reward, result.streak));
+                    await loadUserData();
+                } else {
+                    tg.showAlert(t('taskAlreadyCompleted'));
+                }
+            } catch(e) { console.error(e); tg.showAlert(t('error')); }
+        }
+        
+        async function upgradeVIP() {
+            try {
+                const response = await fetch(`${API_URL}/api/upgrade_vip`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    tg.showAlert(t('vipUpgraded', result.newLevel, result.bonus));
+                    await loadUserData();
+                } else {
+                    tg.showAlert(t('vipNotEnough'));
+                }
+            } catch(e) { console.error(e); tg.showAlert(t('error')); }
+        }
+        
         async function loadLeaderboard() {
             try {
                 const response = await fetch(`${API_URL}/api/leaderboard`);
                 const leaders = await response.json();
                 const container = document.getElementById('leaderboardList');
                 if (!leaders || leaders.length === 0) { container.innerHTML = `<div style="text-align:center;padding:20px">${t('noLeaders')}</div>`; return; }
-                container.innerHTML = leaders.map((l, i) => `<div class="leader-item"><div class="leader-rank">${i===0?'👑':i===1?'🥈':i===2?'🥉':`#${i+1}`}</div><div class="leader-name">${l.name||'مستخدم'}</div><div class="leader-balance">${l.balance?.toFixed(2)||0} CRYSTAL</div></div>`).join('');
+                container.innerHTML = leaders.map((l, i) => {
+                    const vipBadge = l.vipLevel > 0 ? '<span class="vip-badge">VIP</span>' : '';
+                    const medal = i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`;
+                    return `<div class="leader-item"><div class="leader-rank">${medal}</div><div class="leader-name">${l.name || 'مستخدم'}${vipBadge}</div><div class="leader-balance">${(l.balance || 0).toFixed(2)} CRYSTAL</div></div>`;
+                }).join('');
             } catch(e) { console.error(e); document.getElementById('leaderboardList').innerHTML = `<div style="text-align:center;padding:20px">${t('error')}</div>`; }
         }
         
@@ -380,7 +909,14 @@
                 const data = await response.json();
                 const available = data.available || (data.total_liquidity - data.total_sold);
                 const soldPercent = ((data.total_sold / data.total_liquidity) * 100).toFixed(2);
-                document.getElementById('liquidityInfo').innerHTML = `<div>💰 سعر العملة: ${CRYSTAL_PRICE} USDT لكل CRYSTAL</div><div>💎 إجمالي السيولة: ${data.total_liquidity?.toFixed(2)||1000000} CRYSTAL</div><div>📊 السيولة المتاحة: ${available?.toFixed(2)||0} CRYSTAL</div><div>💵 تم البيع: ${data.total_sold?.toFixed(2)||0} CRYSTAL</div><div>📈 نسبة البيع: ${soldPercent||0}%</div><div>🌐 شبكة الدفع: TRON (TRC20)</div>`;
+                document.getElementById('liquidityInfo').innerHTML = `
+                    <div>💰 سعر العملة: ${CRYSTAL_PRICE} USDT لكل CRYSTAL</div>
+                    <div>💎 إجمالي السيولة: ${data.total_liquidity?.toFixed(2) || 1000000} CRYSTAL</div>
+                    <div>📊 السيولة المتاحة: ${available?.toFixed(2) || 0} CRYSTAL</div>
+                    <div>💵 تم البيع: ${data.total_sold?.toFixed(2) || 0} CRYSTAL</div>
+                    <div>📈 نسبة البيع: ${soldPercent || 0}%</div>
+                    <div>🌐 شبكة الدفع: TRON (TRC20)</div>
+                `;
             } catch(e) { console.error(e); document.getElementById('liquidityInfo').innerHTML = `<div>${t('error')}</div>`; }
         }
         
@@ -406,7 +942,17 @@
                 const offers = await response.json();
                 const container = document.getElementById('p2pOffersList');
                 if (!offers || offers.length === 0) { container.innerHTML = `<div style="text-align:center;padding:20px">لا توجد عروض ${type==='sell'?'بيع':'شراء'}</div>`; return; }
-                container.innerHTML = offers.map(o => `<div class="card" style="margin-bottom:10px"><div><strong>👤 ${o.firstName || o.username}</strong></div><div>💎 ${o.crystalAmount} CRYSTAL</div><div>💰 ${o.usdtAmount} USDT</div><div>📊 ${(o.pricePerCrystal||0).toFixed(4)} USDT/CRYSTAL</div><button class="copy-btn" onclick="copyToClipboard('${o._id}')">📋 نسخ رقم العرض</button><button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button></div>`).join('');
+                container.innerHTML = offers.map(o => `
+                    <div class="offer-card ${type === 'sell' ? 'offer-sell' : 'offer-buy'}">
+                        <div><strong>👤 ${o.firstName || o.username}</strong></div>
+                        <div>💎 ${o.crystalAmount} CRYSTAL</div>
+                        <div>💰 ${o.usdtAmount} USDT</div>
+                        <div>📊 ${(o.pricePerCrystal || 0).toFixed(4)} USDT/CRYSTAL</div>
+                        <div>🆔 <code>${o._id}</code></div>
+                        <button class="copy-btn" onclick="copyToClipboard('${o._id}')">📋 نسخ الرقم</button>
+                        <button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button>
+                    </div>
+                `).join('');
             } catch(e) { console.error(e); document.getElementById('p2pOffersList').innerHTML = `<div style="text-align:center;padding:20px">${t('error')}</div>`; }
         }
         
@@ -440,8 +986,8 @@
                 });
                 const result = await response.json();
                 tg.showAlert(result.message);
-                if (result.success && result.sellerId) {
-                    tg.showAlert(`📤 أرسل المبلغ إلى: ${result.address}\nبعد الإرسال: /send_proof ${offerId} [رابط الصورة]`);
+                if (result.success && result.address) {
+                    tg.showAlert(`📤 أرسل المبلغ إلى:\n${result.address}\n\nبعد الإرسال: /send_proof ${offerId} [رابط الصورة]`);
                 }
             } catch(e) { console.error(e); tg.showAlert(t('error')); }
         }
