@@ -182,7 +182,7 @@ const adminKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('📅 إحصائيات اليوم', 'today_stats')],
     [Markup.button.callback('🔍 بحث عن مستخدم', 'search_user')],
     [Markup.button.callback('🚫 مستخدمين محظورين', 'banned_users')],
-    [Markup.button.callback('🔓 رفع الحظر', 'unban_all')],
+    [Markup.button.callback('🔓 رفع الحظر عن الكل', 'unban_all')],
     [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
 ]);
 
@@ -202,6 +202,20 @@ bot.start(async (ctx) => {
         `🚀 *اضغط على الزر أدناه لفتح منصة التداول*`,
         { parse_mode: 'Markdown', ...startKeyboard }
     );
+});
+
+// ========== أمر عرض لوحة الأدمن ==========
+bot.command('admin', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) {
+        return ctx.reply('⛔ هذا الأمر للأدمن فقط!');
+    }
+    
+    await ctx.reply('👑 *لوحة تحكم الأدمن*', { parse_mode: 'Markdown', ...adminKeyboard });
+});
+
+// ========== أمر عرض المعرف ==========
+bot.command('my_id', async (ctx) => {
+    await ctx.reply(`🆔 *معرفك:* \`${ctx.from.id}\`\n👤 *اسمك:* ${ctx.from.first_name}\n📛 *يوزر:* @${ctx.from.username || 'لا يوجد'}`, { parse_mode: 'Markdown' });
 });
 
 // ========== الرصيد ==========
@@ -399,7 +413,7 @@ bot.action('my_wallet', rateLimitMiddleware, async (ctx) => {
     await ctx.editMessageText(
         `💼 *محفظتي*\n\n` +
         `💵 *USD:* ${stats.usdBalance.toFixed(2)}\n` +
-        `🔑 *بصمة المحفظة:* \`${w.walletSignature.slice(0, 16)}...\`\n\n` +
+        `🔑 *بصمة المحفظة:* \`${w.walletSignature ? w.walletSignature.slice(0, 16) : 'جاري الإنشاء'}...\`\n\n` +
         `📤 *عناوين استقبال العملات:*\n\n` +
         `🟡 *BNB:*\n\`${w.bnbAddress}\`\n\n` +
         `🟣 *POLYGON:*\n\`${w.polygonAddress}\`\n\n` +
