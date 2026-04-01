@@ -7,7 +7,6 @@ class Database {
         this.connected = false;
     }
 
-    // إنشاء بصمة فريدة
     generateSignature(data) {
         return crypto.createHash('sha256').update(`${data}-${Date.now()}-${Math.random()}`).digest('hex');
     }
@@ -47,210 +46,61 @@ class Database {
                     `📈 *المستوى:* ${level}\n` +
                     `📊 *تعدين اليوم:* ${daily}/${limit}\n` +
                     `📈 *نسبة الإنجاز:* ${Math.floor((daily/limit)*100)}%\n\n` +
-                    `🚀 *ابدأ التعدين الآن!*\n` +
-                    `⏰ *سيتم تجميع 70 كريستال خلال 24 ساعة*`,
-                
+                    `🚀 *ابدأ التعدين الآن!*`,
                 miningProgress: (reward, total, progress) => 
-                    `⛏️ *تحديث التعدين!*\n\n` +
-                    `💎 *تم إضافة:* +${reward.toFixed(2)} CRYSTAL\n` +
-                    `📊 *إجمالي اليوم:* ${total.toFixed(2)}/70\n` +
-                    `📈 *نسبة الإنجاز:* ${progress}%\n` +
-                    `💎 *المتبقي:* ${(70 - total).toFixed(2)} كريستال`,
-                
-                miningComplete: `✅ *أكملت التعدين اليومي!*\n\n🎉 *حصلت على 70 كريستال اليوم*\n⏰ *انتظر حتى الغد للتعدين مرة أخرى*`,
-                
-                upgradeSuccess: (newRate, newLevel) => 
-                    `✅ *تمت الترقية بنجاح!*\n\n` +
-                    `⚡ *معدل التعدين الجديد:* ${newRate}x\n` +
-                    `📈 *المستوى الجديد:* ${newLevel}`,
-                
-                upgradeCost: (cost, usdt) => 
-                    `💰 *تكلفة الترقية:* ${cost} CRYSTAL\n💵 *قيمتها:* ${usdt} USDT`,
-                
-                upgradeRequest: (id, amount, address) => 
-                    `✅ *تم إنشاء طلب ترقية* #${id.toString().slice(-6)}\n\n` +
-                    `💰 *المبلغ:* ${amount} USDT\n\n` +
-                    `📤 *أرسل المبلغ عبر شبكة TRON (TRC20) إلى:*\n\`${address}\`\n\n` +
-                    `🔘 *اضغط على الزر أدناه لنسخ العنوان:*\n\n` +
-                    `📎 *بعد التحويل، أرسل:*\n/confirm_upgrade ${id} [رابط المعاملة]\n\n` +
-                    `⚠️ *ملاحظة:* تأكد من إرسال USDT على شبكة TRC20 فقط`,
-                
-                purchaseRequest: (id, amount, usdt, address) => 
-                    `✅ *تم إنشاء طلب شراء* #${id.toString().slice(-6)}\n\n` +
-                    `💎 *الكمية:* ${amount} CRYSTAL\n` +
-                    `💰 *المبلغ:* ${usdt} USDT\n\n` +
-                    `📤 *أرسل المبلغ عبر شبكة TRON (TRC20) إلى:*\n\`${address}\`\n\n` +
-                    `🔘 *اضغط على الزر أدناه لنسخ العنوان:*\n\n` +
-                    `📎 *بعد التحويل، أرسل:*\n/confirm_purchase ${id} [رابط المعاملة]`,
-                
-                p2pOfferCreated: (type, amount, usdt, price) => 
-                    `✅ *تم إنشاء عرض ${type === 'sell' ? 'بيع' : 'شراء'}!*\n\n` +
-                    `💎 *الكمية:* ${amount} CRYSTAL\n` +
-                    `💰 *السعر:* ${usdt} USDT\n` +
-                    `📊 *سعر الوحدة:* ${price.toFixed(4)} USDT/CRYSTAL\n\n` +
-                    `⚠️ *الحد الأدنى للصفقة: 5 USDT*`,
-                
-                p2pTradeStarted: (id, amount, usdt, address) => 
-                    `🔄 *تم بدء صفقة P2P* #${id.toString().slice(-6)}\n\n` +
-                    `💎 *الكمية:* ${amount} CRYSTAL\n` +
-                    `💰 *المبلغ:* ${usdt} USDT\n\n` +
-                    `📤 *أرسل المبلغ عبر شبكة TRON (TRC20) إلى:*\n\`${address}\`\n\n` +
-                    `📎 *بعد الإرسال، أرسل:*\n/send_proof ${id} [رابط الصورة]`,
-                
-                p2pProofReceived: `✅ *تم استلام إثبات الدفع!*\n⏳ *بانتظار تأكيد البائع وإطلاق العملة*`,
-                
-                p2pRelease: (id, amount) => 
-                    `✅ *تم تحرير العملة!*\n\n💎 *+${amount} CRYSTAL*\n📋 *رقم الصفقة:* #${id.toString().slice(-6)}`,
-                
-                p2pDispute: `⚠️ *تم فتح نزاع!*\n👨‍⚖️ *سيتم مراجعة الصفقة من قبل الأدمن خلال 24 ساعة*`,
-                
-                comboReward: (combo, reward) => 
-                    `🔥 *مكافأة الكومبو!*\n\n📅 *${combo} يوم متتالي*\n🎁 *مكافأة:* +${reward} CRYSTAL`,
-                
-                dailyTask: (reward, streak) => 
-                    `✅ *المهمة اليومية مكتملة!*\n\n🎁 *المكافأة:* +${reward} CRYSTAL\n📈 *السلسلة:* ${streak} أيام`,
-                
-                vipUpgrade: (level, bonus) => 
-                    `👑 *ترقية VIP!*\n\n🎖️ *المستوى الجديد:* ${level}\n✨ *مكافأة:* +${bonus} CRYSTAL\n⚡ *معدل التعدين:+${level*10}%*`,
-                
-                usdtValue: (crystals, usdt) => 
-                    `💰 *قيمة رصيدك* 💰\n\n💎 *الكريستال:* ${crystals.toFixed(2)}\n💵 *القيمة:* ${usdt.toFixed(2)} USDT\n\n📊 *سعر الصرف:* 1 CRYSTAL = 0.01 USDT`,
-                
-                support: (adminUsername, adminId) => 
-                    `📞 *الدعم الفني* 📞\n\nللتواصل مع الدعم الفني:\n\n` +
-                    `👤 *الأدمن:* @${adminUsername}\n` +
-                    `🆔 *المعرف:* ${adminId}\n\n` +
-                    `📝 *يمكنك التواصل لحل المشكلات أو الاستفسارات*\n\n` +
-                    `⚠️ *يرجى ذكر اسم المستخدم والمشكلة بوضوح*`,
-                
-                p2pMarket: (balance, usdt) => 
-                    `📊 *سوق P2P* 📊\n\n💎 *رصيدك:* ${balance.toFixed(2)} CRYSTAL\n` +
-                    `💰 *قيمته:* ${usdt.toFixed(2)} USDT\n\n` +
-                    `⚠️ *الحد الأدنى للعرض والصفقة: 5 USDT*`,
-                
-                notEnoughCrystals: (cost, usdt) => 
-                    `❌ *رصيدك غير كافي!*\n\n💰 *تحتاج:* ${cost} CRYSTAL\n💵 *قيمتها:* ${usdt} USDT`,
-                
-                referralReward: (count) => 
-                    `🎉 *مبروك!*\n\n👥 *لقد وصلت إلى ${count} إحالة*\n💎 *حصلت على 3000 كريستال مكافأة!*`,
-                
-                referralDailyLimit: `⚠️ *لقد وصلت للحد الأقصى اليومي للإحالات (10 إحالات)*\n⏰ *انتظر حتى الغد*`,
-                
-                miningStarted: (progress) => 
-                    `⛏️ *بدأ التعدين التراكمي!*\n\n📊 *نسبة التقدم:* ${progress}%\n` +
-                    `💎 *سيتم تجميع الكريستال تدريجياً حتى تصل إلى 70 كريستال*\n\n` +
-                    `⏰ *سيتم التعدين تلقائياً كل ساعة*`
+                    `⛏️ *تحديث التعدين!*\n\n💎 *تم إضافة:* +${reward.toFixed(2)} CRYSTAL\n📊 *إجمالي اليوم:* ${total.toFixed(2)}/70\n📈 *نسبة الإنجاز:* ${progress}%`,
+                miningComplete: `✅ *أكملت التعدين اليومي!*\n\n🎉 *حصلت على 70 كريستال اليوم*\n⏰ *انتظر حتى الغد*`,
+                upgradeSuccess: (newRate, newLevel) => `✅ *تمت الترقية!*\n\n⚡ *معدل التعدين:* ${newRate}x\n📈 *المستوى:* ${newLevel}`,
+                upgradeRequest: (id, amount, address) => `✅ *طلب ترقية #${id.toString().slice(-6)}*\n\n💰 *المبلغ:* ${amount} USDT\n📤 *أرسل إلى:*\n\`${address}\``,
+                purchaseRequest: (id, amount, usdt, address) => `✅ *طلب شراء #${id.toString().slice(-6)}*\n\n💎 ${amount} CRYSTAL\n💰 ${usdt} USDT\n📤 *أرسل إلى:*\n\`${address}\``,
+                p2pOfferCreated: (type, amount, usdt, price) => `✅ *عرض ${type === 'sell' ? 'بيع' : 'شراء'}!*\n💎 ${amount} CRYSTAL\n💰 ${usdt} USDT`,
+                p2pTradeStarted: (id, amount, usdt, address) => `🔄 *صفقة #${id.toString().slice(-6)}*\n💎 ${amount} CRYSTAL\n💰 ${usdt} USDT\n📤 *أرسل إلى:*\n\`${address}\``,
+                p2pProofReceived: `✅ *تم استلام إثبات الدفع!*\n⏳ *بانتظار تأكيد البائع*`,
+                p2pRelease: (id, amount) => `✅ *تم تحرير العملة!*\n💎 +${amount} CRYSTAL`,
+                comboReward: (combo, reward) => `🔥 *كومبو! يوم ${combo}*\n🎁 *مكافأة:* +${reward} CRYSTAL`,
+                dailyTask: (reward, streak) => `✅ *المهمة اليومية!*\n🎁 +${reward} CRYSTAL\n📈 سلسلة: ${streak} أيام`,
+                twitterTask: (reward) => `✅ *مهمة تويتر!*\n🎁 +${reward} CRYSTAL\n🐦 شكراً لمتابعتنا!`,
+                vipUpgrade: (level, bonus) => `👑 *ترقية VIP!*\n🎖️ المستوى ${level}\n🎁 +${bonus} CRYSTAL`,
+                usdtValue: (crystals, usdt) => `💰 *قيمة رصيدك*\n💎 ${crystals.toFixed(2)} CRYSTAL\n💵 ${usdt.toFixed(2)} USDT`,
+                support: (u, i) => `📞 *الدعم*\n👤 @${u}\n🆔 ${i}`,
+                p2pMarket: (b, u) => `📊 *سوق P2P*\n💎 رصيدك: ${b.toFixed(2)} CRYSTAL\n💰 قيمته: ${u.toFixed(2)} USDT\n⚠️ الحد الأدنى: 5 USDT`,
+                notEnoughCrystals: (cost, usdt) => `❌ *رصيد غير كاف!*\n💰 تحتاج: ${cost} CRYSTAL\n💵 قيمتها: ${usdt} USDT`,
+                referralReward: (count) => `🎉 *مبروك! ${count} إحالة*\n💎 +3000 CRYSTAL`,
+                referralDailyLimit: `⚠️ الحد الأقصى اليومي 10 إحالات`,
+                miningStarted: (progress) => `⛏️ *بدأ التعدين!*\n📊 نسبة التقدم: ${progress}%`
             },
             en: {
                 welcome: (name, balance, rate, level, daily, limit) => 
-                    `✨ *Welcome to CRYSTAL Mining Bot!* ✨\n\n` +
-                    `👤 *User:* ${name}\n` +
-                    `💎 *Balance:* ${balance.toFixed(2)} CRYSTAL\n` +
-                    `💰 *Value:* ${(balance * 0.01).toFixed(2)} USDT\n` +
-                    `⚡ *Mining Rate:* ${rate}x\n` +
-                    `📈 *Level:* ${level}\n` +
-                    `📊 *Today's Mining:* ${daily}/${limit}\n` +
-                    `📈 *Progress:* ${Math.floor((daily/limit)*100)}%\n\n` +
-                    `🚀 *Start mining now!*\n` +
-                    `⏰ *70 CRYSTAL will accumulate over 24 hours*`,
-                
-                miningProgress: (reward, total, progress) => 
-                    `⛏️ *Mining update!*\n\n` +
-                    `💎 *Added:* +${reward.toFixed(2)} CRYSTAL\n` +
-                    `📊 *Today's total:* ${total.toFixed(2)}/70\n` +
-                    `📈 *Progress:* ${progress}%\n` +
-                    `💎 *Remaining:* ${(70 - total).toFixed(2)} CRYSTAL`,
-                
-                miningComplete: `✅ *Daily mining completed!*\n\n🎉 *You got 70 CRYSTAL today*\n⏰ *Wait until tomorrow to mine again*`,
-                
-                upgradeSuccess: (newRate, newLevel) => 
-                    `✅ *Upgrade successful!*\n\n⚡ *New mining rate:* ${newRate}x\n📈 *New level:* ${newLevel}`,
-                
-                upgradeCost: (cost, usdt) => 
-                    `💰 *Upgrade cost:* ${cost} CRYSTAL\n💵 *Value:* ${usdt} USDT`,
-                
-                upgradeRequest: (id, amount, address) => 
-                    `✅ *Upgrade request created* #${id.toString().slice(-6)}\n\n` +
-                    `💰 *Amount:* ${amount} USDT\n\n` +
-                    `📤 *Send USDT via TRON Network (TRC20) to:*\n\`${address}\`\n\n` +
-                    `🔘 *Press the button below to copy address:*\n\n` +
-                    `📎 *After sending, send:*\n/confirm_upgrade ${id} [Transaction Hash]`,
-                
-                purchaseRequest: (id, amount, usdt, address) => 
-                    `✅ *Purchase request created* #${id.toString().slice(-6)}\n\n` +
-                    `💎 *Amount:* ${amount} CRYSTAL\n` +
-                    `💰 *Total:* ${usdt} USDT\n\n` +
-                    `📤 *Send USDT via TRON Network (TRC20) to:*\n\`${address}\`\n\n` +
-                    `🔘 *Press the button below to copy address:*\n\n` +
-                    `📎 *After sending, send:*\n/confirm_purchase ${id} [Transaction Hash]`,
-                
-                p2pOfferCreated: (type, amount, usdt, price) => 
-                    `✅ *${type === 'sell' ? 'Sell' : 'Buy'} offer created!*\n\n` +
-                    `💎 *Amount:* ${amount} CRYSTAL\n` +
-                    `💰 *Price:* ${usdt} USDT\n` +
-                    `📊 *Unit price:* ${price.toFixed(4)} USDT/CRYSTAL\n\n` +
-                    `⚠️ *Minimum trade: 5 USDT*`,
-                
-                p2pTradeStarted: (id, amount, usdt, address) => 
-                    `🔄 *P2P Trade started* #${id.toString().slice(-6)}\n\n` +
-                    `💎 *Amount:* ${amount} CRYSTAL\n` +
-                    `💰 *Total:* ${usdt} USDT\n\n` +
-                    `📤 *Send USDT via TRON Network (TRC20) to:*\n\`${address}\`\n\n` +
-                    `📎 *After sending, send:*\n/send_proof ${id} [Image URL]`,
-                
-                p2pProofReceived: `✅ *Payment proof received!*\n⏳ *Waiting for seller confirmation and release*`,
-                
-                p2pRelease: (id, amount) => 
-                    `✅ *Crystals released!*\n\n💎 *+${amount} CRYSTAL*\n📋 *Trade ID:* #${id.toString().slice(-6)}`,
-                
-                p2pDispute: `⚠️ *Dispute opened!*\n👨‍⚖️ *Admin will review within 24 hours*`,
-                
-                comboReward: (combo, reward) => 
-                    `🔥 *Combo Bonus!*\n\n📅 *${combo} day streak*\n🎁 *Bonus:* +${reward} CRYSTAL`,
-                
-                dailyTask: (reward, streak) => 
-                    `✅ *Daily task completed!*\n\n🎁 *Bonus:* +${reward} CRYSTAL\n📈 *Streak:* ${streak} days`,
-                
-                vipUpgrade: (level, bonus) => 
-                    `👑 *VIP Upgrade!*\n\n🎖️ *New level:* ${level}\n✨ *Bonus:* +${bonus} CRYSTAL\n⚡ *Mining rate:+${level*10}%*`,
-                
-                usdtValue: (crystals, usdt) => 
-                    `💰 *Your Balance Value* 💰\n\n💎 *CRYSTAL:* ${crystals.toFixed(2)}\n💵 *Value:* ${usdt.toFixed(2)} USDT\n\n📊 *Exchange rate:* 1 CRYSTAL = 0.01 USDT`,
-                
-                support: (adminUsername, adminId) => 
-                    `📞 *Support* 📞\n\nContact support:\n\n` +
-                    `👤 *Admin:* @${adminUsername}\n` +
-                    `🆔 *ID:* ${adminId}\n\n` +
-                    `⚠️ *Please mention your username and issue clearly*`,
-                
-                p2pMarket: (balance, usdt) => 
-                    `📊 *P2P Market* 📊\n\n💎 *Your balance:* ${balance.toFixed(2)} CRYSTAL\n` +
-                    `💰 *Value:* ${usdt.toFixed(2)} USDT\n\n` +
-                    `⚠️ *Minimum offer/trade: 5 USDT*`,
-                
-                notEnoughCrystals: (cost, usdt) => 
-                    `❌ *Insufficient balance!*\n\n💰 *Need:* ${cost} CRYSTAL\n💵 *Value:* ${usdt} USDT`,
-                
-                referralReward: (count) => 
-                    `🎉 *Congratulations!*\n\n👥 *You reached ${count} referrals*\n💎 *You got 3000 CRYSTAL bonus!*`,
-                
-                referralDailyLimit: `⚠️ *You've reached the daily referral limit (10 referrals)*\n⏰ *Wait until tomorrow*`,
-                
-                miningStarted: (progress) => 
-                    `⛏️ *Accumulative mining started!*\n\n📊 *Progress:* ${progress}%\n` +
-                    `💎 *Crystals will accumulate gradually up to 70 crystals*\n\n` +
-                    `⏰ *Mining continues automatically every hour*`
+                    `✨ *Welcome to CRYSTAL Mining!* ✨\n\n👤 *User:* ${name}\n💎 *Balance:* ${balance.toFixed(2)} CRYSTAL\n💰 *Value:* ${(balance*0.01).toFixed(2)} USDT\n⚡ *Mining Rate:* ${rate}x\n📈 *Level:* ${level}\n📊 *Today:* ${daily}/${limit}\n📈 *Progress:* ${Math.floor((daily/limit)*100)}%\n\n🚀 *Start mining now!*`,
+                miningProgress: (reward, total, progress) => `⛏️ *Mining update!*\n\n💎 *Added:* +${reward.toFixed(2)} CRYSTAL\n📊 *Today:* ${total.toFixed(2)}/70\n📈 *Progress:* ${progress}%`,
+                miningComplete: `✅ *Daily mining completed!*\n\n🎉 *You got 70 CRYSTAL today*\n⏰ *Wait until tomorrow*`,
+                upgradeSuccess: (newRate, newLevel) => `✅ *Upgrade successful!*\n\n⚡ *New rate:* ${newRate}x\n📈 *Level:* ${newLevel}`,
+                upgradeRequest: (id, amount, address) => `✅ *Upgrade request #${id.toString().slice(-6)}*\n\n💰 *Amount:* ${amount} USDT\n📤 *Send to:*\n\`${address}\``,
+                purchaseRequest: (id, amount, usdt, address) => `✅ *Purchase request #${id.toString().slice(-6)}*\n\n💎 ${amount} CRYSTAL\n💰 ${usdt} USDT\n📤 *Send to:*\n\`${address}\``,
+                p2pOfferCreated: (type, amount, usdt, price) => `✅ *${type === 'sell' ? 'Sell' : 'Buy'} offer!*\n💎 ${amount} CRYSTAL\n💰 ${usdt} USDT`,
+                p2pTradeStarted: (id, amount, usdt, address) => `🔄 *Trade #${id.toString().slice(-6)}*\n💎 ${amount} CRYSTAL\n💰 ${usdt} USDT\n📤 *Send to:*\n\`${address}\``,
+                p2pProofReceived: `✅ *Payment proof received!*\n⏳ *Waiting for seller*`,
+                p2pRelease: (id, amount) => `✅ *Crystals released!*\n💎 +${amount} CRYSTAL`,
+                comboReward: (combo, reward) => `🔥 *Combo! Day ${combo}*\n🎁 *Bonus:* +${reward} CRYSTAL`,
+                dailyTask: (reward, streak) => `✅ *Daily task!*\n🎁 +${reward} CRYSTAL\n📈 Streak: ${streak} days`,
+                twitterTask: (reward) => `✅ *Twitter task!*\n🎁 +${reward} CRYSTAL\n🐦 Thanks for following!`,
+                vipUpgrade: (level, bonus) => `👑 *VIP Upgrade!*\n🎖️ Level ${level}\n🎁 +${bonus} CRYSTAL`,
+                usdtValue: (crystals, usdt) => `💰 *Your Balance Value*\n💎 ${crystals.toFixed(2)} CRYSTAL\n💵 ${usdt.toFixed(2)} USDT`,
+                support: (u, i) => `📞 *Support*\n👤 @${u}\n🆔 ${i}`,
+                p2pMarket: (b, u) => `📊 *P2P Market*\n💎 Balance: ${b.toFixed(2)} CRYSTAL\n💰 Value: ${u.toFixed(2)} USDT\n⚠️ Min: 5 USDT`,
+                notEnoughCrystals: (cost, usdt) => `❌ *Insufficient balance!*\n💰 Need: ${cost} CRYSTAL\n💵 Value: ${usdt} USDT`,
+                referralReward: (count) => `🎉 *Congratulations! ${count} referrals*\n💎 +3000 CRYSTAL`,
+                referralDailyLimit: `⚠️ Daily limit: 10 referrals`,
+                miningStarted: (progress) => `⛏️ *Mining started!*\n📊 Progress: ${progress}%`
             }
         };
         
         let text = texts[lang]?.[key] || texts.ar[key];
-        if (typeof text === 'function') {
-            return text(...Object.values(params));
-        }
+        if (typeof text === 'function') return text(...Object.values(params));
         return text;
     }
 
-    // تسجيل مستخدم جديد مع بصمة فريدة
+    // تسجيل مستخدم جديد
     async registerUser(userId, username, firstName, referrerId = null, language = 'ar') {
         await this.connect();
         
@@ -271,7 +121,8 @@ class Database {
                 referrerId,
                 dailyLimit: 70,
                 comboCount: 0,
-                vipLevel: 0
+                vipLevel: 0,
+                twitterTaskCompleted: false
             });
             
             await this.updateDailyStats('totalUsers');
@@ -280,7 +131,6 @@ class Database {
                 await this.updateReferralReward(referrerId, userId);
             }
             
-            // مكافأة ترحيبية للمستخدم الجديد
             await this.addCrystals(userId, 10, 'مكافأة ترحيبية');
             
             return true;
@@ -288,7 +138,7 @@ class Database {
         return false;
     }
 
-    // تحديث مكافأة الإحالة (الحد الأقصى 10 إحالات في اليوم)
+    // تحديث مكافأة الإحالة
     async updateReferralReward(referrerId, referredUserId) {
         const referrer = await User.findOne({ userId: referrerId });
         if (!referrer) return false;
@@ -302,12 +152,7 @@ class Database {
         
         const signature = this.generateSignature(`referral-${referrerId}-${referredUserId}-${today}`);
         
-        await DailyReferralLog.create({
-            date: today,
-            referrerId,
-            referredUserId,
-            signature
-        });
+        await DailyReferralLog.create({ date: today, referrerId, referredUserId, signature });
         
         const newCount = (referrer.referralCount || 0) + 1;
         const newDailyCount = (referrer.dailyReferrals || 0) + 1;
@@ -338,43 +183,27 @@ class Database {
     // إضافة كريستال
     async addCrystals(userId, amount, reason) {
         await this.connect();
-        
-        const signature = this.generateSignature(`reward-${userId}-${amount}-${Date.now()}`);
-        
+        const signature = this.generateSignature(`reward-${userId}-${amount}`);
         await User.updateOne({ userId }, { $inc: { crystalBalance: amount, totalMined: amount } });
-        
-        await Transaction.create({
-            userId,
-            type: 'reward',
-            amount,
-            status: 'completed',
-            signature,
-            description: reason
-        });
-        
+        await Transaction.create({ userId, type: 'reward', amount, status: 'completed', signature, description: reason });
         return true;
     }
 
-    // حساب المكافأة التراكمية (70 كريستال خلال 24 ساعة)
+    // حساب المكافأة التراكمية
     async calculateMiningReward(user) {
         const now = new Date();
         const startTime = user.miningStartTime || now;
         const elapsedHours = Math.min(24, (now - startTime) / (1000 * 60 * 60));
-        
         const maxReward = 70;
         const rewardPerHour = maxReward / 24;
         
         let expectedReward = rewardPerHour * elapsedHours;
         let alreadyMined = user.dailyMined || 0;
-        
         let newReward = Math.min(maxReward - alreadyMined, expectedReward - alreadyMined);
         newReward = Math.max(0, Math.floor(newReward * 100) / 100);
         
-        // تطبيق معدل التعدين ومكافأة VIP
         let miningBonus = user.miningRate;
-        if (user.vipLevel > 0) {
-            miningBonus += user.vipLevel * 0.1;
-        }
+        if (user.vipLevel > 0) miningBonus += user.vipLevel * 0.1;
         newReward = newReward * miningBonus;
         
         const progress = Math.min(100, ((alreadyMined + newReward) / maxReward) * 100);
@@ -388,100 +217,54 @@ class Database {
         };
     }
 
-    // عملية التعدين (تراكمي)
+    // عملية التعدين
     async mine(userId) {
         await this.connect();
         
         const user = await User.findOne({ userId });
-        if (!user) {
-            return { success: false, message: 'User not found' };
-        }
+        if (!user) return { success: false, message: 'User not found' };
 
         const now = new Date();
         let lastMine = user.lastMiningTime ? new Date(user.lastMiningTime) : new Date(0);
         const hoursSinceLastMine = (now - lastMine) / (1000 * 60 * 60);
         
-        // التعدين كل ساعة
         if (hoursSinceLastMine < 1) {
             const remaining = Math.floor((1 - hoursSinceLastMine) * 3600);
-            return { 
-                success: false, 
-                message: `⏰ انتظر ${Math.floor(remaining/60)} دقيقة`,
-                remaining: remaining
-            };
+            return { success: false, message: `⏰ انتظر ${Math.floor(remaining/60)} دقيقة`, remaining };
         }
         
         const rewardData = await this.calculateMiningReward(user);
         
         if (rewardData.completed) {
-            return { 
-                success: false, 
-                message: this.getText('miningComplete', user.language),
-                dailyLimit: true
-            };
+            return { success: false, message: this.getText('miningComplete', user.language), dailyLimit: true };
         }
         
         if (rewardData.reward <= 0) {
-            // بدء التعدين التراكمي
             if (!user.miningStartTime) {
                 await User.updateOne({ userId }, { miningStartTime: now });
-                const progress = 0;
-                return { 
-                    success: true, 
-                    started: true,
-                    message: this.getText('miningStarted', user.language, { progress }),
-                    progress: 0
-                };
+                return { success: true, started: true, message: this.getText('miningStarted', user.language, { progress: 0 }), progress: 0 };
             }
-            return { 
-                success: false, 
-                message: '⚠️ جاري تجميع الكريستال... انتظر قليلاً',
-                progress: rewardData.progress
-            };
+            return { success: false, message: '⚠️ جاري تجميع الكريستال...', progress: rewardData.progress };
         }
         
-        const miningSignature = this.generateSignature(`mining-${userId}-${Date.now()}`);
+        const miningSignature = this.generateSignature(`mining-${userId}`);
         
         await User.updateOne({ userId }, {
-            $inc: { 
-                crystalBalance: rewardData.reward,
-                totalMined: rewardData.reward,
-                dailyMined: rewardData.reward
-            },
-            $set: {
-                lastMiningTime: now,
-                miningSignature: miningSignature
-            }
+            $inc: { crystalBalance: rewardData.reward, totalMined: rewardData.reward, dailyMined: rewardData.reward },
+            $set: { lastMiningTime: now, miningSignature }
         });
         
-        await Transaction.create({
-            userId,
-            type: 'mining',
-            amount: rewardData.reward,
-            status: 'completed',
-            signature: miningSignature,
-            description: `تعدين ${rewardData.reward} كريستال`
-        });
-        
+        await Transaction.create({ userId, type: 'mining', amount: rewardData.reward, status: 'completed', signature: miningSignature });
         await this.updateDailyStats('totalMined', rewardData.reward);
         
-        // تحديث الكومبو
         await this.updateCombo(userId);
         
-        const message = this.getText('miningProgress', user.language, {
-            reward: rewardData.reward,
-            total: rewardData.totalMined,
-            progress: rewardData.progress
-        });
-        
         return { 
-            success: true, 
-            reward: rewardData.reward,
-            dailyMined: rewardData.totalMined,
-            dailyRemaining: rewardData.remaining,
-            completed: rewardData.completed,
-            progress: rewardData.progress,
-            message
+            success: true, reward: rewardData.reward, dailyMined: rewardData.totalMined,
+            dailyRemaining: rewardData.remaining, completed: rewardData.completed,
+            progress: rewardData.progress, message: this.getText('miningProgress', user.language, {
+                reward: rewardData.reward, total: rewardData.totalMined, progress: rewardData.progress
+            })
         };
     }
 
@@ -532,16 +315,48 @@ class Database {
         await this.addCrystals(userId, reward, `المهمة اليومية - سلسلة ${streak} أيام`);
         
         await User.updateOne({ userId }, {
-            $set: { 
-                'dailyTasks.completed': true, 
-                'dailyTasks.lastTaskDate': today, 
-                'dailyTasks.streak': streak 
-            }
+            $set: { 'dailyTasks.completed': true, 'dailyTasks.lastTaskDate': today, 'dailyTasks.streak': streak }
         });
         
         await this.updateDailyStats('totalCombo');
         
         return { success: true, reward, streak };
+    }
+
+    // مهمة تويتر
+    async completeTwitterTask(userId) {
+        await this.connect();
+        
+        const user = await User.findOne({ userId });
+        if (!user) return { success: false, message: 'المستخدم غير موجود' };
+        
+        if (user.twitterTaskCompleted) {
+            return { success: false, message: '⚠️ لقد أكملت هذه المهمة بالفعل!' };
+        }
+        
+        const signature = this.generateSignature(`twitter-${userId}-${Date.now()}`);
+        
+        await User.updateOne({ userId }, {
+            $inc: { crystalBalance: 15, totalMined: 15 },
+            $set: { twitterTaskCompleted: true }
+        });
+        
+        await Transaction.create({
+            userId,
+            type: 'twitter_task',
+            amount: 15,
+            status: 'completed',
+            signature,
+            description: 'مكافأة متابعة تويتر'
+        });
+        
+        await this.updateDailyStats('twitterTasks');
+        
+        return { 
+            success: true, 
+            message: this.getText('twitterTask', user.language, { reward: 15 }),
+            reward: 15 
+        };
     }
 
     // نظام VIP
@@ -607,7 +422,7 @@ class Database {
         };
     }
 
-    // طلب ترقية بـ USDT (الحد الأدنى 3 دولار)
+    // طلب ترقية بـ USDT
     async requestUpgrade(userId, usdtAmount) {
         await this.connect();
         
@@ -743,7 +558,7 @@ class Database {
         return { success: true, message: `✅ تمت إضافة ${request.crystalAmount} كريستال` };
     }
 
-    // إنشاء عرض P2P (الحد الأدنى 5 دولار)
+    // إنشاء عرض P2P
     async createP2pOffer(userId, type, crystalAmount, usdtAmount) {
         await this.connect();
         
@@ -965,7 +780,8 @@ class Database {
             referralsCount,
             todayReferrals,
             usdtValue,
-            miningProgress: Math.floor(miningProgress)
+            miningProgress: Math.floor(miningProgress),
+            twitterTaskCompleted: user.twitterTaskCompleted || false
         };
     }
 
@@ -1031,6 +847,7 @@ class Database {
         if (type === 'p2pTrades') update.p2pTrades = (stats.p2pTrades || 0) + 1;
         if (type === 'totalReferrals') update.totalReferrals = (stats.totalReferrals || 0) + 1;
         if (type === 'totalCombo') update.totalCombo = (stats.totalCombo || 0) + 1;
+        if (type === 'twitterTasks') update.twitterTasks = (stats.twitterTasks || 0) + 1;
         
         await DailyStats.updateOne({ date: today }, { $inc: update });
     }
@@ -1077,20 +894,8 @@ class Database {
             ]
         })
         .limit(limit)
-        .select('userId username firstName crystalBalance miningLevel vipLevel miningSignature referralSignature')
+        .select('userId username firstName crystalBalance miningLevel vipLevel miningSignature referralSignature twitterTaskCompleted')
         .lean();
-    }
-
-    // التحقق من صحة بصمة التعدين
-    async verifyMiningSignature(userId, signature) {
-        const user = await User.findOne({ userId, miningSignature: signature });
-        return !!user;
-    }
-
-    // التحقق من صحة بصمة الإحالة
-    async verifyReferralSignature(userId, signature) {
-        const user = await User.findOne({ userId, referralSignature: signature });
-        return !!user;
     }
 }
 
