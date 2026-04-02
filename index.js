@@ -680,18 +680,11 @@ bot.on('photo', messageRateLimitMiddleware, async (ctx) => {
 });
 
 // معالجة البيانات البنكية
+// معالجة البيانات البنكية
 bot.on('text', messageRateLimitMiddleware, async (ctx) => {
     if (ctx.session?.state === 'kyc_step4') {
-        const parts = ctx.message.text.split(' ');
-        if (parts.length < 4) {
-            await ctx.reply('❌ الصيغة: /bank [اسم البنك] [رقم الحساب] [اسم صاحب الحساب]');
-            return;
-        }
-        
-        const bankName = parts[1];
-        const bankAccountNumber = parts[2];
-        const bankAccountName = parts.slice(3).join(' ');
-        
+        // ... الكود السابق ...
+
         const result = await db.createKycRequest(
             ctx.from.id,
             ctx.session.kycData.fullName,
@@ -710,11 +703,11 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
         
         await ctx.reply(result.message, { parse_mode: 'Markdown' });
         
-        // إرسال إشعار للأدمن
-        const pendingRequests = await db.getPendingKycRequests();
-        const newRequest = pendingRequests.find(r => r.userId === ctx.from.id);
-        
-        if (newRequest) {
+        // 🔑 إرسال إشعار للأدمن باستخدام result.request
+        if (result.success && result.request) {
+            const newRequest = result.request;
+            
+            // إرسال صورة الجواز
             await bot.telegram.sendPhoto(ADMIN_ID, newRequest.passportPhotoFileId, {
                 caption: `🆔 *طلب توثيق جديد!*\n\n` +
                     `👤 *المستخدم:* ${ctx.from.first_name} (@${ctx.from.username || 'لا يوجد'})\n` +
@@ -725,12 +718,16 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
                     `• الجواز: ${newRequest.passportNumber}\n` +
                     `• الرقم الوطني: ${newRequest.nationalId}\n` +
                     `• الهاتف: ${newRequest.phoneNumber}\n` +
-                    `• البريد: ${newRequest.email || 'لا يوجد'}\n\n` +
+                    `• البريد: ${newRequest.email || 'لا يوجد'}\n` +
+                    `• البنك: ${newRequest.bankName}\n` +
+                    `• رقم الحساب: ${newRequest.bankAccountNumber}\n` +
+                    `• اسم الحساب: ${newRequest.bankAccountName}\n\n` +
                     `✅ /approve_kyc ${newRequest._id}\n` +
                     `❌ /reject_kyc ${newRequest._id} [السبب]`,
                 parse_mode: 'Markdown'
             });
             
+            // إرسال الصورة الشخصية
             await bot.telegram.sendPhoto(ADMIN_ID, newRequest.personalPhotoFileId, {
                 caption: `📸 *الصورة الشخصية للمستخدم*\n🆔 الطلب: ${newRequest._id}`
             });
@@ -740,6 +737,7 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
         delete ctx.session.kycData;
     }
 });
+
 
 // ========== أوامر الأدمن للتوثيق ==========
 
