@@ -188,23 +188,30 @@ class Database {
         return true;
     }
 
-    // ========== نظام التوثيق (KYC) ==========
+    // ========== نظام التوثيق اليدوي (Manual KYC) - مع تخزين file_id فقط ==========
 
-    // إنشاء طلب توثيق جديد
-    async createKycRequest(userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city, passportPhoto, personalPhoto, bankName, bankAccountNumber, bankAccountName) {
+    // إنشاء طلب توثيق جديد (مع حفظ file_id فقط)
+    async createKycRequest(userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city, passportFileId, personalFileId, bankName, bankAccountNumber, bankAccountName) {
         await this.connect();
         
         const existing = await KycRequest.findOne({ userId });
-        if (existing && existing.status === 'pending') {
+        
+        if (existing && (existing.status === 'pending')) {
             return { success: false, message: '⚠️ لديك طلب توثيق قيد المراجعة بالفعل' };
         }
         if (existing && existing.status === 'approved') {
             return { success: false, message: '✅ حسابك موثق بالفعل' };
         }
         
+        if (existing && existing.status === 'rejected') {
+            await KycRequest.deleteOne({ userId });
+        }
+        
         const kycRequest = await KycRequest.create({
             userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city,
-            passportPhoto, personalPhoto, bankName, bankAccountNumber, bankAccountName,
+            passportPhoto: passportFileId,
+            personalPhoto: personalFileId,
+            bankName, bankAccountNumber, bankAccountName,
             status: 'pending'
         });
         
@@ -228,12 +235,24 @@ class Database {
         return await KycRequest.find({ status: 'pending' }).sort({ createdAt: -1 }).lean();
     }
 
+    // الحصول على جميع طلبات التوثيق (للأدمن)
+    async getAllKycRequests(limit = 50) {
+        await this.connect();
+        return await KycRequest.find({}).sort({ createdAt: -1 }).limit(limit).lean();
+    }
+
+    // الحصول على طلب توثيق محدد (للأدمن)
+    async getKycRequestById(requestId) {
+        await this.connect();
+        return await KycRequest.findById(requestId).lean();
+    }
+
     // الموافقة على طلب التوثيق
     async approveKyc(requestId, adminId) {
         await this.connect();
         
         const request = await KycRequest.findOne({ _id: requestId, status: 'pending' });
-        if (!request) return { success: false, message: 'الطلب غير موجود' };
+        if (!request) return { success: false, message: 'الطلب غير موجود أو تمت معالجته مسبقاً' };
         
         await KycRequest.updateOne({ _id: requestId }, {
             status: 'approved', approvedBy: adminId, approvedAt: new Date(), updatedAt: new Date()
@@ -291,7 +310,32 @@ class Database {
     async getKycStatus(userId) {
         const request = await KycRequest.findOne({ userId });
         if (!request) return { status: 'not_submitted' };
-        return { status: request.status, requestId: request._id, rejectionReason: request.rejectionReason };
+        return { 
+            status: request.status, 
+            requestId: request._id, 
+            rejectionReason: request.rejectionReason 
+        };
+    }
+
+    // إعادة محاولة التوثيق (حذف الطلب المرفوض)
+    async retryKycVerification(userId) {
+        await this.connect();
+        
+        const deleted = await KycRequest.deleteOne({ userId, status: 'rejected' });
+        
+        if (deleted.deletedCount === 0) {
+            return { 
+                success: false, 
+                message: '❌ لا يوجد طلب مرفوض لإعادة المحاولة.\n📝 يرجى تقديم طلب جديد عبر /kyc' 
+            };
+        }
+        
+        await User.updateOne({ userId }, { isVerified: false });
+        
+        return {
+            success: true,
+            message: '🔄 *تم حذف الطلب القديم.*\n\n📝 *يرجى تقديم طلب جديد:*\n/kyc [الاسم الكامل] [رقم الجواز] [الرقم الوطني] [رقم الهاتف]'
+        };
     }
 
     // ========== عروض P2P ==========
