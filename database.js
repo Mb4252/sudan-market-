@@ -189,37 +189,38 @@ class Database {
     }
 
     // ========== نظام التوثيق (مع تخزين الصور في تلغرام) ==========
-
-    async createKycRequest(userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city, passportPhotoFileId, personalPhotoFileId, bankName, bankAccountNumber, bankAccountName) {
-        await this.connect();
-        
-        const existing = await KycRequest.findOne({ userId });
-        if (existing && existing.status === 'pending') {
-            return { success: false, message: '⚠️ لديك طلب توثيق قيد المراجعة بالفعل' };
-        }
-        if (existing && existing.status === 'approved') {
-            return { success: false, message: '✅ حسابك موثق بالفعل' };
-        }
-        
-        const kycRequest = await KycRequest.create({
-            userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city,
-            passportPhotoFileId, personalPhotoFileId, bankName, bankAccountNumber, bankAccountName,
-            status: 'pending'
-        });
-        
-        await this.updateDailyStats('pendingKyc', 1);
-        
-        return {
-            success: true,
-            requestId: kycRequest._id,
-            message: `✅ *تم إرسال طلب التوثيق!*\n\n` +
-                `🆔 *رقم الطلب:* ${kycRequest._id.toString().slice(-6)}\n` +
-                `👤 *الاسم الكامل:* ${fullName}\n` +
-                `📞 *رقم الهاتف:* ${phoneNumber}\n` +
-                `📧 *البريد الإلكتروني:* ${email}\n\n` +
-                `⏳ *سيتم مراجعة طلبك من قبل الإدارة خلال 24 ساعة*`
-        };
+     async createKycRequest(userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city, passportPhotoFileId, personalPhotoFileId, bankName, bankAccountNumber, bankAccountName) {
+    await this.connect();
+    
+    const existing = await KycRequest.findOne({ userId });
+    if (existing && existing.status === 'pending') {
+        return { success: false, message: '⚠️ لديك طلب توثيق قيد المراجعة بالفعل' };
     }
+    if (existing && existing.status === 'approved') {
+        return { success: false, message: '✅ حسابك موثق بالفعل' };
+    }
+    
+    const kycRequest = await KycRequest.create({
+        userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city,
+        passportPhotoFileId, personalPhotoFileId, bankName, bankAccountNumber, bankAccountName,
+        status: 'pending'
+    });
+    
+    await this.updateDailyStats('pendingKyc', 1);
+    
+    // 🔑 إرجاع الطلب كاملاً مع البيانات
+    return {
+        success: true,
+        requestId: kycRequest._id,
+        request: kycRequest,  // <-- إضافة هذا السطر
+        message: `✅ *تم إرسال طلب التوثيق!*\n\n` +
+            `🆔 *رقم الطلب:* ${kycRequest._id.toString().slice(-6)}\n` +
+            `👤 *الاسم الكامل:* ${fullName}\n` +
+            `📞 *رقم الهاتف:* ${phoneNumber}\n` +
+            `📧 *البريد الإلكتروني:* ${email}\n\n` +
+            `⏳ *سيتم مراجعة طلبك من قبل الإدارة خلال 24 ساعة*`
+    };
+}
 
     async getPendingKycRequests() {
         await this.connect();
