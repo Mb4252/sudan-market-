@@ -173,6 +173,14 @@
             font-size: 10px;
         }
 
+        .merchant-icon {
+            background: #ff9800;
+            color: white;
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-size: 10px;
+        }
+
         .trade-input, .offer-input, .bank-input, .kyc-input {
             width: 100%;
             padding: 12px;
@@ -202,6 +210,14 @@
 
         .sell-btn {
             background: #f44336;
+        }
+
+        .cancel-btn {
+            background: #666;
+        }
+
+        .dispute-btn {
+            background: #ff9800;
         }
 
         .copy-btn {
@@ -337,6 +353,27 @@
 
         .kyc-not-submitted {
             border: 1px solid #666;
+        }
+
+        .photo-upload {
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            margin: 10px 0;
+            transition: all 0.3s;
+        }
+
+        .photo-upload:hover {
+            border-color: #4caf50;
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .photo-preview {
+            max-width: 100%;
+            border-radius: 8px;
+            margin-top: 10px;
         }
 
         @media (max-width: 480px) {
@@ -521,6 +558,19 @@
                     </select>
                     <input type="text" id="kycCity" placeholder="المدينة" class="kyc-input">
                     
+                    <h4 style="color:white; margin:15px 0 10px">📸 المستندات المطلوبة</h4>
+                    <div class="photo-upload" onclick="document.getElementById('passportPhoto').click()">
+                        📄 اضغط لرفع صورة الجواز
+                    </div>
+                    <input type="file" id="passportPhoto" accept="image/*" style="display:none" onchange="previewPassport(event)">
+                    <div id="passportPreview" class="photo-preview"></div>
+                    
+                    <div class="photo-upload" onclick="document.getElementById('personalPhoto').click()">
+                        📸 اضغط لرفع الصورة الشخصية
+                    </div>
+                    <input type="file" id="personalPhoto" accept="image/*" style="display:none" onchange="previewPersonal(event)">
+                    <div id="personalPreview" class="photo-preview"></div>
+                    
                     <h4 style="color:white; margin:15px 0 10px">🏦 البيانات البنكية</h4>
                     <select id="kycBank" class="currency-select">
                         <option value="">اختر البنك</option>
@@ -567,6 +617,8 @@
         let currentLanguage = 'ar';
         let userData = {};
         let kycStatus = {};
+        let passportPhotoFile = null;
+        let personalPhotoFile = null;
         const API_URL = window.location.origin;
         
         const sudanBanks = [
@@ -647,10 +699,10 @@
                             <div style="font-size:48px">❌</div>
                             <h3>تم رفض طلب التوثيق</h3>
                             <p>السبب: ${data.rejectionReason || 'بيانات غير صحيحة'}</p>
-                            <p>يمكنك إعادة تقديم الطلب</p>
+                            <button class="kyc-btn" onclick="retryKyc()" style="margin-top:10px">🔄 إعادة المحاولة</button>
                         </div>
                     `;
-                    form.style.display = 'block';
+                    form.style.display = 'none';
                 } else {
                     container.innerHTML = `
                         <div class="kyc-not-submitted" style="text-align:center;">
@@ -663,6 +715,30 @@
                 }
                 return data;
             } catch(e) { console.error(e); return { status: 'not_submitted' }; }
+        }
+        
+        function previewPassport(event) {
+            const file = event.target.files[0];
+            if (file) {
+                passportPhotoFile = file;
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('passportPreview').innerHTML = `<img src="${e.target.result}" style="max-width:100%; border-radius:8px;">`;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        function previewPersonal(event) {
+            const file = event.target.files[0];
+            if (file) {
+                personalPhotoFile = file;
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('personalPreview').innerHTML = `<img src="${e.target.result}" style="max-width:100%; border-radius:8px;">`;
+                };
+                reader.readAsDataURL(file);
+            }
         }
         
         async function submitKyc() {
@@ -682,10 +758,53 @@
                 return;
             }
             
-            tg.showAlert('📝 جاري إرسال طلب التوثيق...\n⏳ سيتم مراجعة طلبك من قبل الإدارة');
+            if (!passportPhotoFile || !personalPhotoFile) {
+                tg.showAlert('يرجى رفع صورة الجواز والصورة الشخصية');
+                return;
+            }
             
-            // إرسال البيانات عبر البوت (سيتم فتح محادثة مع البوت)
-            tg.showAlert('📌 الرجاء الذهاب إلى البوت وإرسال الأمر:\n/kyc "الاسم الكامل" رقم الجواز الرقم الوطني رقم الهاتف\n\nمثال:\n/kyc "محمد أحمد" A12345678 1234567890 0912345678');
+            tg.showAlert('جاري إرسال طلب التوثيق...');
+            
+            const formData = new FormData();
+            formData.append('user_id', tg.initDataUnsafe.user.id);
+            formData.append('fullName', fullName);
+            formData.append('passportNumber', passportNumber);
+            formData.append('nationalId', nationalId);
+            formData.append('phoneNumber', phoneNumber);
+            formData.append('email', email);
+            formData.append('country', country);
+            formData.append('city', city);
+            formData.append('bankName', bankName);
+            formData.append('bankAccountNumber', accountNumber);
+            formData.append('bankAccountName', accountName);
+            formData.append('passportPhoto', passportPhotoFile);
+            formData.append('personalPhoto', personalPhotoFile);
+            
+            const res = await fetch(`${API_URL}/api/kyc/submit`, {
+                method: 'POST',
+                body: formData
+            });
+            const result = await res.json();
+            tg.showAlert(result.message);
+            if (result.success) {
+                loadKycStatus();
+                loadUserData();
+            }
+        }
+        
+        async function retryKyc() {
+            tg.showAlert('جاري إعادة محاولة التوثيق...');
+            const res = await fetch(`${API_URL}/api/kyc/retry`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
+            });
+            const result = await res.json();
+            tg.showAlert(result.message);
+            if (result.success) {
+                loadKycStatus();
+                loadUserData();
+            }
         }
         
         async function loadMarket() {
@@ -704,6 +823,7 @@
                         <div class="offer-user">
                             👤 ${o.firstName || o.username}
                             ${o.isVerified ? '<span class="verified-icon">موثق</span>' : ''}
+                            ${o.isMerchant ? '<span class="merchant-icon">تاجر</span>' : ''}
                         </div>
                         <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
                     </div>
@@ -798,7 +918,7 @@
         }
         
         async function createOffer() {
-            if (!userData.isVerified) {
+            if (!userData.isVerified && kycStatus.status !== 'approved') {
                 tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً');
                 switchTab('kyc');
                 return;
@@ -835,7 +955,7 @@
         }
         
         async function startTrade(offerId) {
-            if (!userData.isVerified) {
+            if (!userData.isVerified && kycStatus.status !== 'approved') {
                 tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً');
                 switchTab('kyc');
                 return;
