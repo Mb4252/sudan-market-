@@ -51,6 +51,36 @@
             margin-top: 5px;
         }
 
+        .verified-badge {
+            background: #4caf50;
+            color: white;
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: 12px;
+            display: inline-block;
+            margin-top: 5px;
+        }
+
+        .unverified-badge {
+            background: #f44336;
+            color: white;
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: 12px;
+            display: inline-block;
+            margin-top: 5px;
+        }
+
+        .pending-badge {
+            background: #ff9800;
+            color: white;
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: 12px;
+            display: inline-block;
+            margin-top: 5px;
+        }
+
         .tab-buttons {
             display: flex;
             gap: 10px;
@@ -135,7 +165,7 @@
             color: #4caf50;
         }
 
-        .verified-badge {
+        .verified-icon {
             background: #4caf50;
             color: white;
             border-radius: 12px;
@@ -143,7 +173,7 @@
             font-size: 10px;
         }
 
-        .merchant-badge {
+        .merchant-icon {
             background: #ff9800;
             color: white;
             border-radius: 12px;
@@ -151,7 +181,7 @@
             font-size: 10px;
         }
 
-        .trade-input, .offer-input, .bank-input {
+        .trade-input, .offer-input, .bank-input, .kyc-input {
             width: 100%;
             padding: 12px;
             border: none;
@@ -161,7 +191,7 @@
             font-size: 14px;
         }
 
-        .trade-btn, .offer-btn, .action-btn {
+        .trade-btn, .offer-btn, .action-btn, .kyc-btn {
             background: #4CAF50;
             color: white;
             border: none;
@@ -172,6 +202,10 @@
             cursor: pointer;
             margin-top: 10px;
             transition: all 0.3s;
+        }
+
+        .kyc-btn {
+            background: #2196F3;
         }
 
         .sell-btn {
@@ -316,8 +350,47 @@
             background: #667eea;
         }
 
+        .kyc-status-card {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .kyc-approved {
+            border: 1px solid #4caf50;
+        }
+
+        .kyc-pending {
+            border: 1px solid #ff9800;
+        }
+
+        .kyc-rejected {
+            border: 1px solid #f44336;
+        }
+
+        .kyc-not-submitted {
+            border: 1px solid #666;
+        }
+
+        .photo-upload {
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+
+        .photo-preview {
+            max-width: 100%;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
         @media (max-width: 480px) {
-            .tab-button { font-size: 12px; padding: 8px; }
+            .tab-button { font-size: 11px; padding: 8px; }
             .stat-value { font-size: 18px; }
         }
     </style>
@@ -328,6 +401,7 @@
             <h2>💰 P2P Exchange</h2>
             <div class="balance-amount" id="usdBalance">0</div>
             <div class="price-info">⭐ التقييم: <span id="userRating">5.0</span>/5 | ✅ <span id="completedTrades">0</span> صفقة</div>
+            <div id="verificationStatus"></div>
         </div>
 
         <div class="language-selector">
@@ -341,6 +415,7 @@
             <button class="tab-button" onclick="switchTab('my')">📋 عروضي</button>
             <button class="tab-button" onclick="switchTab('trades')">🔄 صفقاتي</button>
             <button class="tab-button" onclick="switchTab('wallet')">💼 محفظتي</button>
+            <button class="tab-button" onclick="switchTab('kyc')">🆔 توثيق</button>
             <button class="tab-button" onclick="switchTab('leaderboard')">🏆 المتصدرين</button>
             <button class="tab-button" onclick="switchTab('bank')">🏦 بياناتي</button>
         </div>
@@ -381,6 +456,9 @@
         <div id="create-tab" class="tab-content">
             <div class="card">
                 <h3 style="color:white; margin-bottom:15px">➕ إنشاء عرض جديد</h3>
+                <div id="createWarning" style="display:none; background:#f44336; padding:10px; border-radius:10px; margin-bottom:15px; color:white; text-align:center;">
+                    ⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً.
+                </div>
                 <select id="offerType" class="currency-select">
                     <option value="sell">🟢 بيع دولار</option>
                     <option value="buy">🔴 شراء دولار</option>
@@ -465,6 +543,59 @@
             </div>
         </div>
 
+        <!-- توثيق الهوية -->
+        <div id="kyc-tab" class="tab-content">
+            <div class="card">
+                <h3 style="color:white">🆔 توثيق الهوية (KYC)</h3>
+                <div id="kycStatus" class="kyc-status-card">
+                    <div class="loading">جاري التحميل...</div>
+                </div>
+                <div id="kycForm" style="display: none;">
+                    <h4 style="color:white; margin:15px 0 10px">📝 البيانات الشخصية</h4>
+                    <input type="text" id="kycFullName" placeholder="الاسم الكامل" class="kyc-input">
+                    <input type="text" id="kycPassport" placeholder="رقم الجواز" class="kyc-input">
+                    <input type="text" id="kycNationalId" placeholder="الرقم الوطني" class="kyc-input">
+                    <input type="tel" id="kycPhone" placeholder="رقم الهاتف" class="kyc-input">
+                    <input type="email" id="kycEmail" placeholder="البريد الإلكتروني (اختياري)" class="kyc-input">
+                    <select id="kycCountry" class="currency-select">
+                        <option value="SD">🇸🇩 السودان</option>
+                        <option value="EG">🇪🇬 مصر</option>
+                        <option value="SA">🇸🇦 السعودية</option>
+                        <option value="AE">🇦🇪 الإمارات</option>
+                        <option value="QA">🇶🇦 قطر</option>
+                        <option value="KW">🇰🇼 الكويت</option>
+                        <option value="BH">🇧🇭 البحرين</option>
+                        <option value="OM">🇴🇲 عمان</option>
+                        <option value="JO">🇯🇴 الأردن</option>
+                        <option value="IQ">🇮🇶 العراق</option>
+                    </select>
+                    <input type="text" id="kycCity" placeholder="المدينة" class="kyc-input">
+                    
+                    <h4 style="color:white; margin:15px 0 10px">📸 المستندات المطلوبة</h4>
+                    <div class="photo-upload" onclick="document.getElementById('passportPhoto').click()">
+                        📄 اضغط لرفع صورة الجواز
+                    </div>
+                    <input type="file" id="passportPhoto" accept="image/*" style="display:none" onchange="previewPassport(event)">
+                    <div id="passportPreview" class="photo-preview"></div>
+                    
+                    <div class="photo-upload" onclick="document.getElementById('personalPhoto').click()">
+                        📸 اضغط لرفع الصورة الشخصية
+                    </div>
+                    <input type="file" id="personalPhoto" accept="image/*" style="display:none" onchange="previewPersonal(event)">
+                    <div id="personalPreview" class="photo-preview"></div>
+                    
+                    <h4 style="color:white; margin:15px 0 10px">🏦 البيانات البنكية</h4>
+                    <select id="kycBank" class="currency-select">
+                        <option value="">اختر البنك</option>
+                    </select>
+                    <input type="text" id="kycAccountNumber" placeholder="رقم الحساب البنكي" class="kyc-input">
+                    <input type="text" id="kycAccountName" placeholder="اسم صاحب الحساب" class="kyc-input">
+                    
+                    <button class="kyc-btn" onclick="submitKyc()">📤 إرسال طلب التوثيق</button>
+                </div>
+            </div>
+        </div>
+
         <!-- المتصدرين -->
         <div id="leaderboard-tab" class="tab-content">
             <div class="card">
@@ -498,6 +629,9 @@
         
         let currentLanguage = 'ar';
         let userData = {};
+        let kycStatus = {};
+        let passportPhotoFile = null;
+        let personalPhotoFile = null;
         const API_URL = window.location.origin;
         
         // البنوك السودانية
@@ -527,7 +661,153 @@
                 document.getElementById('usdBalance').textContent = data.usdBalance?.toFixed(2) || '0';
                 document.getElementById('userRating').textContent = data.rating?.toFixed(1) || '5.0';
                 document.getElementById('completedTrades').textContent = data.completedTrades || '0';
+                
+                const verificationDiv = document.getElementById('verificationStatus');
+                if (data.isVerified) {
+                    verificationDiv.innerHTML = '<div class="verified-badge">✅ حساب موثق</div>';
+                    document.getElementById('createWarning').style.display = 'none';
+                } else {
+                    const kyc = await loadKycStatus();
+                    if (kyc.status === 'pending') {
+                        verificationDiv.innerHTML = '<div class="pending-badge">⏳ طلب توثيق قيد المراجعة</div>';
+                        document.getElementById('createWarning').style.display = 'block';
+                    } else {
+                        verificationDiv.innerHTML = '<div class="unverified-badge">⚠️ حساب غير موثق - يرجى التوثيق للمتاجرة</div>';
+                        document.getElementById('createWarning').style.display = 'block';
+                    }
+                }
             } catch(e) { console.error(e); }
+        }
+        
+        async function loadKycStatus() {
+            try {
+                const uid = tg.initDataUnsafe.user.id;
+                const res = await fetch(`${API_URL}/api/kyc/status/${uid}`);
+                const data = await res.json();
+                kycStatus = data;
+                
+                const container = document.getElementById('kycStatus');
+                const form = document.getElementById('kycForm');
+                
+                if (userData.isVerified) {
+                    container.innerHTML = `
+                        <div style="color:#4caf50; text-align:center;">
+                            <div style="font-size:48px">✅</div>
+                            <h3>حسابك موثق</h3>
+                            <p>يمكنك التداول بحرية على المنصة</p>
+                        </div>
+                    `;
+                    form.style.display = 'none';
+                } else if (data.status === 'pending') {
+                    container.innerHTML = `
+                        <div style="color:#ff9800; text-align:center;">
+                            <div style="font-size:48px">⏳</div>
+                            <h3>طلب التوثيق قيد المراجعة</h3>
+                            <p>سيتم إعلامك عند اكتمال المراجعة</p>
+                        </div>
+                    `;
+                    form.style.display = 'none';
+                } else if (data.status === 'rejected') {
+                    container.innerHTML = `
+                        <div style="color:#f44336; text-align:center;">
+                            <div style="font-size:48px">❌</div>
+                            <h3>تم رفض طلب التوثيق</h3>
+                            <p>السبب: ${data.rejectionReason || 'بيانات غير صحيحة'}</p>
+                            <p>يمكنك إعادة تقديم الطلب</p>
+                        </div>
+                    `;
+                    form.style.display = 'block';
+                } else {
+                    container.innerHTML = `
+                        <div style="color:#aaa; text-align:center;">
+                            <div style="font-size:48px">🆔</div>
+                            <h3>حسابك غير موثق</h3>
+                            <p>يرجى إكمال عملية التوثيق للمتاجرة</p>
+                        </div>
+                    `;
+                    form.style.display = 'block';
+                }
+                return data;
+            } catch(e) { console.error(e); return { status: 'not_submitted' }; }
+        }
+        
+        function previewPassport(event) {
+            const file = event.target.files[0];
+            if (file) {
+                passportPhotoFile = file;
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('passportPreview').innerHTML = `<img src="${e.target.result}" style="max-width:100%; border-radius:8px;">`;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        function previewPersonal(event) {
+            const file = event.target.files[0];
+            if (file) {
+                personalPhotoFile = file;
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('personalPreview').innerHTML = `<img src="${e.target.result}" style="max-width:100%; border-radius:8px;">`;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        async function submitKyc() {
+            const fullName = document.getElementById('kycFullName').value;
+            const passportNumber = document.getElementById('kycPassport').value;
+            const nationalId = document.getElementById('kycNationalId').value;
+            const phoneNumber = document.getElementById('kycPhone').value;
+            const email = document.getElementById('kycEmail').value;
+            const country = document.getElementById('kycCountry').value;
+            const city = document.getElementById('kycCity').value;
+            const bankName = document.getElementById('kycBank').value;
+            const accountNumber = document.getElementById('kycAccountNumber').value;
+            const accountName = document.getElementById('kycAccountName').value;
+            
+            if (!fullName || !passportNumber || !nationalId || !phoneNumber || !bankName || !accountNumber || !accountName) {
+                tg.showAlert('يرجى ملء جميع الحقول المطلوبة');
+                return;
+            }
+            
+            if (!passportPhotoFile || !personalPhotoFile) {
+                tg.showAlert('يرجى رفع صورة الجواز والصورة الشخصية');
+                return;
+            }
+            
+            tg.showAlert('جاري إرسال الطلب...');
+            
+            // تحويل الصور إلى Base64
+            const passportBase64 = await fileToBase64(passportPhotoFile);
+            const personalBase64 = await fileToBase64(personalPhotoFile);
+            
+            const res = await fetch(`${API_URL}/api/kyc/submit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: tg.initDataUnsafe.user.id,
+                    fullName, passportNumber, nationalId, phoneNumber, email,
+                    country, city, bankName, bankAccountNumber: accountNumber,
+                    bankAccountName: accountName, passportPhoto: passportBase64,
+                    personalPhoto: personalBase64
+                })
+            });
+            const result = await res.json();
+            tg.showAlert(result.message);
+            if (result.success) {
+                loadKycStatus();
+            }
+        }
+        
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
         }
         
         async function loadMarket() {
@@ -545,8 +825,8 @@
                     <div class="offer-header">
                         <div class="offer-user">
                             👤 ${o.firstName || o.username}
-                            ${o.isVerified ? '<span class="verified-badge">موثق</span>' : ''}
-                            ${o.isMerchant ? '<span class="merchant-badge">تاجر</span>' : ''}
+                            ${o.isVerified ? '<span class="verified-icon">موثق</span>' : ''}
+                            ${o.isMerchant ? '<span class="merchant-icon">تاجر</span>' : ''}
                         </div>
                         <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
                     </div>
@@ -602,7 +882,7 @@
                 container.innerHTML = leaders.map((l, i) => `
                     <div class="leader-item">
                         <div class="leader-rank">${i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`}</div>
-                        <div class="leader-name">${l.name}</div>
+                        <div class="leader-name">${l.name} ${l.verified ? '✅' : ''}</div>
                         <div class="leader-trades">💰 ${l.trades?.toFixed(0) || 0}</div>
                         <div class="leader-rating">⭐ ${l.rating?.toFixed(1) || '5.0'}</div>
                     </div>
@@ -629,20 +909,26 @@
                         <div class="stat-label">اسم الحساب</div>
                     </div>
                 `;
-                // تعبئة البنوك في القائمة المنسدلة
                 const bankSelect = document.getElementById('bankName');
                 bankSelect.innerHTML = '<option value="">اختر البنك</option>' + sudanBanks.map(b => `<option value="${b}">${b}</option>`).join('');
                 if (user.bankName) bankSelect.value = user.bankName;
                 document.getElementById('accountNumber').value = user.bankAccountNumber || '';
                 document.getElementById('accountName').value = user.bankAccountName || '';
                 
-                // تعبئة البنوك في نموذج إنشاء العرض
+                const kycBankSelect = document.getElementById('kycBank');
+                kycBankSelect.innerHTML = '<option value="">اختر البنك</option>' + sudanBanks.map(b => `<option value="${b}">${b}</option>`).join('');
                 const offerBankSelect = document.getElementById('offerBank');
                 offerBankSelect.innerHTML = '<option value="">اختر البنك</option>' + sudanBanks.map(b => `<option value="${b}">${b}</option>`).join('');
             } catch(e) { console.error(e); }
         }
         
         async function createOffer() {
+            if (!userData.isVerified && kycStatus.status !== 'approved') {
+                tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً');
+                switchTab('kyc');
+                return;
+            }
+            
             const type = document.getElementById('offerType').value;
             const currency = document.getElementById('offerCurrency').value;
             const fiatAmount = parseFloat(document.getElementById('offerAmount').value);
@@ -674,6 +960,11 @@
         }
         
         async function startTrade(offerId) {
+            if (!userData.isVerified) {
+                tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً');
+                switchTab('kyc');
+                return;
+            }
             const res = await fetch(`${API_URL}/api/trade/start`, {
                 method: 'POST', headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId })
@@ -742,11 +1033,11 @@
             if (tab === 'my') loadMyOffers();
             if (tab === 'trades') loadMyTrades();
             if (tab === 'wallet') loadWallet();
+            if (tab === 'kyc') { loadKycStatus(); loadBankInfo(); }
             if (tab === 'leaderboard') loadLeaderboard();
             if (tab === 'bank') loadBankInfo();
         }
         
-        // إظهار/إخفاء حقول البنك حسب طريقة الدفع
         document.getElementById('offerPaymentMethod').addEventListener('change', function() {
             const bankFields = document.getElementById('bankFields');
             if (this.value === 'bank_transfer') {
@@ -759,6 +1050,7 @@
         registerUser();
         loadUserData();
         loadMarket();
+        loadKycStatus();
         
         tg.MainButton.setText("🚀 فتح البوت");
         tg.MainButton.onClick(() => tg.close());
