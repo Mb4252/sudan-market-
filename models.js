@@ -1,9 +1,8 @@
 const mongoose = require('mongoose');
 
-// نموذج المحفظة (عنوان فريد لكل مستخدم)
+// نموذج المحفظة
 const walletSchema = new mongoose.Schema({
     userId: { type: Number, required: true, unique: true },
-    // محافظ العملات المشفرة للاستلام والإيداع
     bnbAddress: { type: String, unique: true, sparse: true },
     bnbEncryptedPrivateKey: { type: String },
     polygonAddress: { type: String, unique: true, sparse: true },
@@ -12,12 +11,33 @@ const walletSchema = new mongoose.Schema({
     solanaEncryptedPrivateKey: { type: String },
     aptosAddress: { type: String, unique: true, sparse: true },
     aptosEncryptedPrivateKey: { type: String },
-    // رصيد الدولار داخل المنصة
     usdBalance: { type: Number, default: 0 },
-    // بصمة فريدة للمحفظة
     walletSignature: { type: String, required: true, unique: true },
     createdAt: { type: Date, default: Date.now },
     lastUpdated: { type: Date, default: Date.now }
+});
+
+// نموذج طلب التوثيق (KYC)
+const kycRequestSchema = new mongoose.Schema({
+    userId: { type: Number, required: true, unique: true },
+    fullName: { type: String, required: true },
+    passportNumber: { type: String, required: true },
+    nationalId: { type: String, required: true },
+    phoneNumber: { type: String, required: true },
+    email: { type: String, default: '' },
+    country: { type: String, default: 'SD' },
+    city: { type: String, default: '' },
+    bankName: { type: String, default: '' },
+    bankAccountNumber: { type: String, default: '' },
+    bankAccountName: { type: String, default: '' },
+    passportPhoto: { type: String, required: true },
+    personalPhoto: { type: String, required: true },
+    status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+    rejectionReason: { type: String, default: '' },
+    approvedBy: { type: Number, default: null },
+    approvedAt: { type: Date, default: null },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
 });
 
 // نموذج المستخدم
@@ -34,14 +54,14 @@ const userSchema = new mongoose.Schema({
     bankName: { type: String, default: '' },
     bankAccountNumber: { type: String, default: '' },
     bankAccountName: { type: String, default: '' },
+    isVerified: { type: Boolean, default: false },
+    isMerchant: { type: Boolean, default: false },
     usdBalance: { type: Number, default: 0 },
     totalTraded: { type: Number, default: 0 },
     totalProfit: { type: Number, default: 0 },
     rating: { type: Number, default: 5.0 },
     completedTrades: { type: Number, default: 0 },
     successRate: { type: Number, default: 100 },
-    isVerified: { type: Boolean, default: false },
-    isMerchant: { type: Boolean, default: false },
     referrerId: { type: Number, default: null },
     referralCount: { type: Number, default: 0 },
     walletId: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet' },
@@ -52,9 +72,9 @@ const userSchema = new mongoose.Schema({
 const p2pOfferSchema = new mongoose.Schema({
     userId: { type: Number, required: true, index: true },
     type: { type: String, enum: ['buy', 'sell'], required: true },
-    currency: { type: String, required: true }, // USD, EUR, SAR, SDG, إلخ
+    currency: { type: String, required: true },
     fiatAmount: { type: Number, required: true },
-    price: { type: Number, required: true }, // سعر الدولار بالعملة المحلية
+    price: { type: Number, required: true },
     paymentMethod: { type: String, required: true },
     paymentDetails: { type: String, default: '' },
     bankName: { type: String, default: '' },
@@ -131,15 +151,18 @@ const reviewSchema = new mongoose.Schema({
 const dailyStatsSchema = new mongoose.Schema({
     date: { type: String, required: true, unique: true },
     totalUsers: { type: Number, default: 0 },
+    newUsers: { type: Number, default: 0 },
+    verifiedUsers: { type: Number, default: 0 },
     totalTrades: { type: Number, default: 0 },
     totalVolume: { type: Number, default: 0 },
     totalCommission: { type: Number, default: 0 },
     activeOffers: { type: Number, default: 0 },
-    newUsers: { type: Number, default: 0 }
+    pendingKyc: { type: Number, default: 0 }
 });
 
 const User = mongoose.model('User', userSchema);
 const Wallet = mongoose.model('Wallet', walletSchema);
+const KycRequest = mongoose.model('KycRequest', kycRequestSchema);
 const P2pOffer = mongoose.model('P2pOffer', p2pOfferSchema);
 const Trade = mongoose.model('Trade', tradeSchema);
 const DepositRequest = mongoose.model('DepositRequest', depositRequestSchema);
@@ -147,4 +170,4 @@ const WithdrawRequest = mongoose.model('WithdrawRequest', withdrawRequestSchema)
 const Review = mongoose.model('Review', reviewSchema);
 const DailyStats = mongoose.model('DailyStats', dailyStatsSchema);
 
-module.exports = { User, Wallet, P2pOffer, Trade, DepositRequest, WithdrawRequest, Review, DailyStats };
+module.exports = { User, Wallet, KycRequest, P2pOffer, Trade, DepositRequest, WithdrawRequest, Review, DailyStats };
