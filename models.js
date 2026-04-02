@@ -17,7 +17,7 @@ const walletSchema = new mongoose.Schema({
     lastUpdated: { type: Date, default: Date.now }
 });
 
-// نموذج طلب التوثيق (KYC)
+// نموذج طلب التوثيق (KYC) - محدث
 const kycRequestSchema = new mongoose.Schema({
     userId: { type: Number, required: true, unique: true },
     fullName: { type: String, required: true },
@@ -30,11 +30,23 @@ const kycRequestSchema = new mongoose.Schema({
     bankName: { type: String, default: '' },
     bankAccountNumber: { type: String, default: '' },
     bankAccountName: { type: String, default: '' },
+    // الصور
     passportPhoto: { type: String, required: true },
     personalPhoto: { type: String, required: true },
-    status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+    // نتائج التحقق الآلي
+    autoVerificationResult: {
+        faceMatched: { type: Boolean, default: false },
+        faceSimilarity: { type: Number, default: 0 },
+        nameMatched: { type: Boolean, default: false },
+        passportNumberValid: { type: Boolean, default: false },
+        nationalIdValid: { type: Boolean, default: false },
+        overallScore: { type: Number, default: 0 },
+        details: { type: String, default: '' }
+    },
+    // الحالة
+    status: { type: String, enum: ['pending', 'approved', 'rejected', 'auto_approved'], default: 'pending' },
     rejectionReason: { type: String, default: '' },
-    approvedBy: { type: Number, default: null },
+    approvedBy: { type: String, default: 'auto' },
     approvedAt: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
@@ -153,6 +165,7 @@ const dailyStatsSchema = new mongoose.Schema({
     totalUsers: { type: Number, default: 0 },
     newUsers: { type: Number, default: 0 },
     verifiedUsers: { type: Number, default: 0 },
+    autoVerifiedUsers: { type: Number, default: 0 },
     totalTrades: { type: Number, default: 0 },
     totalVolume: { type: Number, default: 0 },
     totalCommission: { type: Number, default: 0 },
