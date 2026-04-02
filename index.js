@@ -1,4 +1,9 @@
 require('dotenv').config();
+const { Telegraf } = require('telegraf');
+const session = require('@telegraf/session');
+
+// إعداد الجلسات
+bot.use(session());
 const { Telegraf, Markup } = require('telegraf');
 const db = require('./database');
 const express = require('express');
