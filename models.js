@@ -1,27 +1,46 @@
 const mongoose = require('mongoose');
 
-// ========== نموذج المحفظة ==========
+// نموذج المحفظة
 const walletSchema = new mongoose.Schema({
     userId: { type: Number, required: true, unique: true },
     bnbAddress: { type: String, unique: true, sparse: true },
     bnbEncryptedPrivateKey: { type: String },
-    bnbBalance: { type: Number, default: 0 },
     polygonAddress: { type: String, unique: true, sparse: true },
     polygonEncryptedPrivateKey: { type: String },
-    polygonBalance: { type: Number, default: 0 },
     solanaAddress: { type: String, unique: true, sparse: true },
     solanaEncryptedPrivateKey: { type: String },
-    solanaBalance: { type: Number, default: 0 },
     aptosAddress: { type: String, unique: true, sparse: true },
     aptosEncryptedPrivateKey: { type: String },
-    aptosBalance: { type: Number, default: 0 },
     usdBalance: { type: Number, default: 0 },
     walletSignature: { type: String, required: true, unique: true },
     createdAt: { type: Date, default: Date.now },
     lastUpdated: { type: Date, default: Date.now }
 });
 
-// ========== نموذج المستخدم ==========
+// نموذج طلب التوثيق (KYC)
+const kycRequestSchema = new mongoose.Schema({
+    userId: { type: Number, required: true, unique: true },
+    fullName: { type: String, required: true },
+    passportNumber: { type: String, required: true },
+    nationalId: { type: String, required: true },
+    phoneNumber: { type: String, required: true },
+    email: { type: String, default: '' },
+    country: { type: String, default: 'SD' },
+    city: { type: String, default: '' },
+    bankName: { type: String, default: '' },
+    bankAccountNumber: { type: String, default: '' },
+    bankAccountName: { type: String, default: '' },
+    passportPhotoFileId: { type: String, default: '' }, // ID صورة الجواز من تلغرام
+    personalPhotoFileId: { type: String, default: '' }, // ID الصورة الشخصية من تلغرام
+    status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+    rejectionReason: { type: String, default: '' },
+    approvedBy: { type: Number, default: null },
+    approvedAt: { type: Date, default: null },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+});
+
+// نموذج المستخدم
 const userSchema = new mongoose.Schema({
     userId: { type: Number, required: true, unique: true },
     username: { type: String, default: '' },
@@ -49,30 +68,7 @@ const userSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
-// ========== نموذج طلب التوثيق (KYC) ==========
-const kycRequestSchema = new mongoose.Schema({
-    userId: { type: Number, required: true, unique: true },
-    fullName: { type: String, required: true },
-    passportNumber: { type: String, required: true },
-    nationalId: { type: String, required: true },
-    phoneNumber: { type: String, required: true },
-    email: { type: String, default: '' },
-    country: { type: String, default: 'SD' },
-    city: { type: String, default: '' },
-    bankName: { type: String, default: '' },
-    bankAccountNumber: { type: String, default: '' },
-    bankAccountName: { type: String, default: '' },
-    passportPhoto: { type: String, required: true },  // file_id من تلغرام
-    personalPhoto: { type: String, required: true },  // file_id من تلغرام
-    status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
-    rejectionReason: { type: String, default: '' },
-    approvedBy: { type: Number, default: null },
-    approvedAt: { type: Date, default: null },
-    createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now }
-});
-
-// ========== نموذج عروض P2P ==========
+// نموذج عروض P2P
 const p2pOfferSchema = new mongoose.Schema({
     userId: { type: Number, required: true, index: true },
     type: { type: String, enum: ['buy', 'sell'], required: true },
@@ -91,7 +87,7 @@ const p2pOfferSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
-// ========== نموذج الصفقات ==========
+// نموذج الصفقات
 const tradeSchema = new mongoose.Schema({
     offerId: { type: mongoose.Schema.Types.ObjectId, ref: 'P2pOffer' },
     buyerId: { type: Number, required: true },
@@ -114,7 +110,7 @@ const tradeSchema = new mongoose.Schema({
     completedAt: { type: Date, default: null }
 });
 
-// ========== نموذج طلبات الإيداع ==========
+// نموذج طلبات الإيداع
 const depositRequestSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
     amount: { type: Number, required: true },
@@ -127,7 +123,7 @@ const depositRequestSchema = new mongoose.Schema({
     completedAt: { type: Date, default: null }
 });
 
-// ========== نموذج طلبات السحب ==========
+// نموذج طلبات السحب
 const withdrawRequestSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
     amount: { type: Number, required: true },
@@ -141,7 +137,7 @@ const withdrawRequestSchema = new mongoose.Schema({
     approvedAt: { type: Date, default: null }
 });
 
-// ========== نموذج التقييمات ==========
+// نموذج التقييمات
 const reviewSchema = new mongoose.Schema({
     tradeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Trade', required: true },
     reviewerId: { type: Number, required: true },
@@ -151,7 +147,7 @@ const reviewSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
-// ========== نموذج الإحصائيات اليومية ==========
+// نموذج الإحصائيات اليومية
 const dailyStatsSchema = new mongoose.Schema({
     date: { type: String, required: true, unique: true },
     totalUsers: { type: Number, default: 0 },
@@ -164,7 +160,6 @@ const dailyStatsSchema = new mongoose.Schema({
     pendingKyc: { type: Number, default: 0 }
 });
 
-// ========== إنشاء النماذج ==========
 const User = mongoose.model('User', userSchema);
 const Wallet = mongoose.model('Wallet', walletSchema);
 const KycRequest = mongoose.model('KycRequest', kycRequestSchema);
@@ -175,15 +170,4 @@ const WithdrawRequest = mongoose.model('WithdrawRequest', withdrawRequestSchema)
 const Review = mongoose.model('Review', reviewSchema);
 const DailyStats = mongoose.model('DailyStats', dailyStatsSchema);
 
-// ========== تصدير النماذج ==========
-module.exports = { 
-    User, 
-    Wallet, 
-    KycRequest, 
-    P2pOffer, 
-    Trade, 
-    DepositRequest, 
-    WithdrawRequest, 
-    Review, 
-    DailyStats 
-};
+module.exports = { User, Wallet, KycRequest, P2pOffer, Trade, DepositRequest, WithdrawRequest, Review, DailyStats };
