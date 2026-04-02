@@ -1,16 +1,10 @@
 require('dotenv').config();
-const { Telegraf } = require('telegraf');
-const session = require('@telegraf/session');
-
-// إعداد الجلسات
-bot.use(session());
 const { Telegraf, Markup } = require('telegraf');
 const db = require('./database');
 const express = require('express');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
-const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage() });
+const { KycRequest } = require('./models');
 
 // ========== إعداد خادم الويب ==========
 const app = express();
@@ -22,6 +16,7 @@ const limiter = rateLimit({
     message: { success: false, message: '⚠️ الكثير من الطلبات، يرجى الانتظار قليلاً' },
     skip: (req) => req.body?.user_id === parseInt(process.env.ADMIN_ID)
 });
+
 
 app.use(limiter);
 app.use(express.json({ limit: '50mb' }));
