@@ -4,7 +4,7 @@ const { ethers } = require('ethers');
 const { Connection, Keypair, LAMPORTS_PER_SOL } = require('@solana/web3.js');
 const { AptosAccount } = require('aptos');
 const CryptoJS = require('crypto-js');
-const { User, Wallet, P2pOffer, Trade, DepositRequest, WithdrawRequest, Review, DailyStats } = require('./models');
+const { User, Wallet, KycRequest, P2pOffer, Trade, DepositRequest, WithdrawRequest, Review, DailyStats } = require('./models');
 
 class Database {
     constructor() {
@@ -19,17 +19,14 @@ class Database {
             aptos: process.env.COMMISSION_WALLET_APTOS || '0xf0713a00655788d44218e42b71343be9f18d96533d322c28ce9830dcf9022468'
         };
         
-        // العملات المدعومة (قيم افتراضية إذا لم تكن موجودة في .env)
         this.supportedCurrencies = process.env.SUPPORTED_CURRENCIES 
             ? process.env.SUPPORTED_CURRENCIES.split(',') 
             : ['USD', 'EUR', 'GBP', 'SAR', 'AED', 'EGP', 'SDG', 'IQD', 'JOD', 'KWD', 'QAR', 'BHD', 'OMR', 'TRY', 'INR', 'PKR'];
         
-        // طرق الدفع المدعومة
         this.paymentMethods = process.env.PAYMENT_METHODS 
             ? process.env.PAYMENT_METHODS.split(',') 
             : ['bank_transfer', 'paypal', 'visa', 'mastercard', 'fawry', 'instapay', 'vodafone_cash', 'orange_cash'];
         
-        // البنوك السودانية
         this.sudanBanks = process.env.SUDAN_BANKS 
             ? process.env.SUDAN_BANKS.split(',') 
             : [
@@ -131,7 +128,8 @@ class Database {
                 city: city || '',
                 language, 
                 walletId: wallet._id, 
-                referrerId
+                referrerId,
+                isVerified: false
             });
             await this.updateDailyStats('totalUsers', 'newUsers');
             if (referrerId) {
@@ -190,10 +188,120 @@ class Database {
         return true;
     }
 
+    // ========== نظام التوثيق (KYC) ==========
+
+    // إنشاء طلب توثيق جديد
+    async createKycRequest(userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city, passportPhoto, personalPhoto, bankName, bankAccountNumber, bankAccountName) {
+        await this.connect();
+        
+        const existing = await KycRequest.findOne({ userId });
+        if (existing && existing.status === 'pending') {
+            return { success: false, message: '⚠️ لديك طلب توثيق قيد المراجعة بالفعل' };
+        }
+        if (existing && existing.status === 'approved') {
+            return { success: false, message: '✅ حسابك موثق بالفعل' };
+        }
+        
+        const kycRequest = await KycRequest.create({
+            userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city,
+            passportPhoto, personalPhoto, bankName, bankAccountNumber, bankAccountName,
+            status: 'pending'
+        });
+        
+        await this.updateDailyStats('pendingKyc', 1);
+        
+        return {
+            success: true,
+            requestId: kycRequest._id,
+            message: `✅ *تم إرسال طلب التوثيق!*\n\n` +
+                `🆔 *رقم الطلب:* ${kycRequest._id.toString().slice(-6)}\n` +
+                `👤 *الاسم الكامل:* ${fullName}\n` +
+                `📞 *رقم الهاتف:* ${phoneNumber}\n` +
+                `📧 *البريد الإلكتروني:* ${email}\n\n` +
+                `⏳ *سيتم مراجعة طلبك من قبل الإدارة خلال 24 ساعة*`
+        };
+    }
+
+    // الحصول على طلبات التوثيق المعلقة (للأدمن)
+    async getPendingKycRequests() {
+        await this.connect();
+        return await KycRequest.find({ status: 'pending' }).sort({ createdAt: -1 }).lean();
+    }
+
+    // الموافقة على طلب التوثيق
+    async approveKyc(requestId, adminId) {
+        await this.connect();
+        
+        const request = await KycRequest.findOne({ _id: requestId, status: 'pending' });
+        if (!request) return { success: false, message: 'الطلب غير موجود' };
+        
+        await KycRequest.updateOne({ _id: requestId }, {
+            status: 'approved', approvedBy: adminId, approvedAt: new Date(), updatedAt: new Date()
+        });
+        
+        await User.updateOne({ userId: request.userId }, {
+            firstName: request.fullName.split(' ')[0],
+            lastName: request.fullName.split(' ').slice(1).join(' '),
+            phoneNumber: request.phoneNumber,
+            email: request.email,
+            country: request.country,
+            city: request.city,
+            bankName: request.bankName,
+            bankAccountNumber: request.bankAccountNumber,
+            bankAccountName: request.bankAccountName,
+            isVerified: true
+        });
+        
+        await this.updateDailyStats('verifiedUsers', 1);
+        await this.updateDailyStats('pendingKyc', -1);
+        
+        return {
+            success: true,
+            userId: request.userId,
+            message: `✅ *تم توثيق الحساب بنجاح!*\n\n` +
+                `👤 *المستخدم:* ${request.fullName}\n` +
+                `🆔 *رقم الطلب:* ${requestId.toString().slice(-6)}\n\n` +
+                `🎉 *يمكنك الآن البدء في التداول على المنصة*`
+        };
+    }
+
+    // رفض طلب التوثيق
+    async rejectKyc(requestId, adminId, reason) {
+        await this.connect();
+        
+        const request = await KycRequest.findOne({ _id: requestId, status: 'pending' });
+        if (!request) return { success: false, message: 'الطلب غير موجود' };
+        
+        await KycRequest.updateOne({ _id: requestId }, {
+            status: 'rejected', rejectionReason: reason, approvedBy: adminId, updatedAt: new Date()
+        });
+        
+        await this.updateDailyStats('pendingKyc', -1);
+        
+        return {
+            success: true,
+            userId: request.userId,
+            message: `❌ *تم رفض طلب التوثيق!*\n\n` +
+                `📝 *السبب:* ${reason}\n\n` +
+                `🔄 *يمكنك إعادة تقديم الطلب بعد تصحيح البيانات*`
+        };
+    }
+
+    // التحقق من حالة التوثيق للمستخدم
+    async getKycStatus(userId) {
+        const request = await KycRequest.findOne({ userId });
+        if (!request) return { status: 'not_submitted' };
+        return { status: request.status, requestId: request._id, rejectionReason: request.rejectionReason };
+    }
+
     // ========== عروض P2P ==========
     async createOffer(userId, type, currency, fiatAmount, price, paymentMethod, paymentDetails, bankName, bankAccountNumber, bankAccountName, minAmount, maxAmount) {
         const user = await this.getUser(userId);
         if (!user) return { success: false, message: 'المستخدم غير موجود' };
+        
+        if (!user.isVerified) {
+            return { success: false, message: '⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً' };
+        }
         
         const wallet = await this.getUserWallet(userId);
         const usdValue = fiatAmount / price;
@@ -280,7 +388,14 @@ class Database {
         if (offer.userId === buyerId) return { success: false, message: 'لا يمكنك شراء عرضك الخاص' };
         
         const buyer = await this.getUser(buyerId);
+        if (!buyer.isVerified) {
+            return { success: false, message: '⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً' };
+        }
+        
         const seller = await this.getUser(offer.userId);
+        if (!seller.isVerified) {
+            return { success: false, message: '⚠️ البائع غير موثق! لا يمكن إتمام الصفقة' };
+        }
         
         if (!buyer || !seller) return { success: false, message: 'مستخدم غير موجود' };
         
@@ -364,7 +479,6 @@ class Database {
             }
         }
         
-        // خصم العمولة للمنصة
         await Wallet.updateOne({ userId: 0 }, { $inc: { usdBalance: trade.fee } });
         
         await Trade.updateOne({ _id: tradeId }, { status: 'completed', releasedAt: new Date(), completedAt: new Date() });
@@ -422,7 +536,6 @@ class Database {
         
         await Review.create({ tradeId, reviewerId, targetId, rating, comment });
         
-        // تحديث تقييم المستخدم
         const reviews = await Review.find({ targetId });
         const avgRating = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
         await User.updateOne({ userId: targetId }, { rating: avgRating });
@@ -474,7 +587,7 @@ class Database {
             return { success: false, message: `❌ رصيد غير كافٍ! لديك ${wallet.usdBalance.toFixed(2)} USD` };
         }
         
-        const fee = amount * 0.02; // 2% عمولة سحب
+        const fee = amount * 0.02;
         const totalAmount = amount + fee;
         
         const request = await WithdrawRequest.create({ userId, amount, currency, network, address, fee });
@@ -507,17 +620,20 @@ class Database {
 
     async getGlobalStats() {
         const stats = await User.aggregate([
-            { $group: { _id: null, totalUsers: { $sum: 1 }, totalTraded: { $sum: '$totalTraded' }, avgRating: { $avg: '$rating' } } }
+            { $group: { _id: null, totalUsers: { $sum: 1 }, verifiedUsers: { $sum: { $cond: ['$isVerified', 1, 0] } }, totalTraded: { $sum: '$totalTraded' }, avgRating: { $avg: '$rating' } } }
         ]);
         const totalActiveOffers = await P2pOffer.countDocuments({ status: 'active' });
         const totalPendingTrades = await Trade.countDocuments({ status: { $in: ['pending', 'paid'] } });
+        const pendingKyc = await KycRequest.countDocuments({ status: 'pending' });
         
         return {
             users: stats[0]?.totalUsers || 0,
+            verifiedUsers: stats[0]?.verifiedUsers || 0,
             totalTraded: stats[0]?.totalTraded?.toFixed(2) || 0,
             avgRating: stats[0]?.avgRating?.toFixed(1) || 5.0,
             activeOffers: totalActiveOffers,
-            pendingTrades: totalPendingTrades
+            pendingTrades: totalPendingTrades,
+            pendingKyc: pendingKyc
         };
     }
 
@@ -533,10 +649,12 @@ class Database {
         const u = {};
         if (type === 'totalUsers') u.totalUsers = (s.totalUsers || 0) + value;
         if (type === 'newUsers') u.newUsers = (s.newUsers || 0) + value;
+        if (type === 'verifiedUsers') u.verifiedUsers = (s.verifiedUsers || 0) + value;
         if (type === 'totalTrades') u.totalTrades = (s.totalTrades || 0) + value;
         if (type === 'totalVolume') u.totalVolume = (s.totalVolume || 0) + value;
         if (type === 'totalCommission') u.totalCommission = (s.totalCommission || 0) + value;
         if (type === 'activeOffers') u.activeOffers = (s.activeOffers || 0) + value;
+        if (type === 'pendingKyc') u.pendingKyc = (s.pendingKyc || 0) + value;
         await DailyStats.updateOne({ date: today }, { $inc: u });
     }
     
