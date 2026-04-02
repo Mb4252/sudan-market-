@@ -17,8 +17,8 @@ const limiter = rateLimit({
 });
 
 app.use(limiter);
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'mining-app')));
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'mining-app', 'index.html')));
@@ -30,17 +30,14 @@ const ADMIN_ID = parseInt(process.env.ADMIN_ID) || 6701743450;
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'hmood19931130';
 const PLATFORM_FEE = parseFloat(process.env.PLATFORM_FEE_PERCENT) || 0.5;
 
-// العملات المدعومة (قيم افتراضية)
 const SUPPORTED_CURRENCIES = process.env.SUPPORTED_CURRENCIES 
     ? process.env.SUPPORTED_CURRENCIES.split(',') 
     : ['USD', 'EUR', 'GBP', 'SAR', 'AED', 'EGP', 'SDG', 'IQD', 'JOD', 'KWD', 'QAR', 'BHD', 'OMR', 'TRY', 'INR', 'PKR'];
 
-// طرق الدفع المدعومة
 const PAYMENT_METHODS = process.env.PAYMENT_METHODS 
     ? process.env.PAYMENT_METHODS.split(',') 
     : ['bank_transfer', 'paypal', 'visa', 'mastercard', 'fawry', 'instapay', 'vodafone_cash', 'orange_cash'];
 
-// البنوك السودانية
 const SUDAN_BANKS = process.env.SUDAN_BANKS 
     ? process.env.SUDAN_BANKS.split(',') 
     : [
@@ -60,6 +57,17 @@ app.get('/api/user/:userId', async (req, res) => {
 });
 app.get('/api/user/stats/:userId', async (req, res) => res.json(await db.getUserStats(parseInt(req.params.userId))));
 app.get('/api/kyc/status/:userId', async (req, res) => res.json(await db.getKycStatus(parseInt(req.params.userId))));
+app.post('/api/kyc/submit', async (req, res) => {
+    const result = await db.createKycRequest(
+        parseInt(req.body.user_id), req.body.fullName, req.body.passportNumber,
+        req.body.nationalId, req.body.phoneNumber, req.body.email || '',
+        req.body.country || 'SD', req.body.city || '',
+        req.body.passportPhoto, req.body.personalPhoto,
+        req.body.bankName, req.body.bankAccountNumber, req.body.bankAccountName
+    );
+    res.json(result);
+});
+app.post('/api/kyc/retry', async (req, res) => res.json(await db.retryKycVerification(parseInt(req.body.user_id))));
 app.get('/api/leaderboard', async (req, res) => {
     const l = await db.getLeaderboard(15);
     res.json(l.map(x => ({ name: x.firstName || x.username || `مستخدم ${x.userId}`, trades: x.totalTraded || 0, rating: x.rating || 5, verified: x.isVerified, merchant: x.isMerchant })));
@@ -202,6 +210,10 @@ bot.start(async (ctx) => {
         verifiedMsg = '✅ *حسابك موثق*';
     } else if (kycStatus.status === 'pending') {
         verifiedMsg = '⏳ *طلب التوثيق قيد المراجعة*';
+    } else if (kycStatus.status === 'auto_approved') {
+        verifiedMsg = '✅ *حسابك موثق تلقائياً*';
+    } else if (kycStatus.status === 'rejected') {
+        verifiedMsg = '❌ *تم رفض طلب التوثيق*';
     } else {
         verifiedMsg = '⚠️ *يرجى توثيق حسابك للمتاجرة*';
     }
@@ -535,7 +547,7 @@ bot.action('leaderboard', rateLimitMiddleware, async (ctx) => {
     const leaders = await db.getLeaderboard(15);
     const stats = await db.getGlobalStats();
     if (!leaders.length) return ctx.editMessageText('🏆 لا يوجد متصدرين', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
-    let text = `🏆 *قائمة المتصدرين* 🏆\n👥 *المستخدمين:* ${stats.users}\n💰 *إجمالي التداول:* ${stats.totalTraded} USD\n━━━━━━━━━━━━━━━━━━\n\n`;
+    let text = `🏆 *قائمة المتصدرين* 🏆\n👥 *المستخدمين:* ${stats.users}\n✅ *الموثقين:* ${stats.verifiedUsers}\n💰 *إجمالي التداول:* ${stats.totalTraded} USD\n━━━━━━━━━━━━━━━━━━\n\n`;
     for (let i = 0; i < leaders.length; i++) {
         const l = leaders[i];
         const name = l.firstName || l.username || `مستخدم ${l.userId}`;
@@ -613,9 +625,12 @@ bot.action('kyc_menu', rateLimitMiddleware, async (ctx) => {
     } else if (kycStatus.status === 'pending') {
         statusText = '⏳ *طلب التوثيق قيد المراجعة* - سيتم إعلامك عند اكتماله';
         actionButton = [[Markup.button.callback('🔙 رجوع', 'back_to_menu')]];
+    } else if (kycStatus.status === 'auto_approved') {
+        statusText = '✅ *تم توثيق حسابك تلقائياً* - يمكنك التداول بحرية';
+        actionButton = [[Markup.button.callback('🔙 رجوع', 'back_to_menu')]];
     } else if (kycStatus.status === 'rejected') {
-        statusText = `❌ *تم رفض طلب التوثيق*\n📝 السبب: ${kycStatus.rejectionReason}`;
-        actionButton = [[Markup.button.callback('📝 تقديم طلب جديد', 'start_kyc'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]];
+        statusText = `❌ *تم رفض طلب التوثيق*\n📝 السبب: ${kycStatus.rejectionReason || 'فشل التحقق الآلي'}`;
+        actionButton = [[Markup.button.callback('🔄 إعادة المحاولة', 'retry_kyc'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]];
     } else {
         statusText = '⚠️ *حسابك غير موثق* - يرجى إكمال التوثيق للمتاجرة';
         actionButton = [[Markup.button.callback('📝 تقديم طلب توثيق', 'start_kyc'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]];
@@ -628,6 +643,11 @@ bot.action('kyc_menu', rateLimitMiddleware, async (ctx) => {
         `• الرقم الوطني\n` +
         `• رقم الهاتف\n` +
         `• البيانات البنكية (اسم البنك - رقم الحساب - اسم الحساب)\n\n` +
+        `🤖 *نظام التحقق الآلي:*\n` +
+        `• يتم استخراج البيانات من الصور تلقائياً\n` +
+        `• مقارنة الاسم المدخل مع الاسم في الجواز\n` +
+        `• التحقق من صحة الأرقام\n` +
+        `• الموافقة التلقائية عند تطابق البيانات بنسبة 70% فأكثر\n\n` +
         `📝 *لبدء عملية التوثيق، اضغط على زر "تقديم طلب توثيق"*`;
     
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(actionButton) });
@@ -643,6 +663,13 @@ bot.action('start_kyc', rateLimitMiddleware, async (ctx) => {
         `📧 *يمكنك إضافة البريد الإلكتروني اختيارياً:*\n` +
         `/kyc "محمد أحمد" A12345678 1234567890 0912345678 example@email.com`);
     ctx.session = { state: 'kyc_step1' };
+});
+
+// إعادة محاولة التوثيق
+bot.action('retry_kyc', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    const result = await db.retryKycVerification(ctx.from.id);
+    await ctx.editMessageText(result.message, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
 
 // أمر التوثيق المباشر
@@ -661,30 +688,7 @@ bot.command('kyc', async (ctx) => {
     ctx.session.kycData = { fullName, passportNumber, nationalId, phoneNumber, email };
     ctx.session.state = 'kyc_step2';
     
-    await ctx.reply('📸 *الرجاء إرسال صورة واضحة للجواز الساري* (صورة أو ملف)');
-});
-
-// معالجة الخطوات
-bot.on('text', messageRateLimitMiddleware, async (ctx) => {
-    if (ctx.session?.state === 'kyc_step1') {
-        const parts = ctx.message.text.split(' ');
-        if (parts.length < 5) {
-            await ctx.reply('❌ الصيغة: /kyc [الاسم الكامل] [رقم الجواز] [الرقم الوطني] [رقم الهاتف]');
-            delete ctx.session.state;
-            return;
-        }
-        
-        const fullName = parts[1];
-        const passportNumber = parts[2];
-        const nationalId = parts[3];
-        const phoneNumber = parts[4];
-        const email = parts[5] || '';
-        
-        ctx.session.kycData = { fullName, passportNumber, nationalId, phoneNumber, email };
-        ctx.session.state = 'kyc_step2';
-        
-        await ctx.reply('📸 *الرجاء إرسال صورة واضحة للجواز الساري* (صورة أو ملف)');
-    }
+    await ctx.reply('📸 *الرجاء إرسال صورة واضحة للجواز الساري* (صورة أو ملف)\n\n📌 *نصيحة:* تأكد من وضوح الصورة وجودتها للحصول على أفضل نتائج للتحقق الآلي');
 });
 
 // معالجة الصور
@@ -692,13 +696,15 @@ bot.on('photo', messageRateLimitMiddleware, async (ctx) => {
     if (ctx.session?.state === 'kyc_step2') {
         const photo = ctx.message.photo[ctx.message.photo.length - 1];
         const fileId = photo.file_id;
-        ctx.session.kycData.passportPhoto = fileId;
+        const fileLink = await ctx.telegram.getFileLink(fileId);
+        ctx.session.kycData.passportPhoto = fileLink.href;
         ctx.session.state = 'kyc_step3';
         await ctx.reply('📸 *الرجاء إرسال صورة شخصية واضحة*');
     } else if (ctx.session?.state === 'kyc_step3') {
         const photo = ctx.message.photo[ctx.message.photo.length - 1];
         const fileId = photo.file_id;
-        ctx.session.kycData.personalPhoto = fileId;
+        const fileLink = await ctx.telegram.getFileLink(fileId);
+        ctx.session.kycData.personalPhoto = fileLink.href;
         ctx.session.state = 'kyc_step4';
         await ctx.reply('🏦 *الرجاء إدخال بياناتك البنكية:*\n\n' +
             `/bank [اسم البنك] [رقم الحساب] [اسم صاحب الحساب]\n\n` +
@@ -720,6 +726,12 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
         const bankAccountNumber = parts[2];
         const bankAccountName = parts.slice(3).join(' ');
         
+        ctx.session.kycData.bankName = bankName;
+        ctx.session.kycData.bankAccountNumber = bankAccountNumber;
+        ctx.session.kycData.bankAccountName = bankAccountName;
+        
+        await ctx.reply('🔄 *جاري التحقق من البيانات ومعالجتها...*\n\n⏳ قد يستغرق هذا بضع ثوانٍ');
+        
         const result = await db.createKycRequest(
             ctx.from.id,
             ctx.session.kycData.fullName,
@@ -738,39 +750,18 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
         
         await ctx.reply(result.message, { parse_mode: 'Markdown' });
         
-        // إشعار الأدمن
-        await bot.telegram.sendMessage(ADMIN_ID, `
-🆔 *طلب توثيق جديد!*
-
-👤 المستخدم: ${ctx.from.first_name} (@${ctx.from.username || 'لا يوجد'})
-🆔 المعرف: ${ctx.from.id}
-📋 رقم الطلب: \`${result.requestId}\`
-
-📝 *البيانات:*
-• الاسم: ${ctx.session.kycData.fullName}
-• الجواز: ${ctx.session.kycData.passportNumber}
-• الرقم الوطني: ${ctx.session.kycData.nationalId}
-• الهاتف: ${ctx.session.kycData.phoneNumber}
-• البريد: ${ctx.session.kycData.email || 'لا يوجد'}
-
-✅ /approve_kyc ${result.requestId}
-❌ /reject_kyc ${result.requestId} [السبب]
-        `, { parse_mode: 'Markdown' });
-        
         delete ctx.session.state;
         delete ctx.session.kycData;
     }
 });
 
-// ========== أوامر الأدمن للتوثيق ==========
-
-// عرض طلبات التوثيق المعلقة
+// ========== أوامر الأدمن ==========
 bot.action('pending_kyc', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return ctx.answerCbQuery('⛔ للأدمن فقط');
     
     const pending = await db.getPendingKycRequests();
     if (!pending.length) {
-        await ctx.editMessageText('📭 لا توجد طلبات توثيق معلقة', {
+        await ctx.editMessageText('📭 لا توجد طلبات توثيق معلقة (النظام آلي بالكامل)', {
             ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
         });
         return;
@@ -784,42 +775,10 @@ bot.action('pending_kyc', async (ctx) => {
         text += `📅 التاريخ: ${new Date(req.createdAt).toLocaleString()}\n`;
         text += `━━━━━━━━━━━━━━━━━━\n`;
     }
-    text += `\n📝 *للموافقة:* /approve_kyc [الرقم]\n❌ *للرفض:* /reject_kyc [الرقم] [السبب]`;
     
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
 
-// الموافقة على طلب توثيق
-bot.command('approve_kyc', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return;
-    const args = ctx.message.text.split(' ');
-    if (args.length !== 2) return ctx.reply('❌ /approve_kyc [رقم الطلب]');
-    
-    const result = await db.approveKyc(args[1], ctx.from.id);
-    await ctx.reply(result.message, { parse_mode: 'Markdown' });
-    
-    if (result.userId) {
-        await bot.telegram.sendMessage(result.userId, result.message, { parse_mode: 'Markdown' });
-    }
-});
-
-// رفض طلب توثيق
-bot.command('reject_kyc', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return;
-    const args = ctx.message.text.split(' ');
-    if (args.length < 3) return ctx.reply('❌ /reject_kyc [رقم الطلب] [السبب]');
-    
-    const requestId = args[1];
-    const reason = args.slice(2).join(' ');
-    const result = await db.rejectKyc(requestId, ctx.from.id, reason);
-    await ctx.reply(result.message, { parse_mode: 'Markdown' });
-    
-    if (result.userId) {
-        await bot.telegram.sendMessage(result.userId, result.message, { parse_mode: 'Markdown' });
-    }
-});
-
-// ========== أوامر الأدمن الأخرى ==========
 bot.action('pending_withdraws', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return ctx.answerCbQuery('⛔ للأدمن فقط');
     const p = await db.getPendingWithdraws();
@@ -872,12 +831,13 @@ bot.action('global_stats', async (ctx) => {
     await ctx.editMessageText(
         `📊 *إحصائيات عامة*\n\n` +
         `👥 *المستخدمين:* ${s.users}\n` +
-        `✅ *الموثقين:* ${s.verifiedUsers || 0}\n` +
+        `✅ *الموثقين:* ${s.verifiedUsers}\n` +
+        `🤖 *الموثقين تلقائياً:* ${s.autoVerifiedUsers || 0}\n` +
         `💰 *إجمالي التداول:* ${s.totalTraded} USD\n` +
         `⭐ *متوسط التقييم:* ${s.avgRating}/5\n` +
         `📊 *العروض النشطة:* ${s.activeOffers}\n` +
         `⏳ *الصفقات المعلقة:* ${s.pendingTrades}\n` +
-        `🆔 *طلبات توثيق:* ${s.pendingKyc || 0}`,
+        `🆔 *طلبات توثيق معلقة:* ${s.pendingKyc || 0}`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
 });
@@ -889,6 +849,7 @@ bot.action('today_stats', async (ctx) => {
         `📅 *إحصائيات اليوم*\n${new Date().toLocaleDateString('ar')}\n\n` +
         `👥 *مستخدمين جدد:* ${s?.newUsers || 0}\n` +
         `✅ *موثقين جدد:* ${s?.verifiedUsers || 0}\n` +
+        `🤖 *موثقين تلقائياً:* ${s?.autoVerifiedUsers || 0}\n` +
         `📈 *الصفقات:* ${s?.totalTrades || 0}\n` +
         `💰 *حجم التداول:* ${s?.totalVolume?.toFixed(2) || 0} USD\n` +
         `💸 *العمولات:* ${s?.totalCommission?.toFixed(2) || 0} USD\n` +
@@ -950,7 +911,7 @@ bot.launch().then(() => {
     console.log('💵 Platform Fee:', PLATFORM_FEE, '%');
     console.log('🌍 Supported Currencies:', SUPPORTED_CURRENCIES.length);
     console.log('🏦 Sudanese Banks:', SUDAN_BANKS.length);
-    console.log('🆔 KYC System: Enabled');
+    console.log('🤖 Auto KYC System: Enabled');
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
