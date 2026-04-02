@@ -81,6 +81,16 @@
             margin-top: 5px;
         }
 
+        .auto-approved-badge {
+            background: #2196F3;
+            color: white;
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: 12px;
+            display: inline-block;
+            margin-top: 5px;
+        }
+
         .tab-buttons {
             display: flex;
             gap: 10px;
@@ -362,6 +372,10 @@
             border: 1px solid #4caf50;
         }
 
+        .kyc-auto-approved {
+            border: 1px solid #2196F3;
+        }
+
         .kyc-pending {
             border: 1px solid #ff9800;
         }
@@ -381,12 +395,53 @@
             text-align: center;
             cursor: pointer;
             margin: 10px 0;
+            transition: all 0.3s;
+        }
+
+        .photo-upload:hover {
+            border-color: #4caf50;
+            background: rgba(76, 175, 80, 0.1);
         }
 
         .photo-preview {
             max-width: 100%;
             border-radius: 8px;
             margin-top: 10px;
+        }
+
+        .verification-result {
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 12px;
+            padding: 12px;
+            margin-top: 15px;
+            font-size: 12px;
+        }
+
+        .result-success {
+            color: #4caf50;
+        }
+
+        .result-fail {
+            color: #f44336;
+        }
+
+        .result-warning {
+            color: #ff9800;
+        }
+
+        .progress-bar {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #4caf50;
+            width: 0%;
+            transition: width 0.5s;
         }
 
         @media (max-width: 480px) {
@@ -591,8 +646,9 @@
                     <input type="text" id="kycAccountNumber" placeholder="رقم الحساب البنكي" class="kyc-input">
                     <input type="text" id="kycAccountName" placeholder="اسم صاحب الحساب" class="kyc-input">
                     
-                    <button class="kyc-btn" onclick="submitKyc()">📤 إرسال طلب التوثيق</button>
+                    <button class="kyc-btn" onclick="submitKyc()">🤖 إرسال للتحقق الآلي</button>
                 </div>
+                <div id="verificationResult" style="display: none;" class="verification-result"></div>
             </div>
         </div>
 
@@ -634,7 +690,6 @@
         let personalPhotoFile = null;
         const API_URL = window.location.origin;
         
-        // البنوك السودانية
         const sudanBanks = [
             "Bank of Khartoum", "Blue Nile Mashreq Bank", "Al Salam Bank", "Agricultural Bank",
             "Al Baraka Bank", "Al Nilein Bank", "Al Shamal Islamic Bank", "Animal Resources Bank",
@@ -671,6 +726,9 @@
                     if (kyc.status === 'pending') {
                         verificationDiv.innerHTML = '<div class="pending-badge">⏳ طلب توثيق قيد المراجعة</div>';
                         document.getElementById('createWarning').style.display = 'block';
+                    } else if (kyc.status === 'auto_approved') {
+                        verificationDiv.innerHTML = '<div class="auto-approved-badge">🤖 تم التوثيق تلقائياً</div>';
+                        document.getElementById('createWarning').style.display = 'none';
                     } else {
                         verificationDiv.innerHTML = '<div class="unverified-badge">⚠️ حساب غير موثق - يرجى التوثيق للمتاجرة</div>';
                         document.getElementById('createWarning').style.display = 'block';
@@ -688,44 +746,72 @@
                 
                 const container = document.getElementById('kycStatus');
                 const form = document.getElementById('kycForm');
+                const resultDiv = document.getElementById('verificationResult');
                 
                 if (userData.isVerified) {
                     container.innerHTML = `
-                        <div style="color:#4caf50; text-align:center;">
+                        <div class="kyc-approved" style="text-align:center;">
                             <div style="font-size:48px">✅</div>
                             <h3>حسابك موثق</h3>
                             <p>يمكنك التداول بحرية على المنصة</p>
                         </div>
                     `;
                     form.style.display = 'none';
+                    resultDiv.style.display = 'none';
                 } else if (data.status === 'pending') {
                     container.innerHTML = `
-                        <div style="color:#ff9800; text-align:center;">
+                        <div class="kyc-pending" style="text-align:center;">
                             <div style="font-size:48px">⏳</div>
                             <h3>طلب التوثيق قيد المراجعة</h3>
                             <p>سيتم إعلامك عند اكتمال المراجعة</p>
+                            <div class="progress-bar"><div class="progress-fill" style="width:50%"></div></div>
                         </div>
                     `;
                     form.style.display = 'none';
-                } else if (data.status === 'rejected') {
+                    resultDiv.style.display = 'none';
+                } else if (data.status === 'auto_approved') {
                     container.innerHTML = `
-                        <div style="color:#f44336; text-align:center;">
-                            <div style="font-size:48px">❌</div>
-                            <h3>تم رفض طلب التوثيق</h3>
-                            <p>السبب: ${data.rejectionReason || 'بيانات غير صحيحة'}</p>
-                            <p>يمكنك إعادة تقديم الطلب</p>
+                        <div class="kyc-auto-approved" style="text-align:center;">
+                            <div style="font-size:48px">🤖</div>
+                            <h3>تم توثيق حسابك تلقائياً</h3>
+                            <p>يمكنك التداول بحرية على المنصة</p>
                         </div>
                     `;
-                    form.style.display = 'block';
+                    form.style.display = 'none';
+                    resultDiv.style.display = 'none';
+                } else if (data.status === 'rejected') {
+                    container.innerHTML = `
+                        <div class="kyc-rejected" style="text-align:center;">
+                            <div style="font-size:48px">❌</div>
+                            <h3>تم رفض طلب التوثيق</h3>
+                            <p>السبب: ${data.rejectionReason || 'فشل التحقق الآلي'}</p>
+                            <button class="kyc-btn" onclick="retryKyc()" style="margin-top:10px">🔄 إعادة المحاولة</button>
+                        </div>
+                    `;
+                    form.style.display = 'none';
+                    resultDiv.style.display = 'block';
+                    if (data.verificationResult) {
+                        const vr = data.verificationResult;
+                        resultDiv.innerHTML = `
+                            <h4>📊 نتيجة التحقق الآلي</h4>
+                            <div>📋 التشابه: ${vr.nameSimilarity || 0}% ${vr.nameSimilarity >= 60 ? '✅' : '❌'}</div>
+                            <div>🆔 رقم الجواز: ${vr.passportMatch ? '✅ متطابق' : '❌ غير متطابق'}</div>
+                            <div>🔢 الرقم الوطني: ${vr.nationalIdMatch ? '✅ متطابق' : '❌ غير متطابق'}</div>
+                            <div>📊 النتيجة الإجمالية: ${vr.overallScore || 0}% (الحد الأدنى 70%)</div>
+                            <div class="progress-bar"><div class="progress-fill" style="width:${vr.overallScore || 0}%"></div></div>
+                        `;
+                    }
                 } else {
                     container.innerHTML = `
-                        <div style="color:#aaa; text-align:center;">
+                        <div class="kyc-not-submitted" style="text-align:center;">
                             <div style="font-size:48px">🆔</div>
                             <h3>حسابك غير موثق</h3>
                             <p>يرجى إكمال عملية التوثيق للمتاجرة</p>
+                            <p style="font-size:12px; margin-top:10px">🤖 نظام التحقق الآلي بالذكاء الاصطناعي</p>
                         </div>
                     `;
                     form.style.display = 'block';
+                    resultDiv.style.display = 'none';
                 }
                 return data;
             } catch(e) { console.error(e); return { status: 'not_submitted' }; }
@@ -777,9 +863,8 @@
                 return;
             }
             
-            tg.showAlert('جاري إرسال الطلب...');
+            tg.showAlert('🤖 جاري التحقق الآلي من البيانات...\n⏳ قد يستغرق هذا بضع ثوانٍ');
             
-            // تحويل الصور إلى Base64
             const passportBase64 = await fileToBase64(passportPhotoFile);
             const personalBase64 = await fileToBase64(personalPhotoFile);
             
@@ -798,6 +883,22 @@
             tg.showAlert(result.message);
             if (result.success) {
                 loadKycStatus();
+                loadUserData();
+            }
+        }
+        
+        async function retryKyc() {
+            tg.showAlert('🤖 جاري إعادة التحقق الآلي...');
+            const res = await fetch(`${API_URL}/api/kyc/retry`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
+            });
+            const result = await res.json();
+            tg.showAlert(result.message);
+            if (result.success) {
+                loadKycStatus();
+                loadUserData();
             }
         }
         
@@ -842,12 +943,10 @@
         }
         
         async function loadMyOffers() {
-            // سيتم إضافة API لعرض عروض المستخدم
             document.getElementById('myOffersList').innerHTML = '<div class="loading">جاري التحميل...</div>';
         }
         
         async function loadMyTrades() {
-            // سيتم إضافة API لعرض صفقات المستخدم
             document.getElementById('myTradesList').innerHTML = '<div class="loading">جاري التحميل...</div>';
         }
         
@@ -923,7 +1022,7 @@
         }
         
         async function createOffer() {
-            if (!userData.isVerified && kycStatus.status !== 'approved') {
+            if (!userData.isVerified && kycStatus.status !== 'auto_approved') {
                 tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً');
                 switchTab('kyc');
                 return;
@@ -960,7 +1059,7 @@
         }
         
         async function startTrade(offerId) {
-            if (!userData.isVerified) {
+            if (!userData.isVerified && kycStatus.status !== 'auto_approved') {
                 tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً');
                 switchTab('kyc');
                 return;
