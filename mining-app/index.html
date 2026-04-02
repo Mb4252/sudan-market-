@@ -173,14 +173,6 @@
             font-size: 10px;
         }
 
-        .merchant-icon {
-            background: #ff9800;
-            color: white;
-            border-radius: 12px;
-            padding: 2px 8px;
-            font-size: 10px;
-        }
-
         .trade-input, .offer-input, .bank-input, .kyc-input {
             width: 100%;
             padding: 12px;
@@ -212,14 +204,6 @@
             background: #f44336;
         }
 
-        .cancel-btn {
-            background: #666;
-        }
-
-        .dispute-btn {
-            background: #ff9800;
-        }
-
         .copy-btn {
             background: #2196F3;
             color: white;
@@ -248,26 +232,7 @@
             color: #aaa;
         }
 
-        .bank-list {
-            max-height: 200px;
-            overflow-y: auto;
-            margin: 10px 0;
-        }
-
-        .bank-item {
-            padding: 8px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            margin: 5px 0;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .bank-item:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .currency-select, .method-select {
+        .currency-select {
             width: 100%;
             padding: 12px;
             border: none;
@@ -372,21 +337,6 @@
 
         .kyc-not-submitted {
             border: 1px solid #666;
-        }
-
-        .photo-upload {
-            border: 2px dashed rgba(255, 255, 255, 0.3);
-            border-radius: 12px;
-            padding: 20px;
-            text-align: center;
-            cursor: pointer;
-            margin: 10px 0;
-        }
-
-        .photo-preview {
-            max-width: 100%;
-            border-radius: 8px;
-            margin-top: 10px;
         }
 
         @media (max-width: 480px) {
@@ -571,19 +521,6 @@
                     </select>
                     <input type="text" id="kycCity" placeholder="المدينة" class="kyc-input">
                     
-                    <h4 style="color:white; margin:15px 0 10px">📸 المستندات المطلوبة</h4>
-                    <div class="photo-upload" onclick="document.getElementById('passportPhoto').click()">
-                        📄 اضغط لرفع صورة الجواز
-                    </div>
-                    <input type="file" id="passportPhoto" accept="image/*" style="display:none" onchange="previewPassport(event)">
-                    <div id="passportPreview" class="photo-preview"></div>
-                    
-                    <div class="photo-upload" onclick="document.getElementById('personalPhoto').click()">
-                        📸 اضغط لرفع الصورة الشخصية
-                    </div>
-                    <input type="file" id="personalPhoto" accept="image/*" style="display:none" onchange="previewPersonal(event)">
-                    <div id="personalPreview" class="photo-preview"></div>
-                    
                     <h4 style="color:white; margin:15px 0 10px">🏦 البيانات البنكية</h4>
                     <select id="kycBank" class="currency-select">
                         <option value="">اختر البنك</option>
@@ -630,11 +567,8 @@
         let currentLanguage = 'ar';
         let userData = {};
         let kycStatus = {};
-        let passportPhotoFile = null;
-        let personalPhotoFile = null;
         const API_URL = window.location.origin;
         
-        // البنوك السودانية
         const sudanBanks = [
             "Bank of Khartoum", "Blue Nile Mashreq Bank", "Al Salam Bank", "Agricultural Bank",
             "Al Baraka Bank", "Al Nilein Bank", "Al Shamal Islamic Bank", "Animal Resources Bank",
@@ -691,7 +625,7 @@
                 
                 if (userData.isVerified) {
                     container.innerHTML = `
-                        <div style="color:#4caf50; text-align:center;">
+                        <div class="kyc-approved" style="text-align:center;">
                             <div style="font-size:48px">✅</div>
                             <h3>حسابك موثق</h3>
                             <p>يمكنك التداول بحرية على المنصة</p>
@@ -700,7 +634,7 @@
                     form.style.display = 'none';
                 } else if (data.status === 'pending') {
                     container.innerHTML = `
-                        <div style="color:#ff9800; text-align:center;">
+                        <div class="kyc-pending" style="text-align:center;">
                             <div style="font-size:48px">⏳</div>
                             <h3>طلب التوثيق قيد المراجعة</h3>
                             <p>سيتم إعلامك عند اكتمال المراجعة</p>
@@ -709,7 +643,7 @@
                     form.style.display = 'none';
                 } else if (data.status === 'rejected') {
                     container.innerHTML = `
-                        <div style="color:#f44336; text-align:center;">
+                        <div class="kyc-rejected" style="text-align:center;">
                             <div style="font-size:48px">❌</div>
                             <h3>تم رفض طلب التوثيق</h3>
                             <p>السبب: ${data.rejectionReason || 'بيانات غير صحيحة'}</p>
@@ -719,7 +653,7 @@
                     form.style.display = 'block';
                 } else {
                     container.innerHTML = `
-                        <div style="color:#aaa; text-align:center;">
+                        <div class="kyc-not-submitted" style="text-align:center;">
                             <div style="font-size:48px">🆔</div>
                             <h3>حسابك غير موثق</h3>
                             <p>يرجى إكمال عملية التوثيق للمتاجرة</p>
@@ -729,30 +663,6 @@
                 }
                 return data;
             } catch(e) { console.error(e); return { status: 'not_submitted' }; }
-        }
-        
-        function previewPassport(event) {
-            const file = event.target.files[0];
-            if (file) {
-                passportPhotoFile = file;
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    document.getElementById('passportPreview').innerHTML = `<img src="${e.target.result}" style="max-width:100%; border-radius:8px;">`;
-                };
-                reader.readAsDataURL(file);
-            }
-        }
-        
-        function previewPersonal(event) {
-            const file = event.target.files[0];
-            if (file) {
-                personalPhotoFile = file;
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    document.getElementById('personalPreview').innerHTML = `<img src="${e.target.result}" style="max-width:100%; border-radius:8px;">`;
-                };
-                reader.readAsDataURL(file);
-            }
         }
         
         async function submitKyc() {
@@ -772,42 +682,10 @@
                 return;
             }
             
-            if (!passportPhotoFile || !personalPhotoFile) {
-                tg.showAlert('يرجى رفع صورة الجواز والصورة الشخصية');
-                return;
-            }
+            tg.showAlert('📝 جاري إرسال طلب التوثيق...\n⏳ سيتم مراجعة طلبك من قبل الإدارة');
             
-            tg.showAlert('جاري إرسال الطلب...');
-            
-            // تحويل الصور إلى Base64
-            const passportBase64 = await fileToBase64(passportPhotoFile);
-            const personalBase64 = await fileToBase64(personalPhotoFile);
-            
-            const res = await fetch(`${API_URL}/api/kyc/submit`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: tg.initDataUnsafe.user.id,
-                    fullName, passportNumber, nationalId, phoneNumber, email,
-                    country, city, bankName, bankAccountNumber: accountNumber,
-                    bankAccountName: accountName, passportPhoto: passportBase64,
-                    personalPhoto: personalBase64
-                })
-            });
-            const result = await res.json();
-            tg.showAlert(result.message);
-            if (result.success) {
-                loadKycStatus();
-            }
-        }
-        
-        function fileToBase64(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = error => reject(error);
-            });
+            // إرسال البيانات عبر البوت (سيتم فتح محادثة مع البوت)
+            tg.showAlert('📌 الرجاء الذهاب إلى البوت وإرسال الأمر:\n/kyc "الاسم الكامل" رقم الجواز الرقم الوطني رقم الهاتف\n\nمثال:\n/kyc "محمد أحمد" A12345678 1234567890 0912345678');
         }
         
         async function loadMarket() {
@@ -826,7 +704,6 @@
                         <div class="offer-user">
                             👤 ${o.firstName || o.username}
                             ${o.isVerified ? '<span class="verified-icon">موثق</span>' : ''}
-                            ${o.isMerchant ? '<span class="merchant-icon">تاجر</span>' : ''}
                         </div>
                         <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
                     </div>
@@ -842,12 +719,10 @@
         }
         
         async function loadMyOffers() {
-            // سيتم إضافة API لعرض عروض المستخدم
             document.getElementById('myOffersList').innerHTML = '<div class="loading">جاري التحميل...</div>';
         }
         
         async function loadMyTrades() {
-            // سيتم إضافة API لعرض صفقات المستخدم
             document.getElementById('myTradesList').innerHTML = '<div class="loading">جاري التحميل...</div>';
         }
         
@@ -923,7 +798,7 @@
         }
         
         async function createOffer() {
-            if (!userData.isVerified && kycStatus.status !== 'approved') {
+            if (!userData.isVerified) {
                 tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً');
                 switchTab('kyc');
                 return;
