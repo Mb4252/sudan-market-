@@ -4,6 +4,8 @@ const { ethers } = require('ethers');
 const { Connection, Keypair, LAMPORTS_PER_SOL } = require('@solana/web3.js');
 const { AptosAccount } = require('aptos');
 const CryptoJS = require('crypto-js');
+const Tesseract = require('tesseract.js');
+const sharp = require('sharp');
 const { User, Wallet, KycRequest, P2pOffer, Trade, DepositRequest, WithdrawRequest, Review, DailyStats } = require('./models');
 
 class Database {
@@ -188,9 +190,237 @@ class Database {
         return true;
     }
 
-    // ========== نظام التوثيق (KYC) ==========
+    // ========== نظام التوثيق الآلي (Auto KYC) ==========
 
-    // إنشاء طلب توثيق جديد
+    // استخراج النص من الصورة (OCR)
+    async extractTextFromImage(imageBase64) {
+        try {
+            const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+            const buffer = Buffer.from(base64Data, 'base64');
+            
+            const processedBuffer = await sharp(buffer)
+                .resize(1200, 1200, { fit: 'inside' })
+                .sharpen()
+                .toBuffer();
+            
+            const { data: { text } } = await Tesseract.recognize(processedBuffer, 'ara+eng', {
+                logger: m => console.log(m)
+            });
+            
+            return text;
+        } catch (error) {
+            console.error('OCR error:', error);
+            return '';
+        }
+    }
+
+    // استخراج الاسم من نص الجواز
+    extractNameFromText(text) {
+        const patterns = [
+            /الاسم[:\s]+([^\n]+)/i,
+            /Name[:\s]+([^\n]+)/i,
+            /Full Name[:\s]+([^\n]+)/i,
+            /holder[:\s]+([^\n]+)/i,
+            /Surname[:\s]+([^\n]+)/i,
+            /Given name[:\s]+([^\n]+)/i,
+            /([\u0600-\u06FF\s]{5,50})/
+        ];
+        
+        for (const pattern of patterns) {
+            const match = text.match(pattern);
+            if (match && match[1] && match[1].length > 3) {
+                return match[1].trim();
+            }
+        }
+        return '';
+    }
+
+    // استخراج رقم الجواز من النص
+    extractPassportNumberFromText(text) {
+        const patterns = [
+            /رقم الجواز[:\s]+([A-Z0-9]+)/i,
+            /Passport No[:\s]+([A-Z0-9]+)/i,
+            /Passport Number[:\s]+([A-Z0-9]+)/i,
+            /Document No[:\s]+([A-Z0-9]+)/i,
+            /([A-Z]{1,2}[0-9]{6,9})/
+        ];
+        
+        for (const pattern of patterns) {
+            const match = text.match(pattern);
+            if (match && match[1]) {
+                return match[1].trim();
+            }
+        }
+        return '';
+    }
+
+    // استخراج الرقم الوطني من النص
+    extractNationalIdFromText(text) {
+        const patterns = [
+            /الرقم الوطني[:\s]+([0-9]+)/i,
+            /National ID[:\s]+([0-9]+)/i,
+            /رقم الهوية[:\s]+([0-9]+)/i,
+            /ID Number[:\s]+([0-9]+)/i,
+            /([0-9]{10,14})/
+        ];
+        
+        for (const pattern of patterns) {
+            const match = text.match(pattern);
+            if (match && match[1]) {
+                return match[1].trim();
+            }
+        }
+        return '';
+    }
+
+    // مقارنة الأسماء (نسبة التشابه)
+    compareNames(name1, name2) {
+        if (!name1 || !name2) return 0;
+        
+        const normalize = (str) => str.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[^a-z\u0600-\u06FF\s]/g, '');
+        const n1 = normalize(name1);
+        const n2 = normalize(name2);
+        
+        if (n1 === n2) return 100;
+        
+        const words1 = n1.split(' ');
+        const words2 = n2.split(' ');
+        let matches = 0;
+        
+        for (const w1 of words1) {
+            for (const w2 of words2) {
+                if (w1 === w2 || (w1.length > 3 && w2.includes(w1)) || (w2.length > 3 && w1.includes(w2))) {
+                    matches++;
+                    break;
+                }
+            }
+        }
+        
+        const maxLen = Math.max(words1.length, words2.length);
+        return Math.round((matches / maxLen) * 100);
+    }
+
+    // التحقق الآلي من طلب التوثيق
+    async autoVerifyKyc(requestId) {
+        const request = await KycRequest.findOne({ _id: requestId, status: 'pending' });
+        if (!request) return { success: false, message: 'الطلب غير موجود' };
+        
+        // استخراج النص من صورة الجواز
+        const passportText = await this.extractTextFromImage(request.passportPhoto);
+        const extractedName = this.extractNameFromText(passportText);
+        const extractedPassportNumber = this.extractPassportNumberFromText(passportText);
+        const extractedNationalId = this.extractNationalIdFromText(passportText);
+        
+        // مقارنة الأسماء
+        const nameSimilarity = this.compareNames(request.fullName, extractedName);
+        const nameMatch = nameSimilarity >= 60;
+        
+        // مقارنة أرقام الجواز
+        const passportMatch = extractedPassportNumber && 
+            (extractedPassportNumber === request.passportNumber || 
+             extractedPassportNumber.includes(request.passportNumber) || 
+             request.passportNumber.includes(extractedPassportNumber));
+        
+        // مقارنة الأرقام الوطنية
+        const nationalIdMatch = extractedNationalId && 
+            (extractedNationalId === request.nationalId || 
+             extractedNationalId.includes(request.nationalId) || 
+             request.nationalId.includes(extractedNationalId));
+        
+        // حساب النتيجة الإجمالية
+        let score = 0;
+        if (nameMatch) score += 40;
+        if (passportMatch) score += 35;
+        if (nationalIdMatch) score += 25;
+        
+        const isVerified = score >= 70;
+        
+        // تحديث بيانات الطلب
+        await KycRequest.updateOne({ _id: requestId }, {
+            $set: {
+                extractedData: {
+                    extractedName,
+                    extractedPassportNumber,
+                    extractedNationalId,
+                    ocrConfidence: 80
+                },
+                verificationResult: {
+                    nameMatch,
+                    nameSimilarity,
+                    passportMatch,
+                    nationalIdMatch,
+                    overallScore: score
+                },
+                status: isVerified ? 'auto_approved' : 'rejected',
+                rejectionReason: isVerified ? '' : `فشل التحقق الآلي (النتيجة: ${score}%)`,
+                approvedAt: isVerified ? new Date() : null
+            }
+        });
+        
+        if (isVerified) {
+            // تحديث حالة المستخدم
+            await User.updateOne({ userId: request.userId }, {
+                firstName: request.fullName.split(' ')[0],
+                lastName: request.fullName.split(' ').slice(1).join(' '),
+                phoneNumber: request.phoneNumber,
+                email: request.email,
+                country: request.country,
+                city: request.city,
+                bankName: request.bankName,
+                bankAccountNumber: request.bankAccountNumber,
+                bankAccountName: request.bankAccountName,
+                isVerified: true
+            });
+            
+            await this.updateDailyStats('verifiedUsers', 1);
+            await this.updateDailyStats('autoVerifiedUsers', 1);
+            
+            return {
+                success: true,
+                verified: true,
+                score,
+                nameMatch,
+                nameSimilarity,
+                passportMatch,
+                nationalIdMatch,
+                extractedName,
+                extractedPassportNumber,
+                extractedNationalId,
+                message: `✅ *تم توثيق حسابك تلقائياً!*\n\n` +
+                    `📊 *نتيجة التحقق:* ${score}%\n` +
+                    `👤 *الاسم المدخل:* ${request.fullName}\n` +
+                    `📄 *الاسم المستخرج:* ${extractedName}\n` +
+                    `📋 *التشابه:* ${nameSimilarity}%\n` +
+                    `🆔 *رقم الجواز:* ${passportMatch ? '✅ متطابق' : '❌ غير متطابق'}\n` +
+                    `🔢 *الرقم الوطني:* ${nationalIdMatch ? '✅ متطابق' : '❌ غير متطابق'}\n\n` +
+                    `🎉 *يمكنك الآن البدء في التداول على المنصة*`
+            };
+        } else {
+            await this.updateDailyStats('pendingKyc', -1);
+            return {
+                success: true,
+                verified: false,
+                score,
+                nameMatch,
+                nameSimilarity,
+                passportMatch,
+                nationalIdMatch,
+                extractedName,
+                extractedPassportNumber,
+                extractedNationalId,
+                message: `❌ *فشل التحقق الآلي!*\n\n` +
+                    `📊 *النتيجة:* ${score}% (الحد الأدنى 70%)\n` +
+                    `👤 *الاسم المدخل:* ${request.fullName}\n` +
+                    `📄 *الاسم المستخرج:* ${extractedName}\n` +
+                    `📋 *التشابه:* ${nameSimilarity}%\n` +
+                    `🆔 *رقم الجواز:* ${passportMatch ? '✅ متطابق' : '❌ غير متطابق'}\n` +
+                    `🔢 *الرقم الوطني:* ${nationalIdMatch ? '✅ متطابق' : '❌ غير متطابق'}\n\n` +
+                    `🔄 *يمكنك إعادة تقديم الطلب بعد التأكد من وضوح الصور وصحة البيانات*`
+            };
+        }
+    }
+
+    // إنشاء طلب توثيق جديد مع التحقق الآلي
     async createKycRequest(userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city, passportPhoto, personalPhoto, bankName, bankAccountNumber, bankAccountName) {
         await this.connect();
         
@@ -198,7 +428,7 @@ class Database {
         if (existing && existing.status === 'pending') {
             return { success: false, message: '⚠️ لديك طلب توثيق قيد المراجعة بالفعل' };
         }
-        if (existing && existing.status === 'approved') {
+        if (existing && (existing.status === 'approved' || existing.status === 'auto_approved')) {
             return { success: false, message: '✅ حسابك موثق بالفعل' };
         }
         
@@ -210,88 +440,46 @@ class Database {
         
         await this.updateDailyStats('pendingKyc', 1);
         
+        // تشغيل التحقق الآلي
+        const verificationResult = await this.autoVerifyKyc(kycRequest._id);
+        
         return {
             success: true,
             requestId: kycRequest._id,
-            message: `✅ *تم إرسال طلب التوثيق!*\n\n` +
-                `🆔 *رقم الطلب:* ${kycRequest._id.toString().slice(-6)}\n` +
-                `👤 *الاسم الكامل:* ${fullName}\n` +
-                `📞 *رقم الهاتف:* ${phoneNumber}\n` +
-                `📧 *البريد الإلكتروني:* ${email}\n\n` +
-                `⏳ *سيتم مراجعة طلبك من قبل الإدارة خلال 24 ساعة*`
+            verificationResult,
+            message: verificationResult.message
         };
     }
 
-    // الحصول على طلبات التوثيق المعلقة (للأدمن)
+    // الحصول على طلبات التوثيق (للعرض فقط - لم يعد يحتاج موافقة أدمن)
     async getPendingKycRequests() {
         await this.connect();
         return await KycRequest.find({ status: 'pending' }).sort({ createdAt: -1 }).lean();
     }
 
-    // الموافقة على طلب التوثيق
-    async approveKyc(requestId, adminId) {
-        await this.connect();
-        
-        const request = await KycRequest.findOne({ _id: requestId, status: 'pending' });
-        if (!request) return { success: false, message: 'الطلب غير موجود' };
-        
-        await KycRequest.updateOne({ _id: requestId }, {
-            status: 'approved', approvedBy: adminId, approvedAt: new Date(), updatedAt: new Date()
-        });
-        
-        await User.updateOne({ userId: request.userId }, {
-            firstName: request.fullName.split(' ')[0],
-            lastName: request.fullName.split(' ').slice(1).join(' '),
-            phoneNumber: request.phoneNumber,
-            email: request.email,
-            country: request.country,
-            city: request.city,
-            bankName: request.bankName,
-            bankAccountNumber: request.bankAccountNumber,
-            bankAccountName: request.bankAccountName,
-            isVerified: true
-        });
-        
-        await this.updateDailyStats('verifiedUsers', 1);
-        await this.updateDailyStats('pendingKyc', -1);
-        
-        return {
-            success: true,
-            userId: request.userId,
-            message: `✅ *تم توثيق الحساب بنجاح!*\n\n` +
-                `👤 *المستخدم:* ${request.fullName}\n` +
-                `🆔 *رقم الطلب:* ${requestId.toString().slice(-6)}\n\n` +
-                `🎉 *يمكنك الآن البدء في التداول على المنصة*`
-        };
-    }
-
-    // رفض طلب التوثيق
-    async rejectKyc(requestId, adminId, reason) {
-        await this.connect();
-        
-        const request = await KycRequest.findOne({ _id: requestId, status: 'pending' });
-        if (!request) return { success: false, message: 'الطلب غير موجود' };
-        
-        await KycRequest.updateOne({ _id: requestId }, {
-            status: 'rejected', rejectionReason: reason, approvedBy: adminId, updatedAt: new Date()
-        });
-        
-        await this.updateDailyStats('pendingKyc', -1);
-        
-        return {
-            success: true,
-            userId: request.userId,
-            message: `❌ *تم رفض طلب التوثيق!*\n\n` +
-                `📝 *السبب:* ${reason}\n\n` +
-                `🔄 *يمكنك إعادة تقديم الطلب بعد تصحيح البيانات*`
-        };
-    }
-
-    // التحقق من حالة التوثيق للمستخدم
+    // الحصول على حالة التوثيق للمستخدم
     async getKycStatus(userId) {
         const request = await KycRequest.findOne({ userId });
         if (!request) return { status: 'not_submitted' };
-        return { status: request.status, requestId: request._id, rejectionReason: request.rejectionReason };
+        return { 
+            status: request.status, 
+            requestId: request._id, 
+            rejectionReason: request.rejectionReason,
+            verificationResult: request.verificationResult
+        };
+    }
+
+    // إعادة محاولة التحقق (للمستخدمين المرفوضين)
+    async retryKycVerification(userId) {
+        const request = await KycRequest.findOne({ userId, status: 'rejected' });
+        if (!request) return { success: false, message: 'لا يوجد طلب مرفوض لإعادة المحاولة' };
+        
+        await KycRequest.updateOne({ _id: request._id }, { status: 'pending', rejectionReason: '' });
+        await this.updateDailyStats('pendingKyc', 1);
+        
+        const verificationResult = await this.autoVerifyKyc(request._id);
+        
+        return verificationResult;
     }
 
     // ========== عروض P2P ==========
@@ -620,7 +808,7 @@ class Database {
 
     async getGlobalStats() {
         const stats = await User.aggregate([
-            { $group: { _id: null, totalUsers: { $sum: 1 }, verifiedUsers: { $sum: { $cond: ['$isVerified', 1, 0] } }, totalTraded: { $sum: '$totalTraded' }, avgRating: { $avg: '$rating' } } }
+            { $group: { _id: null, totalUsers: { $sum: 1 }, verifiedUsers: { $sum: { $cond: ['$isVerified', 1, 0] } }, autoVerifiedUsers: { $sum: 0 }, totalTraded: { $sum: '$totalTraded' }, avgRating: { $avg: '$rating' } } }
         ]);
         const totalActiveOffers = await P2pOffer.countDocuments({ status: 'active' });
         const totalPendingTrades = await Trade.countDocuments({ status: { $in: ['pending', 'paid'] } });
@@ -629,6 +817,7 @@ class Database {
         return {
             users: stats[0]?.totalUsers || 0,
             verifiedUsers: stats[0]?.verifiedUsers || 0,
+            autoVerifiedUsers: stats[0]?.autoVerifiedUsers || 0,
             totalTraded: stats[0]?.totalTraded?.toFixed(2) || 0,
             avgRating: stats[0]?.avgRating?.toFixed(1) || 5.0,
             activeOffers: totalActiveOffers,
@@ -650,6 +839,7 @@ class Database {
         if (type === 'totalUsers') u.totalUsers = (s.totalUsers || 0) + value;
         if (type === 'newUsers') u.newUsers = (s.newUsers || 0) + value;
         if (type === 'verifiedUsers') u.verifiedUsers = (s.verifiedUsers || 0) + value;
+        if (type === 'autoVerifiedUsers') u.autoVerifiedUsers = (s.autoVerifiedUsers || 0) + value;
         if (type === 'totalTrades') u.totalTrades = (s.totalTrades || 0) + value;
         if (type === 'totalVolume') u.totalVolume = (s.totalVolume || 0) + value;
         if (type === 'totalCommission') u.totalCommission = (s.totalCommission || 0) + value;
