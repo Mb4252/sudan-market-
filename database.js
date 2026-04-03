@@ -13,7 +13,11 @@ class Database {
         this.connected = false;
         this.encryptionKey = process.env.ENCRYPTION_KEY || 'default_key_32_bytes_long';
         this.platformFee = (parseFloat(process.env.PLATFORM_FEE_PERCENT) / 100) || 0.005;
-        this.referralCommissionRate = 10; // 10% من عمولة المنصة
+        this.referralCommissionRate = 10;
+        
+        // إعدادات 2FA للتحرير
+        this.release2FAThreshold = 100; // أي مبلغ فوق 100 دولار يحتاج 2FA
+        this.release2FAForAll = true;   // تفعيل 2FA لجميع عمليات التحرير
         
         this.commissionWallets = {
             bnb: process.env.COMMISSION_WALLET_BNB || '0x2a2548117C7113eB807298D74A44d451E330AC95',
@@ -82,6 +86,49 @@ class Database {
         } catch (e) { console.error('Audit log error:', e); }
     }
 
+    // ========== آخر ظهور للمستخدم ==========
+    async updateLastSeen(userId) {
+        await User.updateOne({ userId }, { 
+            lastSeen: new Date(),
+            isOnline: true
+        });
+        
+        // بعد 5 دقائق من عدم النشاط، يعتبر غير متصل
+        setTimeout(async () => {
+            const user = await User.findOne({ userId });
+            if (user) {
+                const timeSinceLastSeen = Date.now() - new Date(user.lastSeen).getTime();
+                if (timeSinceLastSeen > 5 * 60 * 1000) {
+                    await User.updateOne({ userId }, { isOnline: false });
+                }
+            }
+        }, 5 * 60 * 1000);
+    }
+
+    async getUserOnlineStatus(userId) {
+        const user = await User.findOne({ userId });
+        if (!user) return { isOnline: false, lastSeen: null, statusText: 'غير معروف' };
+        
+        const timeSinceLastSeen = Date.now() - new Date(user.lastSeen).getTime();
+        const isOnline = user.isOnline && timeSinceLastSeen < 5 * 60 * 1000;
+        
+        let statusText = '';
+        if (isOnline) {
+            statusText = '🟢 متصل الآن';
+        } else if (timeSinceLastSeen < 60 * 60 * 1000) {
+            const minutes = Math.floor(timeSinceLastSeen / 60000);
+            statusText = `🟡 آخر ظهور منذ ${minutes} دقيقة`;
+        } else if (timeSinceLastSeen < 24 * 60 * 60 * 1000) {
+            const hours = Math.floor(timeSinceLastSeen / (60 * 60 * 1000));
+            statusText = `🟠 آخر ظهور منذ ${hours} ساعة`;
+        } else {
+            const days = Math.floor(timeSinceLastSeen / (24 * 60 * 60 * 1000));
+            statusText = `⚫ آخر ظهور منذ ${days} يوم`;
+        }
+        
+        return { isOnline, lastSeen: user.lastSeen, statusText };
+    }
+
     // ========== التحقق من حالة المستخدم (محظور/مقفل) ==========
     async isUserBannedOrLocked(userId) {
         const user = await User.findOne({ userId });
@@ -127,6 +174,32 @@ class Database {
         return { warning: true, remaining: 5 - warningCount };
     }
 
+    // ========== تتبع تأخير التاجر ==========
+    async trackSellerDelay(sellerId, tradeId, delayMinutes) {
+        await User.updateOne({ userId: sellerId }, {
+            $inc: { 
+                totalDelays: 1,
+                totalDelayMinutes: delayMinutes 
+            }
+        });
+        
+        const seller = await User.findOne({ userId: sellerId });
+        
+        // إذا تأخر التاجر أكثر من 5 مرات
+        if (seller.totalDelays >= 5) {
+            const newRating = Math.max(1, (seller.rating || 5) - 0.5);
+            await User.updateOne({ userId: sellerId }, { 
+                rating: newRating,
+                isFlagged: true,
+                flagReason: 'تأخير متكرر في تحرير العملة'
+            });
+            
+            return { flagged: true, newRating };
+        }
+        
+        return { flagged: false };
+    }
+
     // ========== التحقق من حدود المستخدم ==========
     async checkUserLimits(userId, tradeAmount) {
         const user = await User.findOne({ userId });
@@ -159,7 +232,33 @@ class Database {
         return { allowed: true };
     }
 
-    // ========== نظام التحقق بخطوتين (2FA) المبسط ==========
+    // ========== التحقق من حاجة عملية التحرير إلى 2FA ==========
+    checkIfNeeds2FA(seller, amount) {
+        // إذا كان التاجر يطلب 2FA لجميع عمليات التحرير
+        if (seller.require2FAForRelease === true) {
+            return true;
+        }
+        
+        // إذا كان المبلغ أكبر من الحد الأدنى
+        const threshold = seller.release2FAThreshold || this.release2FAThreshold;
+        if (amount >= threshold) {
+            return true;
+        }
+        
+        // للتجار الجدد (أقل من 10 صفقات)
+        if ((seller.completedTrades || 0) < 10) {
+            return true;
+        }
+        
+        // للتجار الذين تم وضع علامة عليهم
+        if (seller.isFlagged) {
+            return true;
+        }
+        
+        return false;
+    }
+
+    // ========== نظام التحقق بخطوتين (2FA) ==========
     async generate2FASecret(userId) {
         try {
             const user = await User.findOne({ userId }).maxTimeMS(5000);
@@ -188,7 +287,7 @@ class Database {
             const qrCode = await qrcode.toDataURL(otpauthURL);
             const decryptedBackupCodes = backupCodes.map(code => this.decryptPrivateKey(code));
             
-            return { success: true, qrCode, backupCodes: decryptedBackupCodes };
+            return { success: true, qrCode, backupCodes: decryptedBackupCodes, secret: secret.base32 };
         } catch (error) {
             console.error('2FA generate error:', error);
             return { success: false, message: 'خطأ في الخادم، حاول مرة أخرى' };
@@ -254,6 +353,33 @@ class Database {
             console.error('2FA disable error:', error);
             return { success: false, message: 'خطأ في الخادم، حاول مرة أخرى' };
         }
+    }
+
+    async verify2FACode(userId, code) {
+        const user = await User.findOne({ userId });
+        if (!user || !user.twoFAEnabled) return false;
+        
+        const decryptedSecret = this.decryptPrivateKey(user.twoFASecret);
+        const verified = speakeasy.totp.verify({
+            secret: decryptedSecret,
+            encoding: 'base32',
+            token: code,
+            window: 2
+        });
+        
+        if (verified) return true;
+        
+        for (let i = 0; i < (user.twoFABackupCodes || []).length; i++) {
+            const decryptedCode = this.decryptPrivateKey(user.twoFABackupCodes[i]);
+            if (decryptedCode === code) {
+                const newBackupCodes = [...user.twoFABackupCodes];
+                newBackupCodes.splice(i, 1);
+                await User.updateOne({ userId }, { twoFABackupCodes: newBackupCodes });
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     // ========== إنشاء المحافظ ==========
@@ -344,15 +470,22 @@ class Database {
                 walletId: wallet._id,
                 referrerId: validReferrer ? referrerId : null,
                 isVerified: false,
-                lastActive: new Date(),
+                lastSeen: new Date(),
+                isOnline: true,
                 lastLoginIp: ip,
                 loginAttempts: 0,
                 twoFAEnabled: false,
                 twoFASecret: '',
                 twoFABackupCodes: [],
+                require2FAForRelease: true,
+                release2FAThreshold: 100,
                 dailyTrades: [],
                 suspiciousActions: [],
-                warningCount: 0
+                warningCount: 0,
+                totalDelays: 0,
+                totalDelayMinutes: 0,
+                isFlagged: false,
+                flagReason: ''
             });
             
             await this.updateDailyStats('totalUsers', 'newUsers');
@@ -361,7 +494,7 @@ class Database {
             return { success: true, isNew: true, referrer: validReferrer };
         }
         
-        await User.updateOne({ userId }, { lastActive: new Date(), lastLoginIp: ip });
+        await User.updateOne({ userId }, { lastSeen: new Date(), isOnline: true, lastLoginIp: ip });
         await this.addAuditLog(userId, 'login', {}, ip, userAgent);
         
         return { success: true, isNew: false };
@@ -387,6 +520,8 @@ class Database {
             ? (completedTrades / (completedTrades + failedTrades)) * 100 
             : 100;
         
+        const onlineStatus = await this.getUserOnlineStatus(userId);
+        
         return {
             ...user.toObject(),
             usdBalance: wallet.usdBalance,
@@ -401,7 +536,11 @@ class Database {
             pendingTrades,
             successRate: successRate.toFixed(1),
             referralEarnings: user.referralEarnings || 0,
-            referralCount: user.referralCount || 0
+            referralCount: user.referralCount || 0,
+            onlineStatus: onlineStatus.statusText,
+            isOnline: onlineStatus.isOnline,
+            totalDelays: user.totalDelays || 0,
+            isFlagged: user.isFlagged || false
         };
     }
 
@@ -640,6 +779,7 @@ class Database {
         
         await this.updateDailyStats('activeOffers', 1);
         await this.addAuditLog(userId, 'create_offer', { offerId: offer._id, type, currency, amount: fiatAmount }, '', '');
+        await this.updateLastSeen(userId);
         
         const currencyNames = {
             USD: 'دولار أمريكي', EUR: 'يورو', GBP: 'جنيه إسترليني',
@@ -668,12 +808,16 @@ class Database {
         
         const users = await User.find({ userId: { $in: offers.map(o => o.userId) } });
         const userMap = {};
-        users.forEach(u => { 
-            userMap[u.userId] = u;
+        for (const u of users) {
             const completed = u.completedTrades || 0;
             const failed = u.failedTrades || 0;
             u.successRate = completed + failed > 0 ? (completed / (completed + failed)) * 100 : 100;
-        });
+            
+            const onlineStatus = await this.getUserOnlineStatus(u.userId);
+            u.onlineStatus = onlineStatus.statusText;
+            u.isOnline = onlineStatus.isOnline;
+            userMap[u.userId] = u;
+        }
         
         return offers.map(offer => {
             const user = userMap[offer.userId];
@@ -695,6 +839,7 @@ class Database {
             if (user?.completedTrades > 50) badges.push('👑 تاجر محترف');
             if (user?.completedTrades > 10) badges.push('⭐ نشط');
             if (user?.rating > 4.5) badges.push('🏅 ممتاز');
+            if (user?.isOnline) badges.push('🟢 متصل');
             
             return {
                 ...offer,
@@ -705,6 +850,8 @@ class Database {
                 successRate: user?.successRate || 100,
                 isVerified: user?.isVerified || false,
                 isMerchant: user?.isMerchant || false,
+                onlineStatus: user?.onlineStatus || 'غير معروف',
+                isOnline: user?.isOnline || false,
                 trustLevel,
                 trustBadge,
                 badges: badges.join(' ')
@@ -723,6 +870,7 @@ class Database {
         await P2pOffer.updateOne({ _id: offerId }, { status: 'cancelled' });
         await this.updateDailyStats('activeOffers', -1);
         await this.addAuditLog(userId, 'cancel_offer', { offerId }, '', '');
+        await this.updateLastSeen(userId);
         
         return { success: true, message: '✅ تم إلغاء العرض بنجاح' };
     }
@@ -777,6 +925,7 @@ class Database {
         
         await P2pOffer.updateOne({ _id: offerId }, { status: 'pending', counterpartyId: buyerId });
         await this.addAuditLog(buyerId, 'start_trade', { tradeId: trade._id, offerId, amount: totalUsd }, '', '');
+        await this.updateLastSeen(buyerId);
         
         return {
             success: true,
@@ -802,6 +951,10 @@ class Database {
         
         await Trade.updateOne({ _id: tradeId }, { paymentProof: proofImage, status: 'paid', paidAt: new Date() });
         await this.addAuditLog(buyerId, 'confirm_payment', { tradeId, proofImage }, '', '');
+        await this.updateLastSeen(buyerId);
+        
+        // جدولة تذكير للتاجر بعد 15 دقيقة
+        this.scheduleReleaseReminder(tradeId);
         
         return {
             success: true,
@@ -810,17 +963,138 @@ class Database {
         };
     }
 
-    // ========== تحرير العملة مع مهلة أمان ==========
-    async releaseCrystals(tradeId, sellerId) {
+    // ========== تذكير التاجر بعد 15 دقيقة ==========
+    async scheduleReleaseReminder(tradeId) {
+        setTimeout(async () => {
+            const trade = await Trade.findById(tradeId);
+            
+            if (trade && trade.status === 'paid') {
+                const timeSincePaid = Date.now() - new Date(trade.paidAt).getTime();
+                
+                // تذكير أول بعد 15 دقيقة
+                if (timeSincePaid >= 15 * 60 * 1000 && timeSincePaid < 30 * 60 * 1000) {
+                    await bot.telegram.sendMessage(trade.sellerId,
+                        `⏰ *تذكير: لم تقم بتحرير العملة بعد!*\n\n` +
+                        `📋 *الصفقة:* ${tradeId}\n` +
+                        `💰 *المبلغ:* ${trade.amount} ${trade.currency}\n` +
+                        `⏱️ *مضى:* 15 دقيقة على تأكيد الدفع\n\n` +
+                        `🔓 *يرجى تحرير العملة الآن:*\n/release_crystals ${tradeId}\n\n` +
+                        `⚠️ إذا لم تكن الأموال قد وصلتك، افتح نزاعاً:\n/dispute ${tradeId} "لم استلم الأموال"`,
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    await bot.telegram.sendMessage(trade.buyerId,
+                        `⏰ *تحديث الصفقة*\n\n` +
+                        `📋 *الصفقة:* ${tradeId}\n` +
+                        `💰 *المبلغ:* ${trade.amount} ${trade.currency}\n` +
+                        `📤 *تم إرسال إثبات الدفع منذ 15 دقيقة*\n\n` +
+                        `⏳ *البائع لم يحرر العملة بعد*\n` +
+                        `📞 يمكنك تذكير البائع: /remind_seller ${tradeId}`,
+                        { parse_mode: 'Markdown' }
+                    );
+                }
+                
+                // تذكير ثانٍ بعد 30 دقيقة مع إشعار الأدمن
+                if (timeSincePaid >= 30 * 60 * 1000 && timeSincePaid < 60 * 60 * 1000) {
+                    await bot.telegram.sendMessage(trade.sellerId,
+                        `⚠️ *تذكير مهم: لم تقم بتحرير العملة!*\n\n` +
+                        `📋 *الصفقة:* ${tradeId}\n` +
+                        `⏱️ *مضى:* 30 دقيقة على تأكيد الدفع\n\n` +
+                        `🔓 /release_crystals ${tradeId}\n\n` +
+                        `⚠️ إذا لم تتحرر العملة قريباً، سيتم إشعار الإدارة.`,
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    // إشعار الأدمن
+                    const ADMIN_ID = parseInt(process.env.ADMIN_ID) || 6701743450;
+                    await bot.telegram.sendMessage(ADMIN_ID,
+                        `⚠️ *صفقة متأخرة*\n📋 الصفقة: ${tradeId}\n👤 البائع: ${trade.sellerId}\n👤 المشتري: ${trade.buyerId}\n💰 المبلغ: ${trade.amount} USD\n⏱️ مضى 30 دقيقة على تأكيد الدفع ولم يحرر`,
+                        { parse_mode: 'Markdown' }
+                    );
+                }
+                
+                // تحرير تلقائي بعد 24 ساعة
+                if (timeSincePaid >= 24 * 60 * 60 * 1000) {
+                    await this.autoReleaseAfterDelay(tradeId);
+                }
+            }
+        }, 15 * 60 * 1000);
+    }
+
+    // ========== تحرير تلقائي بعد 24 ساعة ==========
+    async autoReleaseAfterDelay(tradeId) {
+        const trade = await Trade.findById(tradeId);
+        
+        if (trade && trade.status === 'paid') {
+            const timeSincePaid = Date.now() - new Date(trade.paidAt).getTime();
+            
+            if (timeSincePaid >= 24 * 60 * 60 * 1000) {
+                // تسجيل تأخير التاجر
+                await this.trackSellerDelay(trade.sellerId, tradeId, 24 * 60);
+                
+                // تحرير تلقائي
+                await this.releaseCrystals(tradeId, trade.sellerId);
+                
+                // إشعار الطرفين
+                await bot.telegram.sendMessage(trade.sellerId,
+                    `🤖 *تم تحرير العملة تلقائياً*\n\n📋 الصفقة: ${tradeId}\n⏱️ مضى 24 ساعة على تأكيد الدفع\n\n⚠️ تم تحرير العملة تلقائياً لصالح المشتري`,
+                    { parse_mode: 'Markdown' }
+                );
+                
+                await bot.telegram.sendMessage(trade.buyerId,
+                    `✅ *تم تحرير العملة تلقائياً*\n\n📋 الصفقة: ${tradeId}\n💰 المبلغ: ${trade.amount} ${trade.currency}\n\n🎉 تم تحرير العملة بعد انقضاء المهلة الزمنية`,
+                    { parse_mode: 'Markdown' }
+                );
+            }
+        }
+    }
+
+    // ========== تحرير العملة مع 2FA ومهلة أمان ==========
+    async releaseCrystals(tradeId, sellerId, twoFACode = null, ip = '', userAgent = '') {
         const trade = await Trade.findOne({ _id: tradeId, sellerId, status: 'paid' });
         if (!trade) return { success: false, message: 'الصفقة غير موجودة' };
         
-        const timeSincePaid = Date.now() - new Date(trade.paidAt).getTime();
-        if (trade.totalUsd > 1000 && timeSincePaid < 30 * 60 * 1000) {
-            const remainingMinutes = Math.ceil((30 * 60 * 1000 - timeSincePaid) / 60000);
-            return { success: false, message: `⚠️ مهلة أمان: سيتم تحرير العملة خلال ${remainingMinutes} دقيقة للتأكد من صحة الدفع` };
+        const seller = await User.findOne({ userId: sellerId });
+        const buyer = await User.findOne({ userId: trade.buyerId });
+        
+        // تحديث آخر ظهور
+        await this.updateLastSeen(sellerId);
+        
+        // ========== 1. التحقق من 2FA ==========
+        const needs2FA = this.checkIfNeeds2FA(seller, trade.totalUsd);
+        
+        if (needs2FA && seller.twoFAEnabled) {
+            if (!twoFACode) {
+                return { 
+                    success: false, 
+                    message: `🔐 *مطلوب رمز التحقق بخطوتين لتحرير ${trade.totalUsd.toFixed(2)} USD*\n📱 أرسل: /release_2fa ${tradeId} [الرمز]` 
+                };
+            }
+            
+            const verified = await this.verify2FACode(sellerId, twoFACode);
+            if (!verified) {
+                await this.trackSuspiciousBehavior(sellerId, 'failed_2fa_release', { tradeId, amount: trade.totalUsd });
+                return { success: false, message: '❌ رمز التحقق غير صحيح' };
+            }
         }
         
+        // ========== 2. مهلة أمان للمبالغ الكبيرة ==========
+        const timeSincePaid = Date.now() - new Date(trade.paidAt).getTime();
+        let requiredDelay = 0;
+        
+        if (trade.totalUsd > 5000) requiredDelay = 60 * 60 * 1000;      // ساعة للمبالغ الكبيرة جداً
+        else if (trade.totalUsd > 1000) requiredDelay = 30 * 60 * 1000; // 30 دقيقة للمبالغ الكبيرة
+        else if (seller.completedTrades < 10) requiredDelay = 15 * 60 * 1000; // 15 دقيقة للتجار الجدد
+        
+        if (requiredDelay > 0 && timeSincePaid < requiredDelay) {
+            const remainingMinutes = Math.ceil((requiredDelay - timeSincePaid) / 60000);
+            return { 
+                success: false, 
+                message: `⚠️ مهلة أمان: سيتم تحرير العملة خلال ${remainingMinutes} دقيقة للتأكد من صحة الدفع` 
+            };
+        }
+        
+        // ========== 3. تنفيذ التحرير ==========
         const sellerWallet = await this.getUserWallet(sellerId);
         
         if (trade.offerId) {
@@ -838,7 +1112,7 @@ class Database {
         
         await Wallet.updateOne({ userId: 0 }, { $inc: { usdBalance: trade.fee } });
         
-        const buyer = await User.findOne({ userId: trade.buyerId });
+        // إضافة عمولة الإحالة
         if (buyer && buyer.referrerId) {
             await this.addReferralCommission(buyer.referrerId, trade.buyerId, trade.totalUsd, trade.fee);
         }
@@ -853,7 +1127,7 @@ class Database {
         await this.updateDailyStats('totalVolume', trade.totalUsd);
         await this.updateDailyStats('totalCommission', trade.fee);
         await this.updateDailyStats('activeOffers', -1);
-        await this.addAuditLog(sellerId, 'release_crystals', { tradeId, amount: trade.totalUsd }, '', '');
+        await this.addAuditLog(sellerId, 'release_crystals', { tradeId, amount: trade.totalUsd, required2FA: needs2FA }, ip, userAgent);
         
         return {
             success: true,
@@ -885,6 +1159,7 @@ class Database {
         await User.updateOne({ userId: trade.buyerId }, { $inc: { failedTrades: 1 } });
         await User.updateOne({ userId: trade.sellerId }, { $inc: { failedTrades: 1 } });
         await this.addAuditLog(userId, 'cancel_trade', { tradeId }, '', '');
+        await this.updateLastSeen(userId);
         
         return {
             success: true,
@@ -903,6 +1178,7 @@ class Database {
         
         await Trade.updateOne({ _id: tradeId }, { status: 'disputed', disputeReason: reason, disputeOpenedBy: userId });
         await this.addAuditLog(userId, 'open_dispute', { tradeId, reason }, '', '');
+        await this.updateLastSeen(userId);
         
         return {
             success: true,
@@ -926,6 +1202,7 @@ class Database {
         const avgRating = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
         await User.updateOne({ userId: targetId }, { rating: avgRating });
         await this.addAuditLog(reviewerId, 'add_review', { tradeId, targetId, rating }, '', '');
+        await this.updateLastSeen(reviewerId);
         
         return { success: true, message: `⭐ *تم التقييم!*\n\n📊 *تقييمك:* ${rating}/5\n${comment ? `📝 *تعليق:* ${comment}` : ''}` };
     }
@@ -945,6 +1222,7 @@ class Database {
         
         const request = await DepositRequest.create({ userId, amount, currency, network, address });
         await this.addAuditLog(userId, 'request_deposit', { amount, currency, network }, '', '');
+        await this.updateLastSeen(userId);
         
         return {
             success: true,
@@ -988,6 +1266,7 @@ class Database {
         if (amount > 1000) {
             const request = await WithdrawRequest.create({ userId, amount, currency, network, address, fee, status: 'pending' });
             await this.addAuditLog(userId, 'request_large_withdraw', { amount, address }, '', '');
+            await this.updateLastSeen(userId);
             
             return {
                 success: true,
@@ -998,39 +1277,13 @@ class Database {
         
         const request = await WithdrawRequest.create({ userId, amount, currency, network, address, fee, twoFAVerified: user.twoFAEnabled });
         await this.addAuditLog(userId, 'request_withdraw', { amount, address }, '', '');
+        await this.updateLastSeen(userId);
         
         return {
             success: true,
             requestId: request._id,
             message: `✅ *تم إنشاء طلب سحب #${request._id.toString().slice(-6)}*\n\n💰 *المبلغ:* ${amount} ${currency}\n💸 *العمولة:* ${fee.toFixed(2)} USD\n📤 *العنوان:* \`${address}\`\n\n⏳ *سيتم مراجعة الطلب من قبل الإدارة*`
         };
-    }
-
-    async verify2FACode(userId, code) {
-        const user = await User.findOne({ userId });
-        if (!user || !user.twoFAEnabled) return false;
-        
-        const decryptedSecret = this.decryptPrivateKey(user.twoFASecret);
-        const verified = speakeasy.totp.verify({
-            secret: decryptedSecret,
-            encoding: 'base32',
-            token: code,
-            window: 2
-        });
-        
-        if (verified) return true;
-        
-        for (let i = 0; i < (user.twoFABackupCodes || []).length; i++) {
-            const decryptedCode = this.decryptPrivateKey(user.twoFABackupCodes[i]);
-            if (decryptedCode === code) {
-                const newBackupCodes = [...user.twoFABackupCodes];
-                newBackupCodes.splice(i, 1);
-                await User.updateOne({ userId }, { twoFABackupCodes: newBackupCodes });
-                return true;
-            }
-        }
-        
-        return false;
     }
 
     async confirmWithdraw(requestId, transactionHash, adminId) {
@@ -1124,7 +1377,7 @@ class Database {
                 { email: regex }, 
                 { userId: !isNaN(query) ? parseInt(query) : -1 }
             ] 
-        }).limit(20).select('userId username firstName lastName phoneNumber email rating isVerified isMerchant completedTrades');
+        }).limit(20).select('userId username firstName lastName phoneNumber email rating isVerified isMerchant completedTrades isOnline lastSeen');
     }
     
     async setLanguage(userId, language) { 
@@ -1135,7 +1388,27 @@ class Database {
     async updateBankDetails(userId, bankName, accountNumber, accountName) { 
         await User.updateOne({ userId }, { bankName, bankAccountNumber: accountNumber, bankAccountName: accountName }); 
         await this.addAuditLog(userId, 'update_bank', { bankName }, '', '');
+        await this.updateLastSeen(userId);
         return true; 
+    }
+    
+    // ========== أمر تذكير البائع ==========
+    async remindSeller(tradeId, buyerId) {
+        const trade = await Trade.findOne({ _id: tradeId, buyerId, status: 'paid' });
+        if (!trade) return { success: false, message: 'الصفقة غير موجودة أو لم يتم الدفع بعد' };
+        
+        await bot.telegram.sendMessage(trade.sellerId,
+            `🔔 *تذكير من المشتري*\n\n` +
+            `👤 المشتري يطلب منك تحرير العملة للصفقة #${tradeId}\n` +
+            `💰 المبلغ: ${trade.amount} ${trade.currency}\n` +
+            `⏱️ تم تأكيد الدفع منذ ${Math.floor((Date.now() - new Date(trade.paidAt).getTime()) / 60000)} دقيقة\n\n` +
+            `🔓 /release_crystals ${tradeId}`,
+            { parse_mode: 'Markdown' }
+        );
+        
+        await this.addAuditLog(buyerId, 'remind_seller', { tradeId }, '', '');
+        
+        return { success: true, message: `✅ تم إرسال تذكير للبائع للصفقة #${tradeId}` };
     }
 }
 
