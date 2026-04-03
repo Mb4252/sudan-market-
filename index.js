@@ -1158,7 +1158,110 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
         delete ctx.session.state;
     }
 });
+// ========== نقاط API لنظام الإحالات ==========
 
+// جلب معلومات الإحالات للمستخدم
+app.get('/api/user/referral/:userId', async (req, res) => {
+    try {
+        const userId = parseInt(req.params.userId);
+        const user = await db.getUser(userId);
+        if (!user) {
+            return res.json({ referralCount: 0, referralEarnings: 0, referrals: [] });
+        }
+        res.json({
+            referralCount: user.referralCount || 0,
+            referralEarnings: user.referralEarnings || 0,
+            referrals: user.referrals || []
+        });
+    } catch (error) {
+        console.error('Referral API error:', error);
+        res.json({ referralCount: 0, referralEarnings: 0, referrals: [] });
+    }
+});
+
+// ========== نقاط API لنظام الأمان و 2FA ==========
+
+// جلب معلومات الأمان للمستخدم
+app.get('/api/user/security/:userId', async (req, res) => {
+    try {
+        const userId = parseInt(req.params.userId);
+        const user = await db.getUser(userId);
+        if (!user) {
+            return res.json({ twoFAEnabled: false, warningCount: 0, lastLoginIp: 'غير معروف', completedTrades: 0 });
+        }
+        res.json({
+            twoFAEnabled: user.twoFAEnabled || false,
+            warningCount: user.warningCount || 0,
+            lastLoginIp: user.lastLoginIp || 'غير معروف',
+            completedTrades: user.completedTrades || 0
+        });
+    } catch (error) {
+        console.error('Security API error:', error);
+        res.json({ twoFAEnabled: false, warningCount: 0, lastLoginIp: 'غير معروف', completedTrades: 0 });
+    }
+});
+
+// توليد رمز 2FA
+app.post('/api/2fa/generate', async (req, res) => {
+    try {
+        const { user_id } = req.body;
+        const result = await db.generate2FASecret(parseInt(user_id));
+        res.json(result);
+    } catch (error) {
+        console.error('2FA generate error:', error);
+        res.json({ success: false, message: error.message });
+    }
+});
+
+// تفعيل 2FA
+app.post('/api/2fa/enable', async (req, res) => {
+    try {
+        const { user_id, code } = req.body;
+        const result = await db.enable2FA(parseInt(user_id), code);
+        res.json(result);
+    } catch (error) {
+        console.error('2FA enable error:', error);
+        res.json({ success: false, message: error.message });
+    }
+});
+
+// تعطيل 2FA
+app.post('/api/2fa/disable', async (req, res) => {
+    try {
+        const { user_id, code } = req.body;
+        const result = await db.disable2FA(parseInt(user_id), code);
+        res.json(result);
+    } catch (error) {
+        console.error('2FA disable error:', error);
+        res.json({ success: false, message: error.message });
+    }
+});
+
+// ========== نقاط API إضافية للعروض والصفقات ==========
+
+// جلب عروض المستخدم
+app.get('/api/user/offers/:userId', async (req, res) => {
+    try {
+        const userId = parseInt(req.params.userId);
+        const offers = await db.getUserOffers(userId);
+        res.json(offers);
+    } catch (error) {
+        console.error('User offers error:', error);
+        res.json([]);
+    }
+});
+
+// جلب صفقات المستخدم
+app.get('/api/user/trades/:userId', async (req, res) => {
+    try {
+        const userId = parseInt(req.params.userId);
+        const trades = await db.getUserTradesHistory(userId, 20);
+        res.json(trades);
+    } catch (error) {
+        console.error('User trades error:', error);
+        res.json([]);
+    }
+});
 // تشغيل البوت
 bot.launch().then(() => {
     console.log('🚀 P2P Exchange Bot running');
