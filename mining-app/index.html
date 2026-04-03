@@ -450,6 +450,61 @@
             text-align: center;
         }
 
+        /* تنسيق تعليمات 2FA */
+        .twofa-instructions {
+            background: rgba(33, 150, 243, 0.15);
+            border: 1px solid #2196F3;
+            border-radius: 12px;
+            padding: 15px;
+            margin: 15px 0;
+            text-align: right;
+        }
+
+        .twofa-instructions h4 {
+            color: #2196F3;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .twofa-instructions ol {
+            margin-right: 20px;
+            margin-top: 10px;
+        }
+
+        .twofa-instructions li {
+            margin: 8px 0;
+            font-size: 13px;
+            color: #ddd;
+        }
+
+        .twofa-instructions .secret-key {
+            background: rgba(0,0,0,0.5);
+            padding: 8px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+            text-align: center;
+            margin: 10px 0;
+            direction: ltr;
+        }
+
+        .twofa-instructions .warning {
+            color: #ff9800;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+
+        .copy-secret-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+
         @media (max-width: 480px) {
             .tab-button { font-size: 11px; padding: 8px; }
             .stat-value { font-size: 18px; }
@@ -728,20 +783,19 @@
                 <div id="securityInfo"></div>
                 <div id="twofaSection">
                     <button class="trade-btn" onclick="setup2FA()" id="enable2faBtn">🔐 تفعيل التحقق بخطوتين</button>
-                    <div id="twofaQR" style="display:none; text-align:center; margin:15px 0">
-                        <img id="qrImage" style="max-width:200px; border-radius:10px">
-                        <p style="font-size:12px; margin-top:5px">امسح رمز QR باستخدام Google Authenticator</p>
-                        <input type="text" id="twofaCode" placeholder="أدخل رمز التحقق" class="trade-input">
-                        <button class="trade-btn" onclick="verify2FA()">✅ تأكيد التفعيل</button>
-                    </div>
+                    <div id="twofaQR" style="display:none; text-align:center; margin:15px 0"></div>
+                    <input type="text" id="twofaCode" placeholder="📱 أدخل الرقم المكون من 6 أرقام من التطبيق" class="trade-input" style="display:none; text-align:center; font-size:20px; letter-spacing:5px">
+                    <button class="trade-btn" onclick="verify2FA()" id="verify2faBtn" style="display:none">✅ تأكيد التفعيل</button>
                     <button class="sell-btn" onclick="disable2FA()" id="disable2faBtn" style="display:none">❌ تعطيل التحقق بخطوتين</button>
                 </div>
                 <div class="warning-box" style="margin-top:15px">
-                    ⚠️ *نصائح أمانية:*<br>
-                    • فعّل التحقق بخطوتين لحماية حسابك<br>
-                    • لا تشارك رمز التحقق مع أي شخص<br>
-                    • استخدم كلمة مرور قوية لحساب التلغرام<br>
-                    • أبلغ الإدارة عن أي نشاط مشبوه
+                    ⚠️ *نصائح أمانية مهمة:*<br>
+                    • 🔐 فعّل التحقق بخطوتين لحماية حسابك<br>
+                    • 📱 استخدم تطبيق Google Authenticator أو Authy<br>
+                    • 💾 احفظ المفتاح السري في مكان آمن (لن نتمكن من استعادته إذا فقدته)<br>
+                    • 🔑 لا تشارك رمز التحقق مع أي شخص<br>
+                    • ⏰ الرمز يتغير كل 30 ثانية - أدخله بسرعة<br>
+                    • 📞 أبلغ الإدارة عن أي نشاط مشبوه
                 </div>
             </div>
         </div>
@@ -757,8 +811,9 @@
         let kycStatus = {};
         let passportPhotoFile = null;
         let personalPhotoFile = null;
+        let currentSecretKey = null;
         const API_URL = window.location.origin;
-        const BOT_USERNAME = 'YourBotUsername'; // ضع اسم البوت هنا
+        const BOT_USERNAME = 'YourBotUsername';
         
         const sudanBanks = [
             "Bank of Khartoum", "Blue Nile Mashreq Bank", "Al Salam Bank", "Agricultural Bank",
@@ -851,7 +906,52 @@
             tg.showAlert('✅ تم نسخ رابط الإحالة');
         }
         
-        // ========== نظام الأمان و 2FA ==========
+        // ========== نظام الأمان و 2FA مع تعليمات ==========
+        function show2FAInstructions(secretKey, qrCode) {
+            const instructions = `
+                <div class="twofa-instructions">
+                    <h4>📱 🔐 كيفية تفعيل التحقق بخطوتين</h4>
+                    <ol>
+                        <li>📥 <strong>حمّل تطبيق Google Authenticator</strong> من متجر هاتفك:
+                            <br>• <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" target="_blank" style="color:#4caf50">للأندرويد من Google Play</a>
+                            <br>• <a href="https://apps.apple.com/us/app/google-authenticator/id388497605" target="_blank" style="color:#4caf50">للايفون من App Store</a>
+                        </li>
+                        <li>📸 <strong>امسح الباركود (QR Code)</strong> باستخدام التطبيق</li>
+                        <li style="color:#ff9800">⚠️ <strong>إذا لم تعمل الكاميرا أو واجهتك مشكلة:</strong>
+                            <br>• اضغط على "إدخال مفتاح" في التطبيق
+                            <br>• انسخ المفتاح أدناه وألصقه في التطبيق
+                        </li>
+                    </ol>
+                    <div class="secret-key">
+                        🔑 المفتاح السري: <strong id="secretKeyValue">${secretKey}</strong>
+                        <button class="copy-secret-btn" onclick="copySecretKey()">📋 نسخ المفتاح</button>
+                    </div>
+                    <div style="text-align: center; margin: 15px 0;">
+                        <img src="${qrCode}" style="max-width: 200px; border-radius: 10px; border: 2px solid #2196F3;">
+                    </div>
+                    <div class="warning">
+                        ⚡ ملاحظة: بعد إضافة المفتاح، سيظهر لك رقم مكون من 6 أرقام يتغير كل 30 ثانية<br>
+                        📝 أدخل هذا الرقم في الحقل أدناه ثم اضغط "تأكيد التفعيل"
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('twofaQR').innerHTML = instructions;
+            document.getElementById('twofaQR').style.display = 'block';
+            document.getElementById('enable2faBtn').style.display = 'none';
+            document.getElementById('twofaCode').style.display = 'block';
+            document.getElementById('verify2faBtn').style.display = 'block';
+            
+            currentSecretKey = secretKey;
+        }
+        
+        function copySecretKey() {
+            if (currentSecretKey) {
+                navigator.clipboard.writeText(currentSecretKey);
+                tg.showAlert('✅ تم نسخ المفتاح السري');
+            }
+        }
+        
         async function loadSecurityInfo() {
             try {
                 const uid = tg.initDataUnsafe.user.id;
@@ -882,6 +982,9 @@
                 if (data.twoFAEnabled) {
                     document.getElementById('enable2faBtn').style.display = 'none';
                     document.getElementById('disable2faBtn').style.display = 'block';
+                    document.getElementById('twofaQR').style.display = 'none';
+                    document.getElementById('twofaCode').style.display = 'none';
+                    document.getElementById('verify2faBtn').style.display = 'none';
                 } else {
                     document.getElementById('enable2faBtn').style.display = 'block';
                     document.getElementById('disable2faBtn').style.display = 'none';
@@ -891,26 +994,34 @@
         
         async function setup2FA() {
             tg.showAlert('🔄 جاري تجهيز رمز التحقق...');
-            const res = await fetch(`${API_URL}/api/2fa/generate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
-            });
-            const data = await res.json();
-            if (data.success) {
-                document.getElementById('qrImage').src = data.qrCode;
-                document.getElementById('twofaQR').style.display = 'block';
-                document.getElementById('enable2faBtn').style.display = 'none';
-                tg.showAlert('✅ تم إنشاء رمز QR. قم بمسحه باستخدام Google Authenticator');
-            } else {
-                tg.showAlert(data.message);
+            try {
+                const res = await fetch(`${API_URL}/api/2fa/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    show2FAInstructions(data.secret, data.qrCode);
+                    tg.showAlert('✅ تم إنشاء رمز QR. امسحه باستخدام Google Authenticator');
+                } else {
+                    tg.showAlert(data.message);
+                }
+            } catch(e) {
+                console.error(e);
+                tg.showAlert('حدث خطأ، حاول مرة أخرى');
             }
         }
         
         async function verify2FA() {
             const code = document.getElementById('twofaCode').value;
-            if (!code) return tg.showAlert('أدخل رمز التحقق');
+            if (!code) {
+                tg.showAlert('📱 أدخل الرقم المكون من 6 أرقام الذي يظهر في تطبيق Google Authenticator');
+                return;
+            }
             
+            tg.showAlert('🔄 جاري التحقق...');
             const res = await fetch(`${API_URL}/api/2fa/enable`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -918,15 +1029,19 @@
             });
             const data = await res.json();
             tg.showAlert(data.message);
+            
             if (data.success) {
                 document.getElementById('twofaQR').style.display = 'none';
+                document.getElementById('twofaCode').style.display = 'none';
+                document.getElementById('verify2faBtn').style.display = 'none';
                 document.getElementById('disable2faBtn').style.display = 'block';
+                document.getElementById('enable2faBtn').style.display = 'none';
                 loadSecurityInfo();
             }
         }
         
         async function disable2FA() {
-            const code = prompt('أدخل رمز التحقق بخطوتين لتعطيله:');
+            const code = prompt('📱 أدخل رمز التحقق بخطوتين لتعطيله:');
             if (!code) return;
             
             const res = await fetch(`${API_URL}/api/2fa/disable`, {
