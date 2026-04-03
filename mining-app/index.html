@@ -81,6 +81,28 @@
             margin-top: 5px;
         }
 
+        .online-badge {
+            background: #4caf50;
+            color: white;
+            border-radius: 20px;
+            padding: 2px 8px;
+            font-size: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .offline-badge {
+            background: #666;
+            color: white;
+            border-radius: 20px;
+            padding: 2px 8px;
+            font-size: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+
         .tab-buttons {
             display: flex;
             gap: 10px;
@@ -450,7 +472,6 @@
             text-align: center;
         }
 
-        /* تنسيق تعليمات 2FA */
         .twofa-instructions {
             background: rgba(33, 150, 243, 0.15);
             border: 1px solid #2196F3;
@@ -518,6 +539,7 @@
             <div class="balance-amount" id="usdBalance">0</div>
             <div class="price-info">⭐ التقييم: <span id="userRating">5.0</span>/5 | ✅ <span id="completedTrades">0</span> صفقة | 📈 نجاح: <span id="successRate">100</span>%</div>
             <div id="verificationStatus"></div>
+            <div id="onlineStatus" style="font-size:12px; margin-top:8px"></div>
         </div>
 
         <div class="language-selector">
@@ -843,6 +865,11 @@
                 document.getElementById('userRating').textContent = data.rating?.toFixed(1) || '5.0';
                 document.getElementById('completedTrades').textContent = data.completedTrades || '0';
                 document.getElementById('successRate').textContent = data.successRate || '100';
+                
+                // عرض حالة الاتصال
+                if (data.onlineStatus) {
+                    document.getElementById('onlineStatus').innerHTML = data.onlineStatus;
+                }
                 
                 const verificationDiv = document.getElementById('verificationStatus');
                 const kycStatusRes = await fetch(`${API_URL}/api/kyc/status/${uid}`);
@@ -1251,6 +1278,7 @@
                             ${o.isVerified ? '<span class="verified-icon">موثق</span>' : ''}
                             ${o.isMerchant ? '<span class="merchant-icon">تاجر</span>' : ''}
                             ${o.badges ? `<span class="badge">${o.badges.split(' ')[0]}</span>` : ''}
+                            ${o.isOnline ? '<span class="online-badge">🟢 متصل</span>' : '<span class="offline-badge">⚫ غير متصل</span>'}
                         </div>
                         <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'} | ✅ ${o.successRate || 100}%</div>
                     </div>
