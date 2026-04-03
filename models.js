@@ -30,8 +30,8 @@ const kycRequestSchema = new mongoose.Schema({
     bankName: { type: String, default: '' },
     bankAccountNumber: { type: String, default: '' },
     bankAccountName: { type: String, default: '' },
-    passportPhotoFileId: { type: String, default: '' }, // ID صورة الجواز من تلغرام
-    personalPhotoFileId: { type: String, default: '' }, // ID الصورة الشخصية من تلغرام
+    passportPhotoFileId: { type: String, default: '' },
+    personalPhotoFileId: { type: String, default: '' },
     status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
     rejectionReason: { type: String, default: '' },
     approvedBy: { type: Number, default: null },
@@ -40,7 +40,7 @@ const kycRequestSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 
-// نموذج المستخدم
+// نموذج المستخدم (مع الحقول الجديدة)
 const userSchema = new mongoose.Schema({
     userId: { type: Number, required: true, unique: true },
     username: { type: String, default: '' },
@@ -61,10 +61,12 @@ const userSchema = new mongoose.Schema({
     totalProfit: { type: Number, default: 0 },
     rating: { type: Number, default: 5.0 },
     completedTrades: { type: Number, default: 0 },
-    successRate: { type: Number, default: 100 },
+    failedTrades: { type: Number, default: 0 },        // ✅ حقل الصفقات الفاشلة
+    successRate: { type: Number, default: 100 },        // ✅ حقل نسبة النجاح
     referrerId: { type: Number, default: null },
     referralCount: { type: Number, default: 0 },
     walletId: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet' },
+    lastActive: { type: Date, default: Date.now },      // ✅ حقل آخر نشاط
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -84,7 +86,8 @@ const p2pOfferSchema = new mongoose.Schema({
     maxAmount: { type: Number, default: 100000 },
     status: { type: String, enum: ['active', 'pending', 'completed', 'cancelled'], default: 'active' },
     counterpartyId: { type: Number, default: null },
-    createdAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now },
+    completedAt: { type: Date, default: null }
 });
 
 // نموذج الصفقات
@@ -101,7 +104,11 @@ const tradeSchema = new mongoose.Schema({
     paymentProof: { type: String, default: '' },
     buyerBankDetails: { type: String, default: '' },
     sellerBankDetails: { type: String, default: '' },
-    status: { type: String, enum: ['pending', 'paid', 'released', 'disputed', 'completed'], default: 'pending' },
+    status: { 
+        type: String, 
+        enum: ['pending', 'paid', 'released', 'disputed', 'completed', 'cancelled'], 
+        default: 'pending' 
+    },
     disputeReason: { type: String, default: '' },
     disputeOpenedBy: { type: Number, default: null },
     createdAt: { type: Date, default: Date.now },
@@ -160,6 +167,7 @@ const dailyStatsSchema = new mongoose.Schema({
     pendingKyc: { type: Number, default: 0 }
 });
 
+// إنشاء النماذج
 const User = mongoose.model('User', userSchema);
 const Wallet = mongoose.model('Wallet', walletSchema);
 const KycRequest = mongoose.model('KycRequest', kycRequestSchema);
@@ -170,4 +178,15 @@ const WithdrawRequest = mongoose.model('WithdrawRequest', withdrawRequestSchema)
 const Review = mongoose.model('Review', reviewSchema);
 const DailyStats = mongoose.model('DailyStats', dailyStatsSchema);
 
-module.exports = { User, Wallet, KycRequest, P2pOffer, Trade, DepositRequest, WithdrawRequest, Review, DailyStats };
+// تصدير جميع النماذج
+module.exports = { 
+    User, 
+    Wallet, 
+    KycRequest, 
+    P2pOffer, 
+    Trade, 
+    DepositRequest, 
+    WithdrawRequest, 
+    Review, 
+    DailyStats 
+};
