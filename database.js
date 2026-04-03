@@ -60,7 +60,10 @@ class Database {
         try {
             await mongoose.connect(process.env.MONGODB_URI, {
                 dbName: process.env.MONGODB_DB_NAME || 'p2p_exchange',
-                serverSelectionTimeoutMS: 5000
+                serverSelectionTimeoutMS: 30000,
+                socketTimeoutMS: 45000,
+                connectTimeoutMS: 30000,
+                family: 4
             });
             this.connected = true;
             console.log('✅ MongoDB connected');
@@ -72,9 +75,11 @@ class Database {
 
     // ========== سجل التدقيق (Audit Log) ==========
     async addAuditLog(userId, action, details = {}, ip = '', userAgent = '') {
-        await AuditLog.create({
-            userId, action, details, ip, userAgent, timestamp: new Date()
-        });
+        try {
+            await AuditLog.create({
+                userId, action, details, ip, userAgent, timestamp: new Date()
+            });
+        } catch (e) { console.error('Audit log error:', e); }
     }
 
     // ========== التحقق من حالة المستخدم (محظور/مقفل) ==========
@@ -102,7 +107,6 @@ class Database {
         const suspiciousActions = user.suspiciousActions || [];
         suspiciousActions.push({ action, details, timestamp: new Date(), ip });
         
-        // الاحتفاظ بآخر 50 إجراء فقط
         while (suspiciousActions.length > 50) suspiciousActions.shift();
         
         const warningCount = (user.warningCount || 0) + 1;
@@ -110,10 +114,8 @@ class Database {
             $set: { suspiciousActions, warningCount }
         });
         
-        // تسجيل في سجل التدقيق
         await this.addAuditLog(userId, `suspicious_${action}`, details, ip);
         
-        // إذا تجاوز 5 تحذيرات، قفل الحساب تلقائياً
         if (warningCount >= 5) {
             await User.updateOne({ userId }, { 
                 isLocked: true, 
@@ -134,7 +136,6 @@ class Database {
         const dailyTrades = user.dailyTrades || [];
         const todayTrades = dailyTrades.filter(t => t.date === today);
         
-        // حدود للمستخدمين الجدد (أقل من 5 صفقات)
         if ((user.completedTrades || 0) < 5) {
             if (tradeAmount > 500) {
                 return { allowed: false, reason: '⚠️ المستخدمون الجدد لا يمكنهم تداول أكثر من 500 دولار حتى إتمام 5 صفقات' };
@@ -144,14 +145,12 @@ class Database {
             }
         }
         
-        // حدود للمستخدمين غير الموثقين
         if (!user.isVerified) {
             if (tradeAmount > 100) {
                 return { allowed: false, reason: '⚠️ الحسابات غير الموثقة حدها الأقصى 100 دولار. يرجى توثيق حسابك.' };
             }
         }
         
-        // تتبع الصفقة اليومية
         await User.updateOne(
             { userId },
             { $push: { dailyTrades: { date: today, amount: tradeAmount, timestamp: new Date() } } }
@@ -160,147 +159,101 @@ class Database {
         return { allowed: true };
     }
 
-    // ========== نظام التحقق بخطوتين (2FA) ==========
+    // ========== نظام التحقق بخطوتين (2FA) المبسط ==========
     async generate2FASecret(userId) {
-        const secret = speakeasy.generateSecret({ length: 20, name: `P2P Exchange (${userId})` });
-        
-        const encryptedSecret = this.encryptPrivateKey(secret.base32);
-        await User.updateOne({ userId }, { twoFASecret: encryptedSecret });
-        
-        // توليد أكواد الطوارئ (5 أكواد)
-        const backupCodes = [];
-        for (let i = 0; i < 5; i++) {
-            const code = crypto.randomBytes(4).toString('hex').toUpperCase();
-            backupCodes.push(this.encryptPrivateKey(code));
-        }
-        await User.updateOne({ userId }, { twoFABackupCodes: backupCodes });
-        
-        // إنشاء رابط QR
-        const otpauthURL = speakeasy.otpauthURL({
-            secret: secret.ascii,
-            label: `P2P Exchange`,
-            issuer: `User ${userId}`
-        });
-        
-        const qrCode = await qrcode.toDataURL(otpauthURL);
-        
-        await this.addAuditLog(userId, '2fa_generate', {}, '', '');
-        
-        return { secret: secret.base32, qrCode, backupCodes: backupCodes.map(c => this.decryptPrivateKey(c)) };
-    }
-
-    async verify2FACode(userId, code) {
-        const user = await User.findOne({ userId });
-        if (!user || !user.twoFAEnabled) return false;
-        
-        const decryptedSecret = this.decryptPrivateKey(user.twoFASecret);
-        const verified = speakeasy.totp.verify({
-            secret: decryptedSecret,
-            encoding: 'base32',
-            token: code,
-            window: 2
-        });
-        
-        if (verified) {
-            await this.addAuditLog(userId, '2fa_verify_success', {}, '', '');
-        } else {
-            // التحقق من أكواد الطوارئ
-            for (let i = 0; i < (user.twoFABackupCodes || []).length; i++) {
-                const decryptedCode = this.decryptPrivateKey(user.twoFABackupCodes[i]);
-                if (decryptedCode === code) {
-                    // حذف الكود المستخدم
-                    const newBackupCodes = [...user.twoFABackupCodes];
-                    newBackupCodes.splice(i, 1);
-                    await User.updateOne({ userId }, { twoFABackupCodes: newBackupCodes });
-                    await this.addAuditLog(userId, '2fa_backup_used', {}, '', '');
-                    return true;
-                }
+        try {
+            const user = await User.findOne({ userId }).maxTimeMS(5000);
+            if (!user) return { success: false, message: 'المستخدم غير موجود' };
+            
+            const secret = speakeasy.generateSecret({ length: 20 });
+            const encryptedSecret = this.encryptPrivateKey(secret.base32);
+            
+            const backupCodes = [];
+            for (let i = 0; i < 5; i++) {
+                const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+                backupCodes.push(this.encryptPrivateKey(code));
             }
-            await this.addAuditLog(userId, '2fa_verify_failed', { code }, '', '');
+            
+            await User.updateOne({ userId }, { 
+                twoFASecret: encryptedSecret,
+                twoFABackupCodes: backupCodes 
+            }).maxTimeMS(5000);
+            
+            const otpauthURL = speakeasy.otpauthURL({
+                secret: secret.ascii,
+                label: `P2P Exchange (${userId})`,
+                issuer: 'P2P Exchange'
+            });
+            
+            const qrCode = await qrcode.toDataURL(otpauthURL);
+            const decryptedBackupCodes = backupCodes.map(code => this.decryptPrivateKey(code));
+            
+            return { success: true, qrCode, backupCodes: decryptedBackupCodes };
+        } catch (error) {
+            console.error('2FA generate error:', error);
+            return { success: false, message: 'خطأ في الخادم، حاول مرة أخرى' };
         }
-        
-        return verified;
     }
 
     async enable2FA(userId, code) {
-        const verified = await this.verify2FACode(userId, code);
-        if (!verified) return { success: false, message: '❌ رمز التحقق غير صحيح' };
-        
-        await User.updateOne({ userId }, { twoFAEnabled: true });
-        await this.addAuditLog(userId, '2fa_enabled', {}, '', '');
-        
-        return { success: true, message: '✅ تم تفعيل التحقق بخطوتين بنجاح' };
+        try {
+            const user = await User.findOne({ userId }).maxTimeMS(5000);
+            if (!user) return { success: false, message: 'المستخدم غير موجود' };
+            
+            if (!user.twoFASecret) {
+                return { success: false, message: 'لم يتم إنشاء رمز 2FA بعد، حاول مرة أخرى' };
+            }
+            
+            const decryptedSecret = this.decryptPrivateKey(user.twoFASecret);
+            const verified = speakeasy.totp.verify({
+                secret: decryptedSecret,
+                encoding: 'base32',
+                token: code,
+                window: 2
+            });
+            
+            if (!verified) {
+                return { success: false, message: '❌ رمز التحقق غير صحيح' };
+            }
+            
+            await User.updateOne({ userId }, { twoFAEnabled: true }).maxTimeMS(5000);
+            return { success: true, message: '✅ تم تفعيل التحقق بخطوتين بنجاح' };
+        } catch (error) {
+            console.error('2FA enable error:', error);
+            return { success: false, message: 'خطأ في الخادم، حاول مرة أخرى' };
+        }
     }
 
     async disable2FA(userId, code) {
-        const verified = await this.verify2FACode(userId, code);
-        if (!verified) return { success: false, message: '❌ رمز التحقق غير صحيح' };
-        
-        await User.updateOne({ userId }, { twoFAEnabled: false, twoFASecret: '', twoFABackupCodes: [] });
-        await this.addAuditLog(userId, '2fa_disabled', {}, '', '');
-        
-        return { success: true, message: '✅ تم تعطيل التحقق بخطوتين' };
-    }
-
-    // ========== نظام الإبلاغ عن المستخدمين ==========
-    async reportUser(reporterId, reportedId, reason, evidence, bot) {
-        const report = await Report.create({
-            reporterId, reportedId, reason, evidence, status: 'pending'
-        });
-        
-        await this.addAuditLog(reporterId, 'report_submit', { reportedId, reason }, '', '');
-        
-        // إرسال إشعار للأدمن
-        if (bot) {
-            const ADMIN_ID = parseInt(process.env.ADMIN_ID) || 6701743450;
-            await bot.telegram.sendMessage(ADMIN_ID,
-                `⚠️ *بلاغ جديد*\n\n` +
-                `👤 *المبلغ:* ${reporterId}\n` +
-                `👤 *المبلغ ضده:* ${reportedId}\n` +
-                `📝 *السبب:* ${reason}\n` +
-                `📎 *الدليل:* ${evidence || 'لا يوجد'}\n` +
-                `🆔 *رقم البلاغ:* ${report._id}`,
-                { parse_mode: 'Markdown' }
-            );
+        try {
+            const user = await User.findOne({ userId }).maxTimeMS(5000);
+            if (!user) return { success: false, message: 'المستخدم غير موجود' };
+            
+            if (user.twoFAEnabled && user.twoFASecret) {
+                const decryptedSecret = this.decryptPrivateKey(user.twoFASecret);
+                const verified = speakeasy.totp.verify({
+                    secret: decryptedSecret,
+                    encoding: 'base32',
+                    token: code,
+                    window: 2
+                });
+                
+                if (!verified) {
+                    return { success: false, message: '❌ رمز التحقق غير صحيح' };
+                }
+            }
+            
+            await User.updateOne({ userId }, { 
+                twoFAEnabled: false, 
+                twoFASecret: '', 
+                twoFABackupCodes: [] 
+            }).maxTimeMS(5000);
+            
+            return { success: true, message: '✅ تم تعطيل التحقق بخطوتين' };
+        } catch (error) {
+            console.error('2FA disable error:', error);
+            return { success: false, message: 'خطأ في الخادم، حاول مرة أخرى' };
         }
-        
-        return { success: true, reportId: report._id, message: '✅ تم إرسال البلاغ. سيتم مراجعته من قبل الإدارة.' };
-    }
-
-    async resolveReport(reportId, adminId, resolution, action = 'none') {
-        const report = await Report.findOne({ _id: reportId, status: 'pending' });
-        if (!report) return { success: false, message: 'البلاغ غير موجود' };
-        
-        await Report.updateOne({ _id: reportId }, {
-            status: 'resolved', resolvedBy: adminId, resolution, resolvedAt: new Date()
-        });
-        
-        // تنفيذ الإجراء المطلوب (حظر، تحذير، إلخ)
-        if (action === 'ban') {
-            await User.updateOne({ userId: report.reportedId }, { isBanned: true, banReason: resolution });
-        } else if (action === 'warn') {
-            await this.trackSuspiciousBehavior(report.reportedId, 'reported_warning', { reason: resolution });
-        }
-        
-        await this.addAuditLog(adminId, 'report_resolved', { reportId, resolution, action }, '', '');
-        
-        return { success: true, message: '✅ تم حل البلاغ' };
-    }
-
-    // ========== القائمة السوداء ==========
-    async addToBlacklist(address, type, reason, addedBy) {
-        const existing = await Blacklist.findOne({ address });
-        if (existing) return { success: false, message: 'العنوان موجود بالفعل في القائمة السوداء' };
-        
-        await Blacklist.create({ address, type, reason, addedBy });
-        await this.addAuditLog(addedBy, 'blacklist_add', { address, type, reason }, '', '');
-        
-        return { success: true, message: '✅ تم إضافة العنوان إلى القائمة السوداء' };
-    }
-
-    async isAddressBlacklisted(address) {
-        const blacklisted = await Blacklist.findOne({ address });
-        return !!blacklisted;
     }
 
     // ========== إنشاء المحافظ ==========
@@ -355,12 +308,10 @@ class Database {
         if (!user) {
             const wallet = await this.getUserWallet(userId);
             
-            // التحقق من صحة المُحيل
             let validReferrer = null;
             if (referrerId && referrerId !== userId) {
                 validReferrer = await User.findOne({ userId: referrerId });
                 if (validReferrer && !validReferrer.isBanned && !validReferrer.isLocked) {
-                    // إضافة المستخدم الجديد إلى قائمة المدعوين للمُحيل
                     await User.updateOne(
                         { userId: referrerId },
                         { 
@@ -410,17 +361,10 @@ class Database {
             return { success: true, isNew: true, referrer: validReferrer };
         }
         
-        // تحديث آخر نشاط
         await User.updateOne({ userId }, { lastActive: new Date(), lastLoginIp: ip });
         await this.addAuditLog(userId, 'login', {}, ip, userAgent);
         
         return { success: true, isNew: false };
-    }
-
-    async updateUserBankDetails(userId, bankName, accountNumber, accountName) {
-        await User.updateOne({ userId }, { bankName, bankAccountNumber: accountNumber, bankAccountName: accountName });
-        await this.addAuditLog(userId, 'update_bank', { bankName }, '', '');
-        return true;
     }
 
     async getUser(userId) { 
@@ -476,18 +420,16 @@ class Database {
     }
 
     // ========== نظام الإحالات - إضافة عمولة للمُحيل ==========
-    async addReferralCommission(referrerId, tradeAmount, platformFee) {
+    async addReferralCommission(referrerId, userId, tradeAmount, platformFee) {
         const referrer = await User.findOne({ userId: referrerId });
         if (!referrer || referrer.isBanned) return;
         
         const commission = platformFee * (this.referralCommissionRate / 100);
         if (commission <= 0) return;
         
-        // إضافة العمولة لمحفظة المُحيل
         await Wallet.updateOne({ userId: referrerId }, { $inc: { usdBalance: commission } });
         await User.updateOne({ userId: referrerId }, { $inc: { referralEarnings: commission } });
         
-        // تحديث سجل الإحالة
         await User.updateOne(
             { userId: referrerId, 'referrals.userId': userId },
             { $inc: { 'referrals.$.earned': commission } }
@@ -512,19 +454,8 @@ class Database {
         }
         
         const kycRequest = await KycRequest.create({
-            userId, 
-            fullName, 
-            passportNumber, 
-            nationalId, 
-            phoneNumber, 
-            email, 
-            country, 
-            city,
-            passportPhotoFileId: passportPhotoFileId,
-            personalPhotoFileId: personalPhotoFileId,
-            bankName, 
-            bankAccountNumber, 
-            bankAccountName,
+            userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city,
+            passportPhotoFileId, personalPhotoFileId, bankName, bankAccountNumber, bankAccountName,
             status: 'pending'
         });
         
@@ -547,12 +478,7 @@ class Database {
                 passportNumber: passportNumber,
                 nationalId: nationalId
             },
-            message: `✅ *تم إرسال طلب التوثيق!*\n\n` +
-                `🆔 *رقم الطلب:* ${kycRequest._id.toString().slice(-6)}\n` +
-                `👤 *الاسم الكامل:* ${fullName}\n` +
-                `📞 *رقم الهاتف:* ${phoneNumber}\n` +
-                `📧 *البريد الإلكتروني:* ${email}\n\n` +
-                `⏳ *سيتم مراجعة طلبك من قبل الإدارة خلال 24 ساعة*`
+            message: `✅ *تم إرسال طلب التوثيق!*\n\n🆔 *رقم الطلب:* ${kycRequest._id.toString().slice(-6)}\n👤 *الاسم الكامل:* ${fullName}\n📞 *رقم الهاتف:* ${phoneNumber}\n📧 *البريد الإلكتروني:* ${email}\n\n⏳ *سيتم مراجعة طلبك من قبل الإدارة خلال 24 ساعة*`
         };
     }
 
@@ -691,7 +617,6 @@ class Database {
         const user = await this.getUser(userId);
         if (!user) return { success: false, message: 'المستخدم غير موجود' };
         
-        // التحقق من الحظر
         const banCheck = await this.isUserBannedOrLocked(userId);
         if (banCheck.banned) return { success: false, message: banCheck.reason };
         if (banCheck.locked) return { success: false, message: banCheck.reason };
@@ -727,15 +652,7 @@ class Database {
         return {
             success: true,
             offerId: offer._id,
-            message: `✅ *تم إنشاء عرض ${type === 'sell' ? 'بيع' : 'شراء'}!*\n\n` +
-                `💰 *المبلغ:* ${fiatAmount.toFixed(2)} ${currency} (${currencyNames[currency] || currency})\n` +
-                `📊 *السعر:* ${price.toFixed(2)} ${currency}/USD\n` +
-                `💵 *القيمة بالدولار:* ${usdValue.toFixed(2)} USD\n` +
-                `🏦 *طريقة الدفع:* ${paymentMethod}\n` +
-                `${bankName ? `🏛️ *البنك:* ${bankName}\n` : ''}` +
-                `${bankAccountNumber ? `🔢 *رقم الحساب:* ${bankAccountNumber}\n` : ''}` +
-                `${bankAccountName ? `👤 *اسم الحساب:* ${bankAccountName}\n` : ''}` +
-                `⚠️ *الحد الأدنى:* ${minAmount || 10} ${currency} | *الحد الأقصى:* ${maxAmount || 100000} ${currency}`
+            message: `✅ *تم إنشاء عرض ${type === 'sell' ? 'بيع' : 'شراء'}!*\n\n💰 *المبلغ:* ${fiatAmount.toFixed(2)} ${currency} (${currencyNames[currency] || currency})\n📊 *السعر:* ${price.toFixed(2)} ${currency}/USD\n💵 *القيمة بالدولار:* ${usdValue.toFixed(2)} USD\n🏦 *طريقة الدفع:* ${paymentMethod}\n${bankName ? `🏛️ *البنك:* ${bankName}\n` : ''}${bankAccountNumber ? `🔢 *رقم الحساب:* ${bankAccountNumber}\n` : ''}${bankAccountName ? `👤 *اسم الحساب:* ${bankAccountName}\n` : ''}⚠️ *الحد الأدنى:* ${minAmount || 10} ${currency} | *الحد الأقصى:* ${maxAmount || 100000} ${currency}`
         };
     }
 
@@ -817,12 +734,10 @@ class Database {
         
         if (offer.userId === buyerId) return { success: false, message: 'لا يمكنك شراء عرضك الخاص' };
         
-        // التحقق من حظر المشتري
         const buyerBanCheck = await this.isUserBannedOrLocked(buyerId);
         if (buyerBanCheck.banned) return { success: false, message: buyerBanCheck.reason };
         if (buyerBanCheck.locked) return { success: false, message: buyerBanCheck.reason };
         
-        // التحقق من حظر البائع
         const sellerBanCheck = await this.isUserBannedOrLocked(offer.userId);
         if (sellerBanCheck.banned) return { success: false, message: 'البائع محظور لا يمكن التداول معه' };
         
@@ -836,7 +751,6 @@ class Database {
             return { success: false, message: '⚠️ البائع غير موثق! لا يمكن إتمام الصفقة' };
         }
         
-        // التحقق من حدود المستخدم
         const totalUsd = offer.fiatAmount / offer.price;
         const limitCheck = await this.checkUserLimits(buyerId, totalUsd);
         if (!limitCheck.allowed) return { success: false, message: limitCheck.reason };
@@ -871,14 +785,7 @@ class Database {
             buyerPaymentDetails: offer.type === 'buy' ? offer.paymentDetails : '',
             totalUsd,
             fee,
-            message: `🔄 *تم بدء الصفقة!*\n\n` +
-                `💰 *المبلغ:* ${offer.fiatAmount.toFixed(2)} ${offer.currency}\n` +
-                `💵 *القيمة:* ${totalUsd.toFixed(2)} USD\n` +
-                `💸 *عمولة المنصة:* ${fee.toFixed(2)} USD\n` +
-                `🏦 *طريقة الدفع:* ${offer.paymentMethod}\n` +
-                `📝 *تفاصيل ${offer.type === 'sell' ? 'البائع' : 'المشتري'}:*\n${offer.type === 'sell' ? offer.paymentDetails : ''}\n\n` +
-                `✅ *بعد التحويل، أرسل:*\n/send_proof ${trade._id} [رابط الصورة]\n\n` +
-                `❌ *لإلغاء الصفقة قبل الدفع:*\n/cancel_trade ${trade._id}`
+            message: `🔄 *تم بدء الصفقة!*\n\n💰 *المبلغ:* ${offer.fiatAmount.toFixed(2)} ${offer.currency}\n💵 *القيمة:* ${totalUsd.toFixed(2)} USD\n💸 *عمولة المنصة:* ${fee.toFixed(2)} USD\n🏦 *طريقة الدفع:* ${offer.paymentMethod}\n📝 *تفاصيل ${offer.type === 'sell' ? 'البائع' : 'المشتري'}:*\n${offer.type === 'sell' ? offer.paymentDetails : ''}\n\n✅ *بعد التحويل، أرسل:*\n/send_proof ${trade._id} [رابط الصورة]\n\n❌ *لإلغاء الصفقة قبل الدفع:*\n/cancel_trade ${trade._id}`
         };
     }
 
@@ -887,9 +794,8 @@ class Database {
         const trade = await Trade.findOne({ _id: tradeId, buyerId, status: 'pending' });
         if (!trade) return { success: false, message: 'الصفقة غير موجودة' };
         
-        // التحقق من صحة إثبات الدفع (تحليل بسيط)
         const timeToSend = Date.now() - new Date(trade.createdAt).getTime();
-        if (timeToSend < 30000) { // أقل من 30 ثانية (مشبوه)
+        if (timeToSend < 30000) {
             await this.trackSuspiciousBehavior(buyerId, 'fast_proof', { timeToSend, tradeId });
             return { success: false, message: '⚠️ إثبات سريع جداً - يرجى الانتظار دقيقة قبل إرسال الإثبات' };
         }
@@ -900,11 +806,7 @@ class Database {
         return {
             success: true,
             sellerId: trade.sellerId,
-            message: `✅ *تم استلام إثبات الدفع!*\n\n` +
-                `📋 *رقم الصفقة:* ${tradeId}\n` +
-                `💰 *المبلغ:* ${trade.amount.toFixed(2)} ${trade.currency}\n` +
-                `🖼️ *رابط الإثبات:* ${proofImage}\n\n` +
-                `🔓 *بعد التحقق، قم بتحرير العملة:*\n/release_crystals ${tradeId}`
+            message: `✅ *تم استلام إثبات الدفع!*\n\n📋 *رقم الصفقة:* ${tradeId}\n💰 *المبلغ:* ${trade.amount.toFixed(2)} ${trade.currency}\n🖼️ *رابط الإثبات:* ${proofImage}\n\n🔓 *بعد التحقق، قم بتحرير العملة:*\n/release_crystals ${tradeId}`
         };
     }
 
@@ -913,14 +815,10 @@ class Database {
         const trade = await Trade.findOne({ _id: tradeId, sellerId, status: 'paid' });
         if (!trade) return { success: false, message: 'الصفقة غير موجودة' };
         
-        // مهلة أمان للصفقات الكبيرة
         const timeSincePaid = Date.now() - new Date(trade.paidAt).getTime();
         if (trade.totalUsd > 1000 && timeSincePaid < 30 * 60 * 1000) {
             const remainingMinutes = Math.ceil((30 * 60 * 1000 - timeSincePaid) / 60000);
-            return { 
-                success: false, 
-                message: `⚠️ مهلة أمان: سيتم تحرير العملة خلال ${remainingMinutes} دقيقة للتأكد من صحة الدفع` 
-            };
+            return { success: false, message: `⚠️ مهلة أمان: سيتم تحرير العملة خلال ${remainingMinutes} دقيقة للتأكد من صحة الدفع` };
         }
         
         const sellerWallet = await this.getUserWallet(sellerId);
@@ -940,10 +838,9 @@ class Database {
         
         await Wallet.updateOne({ userId: 0 }, { $inc: { usdBalance: trade.fee } });
         
-        // إضافة عمولة الإحالة إذا كان المستخدم مدعو
         const buyer = await User.findOne({ userId: trade.buyerId });
         if (buyer && buyer.referrerId) {
-            await this.addReferralCommission(buyer.referrerId, trade.totalUsd, trade.fee);
+            await this.addReferralCommission(buyer.referrerId, trade.buyerId, trade.totalUsd, trade.fee);
         }
         
         await Trade.updateOne({ _id: tradeId }, { status: 'completed', releasedAt: new Date(), completedAt: new Date() });
@@ -961,12 +858,7 @@ class Database {
         return {
             success: true,
             buyerId: trade.buyerId,
-            message: `✅ *تم تحرير العملة بنجاح!*\n\n` +
-                `📋 *رقم الصفقة:* ${tradeId}\n` +
-                `💰 *المبلغ:* ${trade.amount.toFixed(2)} ${trade.currency}\n` +
-                `💵 *القيمة:* ${trade.totalUsd.toFixed(2)} USD\n` +
-                `💸 *عمولة المنصة:* ${trade.fee.toFixed(2)} USD\n\n` +
-                `⭐ *تقييم الصفقة:*\n/rate ${tradeId} [5] [تعليق]`
+            message: `✅ *تم تحرير العملة بنجاح!*\n\n📋 *رقم الصفقة:* ${tradeId}\n💰 *المبلغ:* ${trade.amount.toFixed(2)} ${trade.currency}\n💵 *القيمة:* ${trade.totalUsd.toFixed(2)} USD\n💸 *عمولة المنصة:* ${trade.fee.toFixed(2)} USD\n\n⭐ *تقييم الصفقة:*\n/rate ${tradeId} [5] [تعليق]`
         };
     }
 
@@ -1014,10 +906,7 @@ class Database {
         
         return {
             success: true,
-            message: `⚠️ *تم فتح نزاع!*\n\n` +
-                `📋 *رقم الصفقة:* ${tradeId}\n` +
-                `📝 *السبب:* ${reason}\n\n` +
-                `👨‍⚖️ *سيتم مراجعة النزاع من قبل الإدارة خلال 24 ساعة*`
+            message: `⚠️ *تم فتح نزاع!*\n\n📋 *رقم الصفقة:* ${tradeId}\n📝 *السبب:* ${reason}\n\n👨‍⚖️ *سيتم مراجعة النزاع من قبل الإدارة خلال 24 ساعة*`
         };
     }
 
@@ -1041,7 +930,7 @@ class Database {
         return { success: true, message: `⭐ *تم التقييم!*\n\n📊 *تقييمك:* ${rating}/5\n${comment ? `📝 *تعليق:* ${comment}` : ''}` };
     }
 
-    // ========== الإيداع والسحب مع 2FA ==========
+    // ========== الإيداع والسحب ==========
     async requestDeposit(userId, amount, currency, network) {
         const wallet = await this.getUserWallet(userId);
         
@@ -1061,12 +950,7 @@ class Database {
             success: true,
             requestId: request._id,
             address,
-            message: `📤 *طلب إيداع ${currency}*\n\n` +
-                `🌐 *الشبكة:* ${network.toUpperCase()}\n` +
-                `💰 *المبلغ:* ${amount} ${currency}\n` +
-                `📤 *العنوان:*\n\`${address}\`\n\n` +
-                `⚠️ *أرسل فقط ${currency} على شبكة ${network.toUpperCase()}*\n` +
-                `📎 *بعد الإرسال:* /confirm_deposit ${request._id} [رابط المعاملة]`
+            message: `📤 *طلب إيداع ${currency}*\n\n🌐 *الشبكة:* ${network.toUpperCase()}\n💰 *المبلغ:* ${amount} ${currency}\n📤 *العنوان:*\n\`${address}\`\n\n⚠️ *أرسل فقط ${currency} على شبكة ${network.toUpperCase()}*\n📎 *بعد الإرسال:* /confirm_deposit ${request._id} [رابط المعاملة]`
         };
     }
 
@@ -1087,11 +971,10 @@ class Database {
             return { success: false, message: `❌ رصيد غير كافٍ! لديك ${wallet.usdBalance.toFixed(2)} USD` };
         }
         
-        // التحقق من 2FA إذا كان مفعلاً
         const user = await User.findOne({ userId });
         if (user.twoFAEnabled) {
             if (!twoFACode) {
-                return { success: false, message: '🔐 يرجى إدخال رمز التحقق بخطوتين:\n/withdraw_2fa [المبلغ] [الشبكة] [العنوان] [الرمز]' };
+                return { success: false, message: '🔐 يرجى إدخال رمز التحقق بخطوتين:\n/withdraw [المبلغ] [الشبكة] [العنوان] [الرمز]' };
             }
             const verified = await this.verify2FACode(userId, twoFACode);
             if (!verified) {
@@ -1100,16 +983,8 @@ class Database {
             }
         }
         
-        // التحقق من القائمة السوداء للعنوان
-        const isBlacklisted = await this.isAddressBlacklisted(address);
-        if (isBlacklisted) {
-            await this.trackSuspiciousBehavior(userId, 'blacklisted_address', { address });
-            return { success: false, message: '⚠️ عنوان المحفظة هذا محظور لأسباب أمنية' };
-        }
-        
         const fee = amount * 0.02;
         
-        // مهلة أمان للسحب الكبير
         if (amount > 1000) {
             const request = await WithdrawRequest.create({ userId, amount, currency, network, address, fee, status: 'pending' });
             await this.addAuditLog(userId, 'request_large_withdraw', { amount, address }, '', '');
@@ -1117,11 +992,7 @@ class Database {
             return {
                 success: true,
                 requestId: request._id,
-                message: `✅ *تم استلام طلب السحب #${request._id.toString().slice(-6)}*\n\n` +
-                    `💰 *المبلغ:* ${amount} ${currency}\n` +
-                    `💸 *العمولة:* ${fee.toFixed(2)} USD\n` +
-                    `📤 *العنوان:* \`${address}\`\n\n` +
-                    `⏳ *نظراً لكبر المبلغ، سيتم مراجعة الطلب من قبل الإدارة خلال 24 ساعة*`
+                message: `✅ *تم استلام طلب السحب #${request._id.toString().slice(-6)}*\n\n💰 *المبلغ:* ${amount} ${currency}\n💸 *العمولة:* ${fee.toFixed(2)} USD\n📤 *العنوان:* \`${address}\`\n\n⏳ *سيتم مراجعة الطلب من قبل الإدارة خلال 24 ساعة*`
             };
         }
         
@@ -1131,12 +1002,35 @@ class Database {
         return {
             success: true,
             requestId: request._id,
-            message: `✅ *تم إنشاء طلب سحب #${request._id.toString().slice(-6)}*\n\n` +
-                `💰 *المبلغ:* ${amount} ${currency}\n` +
-                `💸 *العمولة:* ${fee.toFixed(2)} USD\n` +
-                `📤 *العنوان:* \`${address}\`\n\n` +
-                `⏳ *سيتم مراجعة الطلب من قبل الإدارة*`
+            message: `✅ *تم إنشاء طلب سحب #${request._id.toString().slice(-6)}*\n\n💰 *المبلغ:* ${amount} ${currency}\n💸 *العمولة:* ${fee.toFixed(2)} USD\n📤 *العنوان:* \`${address}\`\n\n⏳ *سيتم مراجعة الطلب من قبل الإدارة*`
         };
+    }
+
+    async verify2FACode(userId, code) {
+        const user = await User.findOne({ userId });
+        if (!user || !user.twoFAEnabled) return false;
+        
+        const decryptedSecret = this.decryptPrivateKey(user.twoFASecret);
+        const verified = speakeasy.totp.verify({
+            secret: decryptedSecret,
+            encoding: 'base32',
+            token: code,
+            window: 2
+        });
+        
+        if (verified) return true;
+        
+        for (let i = 0; i < (user.twoFABackupCodes || []).length; i++) {
+            const decryptedCode = this.decryptPrivateKey(user.twoFABackupCodes[i]);
+            if (decryptedCode === code) {
+                const newBackupCodes = [...user.twoFABackupCodes];
+                newBackupCodes.splice(i, 1);
+                await User.updateOne({ userId }, { twoFABackupCodes: newBackupCodes });
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     async confirmWithdraw(requestId, transactionHash, adminId) {
