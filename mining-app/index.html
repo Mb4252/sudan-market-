@@ -198,18 +198,6 @@
             flex-wrap: wrap;
         }
 
-        .trust-high {
-            background: #4caf50;
-        }
-
-        .trust-medium {
-            background: #ff9800;
-        }
-
-        .trust-low {
-            background: #f44336;
-        }
-
         .trade-input, .offer-input, .bank-input, .kyc-input {
             width: 100%;
             padding: 12px;
@@ -453,6 +441,15 @@
             text-align: center;
         }
 
+        .warning-box {
+            background: rgba(244, 67, 54, 0.2);
+            border: 1px solid #f44336;
+            border-radius: 10px;
+            padding: 10px;
+            margin: 10px 0;
+            text-align: center;
+        }
+
         @media (max-width: 480px) {
             .tab-button { font-size: 11px; padding: 8px; }
             .stat-value { font-size: 18px; }
@@ -483,6 +480,8 @@
             <button class="tab-button" onclick="switchTab('kyc')">🆔 توثيق</button>
             <button class="tab-button" onclick="switchTab('leaderboard')">🏆 المتصدرين</button>
             <button class="tab-button" onclick="switchTab('bank')">🏦 بياناتي</button>
+            <button class="tab-button" onclick="switchTab('referral')">🎁 إحالاتي</button>
+            <button class="tab-button" onclick="switchTab('security')">🔐 الأمان</button>
         </div>
 
         <!-- سوق التداول -->
@@ -620,6 +619,7 @@
                     <button class="trade-btn" onclick="deposit()">📤 إيداع</button>
                     <input type="number" id="withdrawAmount" placeholder="المبلغ بالدولار" class="trade-input">
                     <input type="text" id="withdrawAddress" placeholder="عنوان المحفظة المستلم" class="trade-input">
+                    <input type="text" id="withdraw2FA" placeholder="رمز 2FA (إذا كان مفعلاً)" class="trade-input">
                     <button class="trade-btn sell-btn" onclick="withdraw()">💸 سحب</button>
                 </div>
             </div>
@@ -703,6 +703,48 @@
                 </div>
             </div>
         </div>
+
+        <!-- تبويب الإحالات -->
+        <div id="referral-tab" class="tab-content">
+            <div class="card">
+                <h3 style="color:white">🎁 برنامج الإحالات</h3>
+                <div id="referralInfo"></div>
+                <div class="address-box" id="referralLink" style="margin:10px 0; text-align:center; word-break:break-all"></div>
+                <button class="copy-btn" onclick="copyReferralLink()">📋 نسخ رابط الإحالة</button>
+                <div id="referralStats" style="margin-top:15px"></div>
+                <div class="info" style="margin-top:15px; background:rgba(76,175,80,0.2); padding:10px; border-radius:10px">
+                    💡 *كيف يعمل؟*<br>
+                    • كل صديق تسجله عبر رابطك، تحصل على <strong>10%</strong> من عمولة المنصة من صفقاته<br>
+                    • الأرباح تضاف تلقائياً لمحفظتك<br>
+                    • يمكنك دعوة عدد غير محدود من الأصدقاء
+                </div>
+            </div>
+        </div>
+
+        <!-- تبويب الأمان -->
+        <div id="security-tab" class="tab-content">
+            <div class="card">
+                <h3 style="color:white">🔐 إعدادات الأمان</h3>
+                <div id="securityInfo"></div>
+                <div id="twofaSection">
+                    <button class="trade-btn" onclick="setup2FA()" id="enable2faBtn">🔐 تفعيل التحقق بخطوتين</button>
+                    <div id="twofaQR" style="display:none; text-align:center; margin:15px 0">
+                        <img id="qrImage" style="max-width:200px; border-radius:10px">
+                        <p style="font-size:12px; margin-top:5px">امسح رمز QR باستخدام Google Authenticator</p>
+                        <input type="text" id="twofaCode" placeholder="أدخل رمز التحقق" class="trade-input">
+                        <button class="trade-btn" onclick="verify2FA()">✅ تأكيد التفعيل</button>
+                    </div>
+                    <button class="sell-btn" onclick="disable2FA()" id="disable2faBtn" style="display:none">❌ تعطيل التحقق بخطوتين</button>
+                </div>
+                <div class="warning-box" style="margin-top:15px">
+                    ⚠️ *نصائح أمانية:*<br>
+                    • فعّل التحقق بخطوتين لحماية حسابك<br>
+                    • لا تشارك رمز التحقق مع أي شخص<br>
+                    • استخدم كلمة مرور قوية لحساب التلغرام<br>
+                    • أبلغ الإدارة عن أي نشاط مشبوه
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -716,6 +758,7 @@
         let passportPhotoFile = null;
         let personalPhotoFile = null;
         const API_URL = window.location.origin;
+        const BOT_USERNAME = 'YourBotUsername'; // ضع اسم البوت هنا
         
         const sudanBanks = [
             "Bank of Khartoum", "Blue Nile Mashreq Bank", "Al Salam Bank", "Agricultural Bank",
@@ -734,6 +777,7 @@
             OMR: "🇴🇲 ريال عماني", TRY: "🇹🇷 ليرة تركية", INR: "🇮🇳 روبية هندية", PKR: "🇵🇰 روبية باكستانية"
         };
         
+        // ========== الوظائف الأساسية ==========
         async function loadUserData() {
             try {
                 const uid = tg.initDataUnsafe.user.id;
@@ -746,7 +790,6 @@
                 document.getElementById('successRate').textContent = data.successRate || '100';
                 
                 const verificationDiv = document.getElementById('verificationStatus');
-                
                 const kycStatusRes = await fetch(`${API_URL}/api/kyc/status/${uid}`);
                 const kycStatusData = await kycStatusRes.json();
                 
@@ -763,87 +806,145 @@
                     verificationDiv.innerHTML = '<div class="unverified-badge">⚠️ حساب غير موثق - يرجى التوثيق للمتاجرة</div>';
                     document.getElementById('createWarning').style.display = 'block';
                 }
-                
-                if (document.getElementById('kyc-tab').classList.contains('active')) {
-                    await loadKycStatus();
-                }
-            } catch(e) { 
-                console.error(e); 
-            }
+            } catch(e) { console.error(e); }
         }
         
-        async function loadMarketStats() {
-            try {
-                const res = await fetch(`${API_URL}/api/market/stats`);
-                const stats = await res.json();
-                document.getElementById('marketStats').innerHTML = `
-                    📋 ${stats.totalOffers} عرض | 💰 متوسط السعر: ${stats.avgPrice} USD | 🌍 الأكثر نشاطاً: ${stats.mostActiveCurrency} | 👥 ${stats.totalTraders} متداول
-                `;
-            } catch(e) {
-                console.error(e);
-            }
-        }
-        
-        async function loadHistory() {
+        // ========== نظام الإحالات ==========
+        async function loadReferralInfo() {
             try {
                 const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/user/history/${uid}`);
+                const res = await fetch(`${API_URL}/api/user/referral/${uid}`);
                 const data = await res.json();
                 
-                // عرض العروض السابقة
-                const offersContainer = document.getElementById('offersHistory');
-                if (data.offers && data.offers.length > 0) {
-                    offersContainer.innerHTML = data.offers.map(o => {
-                        let statusClass = '';
-                        let statusText = '';
-                        if (o.status === 'completed') { statusClass = 'status-completed'; statusText = 'مكتمل'; }
-                        else if (o.status === 'active') { statusClass = 'status-pending'; statusText = 'نشط'; }
-                        else { statusClass = 'status-cancelled'; statusText = 'ملغي'; }
-                        
-                        return `
-                            <div class="history-item">
-                                <div>
-                                    <strong>${o.type === 'sell' ? '🟢 بيع' : '🔴 شراء'}</strong>
-                                    <span class="history-status ${statusClass}">${statusText}</span>
-                                </div>
-                                <div>💰 ${o.fiatAmount} ${o.currency} | 📊 ${o.price} ${o.currency}/USD</div>
-                                <div>📅 ${new Date(o.createdAt).toLocaleDateString('ar')}</div>
-                            </div>
-                        `;
-                    }).join('');
-                } else {
-                    offersContainer.innerHTML = '<div class="loading">لا توجد عروض سابقة</div>';
-                }
+                const referralLink = `https://t.me/${BOT_USERNAME}?start=${uid}`;
                 
-                // عرض الصفقات السابقة
-                const tradesContainer = document.getElementById('tradesHistory');
-                if (data.trades && data.trades.length > 0) {
-                    tradesContainer.innerHTML = data.trades.map(t => {
-                        let statusClass = '';
-                        let statusText = '';
-                        if (t.status === 'completed') { statusClass = 'status-completed'; statusText = 'مكتمل'; }
-                        else if (t.status === 'pending') { statusClass = 'status-pending'; statusText = 'قيد التنفيذ'; }
-                        else { statusClass = 'status-cancelled'; statusText = 'ملغي'; }
-                        
-                        return `
-                            <div class="history-item">
-                                <div>
-                                    <strong>${t.role}</strong>
-                                    <span class="history-status ${statusClass}">${statusText}</span>
-                                </div>
-                                <div>💰 ${t.amount} ${t.currency} | مع ${t.otherParty}</div>
-                                <div>📅 ${new Date(t.createdAt).toLocaleDateString('ar')}</div>
-                            </div>
-                        `;
-                    }).join('');
+                document.getElementById('referralLink').innerHTML = `🔗 رابط الإحالة الخاص بك:<br><code>${referralLink}</code>`;
+                document.getElementById('referralInfo').innerHTML = `
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value">${data.referralCount || 0}</div>
+                            <div class="stat-label">عدد المدعوين</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${(data.referralEarnings || 0).toFixed(2)} USD</div>
+                            <div class="stat-label">أرباح الإحالات</div>
+                        </div>
+                    </div>
+                `;
+                
+                if (data.referrals && data.referrals.length > 0) {
+                    let referralsHtml = '<h4 style="margin-top:15px; color:white">📋 المدعوين:</h4>';
+                    for (const ref of data.referrals) {
+                        referralsHtml += `<div class="history-item">👤 مستخدم جديد | 📅 ${new Date(ref.joinedAt).toLocaleDateString()} | 💰 ربح: ${ref.earned?.toFixed(2) || 0} USD</div>`;
+                    }
+                    document.getElementById('referralStats').innerHTML = referralsHtml;
                 } else {
-                    tradesContainer.innerHTML = '<div class="loading">لا توجد صفقات سابقة</div>';
+                    document.getElementById('referralStats').innerHTML = '<div class="loading">لا يوجد مدعوين بعد</div>';
                 }
-            } catch(e) {
-                console.error(e);
+            } catch(e) { console.error(e); }
+        }
+        
+        function copyReferralLink() {
+            const linkText = document.getElementById('referralLink').innerText;
+            const link = linkText.replace('🔗 رابط الإحالة الخاص بك:', '').trim();
+            navigator.clipboard.writeText(link);
+            tg.showAlert('✅ تم نسخ رابط الإحالة');
+        }
+        
+        // ========== نظام الأمان و 2FA ==========
+        async function loadSecurityInfo() {
+            try {
+                const uid = tg.initDataUnsafe.user.id;
+                const res = await fetch(`${API_URL}/api/user/security/${uid}`);
+                const data = await res.json();
+                
+                document.getElementById('securityInfo').innerHTML = `
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value">${data.twoFAEnabled ? '✅ مفعل' : '❌ غير مفعل'}</div>
+                            <div class="stat-label">التحقق بخطوتين</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${data.warningCount || 0}</div>
+                            <div class="stat-label">عدد التحذيرات</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${data.lastLoginIp || 'غير معروف'}</div>
+                            <div class="stat-label">آخر IP</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${data.completedTrades || 0}</div>
+                            <div class="stat-label">الصفقات المكتملة</div>
+                        </div>
+                    </div>
+                `;
+                
+                if (data.twoFAEnabled) {
+                    document.getElementById('enable2faBtn').style.display = 'none';
+                    document.getElementById('disable2faBtn').style.display = 'block';
+                } else {
+                    document.getElementById('enable2faBtn').style.display = 'block';
+                    document.getElementById('disable2faBtn').style.display = 'none';
+                }
+            } catch(e) { console.error(e); }
+        }
+        
+        async function setup2FA() {
+            tg.showAlert('🔄 جاري تجهيز رمز التحقق...');
+            const res = await fetch(`${API_URL}/api/2fa/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
+            });
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('qrImage').src = data.qrCode;
+                document.getElementById('twofaQR').style.display = 'block';
+                document.getElementById('enable2faBtn').style.display = 'none';
+                tg.showAlert('✅ تم إنشاء رمز QR. قم بمسحه باستخدام Google Authenticator');
+            } else {
+                tg.showAlert(data.message);
             }
         }
         
+        async function verify2FA() {
+            const code = document.getElementById('twofaCode').value;
+            if (!code) return tg.showAlert('أدخل رمز التحقق');
+            
+            const res = await fetch(`${API_URL}/api/2fa/enable`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, code })
+            });
+            const data = await res.json();
+            tg.showAlert(data.message);
+            if (data.success) {
+                document.getElementById('twofaQR').style.display = 'none';
+                document.getElementById('disable2faBtn').style.display = 'block';
+                loadSecurityInfo();
+            }
+        }
+        
+        async function disable2FA() {
+            const code = prompt('أدخل رمز التحقق بخطوتين لتعطيله:');
+            if (!code) return;
+            
+            const res = await fetch(`${API_URL}/api/2fa/disable`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, code })
+            });
+            const data = await res.json();
+            tg.showAlert(data.message);
+            if (data.success) {
+                document.getElementById('disable2faBtn').style.display = 'none';
+                document.getElementById('enable2faBtn').style.display = 'block';
+                document.getElementById('twofaQR').style.display = 'none';
+                loadSecurityInfo();
+            }
+        }
+        
+        // ========== باقي الوظائف ==========
         async function refreshKycStatus() {
             tg.showAlert('🔄 جاري تحديث حالة التوثيق...');
             await loadUserData();
@@ -879,8 +980,6 @@
                         </div>
                     `;
                     form.style.display = 'none';
-                    document.getElementById('verificationStatus').innerHTML = '<div class="verified-badge">✅ حساب موثق</div>';
-                    document.getElementById('createWarning').style.display = 'none';
                 } else if (data.status === 'pending') {
                     container.innerHTML = `
                         <div class="kyc-pending" style="text-align:center;">
@@ -912,10 +1011,7 @@
                     form.style.display = 'block';
                 }
                 return data;
-            } catch(e) { 
-                console.error(e); 
-                return { status: 'not_submitted' }; 
-            }
+            } catch(e) { console.error(e); return { status: 'not_submitted' }; }
         }
         
         function previewPassport(event) {
@@ -992,15 +1088,6 @@
                 personalPhotoFile = null;
                 document.getElementById('passportPreview').innerHTML = '';
                 document.getElementById('personalPreview').innerHTML = '';
-                document.getElementById('kycFullName').value = '';
-                document.getElementById('kycPassport').value = '';
-                document.getElementById('kycNationalId').value = '';
-                document.getElementById('kycPhone').value = '';
-                document.getElementById('kycEmail').value = '';
-                document.getElementById('kycBank').value = '';
-                document.getElementById('kycAccountNumber').value = '';
-                document.getElementById('kycAccountName').value = '';
-                
                 await loadKycStatus();
                 await loadUserData();
             }
@@ -1019,6 +1106,16 @@
                 await loadKycStatus();
                 await loadUserData();
             }
+        }
+        
+        async function loadMarketStats() {
+            try {
+                const res = await fetch(`${API_URL}/api/market/stats`);
+                const stats = await res.json();
+                document.getElementById('marketStats').innerHTML = `
+                    📋 ${stats.totalOffers} عرض | 💰 متوسط السعر: ${stats.avgPrice} USD | 🌍 الأكثر نشاطاً: ${stats.mostActiveCurrency} | 👥 ${stats.totalTraders} متداول
+                `;
+            } catch(e) { console.error(e); }
         }
         
         async function loadMarket() {
@@ -1047,9 +1144,7 @@
                     <div class="offer-details">💵 القيمة: ${(o.fiatAmount / o.price).toFixed(2)} USD</div>
                     <div class="offer-details">🏦 ${o.paymentMethod}</div>
                     <div class="offer-details">✅ ${o.completedTrades || 0} صفقة</div>
-                    <div class="trust-badge">
-                        ${o.trustBadge ? `<span class="badge trust-${o.trustLevel}">${o.trustBadge}</span>` : ''}
-                    </div>
+                    <div class="trust-badge">${o.trustBadge ? `<span class="badge trust-${o.trustLevel}">${o.trustBadge}</span>` : ''}</div>
                     <div class="offer-details">🆔 <code>${o._id}</code></div>
                     <button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button>
                 </div>
@@ -1074,9 +1169,7 @@
                         <button class="cancel-btn" onclick="cancelOffer('${o._id}')">❌ إلغاء العرض</button>
                     </div>
                 `).join('');
-            } catch(e) {
-                document.getElementById('myOffersList').innerHTML = '<div class="loading">خطأ في التحميل</div>';
-            }
+            } catch(e) { document.getElementById('myOffersList').innerHTML = '<div class="loading">خطأ في التحميل</div>'; }
         }
         
         async function loadMyTrades() {
@@ -1097,16 +1190,43 @@
                         ${t.status === 'paid' && t.sellerId === uid ? `<button class="trade-btn" onclick="releaseCrystals('${t._id}')">🔓 تحرير العملة</button>` : ''}
                     </div>
                 `).join('');
-            } catch(e) {
-                document.getElementById('myTradesList').innerHTML = '<div class="loading">خطأ في التحميل</div>';
-            }
+            } catch(e) { document.getElementById('myTradesList').innerHTML = '<div class="loading">خطأ في التحميل</div>'; }
+        }
+        
+        async function loadHistory() {
+            try {
+                const uid = tg.initDataUnsafe.user.id;
+                const res = await fetch(`${API_URL}/api/user/history/${uid}`);
+                const data = await res.json();
+                
+                const offersContainer = document.getElementById('offersHistory');
+                if (data.offers && data.offers.length > 0) {
+                    offersContainer.innerHTML = data.offers.map(o => {
+                        let statusClass = '', statusText = '';
+                        if (o.status === 'completed') { statusClass = 'status-completed'; statusText = 'مكتمل'; }
+                        else if (o.status === 'active') { statusClass = 'status-pending'; statusText = 'نشط'; }
+                        else { statusClass = 'status-cancelled'; statusText = 'ملغي'; }
+                        return `<div class="history-item"><div><strong>${o.type === 'sell' ? '🟢 بيع' : '🔴 شراء'}</strong><span class="history-status ${statusClass}">${statusText}</span></div><div>💰 ${o.fiatAmount} ${o.currency} | 📊 ${o.price} ${o.currency}/USD</div><div>📅 ${new Date(o.createdAt).toLocaleDateString('ar')}</div></div>`;
+                    }).join('');
+                } else { offersContainer.innerHTML = '<div class="loading">لا توجد عروض سابقة</div>'; }
+                
+                const tradesContainer = document.getElementById('tradesHistory');
+                if (data.trades && data.trades.length > 0) {
+                    tradesContainer.innerHTML = data.trades.map(t => {
+                        let statusClass = '', statusText = '';
+                        if (t.status === 'completed') { statusClass = 'status-completed'; statusText = 'مكتمل'; }
+                        else if (t.status === 'pending') { statusClass = 'status-pending'; statusText = 'قيد التنفيذ'; }
+                        else { statusClass = 'status-cancelled'; statusText = 'ملغي'; }
+                        return `<div class="history-item"><div><strong>${t.role}</strong><span class="history-status ${statusClass}">${statusText}</span></div><div>💰 ${t.amount} ${t.currency} | مع ${t.otherParty}</div><div>📅 ${new Date(t.createdAt).toLocaleDateString('ar')}</div></div>`;
+                    }).join('');
+                } else { tradesContainer.innerHTML = '<div class="loading">لا توجد صفقات سابقة</div>'; }
+            } catch(e) { console.error(e); }
         }
         
         async function cancelOffer(offerId) {
             tg.showAlert('جاري إلغاء العرض...');
             const res = await fetch(`${API_URL}/api/offer/cancel`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId })
             });
             const result = await res.json();
@@ -1117,8 +1237,7 @@
         async function cancelTrade(tradeId) {
             tg.showAlert('⚠️ هل أنت متأكد من إلغاء الصفقة؟', true);
             const res = await fetch(`${API_URL}/api/trade/cancel`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, trade_id: tradeId })
             });
             const result = await res.json();
@@ -1129,8 +1248,7 @@
         async function releaseCrystals(tradeId) {
             tg.showAlert('جاري تحرير العملة...');
             const res = await fetch(`${API_URL}/api/trade/release`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, trade_id: tradeId })
             });
             const result = await res.json();
@@ -1144,10 +1262,7 @@
                 const res = await fetch(`${API_URL}/api/wallet/${uid}`);
                 const data = await res.json();
                 document.getElementById('walletInfo').innerHTML = `
-                    <div class="stat-card">
-                        <div class="stat-value">${data.usdBalance?.toFixed(2) || 0} USD</div>
-                        <div class="stat-label">رصيد الدولار</div>
-                    </div>
+                    <div class="stat-card"><div class="stat-value">${data.usdBalance?.toFixed(2) || 0} USD</div><div class="stat-label">رصيد الدولار</div></div>
                     <div class="address-box">🟡 BNB: ${data.addresses?.bnb || 'جاري التحميل'}</div>
                     <div class="address-box">🟣 POLYGON: ${data.addresses?.polygon || 'جاري التحميل'}</div>
                     <div class="address-box">🟢 SOLANA: ${data.addresses?.solana || 'جاري التحميل'}</div>
@@ -1162,18 +1277,8 @@
                 const res = await fetch(`${API_URL}/api/leaderboard`);
                 const leaders = await res.json();
                 const container = document.getElementById('leaderboardList');
-                if (!leaders.length) {
-                    container.innerHTML = '<div class="loading">لا يوجد متصدرين</div>';
-                    return;
-                }
-                container.innerHTML = leaders.map((l, i) => `
-                    <div class="leader-item">
-                        <div class="leader-rank">${i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`}</div>
-                        <div class="leader-name">${l.name} ${l.verified ? '✅' : ''}</div>
-                        <div class="leader-trades">💰 ${l.trades?.toFixed(0) || 0}</div>
-                        <div class="leader-rating">⭐ ${l.rating?.toFixed(1) || '5.0'}</div>
-                    </div>
-                `).join('');
+                if (!leaders.length) { container.innerHTML = '<div class="loading">لا يوجد متصدرين</div>'; return; }
+                container.innerHTML = leaders.map((l, i) => `<div class="leader-item"><div class="leader-rank">${i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`}</div><div class="leader-name">${l.name} ${l.verified ? '✅' : ''}</div><div class="leader-trades">💰 ${l.trades?.toFixed(0) || 0}</div><div class="leader-rating">⭐ ${l.rating?.toFixed(1) || '5.0'}</div></div>`).join('');
             } catch(e) { console.error(e); }
         }
         
@@ -1183,18 +1288,9 @@
                 const res = await fetch(`${API_URL}/api/user/${uid}`);
                 const user = await res.json();
                 document.getElementById('bankInfo').innerHTML = `
-                    <div class="stat-card">
-                        <div class="stat-value">${user.bankName || 'غير محدد'}</div>
-                        <div class="stat-label">البنك</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">${user.bankAccountNumber || 'غير محدد'}</div>
-                        <div class="stat-label">رقم الحساب</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">${user.bankAccountName || 'غير محدد'}</div>
-                        <div class="stat-label">اسم الحساب</div>
-                    </div>
+                    <div class="stat-card"><div class="stat-value">${user.bankName || 'غير محدد'}</div><div class="stat-label">البنك</div></div>
+                    <div class="stat-card"><div class="stat-value">${user.bankAccountNumber || 'غير محدد'}</div><div class="stat-label">رقم الحساب</div></div>
+                    <div class="stat-card"><div class="stat-value">${user.bankAccountName || 'غير محدد'}</div><div class="stat-label">اسم الحساب</div></div>
                 `;
                 const bankSelect = document.getElementById('bankName');
                 bankSelect.innerHTML = '<option value="">اختر البنك</option>' + sudanBanks.map(b => `<option value="${b}">${b}</option>`).join('');
@@ -1210,12 +1306,7 @@
         }
         
         async function createOffer() {
-            if (!userData.isVerified) {
-                tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً');
-                switchTab('kyc');
-                return;
-            }
-            
+            if (!userData.isVerified) { tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً'); switchTab('kyc'); return; }
             const type = document.getElementById('offerType').value;
             const currency = document.getElementById('offerCurrency').value;
             const fiatAmount = parseFloat(document.getElementById('offerAmount').value);
@@ -1225,52 +1316,28 @@
             const accountNumber = document.getElementById('offerAccountNumber').value;
             const accountName = document.getElementById('offerAccountName').value;
             const details = document.getElementById('offerDetails').value;
-            
             if (!fiatAmount || fiatAmount <= 0) return tg.showAlert('أدخل المبلغ');
             if (!price || price <= 0) return tg.showAlert('أدخل السعر');
-            
-            const body = {
-                user_id: tg.initDataUnsafe.user.id,
-                type, currency, fiatAmount, price,
-                paymentMethod, paymentDetails: details,
-                bankName, bankAccountNumber: accountNumber, bankAccountName: accountName,
-                minAmount: 10, maxAmount: 100000
-            };
-            
-            const res = await fetch(`${API_URL}/api/offer/create`, {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(body)
-            });
+            const body = { user_id: tg.initDataUnsafe.user.id, type, currency, fiatAmount, price, paymentMethod, paymentDetails: details, bankName, bankAccountNumber: accountNumber, bankAccountName: accountName, minAmount: 10, maxAmount: 100000 };
+            const res = await fetch(`${API_URL}/api/offer/create`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
             const result = await res.json();
             tg.showAlert(result.message);
             if (result.success) switchTab('market');
         }
         
         async function startTrade(offerId) {
-            if (!userData.isVerified) {
-                tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً');
-                switchTab('kyc');
-                return;
-            }
-            const res = await fetch(`${API_URL}/api/trade/start`, {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId })
-            });
+            if (!userData.isVerified) { tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً'); switchTab('kyc'); return; }
+            const res = await fetch(`${API_URL}/api/trade/start`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId }) });
             const result = await res.json();
             tg.showAlert(result.message);
-            if (result.success && result.sellerPaymentDetails) {
-                tg.showAlert(`📤 تفاصيل الدفع:\n${result.sellerPaymentDetails}\n\nبعد التحويل: /send_proof ${result.tradeId} [رابط الصورة]\n\nلإلغاء الصفقة: /cancel_trade ${result.tradeId}`);
-            }
+            if (result.success && result.sellerPaymentDetails) { tg.showAlert(`📤 تفاصيل الدفع:\n${result.sellerPaymentDetails}\n\nبعد التحويل: /send_proof ${result.tradeId} [رابط الصورة]\n\nلإلغاء الصفقة: /cancel_trade ${result.tradeId}`); }
         }
         
         async function deposit() {
             const amount = parseFloat(document.getElementById('depositAmount').value);
             const network = document.getElementById('walletNetwork').value;
             if (!amount || amount <= 0) return tg.showAlert('أدخل المبلغ');
-            const res = await fetch(`${API_URL}/api/deposit`, {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USD', network })
-            });
+            const res = await fetch(`${API_URL}/api/deposit`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USD', network }) });
             const result = await res.json();
             tg.showAlert(result.message);
         }
@@ -1279,12 +1346,10 @@
             const amount = parseFloat(document.getElementById('withdrawAmount').value);
             const network = document.getElementById('walletNetwork').value;
             const address = document.getElementById('withdrawAddress').value;
+            const twoFACode = document.getElementById('withdraw2FA').value;
             if (!amount || amount <= 0) return tg.showAlert('أدخل المبلغ');
             if (!address) return tg.showAlert('أدخل عنوان المحفظة');
-            const res = await fetch(`${API_URL}/api/withdraw`, {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USD', network, address })
-            });
+            const res = await fetch(`${API_URL}/api/withdraw`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USD', network, address, twoFACode }) });
             const result = await res.json();
             tg.showAlert(result.message);
         }
@@ -1294,10 +1359,7 @@
             const accountNumber = document.getElementById('accountNumber').value;
             const accountName = document.getElementById('accountName').value;
             if (!bankName || !accountNumber || !accountName) return tg.showAlert('يرجى ملء جميع الحقول');
-            const res = await fetch(`${API_URL}/api/update_bank`, {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, bankName, accountNumber, accountName })
-            });
+            const res = await fetch(`${API_URL}/api/update_bank`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, bankName, accountNumber, accountName }) });
             const result = await res.json();
             tg.showAlert('✅ تم تحديث بيانات البنك');
             loadBankInfo();
@@ -1315,7 +1377,6 @@
             document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
             document.getElementById(`${tab}-tab`).classList.add('active');
             event.target.classList.add('active');
-            
             if (tab === 'market') { loadMarket(); loadMarketStats(); }
             if (tab === 'my') loadMyOffers();
             if (tab === 'trades') loadMyTrades();
@@ -1324,15 +1385,13 @@
             if (tab === 'kyc') { loadKycStatus(); loadBankInfo(); }
             if (tab === 'leaderboard') loadLeaderboard();
             if (tab === 'bank') loadBankInfo();
+            if (tab === 'referral') loadReferralInfo();
+            if (tab === 'security') loadSecurityInfo();
         }
         
         document.getElementById('offerPaymentMethod').addEventListener('change', function() {
             const bankFields = document.getElementById('bankFields');
-            if (this.value === 'bank_transfer') {
-                bankFields.style.display = 'block';
-            } else {
-                bankFields.style.display = 'none';
-            }
+            bankFields.style.display = this.value === 'bank_transfer' ? 'block' : 'none';
         });
         
         async function init() {
