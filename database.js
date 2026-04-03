@@ -4,13 +4,16 @@ const { ethers } = require('ethers');
 const { Connection, Keypair, LAMPORTS_PER_SOL } = require('@solana/web3.js');
 const { AptosAccount } = require('aptos');
 const CryptoJS = require('crypto-js');
-const { User, Wallet, KycRequest, P2pOffer, Trade, DepositRequest, WithdrawRequest, Review, DailyStats } = require('./models');
+const speakeasy = require('speakeasy');
+const qrcode = require('qrcode');
+const { User, Wallet, KycRequest, P2pOffer, Trade, DepositRequest, WithdrawRequest, Review, DailyStats, AuditLog, Report, Blacklist } = require('./models');
 
 class Database {
     constructor() {
         this.connected = false;
         this.encryptionKey = process.env.ENCRYPTION_KEY || 'default_key_32_bytes_long';
         this.platformFee = (parseFloat(process.env.PLATFORM_FEE_PERCENT) / 100) || 0.005;
+        this.referralCommissionRate = 10; // 10% من عمولة المنصة
         
         this.commissionWallets = {
             bnb: process.env.COMMISSION_WALLET_BNB || '0x2a2548117C7113eB807298D74A44d451E330AC95',
@@ -67,6 +70,239 @@ class Database {
         }
     }
 
+    // ========== سجل التدقيق (Audit Log) ==========
+    async addAuditLog(userId, action, details = {}, ip = '', userAgent = '') {
+        await AuditLog.create({
+            userId, action, details, ip, userAgent, timestamp: new Date()
+        });
+    }
+
+    // ========== التحقق من حالة المستخدم (محظور/مقفل) ==========
+    async isUserBannedOrLocked(userId) {
+        const user = await User.findOne({ userId });
+        if (!user) return { banned: false, locked: false };
+        
+        if (user.isBanned) {
+            return { banned: true, reason: user.banReason || 'تم حظر حسابك نهائياً' };
+        }
+        if (user.isLocked) {
+            return { locked: true, reason: 'حسابك مقفل مؤقتاً. تواصل مع الدعم.' };
+        }
+        if (user.banExpires && user.banExpires > new Date()) {
+            return { banned: true, reason: `محظور حتى ${user.banExpires.toLocaleString()}` };
+        }
+        return { banned: false, locked: false };
+    }
+
+    // ========== تتبع السلوك المشبوه ==========
+    async trackSuspiciousBehavior(userId, action, details, ip = '') {
+        const user = await User.findOne({ userId });
+        if (!user) return { warning: false };
+        
+        const suspiciousActions = user.suspiciousActions || [];
+        suspiciousActions.push({ action, details, timestamp: new Date(), ip });
+        
+        // الاحتفاظ بآخر 50 إجراء فقط
+        while (suspiciousActions.length > 50) suspiciousActions.shift();
+        
+        const warningCount = (user.warningCount || 0) + 1;
+        await User.updateOne({ userId }, { 
+            $set: { suspiciousActions, warningCount }
+        });
+        
+        // تسجيل في سجل التدقيق
+        await this.addAuditLog(userId, `suspicious_${action}`, details, ip);
+        
+        // إذا تجاوز 5 تحذيرات، قفل الحساب تلقائياً
+        if (warningCount >= 5) {
+            await User.updateOne({ userId }, { 
+                isLocked: true, 
+                lockReason: 'نشاط مشبوه متكرر - تم القفل التلقائي'
+            });
+            return { locked: true, message: '⛔ تم قفل حسابك بسبب نشاط مشبوه. تواصل مع الدعم.' };
+        }
+        
+        return { warning: true, remaining: 5 - warningCount };
+    }
+
+    // ========== التحقق من حدود المستخدم ==========
+    async checkUserLimits(userId, tradeAmount) {
+        const user = await User.findOne({ userId });
+        if (!user) return { allowed: false, reason: 'المستخدم غير موجود' };
+        
+        const today = new Date().toISOString().split('T')[0];
+        const dailyTrades = user.dailyTrades || [];
+        const todayTrades = dailyTrades.filter(t => t.date === today);
+        
+        // حدود للمستخدمين الجدد (أقل من 5 صفقات)
+        if ((user.completedTrades || 0) < 5) {
+            if (tradeAmount > 500) {
+                return { allowed: false, reason: '⚠️ المستخدمون الجدد لا يمكنهم تداول أكثر من 500 دولار حتى إتمام 5 صفقات' };
+            }
+            if (todayTrades.length >= 2) {
+                return { allowed: false, reason: '⚠️ حد أقصى صفقتين يومياً للمستخدمين الجدد' };
+            }
+        }
+        
+        // حدود للمستخدمين غير الموثقين
+        if (!user.isVerified) {
+            if (tradeAmount > 100) {
+                return { allowed: false, reason: '⚠️ الحسابات غير الموثقة حدها الأقصى 100 دولار. يرجى توثيق حسابك.' };
+            }
+        }
+        
+        // تتبع الصفقة اليومية
+        await User.updateOne(
+            { userId },
+            { $push: { dailyTrades: { date: today, amount: tradeAmount, timestamp: new Date() } } }
+        );
+        
+        return { allowed: true };
+    }
+
+    // ========== نظام التحقق بخطوتين (2FA) ==========
+    async generate2FASecret(userId) {
+        const secret = speakeasy.generateSecret({ length: 20, name: `P2P Exchange (${userId})` });
+        
+        const encryptedSecret = this.encryptPrivateKey(secret.base32);
+        await User.updateOne({ userId }, { twoFASecret: encryptedSecret });
+        
+        // توليد أكواد الطوارئ (5 أكواد)
+        const backupCodes = [];
+        for (let i = 0; i < 5; i++) {
+            const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+            backupCodes.push(this.encryptPrivateKey(code));
+        }
+        await User.updateOne({ userId }, { twoFABackupCodes: backupCodes });
+        
+        // إنشاء رابط QR
+        const otpauthURL = speakeasy.otpauthURL({
+            secret: secret.ascii,
+            label: `P2P Exchange`,
+            issuer: `User ${userId}`
+        });
+        
+        const qrCode = await qrcode.toDataURL(otpauthURL);
+        
+        await this.addAuditLog(userId, '2fa_generate', {}, '', '');
+        
+        return { secret: secret.base32, qrCode, backupCodes: backupCodes.map(c => this.decryptPrivateKey(c)) };
+    }
+
+    async verify2FACode(userId, code) {
+        const user = await User.findOne({ userId });
+        if (!user || !user.twoFAEnabled) return false;
+        
+        const decryptedSecret = this.decryptPrivateKey(user.twoFASecret);
+        const verified = speakeasy.totp.verify({
+            secret: decryptedSecret,
+            encoding: 'base32',
+            token: code,
+            window: 2
+        });
+        
+        if (verified) {
+            await this.addAuditLog(userId, '2fa_verify_success', {}, '', '');
+        } else {
+            // التحقق من أكواد الطوارئ
+            for (let i = 0; i < (user.twoFABackupCodes || []).length; i++) {
+                const decryptedCode = this.decryptPrivateKey(user.twoFABackupCodes[i]);
+                if (decryptedCode === code) {
+                    // حذف الكود المستخدم
+                    const newBackupCodes = [...user.twoFABackupCodes];
+                    newBackupCodes.splice(i, 1);
+                    await User.updateOne({ userId }, { twoFABackupCodes: newBackupCodes });
+                    await this.addAuditLog(userId, '2fa_backup_used', {}, '', '');
+                    return true;
+                }
+            }
+            await this.addAuditLog(userId, '2fa_verify_failed', { code }, '', '');
+        }
+        
+        return verified;
+    }
+
+    async enable2FA(userId, code) {
+        const verified = await this.verify2FACode(userId, code);
+        if (!verified) return { success: false, message: '❌ رمز التحقق غير صحيح' };
+        
+        await User.updateOne({ userId }, { twoFAEnabled: true });
+        await this.addAuditLog(userId, '2fa_enabled', {}, '', '');
+        
+        return { success: true, message: '✅ تم تفعيل التحقق بخطوتين بنجاح' };
+    }
+
+    async disable2FA(userId, code) {
+        const verified = await this.verify2FACode(userId, code);
+        if (!verified) return { success: false, message: '❌ رمز التحقق غير صحيح' };
+        
+        await User.updateOne({ userId }, { twoFAEnabled: false, twoFASecret: '', twoFABackupCodes: [] });
+        await this.addAuditLog(userId, '2fa_disabled', {}, '', '');
+        
+        return { success: true, message: '✅ تم تعطيل التحقق بخطوتين' };
+    }
+
+    // ========== نظام الإبلاغ عن المستخدمين ==========
+    async reportUser(reporterId, reportedId, reason, evidence, bot) {
+        const report = await Report.create({
+            reporterId, reportedId, reason, evidence, status: 'pending'
+        });
+        
+        await this.addAuditLog(reporterId, 'report_submit', { reportedId, reason }, '', '');
+        
+        // إرسال إشعار للأدمن
+        if (bot) {
+            const ADMIN_ID = parseInt(process.env.ADMIN_ID) || 6701743450;
+            await bot.telegram.sendMessage(ADMIN_ID,
+                `⚠️ *بلاغ جديد*\n\n` +
+                `👤 *المبلغ:* ${reporterId}\n` +
+                `👤 *المبلغ ضده:* ${reportedId}\n` +
+                `📝 *السبب:* ${reason}\n` +
+                `📎 *الدليل:* ${evidence || 'لا يوجد'}\n` +
+                `🆔 *رقم البلاغ:* ${report._id}`,
+                { parse_mode: 'Markdown' }
+            );
+        }
+        
+        return { success: true, reportId: report._id, message: '✅ تم إرسال البلاغ. سيتم مراجعته من قبل الإدارة.' };
+    }
+
+    async resolveReport(reportId, adminId, resolution, action = 'none') {
+        const report = await Report.findOne({ _id: reportId, status: 'pending' });
+        if (!report) return { success: false, message: 'البلاغ غير موجود' };
+        
+        await Report.updateOne({ _id: reportId }, {
+            status: 'resolved', resolvedBy: adminId, resolution, resolvedAt: new Date()
+        });
+        
+        // تنفيذ الإجراء المطلوب (حظر، تحذير، إلخ)
+        if (action === 'ban') {
+            await User.updateOne({ userId: report.reportedId }, { isBanned: true, banReason: resolution });
+        } else if (action === 'warn') {
+            await this.trackSuspiciousBehavior(report.reportedId, 'reported_warning', { reason: resolution });
+        }
+        
+        await this.addAuditLog(adminId, 'report_resolved', { reportId, resolution, action }, '', '');
+        
+        return { success: true, message: '✅ تم حل البلاغ' };
+    }
+
+    // ========== القائمة السوداء ==========
+    async addToBlacklist(address, type, reason, addedBy) {
+        const existing = await Blacklist.findOne({ address });
+        if (existing) return { success: false, message: 'العنوان موجود بالفعل في القائمة السوداء' };
+        
+        await Blacklist.create({ address, type, reason, addedBy });
+        await this.addAuditLog(addedBy, 'blacklist_add', { address, type, reason }, '', '');
+        
+        return { success: true, message: '✅ تم إضافة العنوان إلى القائمة السوداء' };
+    }
+
+    async isAddressBlacklisted(address) {
+        const blacklisted = await Blacklist.findOne({ address });
+        return !!blacklisted;
+    }
+
     // ========== إنشاء المحافظ ==========
     async createBnbWallet() {
         const wallet = ethers.Wallet.createRandom();
@@ -111,12 +347,39 @@ class Database {
         return wallet;
     }
 
-    // ========== تسجيل المستخدم ==========
-    async registerUser(userId, username, firstName, lastName, phone, email, country, city, referrerId = null, language = 'ar') {
+    // ========== تسجيل المستخدم مع الإحالات ==========
+    async registerUser(userId, username, firstName, lastName, phone, email, country, city, referrerId = null, language = 'ar', ip = '', userAgent = '') {
         await this.connect();
+        
         let user = await User.findOne({ userId });
         if (!user) {
             const wallet = await this.getUserWallet(userId);
+            
+            // التحقق من صحة المُحيل
+            let validReferrer = null;
+            if (referrerId && referrerId !== userId) {
+                validReferrer = await User.findOne({ userId: referrerId });
+                if (validReferrer && !validReferrer.isBanned && !validReferrer.isLocked) {
+                    // إضافة المستخدم الجديد إلى قائمة المدعوين للمُحيل
+                    await User.updateOne(
+                        { userId: referrerId },
+                        { 
+                            $inc: { referralCount: 1 },
+                            $push: { 
+                                referrals: { 
+                                    userId: userId, 
+                                    joinedAt: new Date(),
+                                    totalCommission: 0,
+                                    earned: 0
+                                } 
+                            }
+                        }
+                    );
+                } else {
+                    validReferrer = null;
+                }
+            }
+            
             user = await User.create({
                 userId, 
                 username: username || '', 
@@ -127,27 +390,36 @@ class Database {
                 country: country || 'SD', 
                 city: city || '',
                 language, 
-                walletId: wallet._id, 
-                referrerId,
+                walletId: wallet._id,
+                referrerId: validReferrer ? referrerId : null,
                 isVerified: false,
-                lastActive: new Date()
+                lastActive: new Date(),
+                lastLoginIp: ip,
+                loginAttempts: 0,
+                twoFAEnabled: false,
+                twoFASecret: '',
+                twoFABackupCodes: [],
+                dailyTrades: [],
+                suspiciousActions: [],
+                warningCount: 0
             });
+            
             await this.updateDailyStats('totalUsers', 'newUsers');
-            if (referrerId) {
-                const referrer = await User.findOne({ userId: referrerId });
-                if (referrer) {
-                    await User.updateOne({ userId: referrerId }, { $inc: { referralCount: 1 } });
-                }
-            }
-            return true;
+            await this.addAuditLog(userId, 'register', { referrer: referrerId }, ip, userAgent);
+            
+            return { success: true, isNew: true, referrer: validReferrer };
         }
+        
         // تحديث آخر نشاط
-        await User.updateOne({ userId }, { lastActive: new Date() });
-        return false;
+        await User.updateOne({ userId }, { lastActive: new Date(), lastLoginIp: ip });
+        await this.addAuditLog(userId, 'login', {}, ip, userAgent);
+        
+        return { success: true, isNew: false };
     }
 
     async updateUserBankDetails(userId, bankName, accountNumber, accountName) {
         await User.updateOne({ userId }, { bankName, bankAccountNumber: accountNumber, bankAccountName: accountName });
+        await this.addAuditLog(userId, 'update_bank', { bankName }, '', '');
         return true;
     }
 
@@ -165,7 +437,6 @@ class Database {
             status: { $in: ['pending', 'paid'] } 
         });
         
-        // حساب نسبة النجاح
         const completedTrades = user.completedTrades || 0;
         const failedTrades = user.failedTrades || 0;
         const successRate = completedTrades + failedTrades > 0 
@@ -184,12 +455,15 @@ class Database {
             walletSignature: wallet.walletSignature,
             activeOffers,
             pendingTrades,
-            successRate: successRate.toFixed(1)
+            successRate: successRate.toFixed(1),
+            referralEarnings: user.referralEarnings || 0,
+            referralCount: user.referralCount || 0
         };
     }
 
     async addUsdBalance(userId, amount, reason) {
         await Wallet.updateOne({ userId }, { $inc: { usdBalance: amount } });
+        await this.addAuditLog(userId, 'add_balance', { amount, reason }, '', '');
         return true;
     }
 
@@ -197,7 +471,32 @@ class Database {
         const wallet = await this.getUserWallet(userId);
         if (wallet.usdBalance < amount) return false;
         await Wallet.updateOne({ userId }, { $inc: { usdBalance: -amount } });
+        await this.addAuditLog(userId, 'deduct_balance', { amount, reason }, '', '');
         return true;
+    }
+
+    // ========== نظام الإحالات - إضافة عمولة للمُحيل ==========
+    async addReferralCommission(referrerId, tradeAmount, platformFee) {
+        const referrer = await User.findOne({ userId: referrerId });
+        if (!referrer || referrer.isBanned) return;
+        
+        const commission = platformFee * (this.referralCommissionRate / 100);
+        if (commission <= 0) return;
+        
+        // إضافة العمولة لمحفظة المُحيل
+        await Wallet.updateOne({ userId: referrerId }, { $inc: { usdBalance: commission } });
+        await User.updateOne({ userId: referrerId }, { $inc: { referralEarnings: commission } });
+        
+        // تحديث سجل الإحالة
+        await User.updateOne(
+            { userId: referrerId, 'referrals.userId': userId },
+            { $inc: { 'referrals.$.earned': commission } }
+        );
+        
+        await this.addAuditLog(referrerId, 'referral_commission', { amount: commission, fromUser: userId, tradeAmount }, '', '');
+        await this.updateDailyStats('totalReferralCommissions', commission);
+        
+        return commission;
     }
 
     // ========== نظام التوثيق ==========
@@ -230,6 +529,7 @@ class Database {
         });
         
         await this.updateDailyStats('pendingKyc', 1);
+        await this.addAuditLog(userId, 'kyc_submit', { requestId: kycRequest._id }, '', '');
         
         return {
             success: true,
@@ -286,6 +586,7 @@ class Database {
         
         await this.updateDailyStats('verifiedUsers', 1);
         await this.updateDailyStats('pendingKyc', -1);
+        await this.addAuditLog(adminId, 'kyc_approve', { userId: request.userId }, '', '');
         
         return {
             success: true,
@@ -305,6 +606,7 @@ class Database {
         });
         
         await this.updateDailyStats('pendingKyc', -1);
+        await this.addAuditLog(adminId, 'kyc_reject', { userId: request.userId, reason }, '', '');
         
         return {
             success: true,
@@ -319,7 +621,7 @@ class Database {
         return { status: request.status, requestId: request._id, rejectionReason: request.rejectionReason };
     }
 
-    // ========== تاريخ العروض والصفقات (جديد) ==========
+    // ========== تاريخ العروض والصفقات ==========
     async getUserOffersHistory(userId, limit = 20) {
         await this.connect();
         return await P2pOffer.find({ userId })
@@ -337,7 +639,6 @@ class Database {
         .limit(limit)
         .select('amount currency price status createdAt completedAt paidAt buyerId sellerId fee totalUsd');
         
-        // إضافة معلومات الطرف الآخر
         for (const trade of trades) {
             const otherId = trade.buyerId === userId ? trade.sellerId : trade.buyerId;
             const otherUser = await User.findOne({ userId: otherId }).select('firstName username');
@@ -364,38 +665,6 @@ class Database {
         return result[0]?._id || 'USD';
     }
 
-    // ========== إلغاء الصفقة المعلقة (جديد) ==========
-    async cancelPendingTrade(tradeId, userId) {
-        await this.connect();
-        
-        const trade = await Trade.findOne({
-            _id: tradeId,
-            $or: [{ buyerId: userId }, { sellerId: userId }],
-            status: 'pending'
-        });
-        
-        if (!trade) {
-            return { success: false, message: '❌ لا يمكن إلغاء هذه الصفقة. قد تكون تمت بالفعل أو انتهت صلاحيتها' };
-        }
-        
-        await Trade.updateOne({ _id: tradeId }, { status: 'cancelled' });
-        
-        // إعادة تفعيل العرض
-        if (trade.offerId) {
-            await P2pOffer.updateOne({ _id: trade.offerId }, { status: 'active', counterpartyId: null });
-        }
-        
-        // تسجيل فشل الصفقة للمستخدم
-        await User.updateOne({ userId: trade.buyerId }, { $inc: { failedTrades: 1 } });
-        await User.updateOne({ userId: trade.sellerId }, { $inc: { failedTrades: 1 } });
-        
-        return {
-            success: true,
-            message: `✅ *تم إلغاء الصفقة بنجاح*\n\n📋 *رقم الصفقة:* ${tradeId}\n💰 *المبلغ:* ${trade.amount.toFixed(2)} ${trade.currency}\n\n⚠️ *تم إلغاء الحجز وعودة العرض إلى حالة النشاط*`
-        };
-    }
-
-    // ========== إحصائيات السوق (جديد) ==========
     async getMarketStats() {
         await this.connect();
         
@@ -422,6 +691,11 @@ class Database {
         const user = await this.getUser(userId);
         if (!user) return { success: false, message: 'المستخدم غير موجود' };
         
+        // التحقق من الحظر
+        const banCheck = await this.isUserBannedOrLocked(userId);
+        if (banCheck.banned) return { success: false, message: banCheck.reason };
+        if (banCheck.locked) return { success: false, message: banCheck.reason };
+        
         if (!user.isVerified) {
             return { success: false, message: '⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً' };
         }
@@ -440,6 +714,7 @@ class Database {
         });
         
         await this.updateDailyStats('activeOffers', 1);
+        await this.addAuditLog(userId, 'create_offer', { offerId: offer._id, type, currency, amount: fiatAmount }, '', '');
         
         const currencyNames = {
             USD: 'دولار أمريكي', EUR: 'يورو', GBP: 'جنيه إسترليني',
@@ -478,7 +753,6 @@ class Database {
         const userMap = {};
         users.forEach(u => { 
             userMap[u.userId] = u;
-            // حساب نسبة النجاح
             const completed = u.completedTrades || 0;
             const failed = u.failedTrades || 0;
             u.successRate = completed + failed > 0 ? (completed / (completed + failed)) * 100 : 100;
@@ -486,7 +760,6 @@ class Database {
         
         return offers.map(offer => {
             const user = userMap[offer.userId];
-            // تحديد مستوى الثقة
             let trustLevel = 'medium';
             let trustBadge = '';
             if (user?.completedTrades > 50 && user?.rating > 4.5) {
@@ -500,7 +773,6 @@ class Database {
                 trustBadge = '🆕 جديد';
             }
             
-            // تجميع الشارات
             const badges = [];
             if (user?.isVerified) badges.push('✅ موثق');
             if (user?.completedTrades > 50) badges.push('👑 تاجر محترف');
@@ -533,6 +805,7 @@ class Database {
         
         await P2pOffer.updateOne({ _id: offerId }, { status: 'cancelled' });
         await this.updateDailyStats('activeOffers', -1);
+        await this.addAuditLog(userId, 'cancel_offer', { offerId }, '', '');
         
         return { success: true, message: '✅ تم إلغاء العرض بنجاح' };
     }
@@ -544,6 +817,15 @@ class Database {
         
         if (offer.userId === buyerId) return { success: false, message: 'لا يمكنك شراء عرضك الخاص' };
         
+        // التحقق من حظر المشتري
+        const buyerBanCheck = await this.isUserBannedOrLocked(buyerId);
+        if (buyerBanCheck.banned) return { success: false, message: buyerBanCheck.reason };
+        if (buyerBanCheck.locked) return { success: false, message: buyerBanCheck.reason };
+        
+        // التحقق من حظر البائع
+        const sellerBanCheck = await this.isUserBannedOrLocked(offer.userId);
+        if (sellerBanCheck.banned) return { success: false, message: 'البائع محظور لا يمكن التداول معه' };
+        
         const buyer = await this.getUser(buyerId);
         if (!buyer.isVerified) {
             return { success: false, message: '⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً' };
@@ -554,9 +836,11 @@ class Database {
             return { success: false, message: '⚠️ البائع غير موثق! لا يمكن إتمام الصفقة' };
         }
         
-        if (!buyer || !seller) return { success: false, message: 'مستخدم غير موجود' };
-        
+        // التحقق من حدود المستخدم
         const totalUsd = offer.fiatAmount / offer.price;
+        const limitCheck = await this.checkUserLimits(buyerId, totalUsd);
+        if (!limitCheck.allowed) return { success: false, message: limitCheck.reason };
+        
         const fee = totalUsd * this.platformFee;
         
         if (offer.type === 'sell') {
@@ -578,6 +862,7 @@ class Database {
         });
         
         await P2pOffer.updateOne({ _id: offerId }, { status: 'pending', counterpartyId: buyerId });
+        await this.addAuditLog(buyerId, 'start_trade', { tradeId: trade._id, offerId, amount: totalUsd }, '', '');
         
         return {
             success: true,
@@ -602,7 +887,15 @@ class Database {
         const trade = await Trade.findOne({ _id: tradeId, buyerId, status: 'pending' });
         if (!trade) return { success: false, message: 'الصفقة غير موجودة' };
         
+        // التحقق من صحة إثبات الدفع (تحليل بسيط)
+        const timeToSend = Date.now() - new Date(trade.createdAt).getTime();
+        if (timeToSend < 30000) { // أقل من 30 ثانية (مشبوه)
+            await this.trackSuspiciousBehavior(buyerId, 'fast_proof', { timeToSend, tradeId });
+            return { success: false, message: '⚠️ إثبات سريع جداً - يرجى الانتظار دقيقة قبل إرسال الإثبات' };
+        }
+        
         await Trade.updateOne({ _id: tradeId }, { paymentProof: proofImage, status: 'paid', paidAt: new Date() });
+        await this.addAuditLog(buyerId, 'confirm_payment', { tradeId, proofImage }, '', '');
         
         return {
             success: true,
@@ -615,10 +908,20 @@ class Database {
         };
     }
 
-    // ========== تحرير العملة ==========
+    // ========== تحرير العملة مع مهلة أمان ==========
     async releaseCrystals(tradeId, sellerId) {
         const trade = await Trade.findOne({ _id: tradeId, sellerId, status: 'paid' });
         if (!trade) return { success: false, message: 'الصفقة غير موجودة' };
+        
+        // مهلة أمان للصفقات الكبيرة
+        const timeSincePaid = Date.now() - new Date(trade.paidAt).getTime();
+        if (trade.totalUsd > 1000 && timeSincePaid < 30 * 60 * 1000) {
+            const remainingMinutes = Math.ceil((30 * 60 * 1000 - timeSincePaid) / 60000);
+            return { 
+                success: false, 
+                message: `⚠️ مهلة أمان: سيتم تحرير العملة خلال ${remainingMinutes} دقيقة للتأكد من صحة الدفع` 
+            };
+        }
         
         const sellerWallet = await this.getUserWallet(sellerId);
         
@@ -627,6 +930,7 @@ class Database {
             if (offer && offer.type === 'sell') {
                 if (sellerWallet.usdBalance < trade.totalUsd) {
                     await Trade.updateOne({ _id: tradeId }, { status: 'disputed' });
+                    await this.trackSuspiciousBehavior(sellerId, 'insufficient_balance', { tradeId, required: trade.totalUsd, available: sellerWallet.usdBalance });
                     return { success: false, message: '⚠️ رصيد البائع غير كافٍ! تم فتح نزاع' };
                 }
                 await Wallet.updateOne({ userId: sellerId }, { $inc: { usdBalance: -trade.totalUsd } });
@@ -635,6 +939,12 @@ class Database {
         }
         
         await Wallet.updateOne({ userId: 0 }, { $inc: { usdBalance: trade.fee } });
+        
+        // إضافة عمولة الإحالة إذا كان المستخدم مدعو
+        const buyer = await User.findOne({ userId: trade.buyerId });
+        if (buyer && buyer.referrerId) {
+            await this.addReferralCommission(buyer.referrerId, trade.totalUsd, trade.fee);
+        }
         
         await Trade.updateOne({ _id: tradeId }, { status: 'completed', releasedAt: new Date(), completedAt: new Date() });
         await P2pOffer.updateOne({ _id: trade.offerId }, { status: 'completed' });
@@ -646,6 +956,7 @@ class Database {
         await this.updateDailyStats('totalVolume', trade.totalUsd);
         await this.updateDailyStats('totalCommission', trade.fee);
         await this.updateDailyStats('activeOffers', -1);
+        await this.addAuditLog(sellerId, 'release_crystals', { tradeId, amount: trade.totalUsd }, '', '');
         
         return {
             success: true,
@@ -659,6 +970,36 @@ class Database {
         };
     }
 
+    // ========== إلغاء صفقة معلقة ==========
+    async cancelPendingTrade(tradeId, userId) {
+        await this.connect();
+        
+        const trade = await Trade.findOne({
+            _id: tradeId,
+            $or: [{ buyerId: userId }, { sellerId: userId }],
+            status: 'pending'
+        });
+        
+        if (!trade) {
+            return { success: false, message: '❌ لا يمكن إلغاء هذه الصفقة. قد تكون تمت بالفعل أو انتهت صلاحيتها' };
+        }
+        
+        await Trade.updateOne({ _id: tradeId }, { status: 'cancelled' });
+        
+        if (trade.offerId) {
+            await P2pOffer.updateOne({ _id: trade.offerId }, { status: 'active', counterpartyId: null });
+        }
+        
+        await User.updateOne({ userId: trade.buyerId }, { $inc: { failedTrades: 1 } });
+        await User.updateOne({ userId: trade.sellerId }, { $inc: { failedTrades: 1 } });
+        await this.addAuditLog(userId, 'cancel_trade', { tradeId }, '', '');
+        
+        return {
+            success: true,
+            message: `✅ *تم إلغاء الصفقة بنجاح*\n\n📋 *رقم الصفقة:* ${tradeId}\n💰 *المبلغ:* ${trade.amount.toFixed(2)} ${trade.currency}\n\n⚠️ *تم إلغاء الحجز وعودة العرض إلى حالة النشاط*`
+        };
+    }
+
     // ========== النزاعات ==========
     async openDispute(tradeId, userId, reason) {
         const trade = await Trade.findOne({ 
@@ -669,6 +1010,7 @@ class Database {
         if (!trade) return { success: false, message: 'الصفقة غير موجودة' };
         
         await Trade.updateOne({ _id: tradeId }, { status: 'disputed', disputeReason: reason, disputeOpenedBy: userId });
+        await this.addAuditLog(userId, 'open_dispute', { tradeId, reason }, '', '');
         
         return {
             success: true,
@@ -694,11 +1036,12 @@ class Database {
         const reviews = await Review.find({ targetId });
         const avgRating = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
         await User.updateOne({ userId: targetId }, { rating: avgRating });
+        await this.addAuditLog(reviewerId, 'add_review', { tradeId, targetId, rating }, '', '');
         
         return { success: true, message: `⭐ *تم التقييم!*\n\n📊 *تقييمك:* ${rating}/5\n${comment ? `📝 *تعليق:* ${comment}` : ''}` };
     }
 
-    // ========== الإيداع والسحب ==========
+    // ========== الإيداع والسحب مع 2FA ==========
     async requestDeposit(userId, amount, currency, network) {
         const wallet = await this.getUserWallet(userId);
         
@@ -712,6 +1055,7 @@ class Database {
         }
         
         const request = await DepositRequest.create({ userId, amount, currency, network, address });
+        await this.addAuditLog(userId, 'request_deposit', { amount, currency, network }, '', '');
         
         return {
             success: true,
@@ -730,21 +1074,59 @@ class Database {
         const request = await DepositRequest.findOne({ _id: requestId, status: 'pending' });
         if (!request) return { success: false, message: 'الطلب غير موجود' };
         
-        await DepositRequest.updateOne({ _id: requestId }, { status: 'completed', transactionHash, completedAt: new Date() });
+        await DepositRequest.updateOne({ _id: requestId }, { status: 'completed', transactionHash, completedAt: new Date(), verifiedBy: adminId, verifiedAt: new Date() });
         await Wallet.updateOne({ userId: request.userId }, { $inc: { usdBalance: request.amount } });
+        await this.addAuditLog(adminId, 'confirm_deposit', { requestId, amount: request.amount }, '', '');
         
         return { success: true, message: `✅ تم إضافة ${request.amount} USD إلى رصيدك` };
     }
 
-    async requestWithdraw(userId, amount, currency, network, address) {
+    async requestWithdraw(userId, amount, currency, network, address, twoFACode = null) {
         const wallet = await this.getUserWallet(userId);
         if (wallet.usdBalance < amount) {
             return { success: false, message: `❌ رصيد غير كافٍ! لديك ${wallet.usdBalance.toFixed(2)} USD` };
         }
         
+        // التحقق من 2FA إذا كان مفعلاً
+        const user = await User.findOne({ userId });
+        if (user.twoFAEnabled) {
+            if (!twoFACode) {
+                return { success: false, message: '🔐 يرجى إدخال رمز التحقق بخطوتين:\n/withdraw_2fa [المبلغ] [الشبكة] [العنوان] [الرمز]' };
+            }
+            const verified = await this.verify2FACode(userId, twoFACode);
+            if (!verified) {
+                await this.trackSuspiciousBehavior(userId, 'failed_2fa_withdraw', { amount, address });
+                return { success: false, message: '❌ رمز التحقق غير صحيح' };
+            }
+        }
+        
+        // التحقق من القائمة السوداء للعنوان
+        const isBlacklisted = await this.isAddressBlacklisted(address);
+        if (isBlacklisted) {
+            await this.trackSuspiciousBehavior(userId, 'blacklisted_address', { address });
+            return { success: false, message: '⚠️ عنوان المحفظة هذا محظور لأسباب أمنية' };
+        }
+        
         const fee = amount * 0.02;
         
-        const request = await WithdrawRequest.create({ userId, amount, currency, network, address, fee });
+        // مهلة أمان للسحب الكبير
+        if (amount > 1000) {
+            const request = await WithdrawRequest.create({ userId, amount, currency, network, address, fee, status: 'pending' });
+            await this.addAuditLog(userId, 'request_large_withdraw', { amount, address }, '', '');
+            
+            return {
+                success: true,
+                requestId: request._id,
+                message: `✅ *تم استلام طلب السحب #${request._id.toString().slice(-6)}*\n\n` +
+                    `💰 *المبلغ:* ${amount} ${currency}\n` +
+                    `💸 *العمولة:* ${fee.toFixed(2)} USD\n` +
+                    `📤 *العنوان:* \`${address}\`\n\n` +
+                    `⏳ *نظراً لكبر المبلغ، سيتم مراجعة الطلب من قبل الإدارة خلال 24 ساعة*`
+            };
+        }
+        
+        const request = await WithdrawRequest.create({ userId, amount, currency, network, address, fee, twoFAVerified: user.twoFAEnabled });
+        await this.addAuditLog(userId, 'request_withdraw', { amount, address }, '', '');
         
         return {
             success: true,
@@ -761,8 +1143,9 @@ class Database {
         const request = await WithdrawRequest.findOne({ _id: requestId, status: 'pending' });
         if (!request) return { success: false, message: 'الطلب غير موجود' };
         
-        await WithdrawRequest.updateOne({ _id: requestId }, { status: 'completed', transactionHash, approvedAt: new Date() });
+        await WithdrawRequest.updateOne({ _id: requestId }, { status: 'completed', transactionHash, approvedAt: new Date(), approvedBy: adminId });
         await Wallet.updateOne({ userId: request.userId }, { $inc: { usdBalance: -(request.amount + request.fee) } });
+        await this.addAuditLog(adminId, 'confirm_withdraw', { requestId, amount: request.amount }, '', '');
         
         return { success: true, message: `✅ تمت الموافقة على سحب ${request.amount} USD` };
     }
@@ -786,6 +1169,9 @@ class Database {
         const totalActiveOffers = await P2pOffer.countDocuments({ status: 'active' });
         const totalPendingTrades = await Trade.countDocuments({ status: { $in: ['pending', 'paid'] } });
         const pendingKyc = await KycRequest.countDocuments({ status: 'pending' });
+        const totalReferralCommissions = await DailyStats.aggregate([
+            { $group: { _id: null, total: { $sum: '$totalReferralCommissions' } } }
+        ]);
         
         return {
             users: stats[0]?.totalUsers || 0,
@@ -794,7 +1180,8 @@ class Database {
             avgRating: stats[0]?.avgRating?.toFixed(1) || 5.0,
             activeOffers: totalActiveOffers,
             pendingTrades: totalPendingTrades,
-            pendingKyc: pendingKyc
+            pendingKyc: pendingKyc,
+            totalReferralCommissions: totalReferralCommissions[0]?.total?.toFixed(2) || 0
         };
     }
 
@@ -814,6 +1201,7 @@ class Database {
         if (type === 'totalTrades') u.totalTrades = (s.totalTrades || 0) + value;
         if (type === 'totalVolume') u.totalVolume = (s.totalVolume || 0) + value;
         if (type === 'totalCommission') u.totalCommission = (s.totalCommission || 0) + value;
+        if (type === 'totalReferralCommissions') u.totalReferralCommissions = (s.totalReferralCommissions || 0) + value;
         if (type === 'activeOffers') u.activeOffers = (s.activeOffers || 0) + value;
         if (type === 'pendingKyc') u.pendingKyc = (s.pendingKyc || 0) + value;
         await DailyStats.updateOne({ date: today }, { $inc: u });
@@ -852,6 +1240,7 @@ class Database {
     
     async updateBankDetails(userId, bankName, accountNumber, accountName) { 
         await User.updateOne({ userId }, { bankName, bankAccountNumber: accountNumber, bankAccountName: accountName }); 
+        await this.addAuditLog(userId, 'update_bank', { bankName }, '', '');
         return true; 
     }
 }
