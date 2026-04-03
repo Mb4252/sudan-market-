@@ -129,7 +129,8 @@ class Database {
                 language, 
                 walletId: wallet._id, 
                 referrerId,
-                isVerified: false
+                isVerified: false,
+                lastActive: new Date()
             });
             await this.updateDailyStats('totalUsers', 'newUsers');
             if (referrerId) {
@@ -140,6 +141,8 @@ class Database {
             }
             return true;
         }
+        // تحديث آخر نشاط
+        await User.updateOne({ userId }, { lastActive: new Date() });
         return false;
     }
 
@@ -161,6 +164,14 @@ class Database {
             $or: [{ buyerId: userId }, { sellerId: userId }], 
             status: { $in: ['pending', 'paid'] } 
         });
+        
+        // حساب نسبة النجاح
+        const completedTrades = user.completedTrades || 0;
+        const failedTrades = user.failedTrades || 0;
+        const successRate = completedTrades + failedTrades > 0 
+            ? (completedTrades / (completedTrades + failedTrades)) * 100 
+            : 100;
+        
         return {
             ...user.toObject(),
             usdBalance: wallet.usdBalance,
@@ -172,7 +183,8 @@ class Database {
             },
             walletSignature: wallet.walletSignature,
             activeOffers,
-            pendingTrades
+            pendingTrades,
+            successRate: successRate.toFixed(1)
         };
     }
 
@@ -188,7 +200,7 @@ class Database {
         return true;
     }
 
-    // ========== نظام التوثيق (مع تخزين الصور في تلغرام) ==========
+    // ========== نظام التوثيق ==========
     async createKycRequest(userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city, passportPhotoFileId, personalPhotoFileId, bankName, bankAccountNumber, bankAccountName) {
         await this.connect();
         
@@ -219,7 +231,6 @@ class Database {
         
         await this.updateDailyStats('pendingKyc', 1);
         
-        // ✅ إرجاع الكائن الكامل مع جميع البيانات
         return {
             success: true,
             requestId: kycRequest._id,
@@ -308,6 +319,104 @@ class Database {
         return { status: request.status, requestId: request._id, rejectionReason: request.rejectionReason };
     }
 
+    // ========== تاريخ العروض والصفقات (جديد) ==========
+    async getUserOffersHistory(userId, limit = 20) {
+        await this.connect();
+        return await P2pOffer.find({ userId })
+            .sort({ createdAt: -1 })
+            .limit(limit)
+            .select('type currency fiatAmount price status createdAt completedAt');
+    }
+
+    async getUserTradesHistory(userId, limit = 20) {
+        await this.connect();
+        const trades = await Trade.find({
+            $or: [{ buyerId: userId }, { sellerId: userId }]
+        })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .select('amount currency price status createdAt completedAt paidAt buyerId sellerId fee totalUsd');
+        
+        // إضافة معلومات الطرف الآخر
+        for (const trade of trades) {
+            const otherId = trade.buyerId === userId ? trade.sellerId : trade.buyerId;
+            const otherUser = await User.findOne({ userId: otherId }).select('firstName username');
+            trade.otherParty = otherUser ? (otherUser.firstName || otherUser.username || otherId) : otherId;
+            trade.role = trade.buyerId === userId ? 'مشتري' : 'بائع';
+        }
+        return trades;
+    }
+
+    async getAveragePrice() {
+        const offers = await P2pOffer.find({ status: 'active' });
+        if (offers.length === 0) return 0;
+        const avgPrice = offers.reduce((sum, o) => sum + o.price, 0) / offers.length;
+        return avgPrice.toFixed(2);
+    }
+
+    async getMostActiveCurrency() {
+        const result = await P2pOffer.aggregate([
+            { $match: { status: 'active' } },
+            { $group: { _id: '$currency', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $limit: 1 }
+        ]);
+        return result[0]?._id || 'USD';
+    }
+
+    // ========== إلغاء الصفقة المعلقة (جديد) ==========
+    async cancelPendingTrade(tradeId, userId) {
+        await this.connect();
+        
+        const trade = await Trade.findOne({
+            _id: tradeId,
+            $or: [{ buyerId: userId }, { sellerId: userId }],
+            status: 'pending'
+        });
+        
+        if (!trade) {
+            return { success: false, message: '❌ لا يمكن إلغاء هذه الصفقة. قد تكون تمت بالفعل أو انتهت صلاحيتها' };
+        }
+        
+        await Trade.updateOne({ _id: tradeId }, { status: 'cancelled' });
+        
+        // إعادة تفعيل العرض
+        if (trade.offerId) {
+            await P2pOffer.updateOne({ _id: trade.offerId }, { status: 'active', counterpartyId: null });
+        }
+        
+        // تسجيل فشل الصفقة للمستخدم
+        await User.updateOne({ userId: trade.buyerId }, { $inc: { failedTrades: 1 } });
+        await User.updateOne({ userId: trade.sellerId }, { $inc: { failedTrades: 1 } });
+        
+        return {
+            success: true,
+            message: `✅ *تم إلغاء الصفقة بنجاح*\n\n📋 *رقم الصفقة:* ${tradeId}\n💰 *المبلغ:* ${trade.amount.toFixed(2)} ${trade.currency}\n\n⚠️ *تم إلغاء الحجز وعودة العرض إلى حالة النشاط*`
+        };
+    }
+
+    // ========== إحصائيات السوق (جديد) ==========
+    async getMarketStats() {
+        await this.connect();
+        
+        const totalOffers = await P2pOffer.countDocuments({ status: 'active' });
+        const avgPrice = await this.getAveragePrice();
+        const mostActiveCurrency = await this.getMostActiveCurrency();
+        const totalTraders = await User.countDocuments({ completedTrades: { $gt: 0 } });
+        const totalVolume = await Trade.aggregate([
+            { $match: { status: 'completed' } },
+            { $group: { _id: null, total: { $sum: '$totalUsd' } } }
+        ]);
+        
+        return {
+            totalOffers,
+            avgPrice: parseFloat(avgPrice),
+            mostActiveCurrency,
+            totalTraders,
+            totalVolume: totalVolume[0]?.total || 0
+        };
+    }
+
     // ========== عروض P2P ==========
     async createOffer(userId, type, currency, fiatAmount, price, paymentMethod, paymentDetails, bankName, bankAccountNumber, bankAccountName, minAmount, maxAmount) {
         const user = await this.getUser(userId);
@@ -367,17 +476,51 @@ class Database {
         
         const users = await User.find({ userId: { $in: offers.map(o => o.userId) } });
         const userMap = {};
-        users.forEach(u => { userMap[u.userId] = u; });
+        users.forEach(u => { 
+            userMap[u.userId] = u;
+            // حساب نسبة النجاح
+            const completed = u.completedTrades || 0;
+            const failed = u.failedTrades || 0;
+            u.successRate = completed + failed > 0 ? (completed / (completed + failed)) * 100 : 100;
+        });
         
-        return offers.map(offer => ({
-            ...offer,
-            username: userMap[offer.userId]?.username,
-            firstName: userMap[offer.userId]?.firstName,
-            rating: userMap[offer.userId]?.rating || 5.0,
-            completedTrades: userMap[offer.userId]?.completedTrades || 0,
-            isVerified: userMap[offer.userId]?.isVerified || false,
-            isMerchant: userMap[offer.userId]?.isMerchant || false
-        }));
+        return offers.map(offer => {
+            const user = userMap[offer.userId];
+            // تحديد مستوى الثقة
+            let trustLevel = 'medium';
+            let trustBadge = '';
+            if (user?.completedTrades > 50 && user?.rating > 4.5) {
+                trustLevel = 'high';
+                trustBadge = '🏅 ممتاز';
+            } else if (user?.completedTrades > 10 && user?.rating > 4) {
+                trustLevel = 'high';
+                trustBadge = '✅ موثوق';
+            } else if (user?.completedTrades < 5) {
+                trustLevel = 'low';
+                trustBadge = '🆕 جديد';
+            }
+            
+            // تجميع الشارات
+            const badges = [];
+            if (user?.isVerified) badges.push('✅ موثق');
+            if (user?.completedTrades > 50) badges.push('👑 تاجر محترف');
+            if (user?.completedTrades > 10) badges.push('⭐ نشط');
+            if (user?.rating > 4.5) badges.push('🏅 ممتاز');
+            
+            return {
+                ...offer,
+                username: user?.username,
+                firstName: user?.firstName,
+                rating: user?.rating || 5.0,
+                completedTrades: user?.completedTrades || 0,
+                successRate: user?.successRate || 100,
+                isVerified: user?.isVerified || false,
+                isMerchant: user?.isMerchant || false,
+                trustLevel,
+                trustBadge,
+                badges: badges.join(' ')
+            };
+        });
     }
 
     async getUserOffers(userId) {
@@ -449,7 +592,8 @@ class Database {
                 `💸 *عمولة المنصة:* ${fee.toFixed(2)} USD\n` +
                 `🏦 *طريقة الدفع:* ${offer.paymentMethod}\n` +
                 `📝 *تفاصيل ${offer.type === 'sell' ? 'البائع' : 'المشتري'}:*\n${offer.type === 'sell' ? offer.paymentDetails : ''}\n\n` +
-                `✅ *بعد التحويل، أرسل:*\n/send_proof ${trade._id} [رابط الصورة]`
+                `✅ *بعد التحويل، أرسل:*\n/send_proof ${trade._id} [رابط الصورة]\n\n` +
+                `❌ *لإلغاء الصفقة قبل الدفع:*\n/cancel_trade ${trade._id}`
         };
     }
 
@@ -459,8 +603,6 @@ class Database {
         if (!trade) return { success: false, message: 'الصفقة غير موجودة' };
         
         await Trade.updateOne({ _id: tradeId }, { paymentProof: proofImage, status: 'paid', paidAt: new Date() });
-        
-        const seller = await this.getUser(trade.sellerId);
         
         return {
             success: true,
@@ -479,7 +621,6 @@ class Database {
         if (!trade) return { success: false, message: 'الصفقة غير موجودة' };
         
         const sellerWallet = await this.getUserWallet(sellerId);
-        const buyerWallet = await this.getUserWallet(trade.buyerId);
         
         if (trade.offerId) {
             const offer = await P2pOffer.findById(trade.offerId);
@@ -602,7 +743,6 @@ class Database {
         }
         
         const fee = amount * 0.02;
-        const totalAmount = amount + fee;
         
         const request = await WithdrawRequest.create({ userId, amount, currency, network, address, fee });
         
@@ -630,6 +770,13 @@ class Database {
     // ========== إحصائيات ==========
     async getLeaderboard(limit = 15) {
         return await User.find({}).sort({ totalTraded: -1 }).limit(limit).select('userId username firstName totalTraded completedTrades rating isVerified isMerchant').lean();
+    }
+
+    async getTopMerchants(limit = 10) {
+        return await User.find({ completedTrades: { $gt: 0 } })
+            .sort({ completedTrades: -1, rating: -1 })
+            .limit(limit)
+            .select('userId firstName username completedTrades rating isVerified');
     }
 
     async getGlobalStats() {
@@ -695,7 +842,7 @@ class Database {
                 { email: regex }, 
                 { userId: !isNaN(query) ? parseInt(query) : -1 }
             ] 
-        }).limit(20).select('userId username firstName lastName phoneNumber email rating isVerified isMerchant');
+        }).limit(20).select('userId username firstName lastName phoneNumber email rating isVerified isMerchant completedTrades');
     }
     
     async setLanguage(userId, language) { 
