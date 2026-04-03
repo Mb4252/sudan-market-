@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Telegraf, Markup } = require('telegraf');
+const { Telegraf } = require('telegraf');
 const db = require('./database');
 const express = require('express');
 const path = require('path');
@@ -56,14 +56,6 @@ const SUDAN_BANKS = process.env.SUDAN_BANKS
 
 // ========== إعداد بوت التلجرام ==========
 let bot;
-(async () => { 
-    try { 
-        await db.connect(); 
-        console.log('✅ Database connected'); 
-    } catch (e) { 
-        console.error('❌ DB error:', e); 
-    } 
-})();
 
 // ========== API Routes ==========
 app.get('/api/global_stats', async (req, res) => res.json(await db.getGlobalStats()));
@@ -99,7 +91,7 @@ app.get('/api/wallet/:userId', async (req, res) => {
     res.json({ addresses: { bnb: w.bnbAddress, polygon: w.polygonAddress, solana: w.solanaAddress, aptos: w.aptosAddress }, usdBalance: w.usdBalance, bankName: u?.bankName, bankAccountNumber: u?.bankAccountNumber, bankAccountName: u?.bankAccountName, isVerified: u?.isVerified });
 });
 
-// نقطة استقبال طلبات التوثيق
+// ========== نقطة استقبال طلبات التوثيق (KYC) - المعدلة ==========
 app.post('/api/kyc/submit', upload.fields([
     { name: 'passportPhoto', maxCount: 1 },
     { name: 'personalPhoto', maxCount: 1 }
@@ -107,19 +99,25 @@ app.post('/api/kyc/submit', upload.fields([
     try {
         const { user_id, fullName, passportNumber, nationalId, phoneNumber, email, country, city, bankName, bankAccountNumber, bankAccountName } = req.body;
         
+        console.log('📸 Received KYC submission for user:', user_id);
+        
         let passportFileId = null;
         let personalFileId = null;
         
-        if (req.files['passportPhoto'] && bot) {
+        // رفع صورة الجواز وإرسالها للأدمن
+        if (req.files['passportPhoto'] && req.files['passportPhoto'][0] && bot) {
             const passportBuffer = req.files['passportPhoto'][0].buffer;
             const passportMsg = await bot.telegram.sendPhoto(ADMIN_ID, { source: passportBuffer });
             passportFileId = passportMsg.photo[passportMsg.photo.length - 1].file_id;
+            console.log('✅ Passport photo sent to admin, file_id:', passportFileId);
         }
         
-        if (req.files['personalPhoto'] && bot) {
+        // رفع الصورة الشخصية وإرسالها للأدمن
+        if (req.files['personalPhoto'] && req.files['personalPhoto'][0] && bot) {
             const personalBuffer = req.files['personalPhoto'][0].buffer;
             const personalMsg = await bot.telegram.sendPhoto(ADMIN_ID, { source: personalBuffer });
             personalFileId = personalMsg.photo[personalMsg.photo.length - 1].file_id;
+            console.log('✅ Personal photo sent to admin, file_id:', personalFileId);
         }
         
         const result = await db.createKycRequest(
@@ -127,47 +125,52 @@ app.post('/api/kyc/submit', upload.fields([
             country, city, passportFileId, personalFileId, bankName, bankAccountNumber, bankAccountName
         );
         
+        console.log('📝 KYC Request result:', result.success ? 'Success' : 'Failed');
+        
         if (result.success && result.request && bot) {
             const reqData = result.request;
+            const shortId = reqData._id.toString().slice(-8);
             
-            await bot.telegram.sendPhoto(ADMIN_ID, reqData.passportPhotoFileId, {
-                caption: `🆔 *طلب توثيق جديد!*\n\n` +
-                    `👤 *المستخدم:* ${fullName}\n` +
-                    `🆔 *المعرف:* ${user_id}\n` +
-                    `📋 *رقم الطلب:* \`${reqData._id}\`\n\n` +
-                    `📝 *البيانات:*\n` +
-                    `• الاسم: ${fullName}\n` +
-                    `• الجواز: ${passportNumber}\n` +
-                    `• الرقم الوطني: ${nationalId}\n` +
-                    `• الهاتف: ${phoneNumber}\n` +
-                    `• البريد: ${email || 'لا يوجد'}\n` +
-                    `• البنك: ${bankName}\n` +
-                    `• رقم الحساب: ${bankAccountNumber}\n` +
-                    `• اسم الحساب: ${bankAccountName}`,
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            { text: '✅ موافقة', callback_data: `approve_kyc_${reqData._id}` },
-                            { text: '❌ رفض', callback_data: `reject_kyc_${reqData._id}` }
+            // إرسال رسالة نصية منفصلة تحتوي على البيانات والأزرار
+            await bot.telegram.sendMessage(ADMIN_ID,
+                `🆔 *طلب توثيق جديد!*\n\n` +
+                `👤 *المستخدم:* ${reqData.fullName}\n` +
+                `🆔 *المعرف:* \`${user_id}\`\n` +
+                `📋 *رقم الطلب:* \`${shortId}\`\n\n` +
+                `📝 *البيانات:*\n` +
+                `• الاسم: ${reqData.fullName}\n` +
+                `• الجواز: ${reqData.passportNumber || passportNumber}\n` +
+                `• الرقم الوطني: ${reqData.nationalId || nationalId}\n` +
+                `• الهاتف: ${reqData.phoneNumber}\n` +
+                `• البريد: ${reqData.email || 'لا يوجد'}\n` +
+                `• البنك: ${reqData.bankName}\n` +
+                `• رقم الحساب: ${reqData.bankAccountNumber}\n` +
+                `• اسم الحساب: ${reqData.bankAccountName}`,
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: '✅ موافقة', callback_data: `approve_kyc_${shortId}` },
+                                { text: '❌ رفض', callback_data: `reject_kyc_${shortId}` }
+                            ]
                         ]
-                    ]
+                    }
                 }
-            });
+            );
             
-            await bot.telegram.sendPhoto(ADMIN_ID, reqData.personalPhotoFileId, {
-                caption: `📸 *الصورة الشخصية للمستخدم*\n🆔 الطلب: ${reqData._id}`
-            });
+            console.log('✅ Admin notification sent with buttons for request:', shortId);
         }
         
         res.json(result);
     } catch (error) {
-        console.error('KYC submit error:', error);
+        console.error('❌ KYC submit error:', error);
         res.json({ success: false, message: error.message });
     }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`🌐 Web server on port ${PORT}`));
+// ========== تشغيل الخادم ==========
+const server = app.listen(PORT, '0.0.0.0', () => console.log(`🌐 Web server on port ${PORT}`));
 
 // ========== إعداد بوت التلجرام بعد خادم الويب ==========
 const { Telegraf: TelegrafBot } = require('telegraf');
@@ -741,7 +744,7 @@ bot.command('kyc', async (ctx) => {
     ctx.session.kycData = { fullName, passportNumber, nationalId, phoneNumber, email };
     ctx.session.state = 'kyc_step2';
     
-    await ctx.reply('📸 *الرجاء إرسال صورة واضحة للجواز الساري* (صورة أو файл)\n\n📌 *نصيحة:* تأكد من وضوح الصورة وجودتها');
+    await ctx.reply('📸 *الرجاء إرسال صورة واضحة للجواز الساري* (صورة أو ملف)\n\n📌 *نصيحة:* تأكد من وضوح الصورة وجودتها');
 });
 
 // معالجة الصور
@@ -830,11 +833,19 @@ bot.action(/approve_kyc_(.+)/, async (ctx) => {
     
     await ctx.answerCbQuery('✅ جاري الموافقة...');
     
-    const result = await db.approveKyc(requestId, ctx.from.id);
+    // البحث عن الطلب باستخدام المعرف المختصر
+    const pendingRequests = await db.getPendingKycRequests();
+    const targetRequest = pendingRequests.find(req => req._id.toString().slice(-8) === requestId);
     
-    await ctx.editMessageCaption(`✅ *تمت الموافقة على الطلب*\n📋 الطلب: ${requestId}`, {
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [] }
+    if (!targetRequest) {
+        await ctx.reply('❌ لم يتم العثور على الطلب');
+        return;
+    }
+    
+    const result = await db.approveKyc(targetRequest._id, ctx.from.id);
+    
+    await ctx.editMessageText(`✅ *تمت الموافقة على الطلب*\n📋 الطلب: ${requestId}`, {
+        parse_mode: 'Markdown'
     });
     
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
@@ -867,15 +878,17 @@ bot.on('text', async (ctx) => {
         const reason = ctx.message.text;
         const requestId = ctx.session.requestId;
         
-        const result = await db.rejectKyc(requestId, ctx.from.id, reason);
+        // البحث عن الطلب باستخدام المعرف المختصر
+        const pendingRequests = await db.getPendingKycRequests();
+        const targetRequest = pendingRequests.find(req => req._id.toString().slice(-8) === requestId);
         
-        await ctx.telegram.editMessageCaption(
-            ctx.chat.id,
-            ctx.message.message_id - 1,
-            null,
-            `❌ *تم رفض الطلب*\n📋 الطلب: ${requestId}\n📝 السبب: ${reason}`,
-            { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [] } }
-        );
+        if (!targetRequest) {
+            await ctx.reply('❌ لم يتم العثور على الطلب');
+            delete ctx.session.state;
+            return;
+        }
+        
+        const result = await db.rejectKyc(targetRequest._id, ctx.from.id, reason);
         
         await ctx.reply(result.message, { parse_mode: 'Markdown' });
         
@@ -901,7 +914,7 @@ bot.action('pending_kyc', async (ctx) => {
     
     let text = '🆔 *طلبات التوثيق المعلقة*\n\n';
     for (const req of pending) {
-        text += `🆔 الطلب: \`${req._id}\`\n`;
+        text += `🆔 الطلب: \`${req._id.toString().slice(-8)}\`\n`;
         text += `👤 المستخدم: ${req.fullName}\n`;
         text += `📞 الهاتف: ${req.phoneNumber}\n`;
         text += `📅 التاريخ: ${new Date(req.createdAt).toLocaleString()}\n`;
@@ -916,7 +929,7 @@ bot.action('pending_withdraws', async (ctx) => {
     const p = await db.getPendingWithdraws();
     if (!p.length) return ctx.editMessageText('📭 لا طلبات سحب', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
     let text = '💰 *طلبات السحب*\n\n';
-    p.forEach(r => { text += `🆔 \`${r._id}\` | 👤 ${r.userId}\n💰 ${r.amount} ${r.currency}\n🌐 ${r.network}\n📤 ${r.address}\n━━━━━━━━━━━━━━━━━━\n`; });
+    p.forEach(r => { text += `🆔 \`${r._id.toString().slice(-8)}\` | 👤 ${r.userId}\n💰 ${r.amount} ${r.currency}\n🌐 ${r.network}\n📤 ${r.address}\n━━━━━━━━━━━━━━━━━━\n`; });
     text += `\n📝 /confirm_withdraw [الرقم] [رابط]`;
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
@@ -934,7 +947,7 @@ bot.action('pending_deposits', async (ctx) => {
     const p = await db.getPendingDeposits();
     if (!p.length) return ctx.editMessageText('📭 لا طلبات إيداع', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
     let text = '📤 *طلبات الإيداع*\n\n';
-    p.forEach(r => { text += `🆔 \`${r._id}\` | 👤 ${r.userId}\n💰 ${r.amount} ${r.currency}\n🌐 ${r.network}\n📤 ${r.address}\n━━━━━━━━━━━━━━━━━━\n`; });
+    p.forEach(r => { text += `🆔 \`${r._id.toString().slice(-8)}\` | 👤 ${r.userId}\n💰 ${r.amount} ${r.currency}\n🌐 ${r.network}\n📤 ${r.address}\n━━━━━━━━━━━━━━━━━━\n`; });
     text += `\n📝 /confirm_deposit [الرقم] [رابط]`;
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
@@ -952,7 +965,7 @@ bot.action('pending_disputes', async (ctx) => {
     const p = await db.getDisputedTrades();
     if (!p.length) return ctx.editMessageText('📭 لا نزاعات', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
     let text = '⚠️ *النزاعات*\n\n';
-    p.forEach(r => { text += `🆔 \`${r._id}\`\n👤 المشتري: ${r.buyerId}\n👤 البائع: ${r.sellerId}\n💰 ${r.amount} ${r.currency}\n📝 السبب: ${r.disputeReason}\n━━━━━━━━━━━━━━━━━━\n`; });
+    p.forEach(r => { text += `🆔 \`${r._id.toString().slice(-8)}\`\n👤 المشتري: ${r.buyerId}\n👤 البائع: ${r.sellerId}\n💰 ${r.amount} ${r.currency}\n📝 السبب: ${r.disputeReason}\n━━━━━━━━━━━━━━━━━━\n`; });
     text += `\n📝 /resolve_dispute [الرقم] [buyer/seller]`;
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
