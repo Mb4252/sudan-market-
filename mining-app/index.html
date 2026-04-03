@@ -134,6 +134,7 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 8px;
+            flex-wrap: wrap;
         }
 
         .offer-user {
@@ -141,6 +142,7 @@
             display: flex;
             align-items: center;
             gap: 5px;
+            flex-wrap: wrap;
         }
 
         .offer-rating {
@@ -179,6 +181,33 @@
             border-radius: 12px;
             padding: 2px 8px;
             font-size: 10px;
+        }
+
+        .badge {
+            background: #2196F3;
+            color: white;
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-size: 10px;
+        }
+
+        .trust-badge {
+            display: inline-flex;
+            gap: 5px;
+            margin-top: 5px;
+            flex-wrap: wrap;
+        }
+
+        .trust-high {
+            background: #4caf50;
+        }
+
+        .trust-medium {
+            background: #ff9800;
+        }
+
+        .trust-low {
+            background: #f44336;
         }
 
         .trade-input, .offer-input, .bank-input, .kyc-input {
@@ -388,6 +417,42 @@
             margin-top: 10px;
         }
 
+        .history-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+
+        .history-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            margin-left: 5px;
+        }
+
+        .status-completed {
+            background: #4caf50;
+        }
+
+        .status-pending {
+            background: #ff9800;
+        }
+
+        .status-cancelled {
+            background: #f44336;
+        }
+
+        .escrow-info {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid #4caf50;
+            border-radius: 10px;
+            padding: 10px;
+            margin: 10px 0;
+            text-align: center;
+        }
+
         @media (max-width: 480px) {
             .tab-button { font-size: 11px; padding: 8px; }
             .stat-value { font-size: 18px; }
@@ -399,7 +464,7 @@
         <div class="card balance-card">
             <h2>💰 P2P Exchange</h2>
             <div class="balance-amount" id="usdBalance">0</div>
-            <div class="price-info">⭐ التقييم: <span id="userRating">5.0</span>/5 | ✅ <span id="completedTrades">0</span> صفقة</div>
+            <div class="price-info">⭐ التقييم: <span id="userRating">5.0</span>/5 | ✅ <span id="completedTrades">0</span> صفقة | 📈 نجاح: <span id="successRate">100</span>%</div>
             <div id="verificationStatus"></div>
         </div>
 
@@ -413,6 +478,7 @@
             <button class="tab-button" onclick="switchTab('create')">➕ إنشاء عرض</button>
             <button class="tab-button" onclick="switchTab('my')">📋 عروضي</button>
             <button class="tab-button" onclick="switchTab('trades')">🔄 صفقاتي</button>
+            <button class="tab-button" onclick="switchTab('history')">📜 تاريخي</button>
             <button class="tab-button" onclick="switchTab('wallet')">💼 محفظتي</button>
             <button class="tab-button" onclick="switchTab('kyc')">🆔 توثيق</button>
             <button class="tab-button" onclick="switchTab('leaderboard')">🏆 المتصدرين</button>
@@ -422,12 +488,15 @@
         <!-- سوق التداول -->
         <div id="market-tab" class="tab-content active">
             <div class="card">
-                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                    <select id="marketType" class="currency-select" onchange="loadMarket()">
+                <div class="escrow-info">
+                    🔐 *نظام الضمان* - العملات محتجزة حتى تأكيد الدفع
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                    <select id="marketType" class="currency-select" onchange="loadMarket()" style="flex:1">
                         <option value="sell">🟢 عروض البيع</option>
                         <option value="buy">🔴 عروض الشراء</option>
                     </select>
-                    <select id="marketCurrency" class="currency-select" onchange="loadMarket()">
+                    <select id="marketCurrency" class="currency-select" onchange="loadMarket()" style="flex:1">
                         <option value="">جميع العملات</option>
                         <option value="USD">🇺🇸 دولار أمريكي</option>
                         <option value="EUR">🇪🇺 يورو</option>
@@ -446,6 +515,9 @@
                         <option value="INR">🇮🇳 روبية هندية</option>
                         <option value="PKR">🇵🇰 روبية باكستانية</option>
                     </select>
+                </div>
+                <div id="marketStats" style="background:rgba(0,0,0,0.3); padding:10px; border-radius:10px; margin-bottom:10px; text-align:center; font-size:12px">
+                    📊 جاري تحميل إحصائيات السوق...
                 </div>
                 <div id="offersList"><div class="loading">جاري تحميل العروض...</div></div>
             </div>
@@ -517,6 +589,17 @@
             <div class="card">
                 <h3 style="color:white">🔄 صفقاتي</h3>
                 <div id="myTradesList"><div class="loading">جاري التحميل...</div></div>
+            </div>
+        </div>
+
+        <!-- تاريخي -->
+        <div id="history-tab" class="tab-content">
+            <div class="card">
+                <h3 style="color:white">📜 سجل عروضي</h3>
+                <div id="offersHistory"><div class="loading">جاري التحميل...</div></div>
+                <h3 style="color:white; margin-top:20px">🔄 سجل صفقاتي</h3>
+                <div id="tradesHistory"><div class="loading">جاري التحميل...</div></div>
+                <button class="refresh-btn" onclick="loadHistory()" style="margin-top:15px">🔄 تحديث السجل</button>
             </div>
         </div>
 
@@ -660,10 +743,10 @@
                 document.getElementById('usdBalance').textContent = data.usdBalance?.toFixed(2) || '0';
                 document.getElementById('userRating').textContent = data.rating?.toFixed(1) || '5.0';
                 document.getElementById('completedTrades').textContent = data.completedTrades || '0';
+                document.getElementById('successRate').textContent = data.successRate || '100';
                 
                 const verificationDiv = document.getElementById('verificationStatus');
                 
-                // جلب حالة التوثيق من الخادم مباشرة
                 const kycStatusRes = await fetch(`${API_URL}/api/kyc/status/${uid}`);
                 const kycStatusData = await kycStatusRes.json();
                 
@@ -681,12 +764,83 @@
                     document.getElementById('createWarning').style.display = 'block';
                 }
                 
-                // تحديث واجهة KYC إذا كانت مفتوحة
                 if (document.getElementById('kyc-tab').classList.contains('active')) {
                     await loadKycStatus();
                 }
             } catch(e) { 
                 console.error(e); 
+            }
+        }
+        
+        async function loadMarketStats() {
+            try {
+                const res = await fetch(`${API_URL}/api/market/stats`);
+                const stats = await res.json();
+                document.getElementById('marketStats').innerHTML = `
+                    📋 ${stats.totalOffers} عرض | 💰 متوسط السعر: ${stats.avgPrice} USD | 🌍 الأكثر نشاطاً: ${stats.mostActiveCurrency} | 👥 ${stats.totalTraders} متداول
+                `;
+            } catch(e) {
+                console.error(e);
+            }
+        }
+        
+        async function loadHistory() {
+            try {
+                const uid = tg.initDataUnsafe.user.id;
+                const res = await fetch(`${API_URL}/api/user/history/${uid}`);
+                const data = await res.json();
+                
+                // عرض العروض السابقة
+                const offersContainer = document.getElementById('offersHistory');
+                if (data.offers && data.offers.length > 0) {
+                    offersContainer.innerHTML = data.offers.map(o => {
+                        let statusClass = '';
+                        let statusText = '';
+                        if (o.status === 'completed') { statusClass = 'status-completed'; statusText = 'مكتمل'; }
+                        else if (o.status === 'active') { statusClass = 'status-pending'; statusText = 'نشط'; }
+                        else { statusClass = 'status-cancelled'; statusText = 'ملغي'; }
+                        
+                        return `
+                            <div class="history-item">
+                                <div>
+                                    <strong>${o.type === 'sell' ? '🟢 بيع' : '🔴 شراء'}</strong>
+                                    <span class="history-status ${statusClass}">${statusText}</span>
+                                </div>
+                                <div>💰 ${o.fiatAmount} ${o.currency} | 📊 ${o.price} ${o.currency}/USD</div>
+                                <div>📅 ${new Date(o.createdAt).toLocaleDateString('ar')}</div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    offersContainer.innerHTML = '<div class="loading">لا توجد عروض سابقة</div>';
+                }
+                
+                // عرض الصفقات السابقة
+                const tradesContainer = document.getElementById('tradesHistory');
+                if (data.trades && data.trades.length > 0) {
+                    tradesContainer.innerHTML = data.trades.map(t => {
+                        let statusClass = '';
+                        let statusText = '';
+                        if (t.status === 'completed') { statusClass = 'status-completed'; statusText = 'مكتمل'; }
+                        else if (t.status === 'pending') { statusClass = 'status-pending'; statusText = 'قيد التنفيذ'; }
+                        else { statusClass = 'status-cancelled'; statusText = 'ملغي'; }
+                        
+                        return `
+                            <div class="history-item">
+                                <div>
+                                    <strong>${t.role}</strong>
+                                    <span class="history-status ${statusClass}">${statusText}</span>
+                                </div>
+                                <div>💰 ${t.amount} ${t.currency} | مع ${t.otherParty}</div>
+                                <div>📅 ${new Date(t.createdAt).toLocaleDateString('ar')}</div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    tradesContainer.innerHTML = '<div class="loading">لا توجد صفقات سابقة</div>';
+                }
+            } catch(e) {
+                console.error(e);
             }
         }
         
@@ -696,7 +850,6 @@
             await loadKycStatus();
             if (userData.isVerified) {
                 tg.showAlert('✅ حسابك موثق! يمكنك الآن التداول');
-                // تحديث واجهة إنشاء العرض
                 document.getElementById('createWarning').style.display = 'none';
             } else {
                 tg.showAlert('⚠️ لا يزال حسابك غير موثق');
@@ -710,7 +863,6 @@
                 const data = await res.json();
                 kycStatus = data;
                 
-                // أيضاً تحديث userData للتأكد
                 const userRes = await fetch(`${API_URL}/api/user/stats/${uid}`);
                 const userStats = await userRes.json();
                 
@@ -727,7 +879,6 @@
                         </div>
                     `;
                     form.style.display = 'none';
-                    // تحديث الواجهة الرئيسية
                     document.getElementById('verificationStatus').innerHTML = '<div class="verified-badge">✅ حساب موثق</div>';
                     document.getElementById('createWarning').style.display = 'none';
                 } else if (data.status === 'pending') {
@@ -837,7 +988,6 @@
             const result = await res.json();
             tg.showAlert(result.message);
             if (result.success) {
-                // تنظيف النموذج
                 passportPhotoFile = null;
                 personalPhotoFile = null;
                 document.getElementById('passportPreview').innerHTML = '';
@@ -858,7 +1008,6 @@
         
         async function retryKyc() {
             tg.showAlert('جاري إعادة محاولة التوثيق...');
-            // مسح الحالة السابقة
             const res = await fetch(`${API_URL}/api/kyc/retry`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -889,14 +1038,18 @@
                             👤 ${o.firstName || o.username}
                             ${o.isVerified ? '<span class="verified-icon">موثق</span>' : ''}
                             ${o.isMerchant ? '<span class="merchant-icon">تاجر</span>' : ''}
+                            ${o.badges ? `<span class="badge">${o.badges.split(' ')[0]}</span>` : ''}
                         </div>
-                        <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
+                        <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'} | ✅ ${o.successRate || 100}%</div>
                     </div>
                     <div class="offer-amount">💰 ${o.fiatAmount.toFixed(2)} ${o.currency} (${currencyNames[o.currency] || o.currency})</div>
                     <div class="offer-price">📊 السعر: ${o.price.toFixed(2)} ${o.currency}/USD</div>
                     <div class="offer-details">💵 القيمة: ${(o.fiatAmount / o.price).toFixed(2)} USD</div>
                     <div class="offer-details">🏦 ${o.paymentMethod}</div>
                     <div class="offer-details">✅ ${o.completedTrades || 0} صفقة</div>
+                    <div class="trust-badge">
+                        ${o.trustBadge ? `<span class="badge trust-${o.trustLevel}">${o.trustBadge}</span>` : ''}
+                    </div>
                     <div class="offer-details">🆔 <code>${o._id}</code></div>
                     <button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button>
                 </div>
@@ -904,11 +1057,85 @@
         }
         
         async function loadMyOffers() {
-            document.getElementById('myOffersList').innerHTML = '<div class="loading">جاري التحميل...</div>';
+            try {
+                const uid = tg.initDataUnsafe.user.id;
+                const res = await fetch(`${API_URL}/api/user/offers/${uid}`);
+                const offers = await res.json();
+                const container = document.getElementById('myOffersList');
+                if (!offers.length) {
+                    container.innerHTML = '<div class="loading">لا توجد عروض نشطة</div>';
+                    return;
+                }
+                container.innerHTML = offers.map(o => `
+                    <div class="offer-card ${o.type === 'sell' ? 'offer-sell' : 'offer-buy'}">
+                        <div class="offer-amount">💰 ${o.fiatAmount} ${o.currency}</div>
+                        <div class="offer-price">📊 السعر: ${o.price} ${o.currency}/USD</div>
+                        <div class="offer-details">🏦 ${o.paymentMethod}</div>
+                        <button class="cancel-btn" onclick="cancelOffer('${o._id}')">❌ إلغاء العرض</button>
+                    </div>
+                `).join('');
+            } catch(e) {
+                document.getElementById('myOffersList').innerHTML = '<div class="loading">خطأ في التحميل</div>';
+            }
         }
         
         async function loadMyTrades() {
-            document.getElementById('myTradesList').innerHTML = '<div class="loading">جاري التحميل...</div>';
+            try {
+                const uid = tg.initDataUnsafe.user.id;
+                const res = await fetch(`${API_URL}/api/user/trades/${uid}`);
+                const trades = await res.json();
+                const container = document.getElementById('myTradesList');
+                if (!trades.length) {
+                    container.innerHTML = '<div class="loading">لا توجد صفقات</div>';
+                    return;
+                }
+                container.innerHTML = trades.map(t => `
+                    <div class="offer-card">
+                        <div class="offer-amount">💰 ${t.amount} ${t.currency}</div>
+                        <div class="offer-details">📊 الحالة: ${t.status === 'pending' ? '⏳ معلقة' : t.status === 'paid' ? '✅ تم الدفع' : t.status === 'completed' ? '✔️ مكتملة' : '❌ ملغية'}</div>
+                        ${t.status === 'pending' ? `<button class="cancel-btn" onclick="cancelTrade('${t._id}')">❌ إلغاء الصفقة</button>` : ''}
+                        ${t.status === 'paid' && t.sellerId === uid ? `<button class="trade-btn" onclick="releaseCrystals('${t._id}')">🔓 تحرير العملة</button>` : ''}
+                    </div>
+                `).join('');
+            } catch(e) {
+                document.getElementById('myTradesList').innerHTML = '<div class="loading">خطأ في التحميل</div>';
+            }
+        }
+        
+        async function cancelOffer(offerId) {
+            tg.showAlert('جاري إلغاء العرض...');
+            const res = await fetch(`${API_URL}/api/offer/cancel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId })
+            });
+            const result = await res.json();
+            tg.showAlert(result.message);
+            if (result.success) loadMyOffers();
+        }
+        
+        async function cancelTrade(tradeId) {
+            tg.showAlert('⚠️ هل أنت متأكد من إلغاء الصفقة؟', true);
+            const res = await fetch(`${API_URL}/api/trade/cancel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, trade_id: tradeId })
+            });
+            const result = await res.json();
+            tg.showAlert(result.message);
+            if (result.success) loadMyTrades();
+        }
+        
+        async function releaseCrystals(tradeId) {
+            tg.showAlert('جاري تحرير العملة...');
+            const res = await fetch(`${API_URL}/api/trade/release`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, trade_id: tradeId })
+            });
+            const result = await res.json();
+            tg.showAlert(result.message);
+            if (result.success) loadMyTrades();
         }
         
         async function loadWallet() {
@@ -1032,7 +1259,7 @@
             const result = await res.json();
             tg.showAlert(result.message);
             if (result.success && result.sellerPaymentDetails) {
-                tg.showAlert(`📤 تفاصيل الدفع:\n${result.sellerPaymentDetails}\n\nبعد التحويل: /send_proof ${result.tradeId} [رابط الصورة]`);
+                tg.showAlert(`📤 تفاصيل الدفع:\n${result.sellerPaymentDetails}\n\nبعد التحويل: /send_proof ${result.tradeId} [رابط الصورة]\n\nلإلغاء الصفقة: /cancel_trade ${result.tradeId}`);
             }
         }
         
@@ -1089,9 +1316,10 @@
             document.getElementById(`${tab}-tab`).classList.add('active');
             event.target.classList.add('active');
             
-            if (tab === 'market') loadMarket();
+            if (tab === 'market') { loadMarket(); loadMarketStats(); }
             if (tab === 'my') loadMyOffers();
             if (tab === 'trades') loadMyTrades();
+            if (tab === 'history') loadHistory();
             if (tab === 'wallet') loadWallet();
             if (tab === 'kyc') { loadKycStatus(); loadBankInfo(); }
             if (tab === 'leaderboard') loadLeaderboard();
@@ -1107,10 +1335,10 @@
             }
         });
         
-        // تهيئة التطبيق
         async function init() {
             await loadUserData();
             await loadMarket();
+            await loadMarketStats();
             await loadKycStatus();
         }
         
