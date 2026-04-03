@@ -63,31 +63,43 @@ const userSchema = new mongoose.Schema({
     isMerchant: { type: Boolean, default: false },
     
     // ========== نظام الأمان ==========
-    isLocked: { type: Boolean, default: false },           // قفل مؤقت
-    isBanned: { type: Boolean, default: false },           // حظر دائم
+    isLocked: { type: Boolean, default: false },
+    isBanned: { type: Boolean, default: false },
     banReason: { type: String, default: '' },
     banExpires: { type: Date, default: null },
-    warningCount: { type: Number, default: 0 },            // عدد التحذيرات
-    suspiciousActions: { type: Array, default: [] },       // سجل الأنشطة المشبوهة
+    warningCount: { type: Number, default: 0 },
+    suspiciousActions: { type: Array, default: [] },
     
     // ========== التحقق بخطوتين (2FA) ==========
-    twoFAEnabled: { type: Boolean, default: false },       // هل 2FA مفعل؟
-    twoFASecret: { type: String, default: '' },            // الرمز السري المشفر
-    twoFABackupCodes: { type: Array, default: [] },        // أكواد الطوارئ (مشفرة)
+    twoFAEnabled: { type: Boolean, default: false },
+    twoFASecret: { type: String, default: '' },
+    twoFABackupCodes: { type: Array, default: [] },
+    
+    // ========== إعدادات 2FA للتحرير ==========
+    require2FAForRelease: { type: Boolean, default: true },
+    release2FAThreshold: { type: Number, default: 100 },
     
     // ========== الإحالات (Referral) ==========
-    referrerId: { type: Number, default: null },           // من دعاه
-    referralCount: { type: Number, default: 0 },           // عدد من دعاهم
-    referralEarnings: { type: Number, default: 0 },        // إجمالي أرباح الإحالات
-    referralCommissionRate: { type: Number, default: 10 }, // نسبة العمولة من المدعو (10%)
-    referrals: [{                                          // قائمة المدعوين
+    referrerId: { type: Number, default: null },
+    referralCount: { type: Number, default: 0 },
+    referralEarnings: { type: Number, default: 0 },
+    referralCommissionRate: { type: Number, default: 10 },
+    referrals: [{ 
         userId: { type: Number },
         joinedAt: { type: Date, default: Date.now },
         totalCommission: { type: Number, default: 0 },
         earned: { type: Number, default: 0 }
     }],
     
-    // إحصائيات التداول
+    // ========== نشاط التاجر ==========
+    lastSeen: { type: Date, default: Date.now },
+    isOnline: { type: Boolean, default: false },
+    totalDelays: { type: Number, default: 0 },
+    totalDelayMinutes: { type: Number, default: 0 },
+    isFlagged: { type: Boolean, default: false },
+    flagReason: { type: String, default: '' },
+    
+    // ========== إحصائيات التداول ==========
     usdBalance: { type: Number, default: 0 },
     totalTraded: { type: Number, default: 0 },
     totalProfit: { type: Number, default: 0 },
@@ -96,13 +108,17 @@ const userSchema = new mongoose.Schema({
     failedTrades: { type: Number, default: 0 },
     successRate: { type: Number, default: 100 },
     
-    // مراجع
-    referrerId: { type: Number, default: null },
-    referralCount: { type: Number, default: 0 },
+    // ========== نشاط يومي ==========
+    dailyTrades: [{ 
+        date: { type: String },
+        amount: { type: Number },
+        timestamp: { type: Date, default: Date.now }
+    }],
+    
+    // ========== مراجع ==========
     walletId: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet' },
     
-    // النشاط
-    lastActive: { type: Date, default: Date.now },
+    // ========== معلومات الدخول ==========
     lastLoginIp: { type: String, default: '' },
     loginAttempts: { type: Number, default: 0 },
     
@@ -112,7 +128,7 @@ const userSchema = new mongoose.Schema({
 // ========== نموذج سجل التدقيق (Audit Log) ==========
 const auditLogSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
-    action: { type: String, required: true }, // login, trade, withdraw, kyc, change_2fa, etc.
+    action: { type: String, required: true },
     details: { type: Object, default: {} },
     ip: { type: String, default: '' },
     userAgent: { type: String, default: '' },
@@ -182,7 +198,7 @@ const tradeSchema = new mongoose.Schema({
     },
     disputeReason: { type: String, default: '' },
     disputeOpenedBy: { type: Number, default: null },
-    signature: { type: String, default: '' },        // توقيع الصفقة (للصفقات الكبيرة)
+    signature: { type: String, default: '' },
     signedBy: { type: Number, default: null },
     signedAt: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now },
@@ -216,7 +232,7 @@ const withdrawRequestSchema = new mongoose.Schema({
     status: { type: String, enum: ['pending', 'approved', 'rejected', 'completed'], default: 'pending' },
     transactionHash: { type: String, default: '' },
     fee: { type: Number, default: 0 },
-    twoFACode: { type: String, default: '' },       // رمز 2FA المطلوب للسحب
+    twoFACode: { type: String, default: '' },
     twoFAVerified: { type: Boolean, default: false },
     approvedBy: { type: Number, default: null },
     approvedAt: { type: Date, default: null },
