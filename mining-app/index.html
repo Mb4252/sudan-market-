@@ -231,6 +231,18 @@
             margin-right: 5px;
         }
 
+        .refresh-btn {
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 15px;
+            width: 100%;
+            font-size: 14px;
+        }
+
         .address-box {
             background: rgba(0, 0, 0, 0.5);
             padding: 10px;
@@ -534,6 +546,7 @@
         <div id="kyc-tab" class="tab-content">
             <div class="card">
                 <h3 style="color:white">🆔 توثيق الهوية (KYC)</h3>
+                <button class="refresh-btn" onclick="refreshKycStatus()">🔄 تحديث حالة التوثيق</button>
                 <div id="kycStatus" class="kyc-status-card">
                     <div class="loading">جاري التحميل...</div>
                 </div>
@@ -649,20 +662,45 @@
                 document.getElementById('completedTrades').textContent = data.completedTrades || '0';
                 
                 const verificationDiv = document.getElementById('verificationStatus');
+                
+                // جلب حالة التوثيق من الخادم مباشرة
+                const kycStatusRes = await fetch(`${API_URL}/api/kyc/status/${uid}`);
+                const kycStatusData = await kycStatusRes.json();
+                
                 if (data.isVerified) {
                     verificationDiv.innerHTML = '<div class="verified-badge">✅ حساب موثق</div>';
                     document.getElementById('createWarning').style.display = 'none';
+                } else if (kycStatusData.status === 'pending') {
+                    verificationDiv.innerHTML = '<div class="pending-badge">⏳ طلب توثيق قيد المراجعة</div>';
+                    document.getElementById('createWarning').style.display = 'block';
+                } else if (kycStatusData.status === 'rejected') {
+                    verificationDiv.innerHTML = '<div class="unverified-badge">⚠️ تم رفض التوثيق - يرجى إعادة المحاولة</div>';
+                    document.getElementById('createWarning').style.display = 'block';
                 } else {
-                    const kyc = await loadKycStatus();
-                    if (kyc.status === 'pending') {
-                        verificationDiv.innerHTML = '<div class="pending-badge">⏳ طلب توثيق قيد المراجعة</div>';
-                        document.getElementById('createWarning').style.display = 'block';
-                    } else {
-                        verificationDiv.innerHTML = '<div class="unverified-badge">⚠️ حساب غير موثق - يرجى التوثيق للمتاجرة</div>';
-                        document.getElementById('createWarning').style.display = 'block';
-                    }
+                    verificationDiv.innerHTML = '<div class="unverified-badge">⚠️ حساب غير موثق - يرجى التوثيق للمتاجرة</div>';
+                    document.getElementById('createWarning').style.display = 'block';
                 }
-            } catch(e) { console.error(e); }
+                
+                // تحديث واجهة KYC إذا كانت مفتوحة
+                if (document.getElementById('kyc-tab').classList.contains('active')) {
+                    await loadKycStatus();
+                }
+            } catch(e) { 
+                console.error(e); 
+            }
+        }
+        
+        async function refreshKycStatus() {
+            tg.showAlert('🔄 جاري تحديث حالة التوثيق...');
+            await loadUserData();
+            await loadKycStatus();
+            if (userData.isVerified) {
+                tg.showAlert('✅ حسابك موثق! يمكنك الآن التداول');
+                // تحديث واجهة إنشاء العرض
+                document.getElementById('createWarning').style.display = 'none';
+            } else {
+                tg.showAlert('⚠️ لا يزال حسابك غير موثق');
+            }
         }
         
         async function loadKycStatus() {
@@ -672,24 +710,33 @@
                 const data = await res.json();
                 kycStatus = data;
                 
+                // أيضاً تحديث userData للتأكد
+                const userRes = await fetch(`${API_URL}/api/user/stats/${uid}`);
+                const userStats = await userRes.json();
+                
                 const container = document.getElementById('kycStatus');
                 const form = document.getElementById('kycForm');
                 
-                if (userData.isVerified) {
+                if (userStats.isVerified) {
                     container.innerHTML = `
                         <div class="kyc-approved" style="text-align:center;">
                             <div style="font-size:48px">✅</div>
                             <h3>حسابك موثق</h3>
                             <p>يمكنك التداول بحرية على المنصة</p>
+                            <button class="trade-btn" onclick="switchTab('market')" style="margin-top:10px">🚀 ابدأ التداول</button>
                         </div>
                     `;
                     form.style.display = 'none';
+                    // تحديث الواجهة الرئيسية
+                    document.getElementById('verificationStatus').innerHTML = '<div class="verified-badge">✅ حساب موثق</div>';
+                    document.getElementById('createWarning').style.display = 'none';
                 } else if (data.status === 'pending') {
                     container.innerHTML = `
                         <div class="kyc-pending" style="text-align:center;">
                             <div style="font-size:48px">⏳</div>
                             <h3>طلب التوثيق قيد المراجعة</h3>
                             <p>سيتم إعلامك عند اكتمال المراجعة</p>
+                            <button class="copy-btn" onclick="refreshKycStatus()" style="margin-top:10px">🔄 تحديث</button>
                         </div>
                     `;
                     form.style.display = 'none';
@@ -714,7 +761,10 @@
                     form.style.display = 'block';
                 }
                 return data;
-            } catch(e) { console.error(e); return { status: 'not_submitted' }; }
+            } catch(e) { 
+                console.error(e); 
+                return { status: 'not_submitted' }; 
+            }
         }
         
         function previewPassport(event) {
@@ -787,13 +837,28 @@
             const result = await res.json();
             tg.showAlert(result.message);
             if (result.success) {
-                loadKycStatus();
-                loadUserData();
+                // تنظيف النموذج
+                passportPhotoFile = null;
+                personalPhotoFile = null;
+                document.getElementById('passportPreview').innerHTML = '';
+                document.getElementById('personalPreview').innerHTML = '';
+                document.getElementById('kycFullName').value = '';
+                document.getElementById('kycPassport').value = '';
+                document.getElementById('kycNationalId').value = '';
+                document.getElementById('kycPhone').value = '';
+                document.getElementById('kycEmail').value = '';
+                document.getElementById('kycBank').value = '';
+                document.getElementById('kycAccountNumber').value = '';
+                document.getElementById('kycAccountName').value = '';
+                
+                await loadKycStatus();
+                await loadUserData();
             }
         }
         
         async function retryKyc() {
             tg.showAlert('جاري إعادة محاولة التوثيق...');
+            // مسح الحالة السابقة
             const res = await fetch(`${API_URL}/api/kyc/retry`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -802,8 +867,8 @@
             const result = await res.json();
             tg.showAlert(result.message);
             if (result.success) {
-                loadKycStatus();
-                loadUserData();
+                await loadKycStatus();
+                await loadUserData();
             }
         }
         
@@ -918,7 +983,7 @@
         }
         
         async function createOffer() {
-            if (!userData.isVerified && kycStatus.status !== 'approved') {
+            if (!userData.isVerified) {
                 tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً');
                 switchTab('kyc');
                 return;
@@ -955,7 +1020,7 @@
         }
         
         async function startTrade(offerId) {
-            if (!userData.isVerified && kycStatus.status !== 'approved') {
+            if (!userData.isVerified) {
                 tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً');
                 switchTab('kyc');
                 return;
@@ -1042,10 +1107,14 @@
             }
         });
         
-        registerUser();
-        loadUserData();
-        loadMarket();
-        loadKycStatus();
+        // تهيئة التطبيق
+        async function init() {
+            await loadUserData();
+            await loadMarket();
+            await loadKycStatus();
+        }
+        
+        init();
         
         tg.MainButton.setText("🚀 فتح البوت");
         tg.MainButton.onClick(() => tg.close());
