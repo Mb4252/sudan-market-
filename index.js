@@ -58,13 +58,17 @@ const SUDAN_BANKS = process.env.SUDAN_BANKS
 // ========== إعداد بوت التلجرام ==========
 let bot;
 
-// ========== API Routes ==========
+// ========== API Routes الأساسية ==========
 app.get('/api/global_stats', async (req, res) => res.json(await db.getGlobalStats()));
 app.get('/api/user/:userId', async (req, res) => {
     const u = await db.getUser(parseInt(req.params.userId));
     res.json(u || { usdBalance: 0, isVerified: false });
 });
 app.get('/api/user/stats/:userId', async (req, res) => res.json(await db.getUserStats(parseInt(req.params.userId))));
+app.get('/api/user/status/:userId', async (req, res) => {
+    const status = await db.getUserOnlineStatus(parseInt(req.params.userId));
+    res.json(status);
+});
 app.get('/api/kyc/status/:userId', async (req, res) => res.json(await db.getKycStatus(parseInt(req.params.userId))));
 app.get('/api/leaderboard', async (req, res) => {
     const l = await db.getLeaderboard(15);
@@ -75,13 +79,13 @@ app.post('/api/offer/create', async (req, res) => res.json(await db.createOffer(
 app.post('/api/offer/cancel', async (req, res) => res.json(await db.cancelOffer(req.body.offer_id, parseInt(req.body.user_id))));
 app.post('/api/trade/start', async (req, res) => res.json(await db.startTrade(req.body.offer_id, parseInt(req.body.user_id))));
 app.post('/api/trade/confirm', async (req, res) => res.json(await db.confirmPayment(req.body.trade_id, parseInt(req.body.user_id), req.body.proof_image)));
-app.post('/api/trade/release', async (req, res) => res.json(await db.releaseCrystals(req.body.trade_id, parseInt(req.body.user_id))));
+app.post('/api/trade/release', async (req, res) => res.json(await db.releaseCrystals(req.body.trade_id, parseInt(req.body.user_id), req.body.twofa_code || null, req.ip, req.headers['user-agent'] || '')));
 app.post('/api/trade/dispute', async (req, res) => res.json(await db.openDispute(req.body.trade_id, parseInt(req.body.user_id), req.body.reason)));
 app.post('/api/trade/rate', async (req, res) => res.json(await db.addReview(req.body.trade_id, parseInt(req.body.user_id), parseInt(req.body.rating), req.body.comment)));
 app.post('/api/deposit', async (req, res) => res.json(await db.requestDeposit(parseInt(req.body.user_id), parseFloat(req.body.amount), req.body.currency, req.body.network)));
-app.post('/api/withdraw', async (req, res) => res.json(await db.requestWithdraw(parseInt(req.body.user_id), parseFloat(req.body.amount), req.body.currency, req.body.network, req.body.address)));
+app.post('/api/withdraw', async (req, res) => res.json(await db.requestWithdraw(parseInt(req.body.user_id), parseFloat(req.body.amount), req.body.currency, req.body.network, req.body.address, req.body.twofa_code || null)));
 app.post('/api/register', async (req, res) => {
-    await db.registerUser(parseInt(req.body.user_id), req.body.username, req.body.first_name, req.body.last_name, req.body.phone, req.body.email, req.body.country, req.body.city, null, req.body.language || 'ar');
+    await db.registerUser(parseInt(req.body.user_id), req.body.username, req.body.first_name, req.body.last_name, req.body.phone, req.body.email, req.body.country, req.body.city, null, req.body.language || 'ar', req.ip, req.headers['user-agent'] || '');
     res.json({ success: true });
 });
 app.post('/api/update_bank', async (req, res) => res.json(await db.updateBankDetails(parseInt(req.body.user_id), req.body.bankName, req.body.accountNumber, req.body.accountName)));
@@ -93,8 +97,6 @@ app.get('/api/wallet/:userId', async (req, res) => {
 });
 
 // ========== نقاط API الجديدة ==========
-
-// تاريخ العروض والصفقات
 app.get('/api/user/history/:userId', async (req, res) => {
     const userId = parseInt(req.params.userId);
     const offers = await db.getUserOffersHistory(userId, 20);
@@ -102,21 +104,106 @@ app.get('/api/user/history/:userId', async (req, res) => {
     res.json({ offers, trades });
 });
 
-// إحصائيات السوق
 app.get('/api/market/stats', async (req, res) => {
     const stats = await db.getMarketStats();
     res.json(stats);
 });
 
-// إلغاء صفقة معلقة
 app.post('/api/trade/cancel', async (req, res) => {
     res.json(await db.cancelPendingTrade(req.body.trade_id, parseInt(req.body.user_id)));
 });
 
-// كبار المتداولين
 app.get('/api/top/merchants', async (req, res) => {
     const merchants = await db.getTopMerchants(10);
     res.json(merchants);
+});
+
+app.get('/api/user/offers/:userId', async (req, res) => {
+    const userId = parseInt(req.params.userId);
+    const offers = await db.getUserOffers(userId);
+    res.json(offers);
+});
+
+app.get('/api/user/trades/:userId', async (req, res) => {
+    const userId = parseInt(req.params.userId);
+    const trades = await db.getUserTradesHistory(userId, 20);
+    res.json(trades);
+});
+
+// ========== نقاط API لنظام الإحالات ==========
+app.get('/api/user/referral/:userId', async (req, res) => {
+    try {
+        const userId = parseInt(req.params.userId);
+        const user = await db.getUser(userId);
+        if (!user) {
+            return res.json({ referralCount: 0, referralEarnings: 0, referrals: [] });
+        }
+        res.json({
+            referralCount: user.referralCount || 0,
+            referralEarnings: user.referralEarnings || 0,
+            referrals: user.referrals || []
+        });
+    } catch (error) {
+        console.error('Referral API error:', error);
+        res.json({ referralCount: 0, referralEarnings: 0, referrals: [] });
+    }
+});
+
+// ========== نقاط API لنظام الأمان و 2FA ==========
+app.get('/api/user/security/:userId', async (req, res) => {
+    try {
+        const userId = parseInt(req.params.userId);
+        const user = await db.getUser(userId);
+        if (!user) {
+            return res.json({ twoFAEnabled: false, warningCount: 0, lastLoginIp: 'غير معروف', completedTrades: 0 });
+        }
+        res.json({
+            twoFAEnabled: user.twoFAEnabled || false,
+            warningCount: user.warningCount || 0,
+            lastLoginIp: user.lastLoginIp || 'غير معروف',
+            completedTrades: user.completedTrades || 0,
+            require2FAForRelease: user.require2FAForRelease || true,
+            release2FAThreshold: user.release2FAThreshold || 100,
+            isFlagged: user.isFlagged || false,
+            totalDelays: user.totalDelays || 0
+        });
+    } catch (error) {
+        console.error('Security API error:', error);
+        res.json({ twoFAEnabled: false, warningCount: 0, lastLoginIp: 'غير معروف', completedTrades: 0 });
+    }
+});
+
+app.post('/api/2fa/generate', async (req, res) => {
+    try {
+        const { user_id } = req.body;
+        const result = await db.generate2FASecret(parseInt(user_id));
+        res.json(result);
+    } catch (error) {
+        console.error('2FA generate error:', error);
+        res.json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/2fa/enable', async (req, res) => {
+    try {
+        const { user_id, code } = req.body;
+        const result = await db.enable2FA(parseInt(user_id), code);
+        res.json(result);
+    } catch (error) {
+        console.error('2FA enable error:', error);
+        res.json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/2fa/disable', async (req, res) => {
+    try {
+        const { user_id, code } = req.body;
+        const result = await db.disable2FA(parseInt(user_id), code);
+        res.json(result);
+    } catch (error) {
+        console.error('2FA disable error:', error);
+        res.json({ success: false, message: error.message });
+    }
 });
 
 // ========== نقطة استقبال طلبات التوثيق (KYC) ==========
@@ -308,7 +395,7 @@ const adminKeyboard = Markup.inlineKeyboard([
 bot.start(async (ctx) => {
     const user = ctx.from;
     const referrer = ctx.startPayload ? parseInt(ctx.startPayload) : null;
-    await db.registerUser(user.id, user.username, user.first_name, '', '', '', 'SD', '', referrer, 'ar');
+    await db.registerUser(user.id, user.username, user.first_name, '', '', '', 'SD', '', referrer, 'ar', ctx.message?.chat?.id, ctx.message?.from?.is_bot ? 'Bot' : 'User');
     const stats = await db.getUserStats(user.id);
     const kycStatus = await db.getKycStatus(user.id);
     
@@ -321,6 +408,8 @@ bot.start(async (ctx) => {
         verifiedMsg = '⚠️ *يرجى توثيق حسابك للمتاجرة*';
     }
     
+    const onlineStatus = await db.getUserOnlineStatus(user.id);
+    
     await ctx.reply(
         `✨ *مرحباً بك في منصة P2P للتداول!* ✨\n\n` +
         `👤 *المستخدم:* ${user.first_name}\n` +
@@ -329,6 +418,7 @@ bot.start(async (ctx) => {
         `⭐ *التقييم:* ${stats.rating.toFixed(1)}/5\n` +
         `✅ *الصفقات المكتملة:* ${stats.completedTrades}\n` +
         `📈 *نسبة النجاح:* ${stats.successRate || 100}%\n` +
+        `${onlineStatus.statusText}\n` +
         `${verifiedMsg}\n\n` +
         `🚀 *اضغط على الزر أدناه لفتح منصة التداول*`,
         { parse_mode: 'Markdown', ...startKeyboard }
@@ -377,7 +467,7 @@ bot.action('offers_sell', rateLimitMiddleware, async (ctx) => {
     for (const o of offers) {
         const verifiedIcon = o.isVerified ? '✅' : '❌';
         const merchantIcon = o.isMerchant ? '👑' : '';
-        text += `👤 ${o.firstName || o.username} ${verifiedIcon}${merchantIcon} | ⭐ ${o.rating.toFixed(1)} | ✅ ${o.successRate || 100}%\n`;
+        text += `👤 ${o.firstName || o.username} ${verifiedIcon}${merchantIcon} | ⭐ ${o.rating.toFixed(1)} | ✅ ${o.successRate || 100}% ${o.isOnline ? '🟢' : ''}\n`;
         text += `💰 ${o.fiatAmount.toFixed(2)} ${o.currency} | 📊 ${o.price.toFixed(2)} ${o.currency}/USD\n`;
         text += `💵 القيمة: ${(o.fiatAmount / o.price).toFixed(2)} USD\n`;
         text += `🏦 ${o.paymentMethod}\n`;
@@ -401,7 +491,7 @@ bot.action('offers_buy', rateLimitMiddleware, async (ctx) => {
     for (const o of offers) {
         const verifiedIcon = o.isVerified ? '✅' : '❌';
         const merchantIcon = o.isMerchant ? '👑' : '';
-        text += `👤 ${o.firstName || o.username} ${verifiedIcon}${merchantIcon} | ⭐ ${o.rating.toFixed(1)} | ✅ ${o.successRate || 100}%\n`;
+        text += `👤 ${o.firstName || o.username} ${verifiedIcon}${merchantIcon} | ⭐ ${o.rating.toFixed(1)} | ✅ ${o.successRate || 100}% ${o.isOnline ? '🟢' : ''}\n`;
         text += `💰 ${o.fiatAmount.toFixed(2)} ${o.currency} | 📊 ${o.price.toFixed(2)} ${o.currency}/USD\n`;
         text += `💵 القيمة: ${(o.fiatAmount / o.price).toFixed(2)} USD\n`;
         text += `🏦 ${o.paymentMethod}\n`;
@@ -519,23 +609,53 @@ bot.command('send_proof', async (ctx) => {
     }
 });
 
-// ========== تحرير العملة ==========
-bot.command('release_crystals', async (ctx) => {
-    const id = ctx.message.text.split(' ')[1];
-    if (!id) return ctx.reply('❌ /release_crystals [رقم الصفقة]');
-    const result = await db.releaseCrystals(id, ctx.from.id);
-    await ctx.reply(result.message, { parse_mode: 'Markdown' });
-    if (result.buyerId) {
-        await bot.telegram.sendMessage(result.buyerId, result.message, { parse_mode: 'Markdown' });
-    }
-});
-
-// ========== إلغاء الصفقة (جديد) ==========
+// ========== إلغاء الصفقة ==========
 bot.command('cancel_trade', async (ctx) => {
     const tradeId = ctx.message.text.split(' ')[1];
     if (!tradeId) return ctx.reply('❌ /cancel_trade [رقم الصفقة]\n⚠️ يمكنك إلغاء الصفقة فقط قبل تأكيد الدفع');
     const result = await db.cancelPendingTrade(tradeId, ctx.from.id);
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
+});
+
+// ========== أمر تذكير البائع ==========
+bot.command('remind_seller', async (ctx) => {
+    const tradeId = ctx.message.text.split(' ')[1];
+    if (!tradeId) return ctx.reply('❌ /remind_seller [رقم الصفقة]');
+    
+    const result = await db.remindSeller(tradeId, ctx.from.id);
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
+});
+
+// ========== أمر تحرير العملة مع 2FA ==========
+bot.command('release_crystals', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    const tradeId = args[1];
+    const twoFACode = args[2] || null;
+    
+    if (!tradeId) return ctx.reply('❌ /release_crystals [رقم الصفقة] <رمز 2FA اختياري>');
+    
+    const result = await db.releaseCrystals(tradeId, ctx.from.id, twoFACode, ctx.message?.chat?.id, ctx.message?.from?.is_bot ? 'Bot' : 'User');
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
+    
+    if (result.success && result.buyerId) {
+        await bot.telegram.sendMessage(result.buyerId, result.message, { parse_mode: 'Markdown' });
+    }
+});
+
+// ========== أمر تحرير العملة مع 2FA منفصل ==========
+bot.command('release_2fa', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    const tradeId = args[1];
+    const twoFACode = args[2];
+    
+    if (!tradeId || !twoFACode) return ctx.reply('❌ /release_2fa [رقم الصفقة] [رمز 2FA]');
+    
+    const result = await db.releaseCrystals(tradeId, ctx.from.id, twoFACode, ctx.message?.chat?.id, ctx.message?.from?.is_bot ? 'Bot' : 'User');
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
+    
+    if (result.success && result.buyerId) {
+        await bot.telegram.sendMessage(result.buyerId, result.message, { parse_mode: 'Markdown' });
+    }
 });
 
 // ========== نزاع ==========
@@ -574,7 +694,7 @@ bot.action('my_trades', rateLimitMiddleware, async (ctx) => {
     );
 });
 
-// ========== تاريخي (جديد) ==========
+// ========== تاريخي ==========
 bot.action('my_history', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const offers = await db.getUserOffersHistory(ctx.from.id, 10);
@@ -605,7 +725,7 @@ bot.action('my_history', rateLimitMiddleware, async (ctx) => {
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
 
-// ========== إحصائيات السوق (جديد) ==========
+// ========== إحصائيات السوق ==========
 bot.action('market_stats', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const stats = await db.getMarketStats();
@@ -621,7 +741,7 @@ bot.action('market_stats', rateLimitMiddleware, async (ctx) => {
     );
 });
 
-// ========== كبار المتداولين (جديد) ==========
+// ========== كبار المتداولين ==========
 bot.action('top_merchants', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const merchants = await db.getTopMerchants(10);
@@ -634,7 +754,8 @@ bot.action('top_merchants', rateLimitMiddleware, async (ctx) => {
     for (let i = 0; i < merchants.length; i++) {
         const m = merchants[i];
         const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
-        text += `${medal} *${m.firstName || m.username || m.userId}* ${m.isVerified ? '✅' : ''}\n`;
+        const status = await db.getUserOnlineStatus(m.userId);
+        text += `${medal} *${m.firstName || m.username || m.userId}* ${m.isVerified ? '✅' : ''} ${status.isOnline ? '🟢' : ''}\n`;
         text += `   📊 ${m.completedTrades} صفقة | ⭐ ${m.rating.toFixed(1)}/5\n`;
         text += `━━━━━━━━━━━━━━━━━━\n`;
     }
@@ -720,8 +841,9 @@ bot.command('withdraw', async (ctx) => {
     const amount = parseFloat(args[2]);
     const network = args[3].toLowerCase();
     const address = args[4];
+    const twoFACode = args[5] || null;
     if (isNaN(amount) || amount <= 0) return ctx.reply('❌ المبلغ غير صحيح');
-    const result = await db.requestWithdraw(ctx.from.id, amount, currency, network, address);
+    const result = await db.requestWithdraw(ctx.from.id, amount, currency, network, address, twoFACode);
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
 });
 
@@ -787,14 +909,13 @@ bot.action('support', rateLimitMiddleware, async (ctx) => {
 bot.action('back_to_menu', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const stats = await db.getUserStats(ctx.from.id);
-    const text = `✨ *القائمة الرئيسية*\n👤 ${ctx.from.first_name}\n💵 ${stats.usdBalance.toFixed(2)} USD\n⭐ ${stats.rating.toFixed(1)}/5\n✅ ${stats.completedTrades} صفقة\n📈 نجاح: ${stats.successRate || 100}%\n${stats.isVerified ? '✅ موثق' : '⚠️ غير موثق'}`;
+    const onlineStatus = await db.getUserOnlineStatus(ctx.from.id);
+    const text = `✨ *القائمة الرئيسية*\n👤 ${ctx.from.first_name}\n💵 ${stats.usdBalance.toFixed(2)} USD\n⭐ ${stats.rating.toFixed(1)}/5\n✅ ${stats.completedTrades} صفقة\n📈 نجاح: ${stats.successRate || 100}%\n${onlineStatus.statusText}\n${stats.isVerified ? '✅ موثق' : '⚠️ غير موثق'}`;
     const kb = ctx.from.id === ADMIN_ID ? adminKeyboard : mainKeyboard;
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb });
 });
 
 // ========== نظام التوثيق (KYC) ==========
-
-// قائمة التوثيق
 bot.action('kyc_menu', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const kycStatus = await db.getKycStatus(ctx.from.id);
@@ -829,7 +950,6 @@ bot.action('kyc_menu', rateLimitMiddleware, async (ctx) => {
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(actionButton) });
 });
 
-// بدء عملية التوثيق
 bot.action('start_kyc', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.reply('📝 *الرجاء إدخال بياناتك بالصيغة التالية:*\n\n' +
@@ -841,7 +961,6 @@ bot.action('start_kyc', rateLimitMiddleware, async (ctx) => {
     ctx.session = { state: 'kyc_step1' };
 });
 
-// أمر التوثيق المباشر
 bot.command('kyc', async (ctx) => {
     const args = ctx.message.text.split(' ');
     if (args.length < 5) {
@@ -860,7 +979,7 @@ bot.command('kyc', async (ctx) => {
     await ctx.reply('📸 *الرجاء إرسال صورة واضحة للجواز الساري* (صورة أو ملف)\n\n📌 *نصيحة:* تأكد من وضوح الصورة وجودتها');
 });
 
-// معالجة الصور
+// معالجة الصور لـ KYC
 bot.on('photo', messageRateLimitMiddleware, async (ctx) => {
     if (ctx.session?.state === 'kyc_step2') {
         const photo = ctx.message.photo[ctx.message.photo.length - 1];
@@ -934,8 +1053,6 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
 });
 
 // ========== أزرار موافقة ورفض التوثيق للأدمن ==========
-
-// زر الموافقة
 bot.action(/approve_kyc_(.+)/, async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) {
         await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
@@ -943,7 +1060,6 @@ bot.action(/approve_kyc_(.+)/, async (ctx) => {
     }
     
     const requestId = ctx.match[1];
-    
     await ctx.answerCbQuery('✅ جاري الموافقة...');
     
     const pendingRequests = await db.getPendingKycRequests();
@@ -955,19 +1071,14 @@ bot.action(/approve_kyc_(.+)/, async (ctx) => {
     }
     
     const result = await db.approveKyc(targetRequest._id, ctx.from.id);
-    
-    await ctx.editMessageText(`✅ *تمت الموافقة على الطلب*\n📋 الطلب: ${requestId}`, {
-        parse_mode: 'Markdown'
-    });
-    
+    await ctx.editMessageText(`✅ *تمت الموافقة على الطلب*\n📋 الطلب: ${requestId}`, { parse_mode: 'Markdown' });
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
     
     if (result.userId) {
-        await bot.telegram.sendMessage(result.userId, `${result.message}\n\n🔄 *يرجى تحديث التطبيق المصغر لعرض الحالة الجديدة*`, { parse_mode: 'Markdown' });
+        await bot.telegram.sendMessage(result.userId, result.message, { parse_mode: 'Markdown' });
     }
 });
 
-// زر الرفض
 bot.action(/reject_kyc_(.+)/, async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) {
         await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
@@ -975,12 +1086,8 @@ bot.action(/reject_kyc_(.+)/, async (ctx) => {
     }
     
     const requestId = ctx.match[1];
-    
     await ctx.answerCbQuery('❌ الرجاء إرسال سبب الرفض');
-    await ctx.reply(`📝 *رفض طلب التوثيق #${requestId}*\n\nالرجاء إرسال سبب الرفض:`, {
-        parse_mode: 'Markdown'
-    });
-    
+    await ctx.reply(`📝 *رفض طلب التوثيق #${requestId}*\n\nالرجاء إرسال سبب الرفض:`, { parse_mode: 'Markdown' });
     ctx.session = { state: 'reject_kyc_reason', requestId };
 });
 
@@ -1000,7 +1107,6 @@ bot.on('text', async (ctx) => {
         }
         
         const result = await db.rejectKyc(targetRequest._id, ctx.from.id, reason);
-        
         await ctx.reply(result.message, { parse_mode: 'Markdown' });
         
         if (result.userId) {
@@ -1014,15 +1120,11 @@ bot.on('text', async (ctx) => {
 // ========== أوامر الأدمن الأخرى ==========
 bot.action('pending_kyc', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return ctx.answerCbQuery('⛔ للأدمن فقط');
-    
     const pending = await db.getPendingKycRequests();
     if (!pending.length) {
-        await ctx.editMessageText('📭 لا توجد طلبات توثيق معلقة', {
-            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-        });
+        await ctx.editMessageText('📭 لا توجد طلبات توثيق معلقة', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
         return;
     }
-    
     let text = '🆔 *طلبات التوثيق المعلقة*\n\n';
     for (const req of pending) {
         text += `🆔 الطلب: \`${req._id.toString().slice(-8)}\`\n`;
@@ -1031,7 +1133,6 @@ bot.action('pending_kyc', async (ctx) => {
         text += `📅 التاريخ: ${new Date(req.createdAt).toLocaleString()}\n`;
         text += `━━━━━━━━━━━━━━━━━━\n`;
     }
-    
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
 
@@ -1145,6 +1246,7 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
         if (users.length === 0) return ctx.reply('❌ لم يتم العثور على مستخدمين');
         let text = '🔍 *نتائج البحث:*\n\n';
         for (const u of users) {
+            const status = await db.getUserOnlineStatus(u.userId);
             text += `👤 ${u.firstName || u.username || u.userId}\n`;
             text += `🆔 \`${u.userId}\`\n`;
             text += `📞 ${u.phoneNumber || 'لا يوجد'}\n`;
@@ -1152,116 +1254,15 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
             text += `⭐ ${u.rating.toFixed(1)}/5\n`;
             text += `✅ ${u.isVerified ? 'موثق ✅' : 'غير موثق ❌'}\n`;
             text += `👑 ${u.isMerchant ? 'تاجر' : 'مستخدم عادي'}\n`;
-            text += `📊 ${u.completedTrades || 0} صفقة\n━━━━━━━━━━━━━━━━━━\n`;
+            text += `📊 ${u.completedTrades || 0} صفقة\n`;
+            text += `${status.statusText}\n`;
+            text += `━━━━━━━━━━━━━━━━━━\n`;
         }
         await ctx.reply(text, { parse_mode: 'Markdown' });
         delete ctx.session.state;
     }
 });
-// ========== نقاط API لنظام الإحالات ==========
 
-// جلب معلومات الإحالات للمستخدم
-app.get('/api/user/referral/:userId', async (req, res) => {
-    try {
-        const userId = parseInt(req.params.userId);
-        const user = await db.getUser(userId);
-        if (!user) {
-            return res.json({ referralCount: 0, referralEarnings: 0, referrals: [] });
-        }
-        res.json({
-            referralCount: user.referralCount || 0,
-            referralEarnings: user.referralEarnings || 0,
-            referrals: user.referrals || []
-        });
-    } catch (error) {
-        console.error('Referral API error:', error);
-        res.json({ referralCount: 0, referralEarnings: 0, referrals: [] });
-    }
-});
-
-// ========== نقاط API لنظام الأمان و 2FA ==========
-
-// جلب معلومات الأمان للمستخدم
-app.get('/api/user/security/:userId', async (req, res) => {
-    try {
-        const userId = parseInt(req.params.userId);
-        const user = await db.getUser(userId);
-        if (!user) {
-            return res.json({ twoFAEnabled: false, warningCount: 0, lastLoginIp: 'غير معروف', completedTrades: 0 });
-        }
-        res.json({
-            twoFAEnabled: user.twoFAEnabled || false,
-            warningCount: user.warningCount || 0,
-            lastLoginIp: user.lastLoginIp || 'غير معروف',
-            completedTrades: user.completedTrades || 0
-        });
-    } catch (error) {
-        console.error('Security API error:', error);
-        res.json({ twoFAEnabled: false, warningCount: 0, lastLoginIp: 'غير معروف', completedTrades: 0 });
-    }
-});
-
-// توليد رمز 2FA
-app.post('/api/2fa/generate', async (req, res) => {
-    try {
-        const { user_id } = req.body;
-        const result = await db.generate2FASecret(parseInt(user_id));
-        res.json(result);
-    } catch (error) {
-        console.error('2FA generate error:', error);
-        res.json({ success: false, message: error.message });
-    }
-});
-
-// تفعيل 2FA
-app.post('/api/2fa/enable', async (req, res) => {
-    try {
-        const { user_id, code } = req.body;
-        const result = await db.enable2FA(parseInt(user_id), code);
-        res.json(result);
-    } catch (error) {
-        console.error('2FA enable error:', error);
-        res.json({ success: false, message: error.message });
-    }
-});
-
-// تعطيل 2FA
-app.post('/api/2fa/disable', async (req, res) => {
-    try {
-        const { user_id, code } = req.body;
-        const result = await db.disable2FA(parseInt(user_id), code);
-        res.json(result);
-    } catch (error) {
-        console.error('2FA disable error:', error);
-        res.json({ success: false, message: error.message });
-    }
-});
-
-// ========== نقاط API إضافية للعروض والصفقات ==========
-
-// جلب عروض المستخدم
-app.get('/api/user/offers/:userId', async (req, res) => {
-    try {
-        const userId = parseInt(req.params.userId);
-        const offers = await db.getUserOffers(userId);
-        res.json(offers);
-    } catch (error) {
-        console.error('User offers error:', error);
-        res.json([]);
-    }
-});
-
-// جلب صفقات المستخدم
-app.get('/api/user/trades/:userId', async (req, res) => {
-    try {
-        const userId = parseInt(req.params.userId);
-        const trades = await db.getUserTradesHistory(userId, 20);
-        res.json(trades);
-    } catch (error) {
-        console.error('User trades error:', error);
-        res.json([]);
-    }
-});
 // تشغيل البوت
 bot.launch().then(() => {
     console.log('🚀 P2P Exchange Bot running');
@@ -1270,7 +1271,9 @@ bot.launch().then(() => {
     console.log('🌍 Supported Currencies:', SUPPORTED_CURRENCIES.length);
     console.log('🏦 Sudanese Banks:', SUDAN_BANKS.length);
     console.log('🆔 KYC System: Admin Review Mode with Buttons');
-    console.log('📜 Terms page available at: /terms');
+    console.log('🔐 2FA System: Enabled for withdrawals and large releases');
+    console.log('🟢 User Online Status: Active');
+    console.log('⏰ Auto-release after 24h: Active');
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
