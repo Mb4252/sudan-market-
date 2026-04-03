@@ -27,6 +27,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'mining-app')));
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'mining-app', 'index.html')));
+app.get('/terms', (req, res) => res.sendFile(path.join(__dirname, 'mining-app', 'terms.html')));
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 // ========== المتغيرات البيئية ==========
@@ -91,7 +92,34 @@ app.get('/api/wallet/:userId', async (req, res) => {
     res.json({ addresses: { bnb: w.bnbAddress, polygon: w.polygonAddress, solana: w.solanaAddress, aptos: w.aptosAddress }, usdBalance: w.usdBalance, bankName: u?.bankName, bankAccountNumber: u?.bankAccountNumber, bankAccountName: u?.bankAccountName, isVerified: u?.isVerified });
 });
 
-// ========== نقطة استقبال طلبات التوثيق (KYC) - المعدلة ==========
+// ========== نقاط API الجديدة ==========
+
+// تاريخ العروض والصفقات
+app.get('/api/user/history/:userId', async (req, res) => {
+    const userId = parseInt(req.params.userId);
+    const offers = await db.getUserOffersHistory(userId, 20);
+    const trades = await db.getUserTradesHistory(userId, 20);
+    res.json({ offers, trades });
+});
+
+// إحصائيات السوق
+app.get('/api/market/stats', async (req, res) => {
+    const stats = await db.getMarketStats();
+    res.json(stats);
+});
+
+// إلغاء صفقة معلقة
+app.post('/api/trade/cancel', async (req, res) => {
+    res.json(await db.cancelPendingTrade(req.body.trade_id, parseInt(req.body.user_id)));
+});
+
+// كبار المتداولين
+app.get('/api/top/merchants', async (req, res) => {
+    const merchants = await db.getTopMerchants(10);
+    res.json(merchants);
+});
+
+// ========== نقطة استقبال طلبات التوثيق (KYC) ==========
 app.post('/api/kyc/submit', upload.fields([
     { name: 'passportPhoto', maxCount: 1 },
     { name: 'personalPhoto', maxCount: 1 }
@@ -104,20 +132,18 @@ app.post('/api/kyc/submit', upload.fields([
         let passportFileId = null;
         let personalFileId = null;
         
-        // رفع صورة الجواز وإرسالها للأدمن
         if (req.files['passportPhoto'] && req.files['passportPhoto'][0] && bot) {
             const passportBuffer = req.files['passportPhoto'][0].buffer;
             const passportMsg = await bot.telegram.sendPhoto(ADMIN_ID, { source: passportBuffer });
             passportFileId = passportMsg.photo[passportMsg.photo.length - 1].file_id;
-            console.log('✅ Passport photo sent to admin, file_id:', passportFileId);
+            console.log('✅ Passport photo sent to admin');
         }
         
-        // رفع الصورة الشخصية وإرسالها للأدمن
         if (req.files['personalPhoto'] && req.files['personalPhoto'][0] && bot) {
             const personalBuffer = req.files['personalPhoto'][0].buffer;
             const personalMsg = await bot.telegram.sendPhoto(ADMIN_ID, { source: personalBuffer });
             personalFileId = personalMsg.photo[personalMsg.photo.length - 1].file_id;
-            console.log('✅ Personal photo sent to admin, file_id:', personalFileId);
+            console.log('✅ Personal photo sent to admin');
         }
         
         const result = await db.createKycRequest(
@@ -131,7 +157,6 @@ app.post('/api/kyc/submit', upload.fields([
             const reqData = result.request;
             const shortId = reqData._id.toString().slice(-8);
             
-            // إرسال رسالة نصية منفصلة تحتوي على البيانات والأزرار
             await bot.telegram.sendMessage(ADMIN_ID,
                 `🆔 *طلب توثيق جديد!*\n\n` +
                 `👤 *المستخدم:* ${reqData.fullName}\n` +
@@ -159,7 +184,7 @@ app.post('/api/kyc/submit', upload.fields([
                 }
             );
             
-            console.log('✅ Admin notification sent with buttons for request:', shortId);
+            console.log('✅ Admin notification sent with buttons');
         }
         
         res.json(result);
@@ -172,7 +197,7 @@ app.post('/api/kyc/submit', upload.fields([
 // ========== تشغيل الخادم ==========
 const server = app.listen(PORT, '0.0.0.0', () => console.log(`🌐 Web server on port ${PORT}`));
 
-// ========== إعداد بوت التلجرام بعد خادم الويب ==========
+// ========== إعداد بوت التلجرام ==========
 const { Telegraf: TelegrafBot } = require('telegraf');
 bot = new TelegrafBot(process.env.BOT_TOKEN);
 
@@ -242,7 +267,10 @@ async function messageRateLimitMiddleware(ctx, next) {
 }
 
 // ========== القوائم ==========
-const startKeyboard = Markup.inlineKeyboard([[Markup.button.webApp('🚀 فتح منصة P2P', WEBAPP_URL)]]);
+const startKeyboard = Markup.inlineKeyboard([
+    [Markup.button.webApp('🚀 فتح منصة P2P', WEBAPP_URL)],
+    [Markup.button.url('📜 الشروط والأحكام', `${WEBAPP_URL}/terms`)]
+]);
 
 const mainKeyboard = Markup.inlineKeyboard([
     [Markup.button.webApp('🚀 فتح منصة P2P', WEBAPP_URL)],
@@ -251,12 +279,16 @@ const mainKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('📊 عروض الشراء', 'offers_buy')],
     [Markup.button.callback('➕ إنشاء عرض', 'create_offer')],
     [Markup.button.callback('📋 صفقاتي', 'my_trades')],
+    [Markup.button.callback('📜 تاريخي', 'my_history')],
     [Markup.button.callback('💼 محفظتي', 'my_wallet')],
     [Markup.button.callback('🏦 بيانات البنك', 'bank_details')],
     [Markup.button.callback('🆔 توثيق الهوية', 'kyc_menu')],
     [Markup.button.callback('🏆 المتصدرين', 'leaderboard')],
+    [Markup.button.callback('👑 كبار المتداولين', 'top_merchants')],
+    [Markup.button.callback('📊 إحصائيات السوق', 'market_stats')],
     [Markup.button.callback('🌐 اللغة', 'change_language')],
-    [Markup.button.callback('📞 الدعم', 'support')]
+    [Markup.button.callback('📞 الدعم', 'support')],
+    [Markup.button.url('📜 الشروط والأحكام', `${WEBAPP_URL}/terms`)]
 ]);
 
 const adminKeyboard = Markup.inlineKeyboard([
@@ -290,12 +322,13 @@ bot.start(async (ctx) => {
     }
     
     await ctx.reply(
-        `✨ *مرحباً بك في منصة P2P للتداول بالدولار!* ✨\n\n` +
+        `✨ *مرحباً بك في منصة P2P للتداول!* ✨\n\n` +
         `👤 *المستخدم:* ${user.first_name}\n` +
         `💵 *الرصيد:* ${stats.usdBalance.toFixed(2)} USD\n` +
         `📊 *إجمالي التداول:* ${stats.totalTraded.toFixed(2)} USD\n` +
         `⭐ *التقييم:* ${stats.rating.toFixed(1)}/5\n` +
         `✅ *الصفقات المكتملة:* ${stats.completedTrades}\n` +
+        `📈 *نسبة النجاح:* ${stats.successRate || 100}%\n` +
         `${verifiedMsg}\n\n` +
         `🚀 *اضغط على الزر أدناه لفتح منصة التداول*`,
         { parse_mode: 'Markdown', ...startKeyboard }
@@ -325,6 +358,7 @@ bot.action('my_balance', rateLimitMiddleware, async (ctx) => {
         `📊 *إجمالي التداول:* ${stats.totalTraded.toFixed(2)} USD\n` +
         `⭐ *التقييم:* ${stats.rating.toFixed(1)}/5\n` +
         `✅ *الصفقات المكتملة:* ${stats.completedTrades}\n` +
+        `📈 *نسبة النجاح:* ${stats.successRate || 100}%\n` +
         `📋 *العروض النشطة:* ${stats.activeOffers}\n` +
         `⏳ *صفقات معلقة:* ${stats.pendingTrades}`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
@@ -343,10 +377,11 @@ bot.action('offers_sell', rateLimitMiddleware, async (ctx) => {
     for (const o of offers) {
         const verifiedIcon = o.isVerified ? '✅' : '❌';
         const merchantIcon = o.isMerchant ? '👑' : '';
-        text += `👤 ${o.firstName || o.username} ${verifiedIcon}${merchantIcon} | ⭐ ${o.rating.toFixed(1)}\n`;
+        text += `👤 ${o.firstName || o.username} ${verifiedIcon}${merchantIcon} | ⭐ ${o.rating.toFixed(1)} | ✅ ${o.successRate || 100}%\n`;
         text += `💰 ${o.fiatAmount.toFixed(2)} ${o.currency} | 📊 ${o.price.toFixed(2)} ${o.currency}/USD\n`;
         text += `💵 القيمة: ${(o.fiatAmount / o.price).toFixed(2)} USD\n`;
         text += `🏦 ${o.paymentMethod}\n`;
+        text += `${o.badges ? `🏷️ ${o.badges}\n` : ''}`;
         text += `🆔 \`${o._id}\`\n`;
         text += `━━━━━━━━━━━━━━━━━━\n`;
     }
@@ -366,10 +401,11 @@ bot.action('offers_buy', rateLimitMiddleware, async (ctx) => {
     for (const o of offers) {
         const verifiedIcon = o.isVerified ? '✅' : '❌';
         const merchantIcon = o.isMerchant ? '👑' : '';
-        text += `👤 ${o.firstName || o.username} ${verifiedIcon}${merchantIcon} | ⭐ ${o.rating.toFixed(1)}\n`;
+        text += `👤 ${o.firstName || o.username} ${verifiedIcon}${merchantIcon} | ⭐ ${o.rating.toFixed(1)} | ✅ ${o.successRate || 100}%\n`;
         text += `💰 ${o.fiatAmount.toFixed(2)} ${o.currency} | 📊 ${o.price.toFixed(2)} ${o.currency}/USD\n`;
         text += `💵 القيمة: ${(o.fiatAmount / o.price).toFixed(2)} USD\n`;
         text += `🏦 ${o.paymentMethod}\n`;
+        text += `${o.badges ? `🏷️ ${o.badges}\n` : ''}`;
         text += `🆔 \`${o._id}\`\n`;
         text += `━━━━━━━━━━━━━━━━━━\n`;
     }
@@ -494,6 +530,14 @@ bot.command('release_crystals', async (ctx) => {
     }
 });
 
+// ========== إلغاء الصفقة (جديد) ==========
+bot.command('cancel_trade', async (ctx) => {
+    const tradeId = ctx.message.text.split(' ')[1];
+    if (!tradeId) return ctx.reply('❌ /cancel_trade [رقم الصفقة]\n⚠️ يمكنك إلغاء الصفقة فقط قبل تأكيد الدفع');
+    const result = await db.cancelPendingTrade(tradeId, ctx.from.id);
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
+});
+
 // ========== نزاع ==========
 bot.command('dispute', async (ctx) => {
     const args = ctx.message.text.split(' ');
@@ -522,11 +566,80 @@ bot.action('my_trades', rateLimitMiddleware, async (ctx) => {
         `📋 *صفقاتي*\n\n` +
         `✅ *المكتملة:* ${stats.completedTrades}\n` +
         `💰 *إجمالي التداول:* ${stats.totalTraded.toFixed(2)} USD\n` +
-        `⭐ *التقييم:* ${stats.rating.toFixed(1)}/5\n\n` +
+        `⭐ *التقييم:* ${stats.rating.toFixed(1)}/5\n` +
+        `📈 *نسبة النجاح:* ${stats.successRate || 100}%\n\n` +
         `📝 *لعرض تفاصيل الصفقات، استخدم:*\n` +
         `/trades - عرض آخر 10 صفقات`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
+});
+
+// ========== تاريخي (جديد) ==========
+bot.action('my_history', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    const offers = await db.getUserOffersHistory(ctx.from.id, 10);
+    const trades = await db.getUserTradesHistory(ctx.from.id, 10);
+    
+    let text = '📜 *سجل عروضي*\n\n';
+    if (offers.length === 0) {
+        text += 'لا توجد عروض سابقة\n';
+    } else {
+        for (const o of offers) {
+            const statusIcon = o.status === 'active' ? '🟢' : o.status === 'completed' ? '✅' : '❌';
+            text += `${statusIcon} *${o.type === 'sell' ? 'بيع' : 'شراء'}* ${o.fiatAmount} ${o.currency}\n`;
+            text += `   📅 ${new Date(o.createdAt).toLocaleDateString()}\n`;
+        }
+    }
+    
+    text += '\n🔄 *سجل صفقاتي*\n\n';
+    if (trades.length === 0) {
+        text += 'لا توجد صفقات سابقة';
+    } else {
+        for (const t of trades) {
+            const statusIcon = t.status === 'completed' ? '✅' : t.status === 'pending' ? '⏳' : '❌';
+            text += `${statusIcon} *${t.role}* | ${t.amount} ${t.currency} | مع ${t.otherParty}\n`;
+            text += `   📅 ${new Date(t.createdAt).toLocaleDateString()}\n`;
+        }
+    }
+    
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+});
+
+// ========== إحصائيات السوق (جديد) ==========
+bot.action('market_stats', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    const stats = await db.getMarketStats();
+    await ctx.editMessageText(
+        `📊 *إحصائيات السوق*\n\n` +
+        `📋 *العروض النشطة:* ${stats.totalOffers}\n` +
+        `💰 *متوسط السعر:* ${stats.avgPrice} USD\n` +
+        `🌍 *العملة الأكثر نشاطاً:* ${stats.mostActiveCurrency}\n` +
+        `👥 *المتداولين النشطين:* ${stats.totalTraders}\n` +
+        `💵 *حجم التداول الكلي:* ${stats.totalVolume.toFixed(2)} USD\n\n` +
+        `📈 *المنصة تنمو يومياً!*`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔄 تحديث', 'market_stats'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
+    );
+});
+
+// ========== كبار المتداولين (جديد) ==========
+bot.action('top_merchants', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    const merchants = await db.getTopMerchants(10);
+    if (!merchants.length) {
+        await ctx.editMessageText('🏆 لا يوجد متداولين بعد', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+        return;
+    }
+    
+    let text = '👑 *كبار المتداولين في المنصة* 👑\n\n';
+    for (let i = 0; i < merchants.length; i++) {
+        const m = merchants[i];
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+        text += `${medal} *${m.firstName || m.username || m.userId}* ${m.isVerified ? '✅' : ''}\n`;
+        text += `   📊 ${m.completedTrades} صفقة | ⭐ ${m.rating.toFixed(1)}/5\n`;
+        text += `━━━━━━━━━━━━━━━━━━\n`;
+    }
+    
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔄 تحديث', 'top_merchants'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
 
 // ========== محفظتي ==========
@@ -674,7 +787,7 @@ bot.action('support', rateLimitMiddleware, async (ctx) => {
 bot.action('back_to_menu', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const stats = await db.getUserStats(ctx.from.id);
-    const text = `✨ *القائمة الرئيسية*\n👤 ${ctx.from.first_name}\n💵 ${stats.usdBalance.toFixed(2)} USD\n⭐ ${stats.rating.toFixed(1)}/5\n✅ ${stats.completedTrades} صفقة\n${stats.isVerified ? '✅ موثق' : '⚠️ غير موثق'}`;
+    const text = `✨ *القائمة الرئيسية*\n👤 ${ctx.from.first_name}\n💵 ${stats.usdBalance.toFixed(2)} USD\n⭐ ${stats.rating.toFixed(1)}/5\n✅ ${stats.completedTrades} صفقة\n📈 نجاح: ${stats.successRate || 100}%\n${stats.isVerified ? '✅ موثق' : '⚠️ غير موثق'}`;
     const kb = ctx.from.id === ADMIN_ID ? adminKeyboard : mainKeyboard;
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb });
 });
@@ -833,7 +946,6 @@ bot.action(/approve_kyc_(.+)/, async (ctx) => {
     
     await ctx.answerCbQuery('✅ جاري الموافقة...');
     
-    // البحث عن الطلب باستخدام المعرف المختصر
     const pendingRequests = await db.getPendingKycRequests();
     const targetRequest = pendingRequests.find(req => req._id.toString().slice(-8) === requestId);
     
@@ -851,7 +963,7 @@ bot.action(/approve_kyc_(.+)/, async (ctx) => {
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
     
     if (result.userId) {
-        await bot.telegram.sendMessage(result.userId, result.message, { parse_mode: 'Markdown' });
+        await bot.telegram.sendMessage(result.userId, `${result.message}\n\n🔄 *يرجى تحديث التطبيق المصغر لعرض الحالة الجديدة*`, { parse_mode: 'Markdown' });
     }
 });
 
@@ -878,7 +990,6 @@ bot.on('text', async (ctx) => {
         const reason = ctx.message.text;
         const requestId = ctx.session.requestId;
         
-        // البحث عن الطلب باستخدام المعرف المختصر
         const pendingRequests = await db.getPendingKycRequests();
         const targetRequest = pendingRequests.find(req => req._id.toString().slice(-8) === requestId);
         
@@ -912,46 +1023,16 @@ bot.action('pending_kyc', async (ctx) => {
         return;
     }
     
-    // إرسال كل طلب على حدة مع أزراره
+    let text = '🆔 *طلبات التوثيق المعلقة*\n\n';
     for (const req of pending) {
-        const shortId = req._id.toString().slice(-8);
-        const text = `🆔 *طلب توثيق*\n\n` +
-            `📋 *رقم الطلب:* \`${shortId}\`\n` +
-            `👤 *المستخدم:* ${req.fullName}\n` +
-            `🆔 *المعرف:* \`${req.userId}\`\n` +
-            `📞 *الهاتف:* ${req.phoneNumber}\n` +
-            `📧 *البريد:* ${req.email || 'لا يوجد'}\n` +
-            `🏦 *البنك:* ${req.bankName}\n` +
-            `🔢 *رقم الحساب:* ${req.bankAccountNumber}\n` +
-            `👤 *اسم الحساب:* ${req.bankAccountName}\n` +
-            `📅 *التاريخ:* ${new Date(req.createdAt).toLocaleString()}`;
-        
-        // إرسال الصور إذا وجدت
-        if (req.passportPhotoFileId) {
-            await ctx.telegram.sendPhoto(ADMIN_ID, req.passportPhotoFileId);
-        }
-        if (req.personalPhotoFileId) {
-            await ctx.telegram.sendPhoto(ADMIN_ID, req.personalPhotoFileId);
-        }
-        
-        // إرسال الرسالة مع الأزرار
-        await ctx.telegram.sendMessage(ADMIN_ID, text, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: '✅ موافقة', callback_data: `approve_kyc_${shortId}` },
-                        { text: '❌ رفض', callback_data: `reject_kyc_${shortId}` }
-                    ],
-                    [{ text: '🔙 رجوع للقائمة', callback_data: 'back_to_menu' }]
-                ]
-            }
-        });
+        text += `🆔 الطلب: \`${req._id.toString().slice(-8)}\`\n`;
+        text += `👤 المستخدم: ${req.fullName}\n`;
+        text += `📞 الهاتف: ${req.phoneNumber}\n`;
+        text += `📅 التاريخ: ${new Date(req.createdAt).toLocaleString()}\n`;
+        text += `━━━━━━━━━━━━━━━━━━\n`;
     }
     
-    await ctx.editMessageText(`✅ تم إرسال ${pending.length} طلب توثيق مع أزرار التحكم`, {
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
-    });
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
 
 bot.action('pending_withdraws', async (ctx) => {
@@ -1070,7 +1151,8 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
             text += `📧 ${u.email || 'لا يوجد'}\n`;
             text += `⭐ ${u.rating.toFixed(1)}/5\n`;
             text += `✅ ${u.isVerified ? 'موثق ✅' : 'غير موثق ❌'}\n`;
-            text += `👑 ${u.isMerchant ? 'تاجر' : 'مستخدم عادي'}\n━━━━━━━━━━━━━━━━━━\n`;
+            text += `👑 ${u.isMerchant ? 'تاجر' : 'مستخدم عادي'}\n`;
+            text += `📊 ${u.completedTrades || 0} صفقة\n━━━━━━━━━━━━━━━━━━\n`;
         }
         await ctx.reply(text, { parse_mode: 'Markdown' });
         delete ctx.session.state;
@@ -1085,6 +1167,7 @@ bot.launch().then(() => {
     console.log('🌍 Supported Currencies:', SUPPORTED_CURRENCIES.length);
     console.log('🏦 Sudanese Banks:', SUDAN_BANKS.length);
     console.log('🆔 KYC System: Admin Review Mode with Buttons');
+    console.log('📜 Terms page available at: /terms');
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
