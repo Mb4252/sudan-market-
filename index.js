@@ -4,10 +4,16 @@ const db = require('./database');
 const express = require('express');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
+const multer = require('multer');
+const FormData = require('form-data');
+const fetch = require('node-fetch');
 
 // ========== إعداد خادم الويب ==========
 const app = express();
 const PORT = process.env.PORT || 10000;
+
+// إعداد multer لاستقبال الصور
+const upload = multer({ storage: multer.memoryStorage() });
 
 const limiter = rateLimit({
     windowMs: 60 * 1000,
@@ -49,6 +55,17 @@ const SUDAN_BANKS = process.env.SUDAN_BANKS
         'Sudanese French Bank', 'United Capital Bank'
     ];
 
+// ========== إعداد بوت التلجرام ==========
+let bot;
+(async () => { 
+    try { 
+        await db.connect(); 
+        console.log('✅ Database connected'); 
+    } catch (e) { 
+        console.error('❌ DB error:', e); 
+    } 
+})();
+
 // ========== API Routes ==========
 app.get('/api/global_stats', async (req, res) => res.json(await db.getGlobalStats()));
 app.get('/api/user/:userId', async (req, res) => {
@@ -83,16 +100,79 @@ app.get('/api/wallet/:userId', async (req, res) => {
     res.json({ addresses: { bnb: w.bnbAddress, polygon: w.polygonAddress, solana: w.solanaAddress, aptos: w.aptosAddress }, usdBalance: w.usdBalance, bankName: u?.bankName, bankAccountNumber: u?.bankAccountNumber, bankAccountName: u?.bankAccountName, isVerified: u?.isVerified });
 });
 
+// نقطة استقبال طلبات التوثيق
+app.post('/api/kyc/submit', upload.fields([
+    { name: 'passportPhoto', maxCount: 1 },
+    { name: 'personalPhoto', maxCount: 1 }
+]), async (req, res) => {
+    try {
+        const { user_id, fullName, passportNumber, nationalId, phoneNumber, email, country, city, bankName, bankAccountNumber, bankAccountName } = req.body;
+        
+        let passportFileId = null;
+        let personalFileId = null;
+        
+        // حفظ الصور في تلغرام
+        if (req.files['passportPhoto'] && bot) {
+            const passportBuffer = req.files['passportPhoto'][0].buffer;
+            const passportMsg = await bot.telegram.sendPhoto(ADMIN_ID, { source: passportBuffer });
+            passportFileId = passportMsg.photo[passportMsg.photo.length - 1].file_id;
+        }
+        
+        if (req.files['personalPhoto'] && bot) {
+            const personalBuffer = req.files['personalPhoto'][0].buffer;
+            const personalMsg = await bot.telegram.sendPhoto(ADMIN_ID, { source: personalBuffer });
+            personalFileId = personalMsg.photo[personalMsg.photo.length - 1].file_id;
+        }
+        
+        const result = await db.createKycRequest(
+            parseInt(user_id), fullName, passportNumber, nationalId, phoneNumber, email,
+            country, city, passportFileId, personalFileId, bankName, bankAccountNumber, bankAccountName
+        );
+        
+        // إرسال إشعار للأدمن
+        if (result.success && result.request && bot) {
+            const reqData = result.request;
+            
+            await bot.telegram.sendPhoto(ADMIN_ID, reqData.passportPhotoFileId, {
+                caption: `🆔 *طلب توثيق جديد!*\n\n` +
+                    `👤 *المستخدم:* ${fullName}\n` +
+                    `🆔 *المعرف:* ${user_id}\n` +
+                    `📋 *رقم الطلب:* \`${reqData._id}\`\n\n` +
+                    `📝 *البيانات:*\n` +
+                    `• الاسم: ${fullName}\n` +
+                    `• الجواز: ${passportNumber}\n` +
+                    `• الرقم الوطني: ${nationalId}\n` +
+                    `• الهاتف: ${phoneNumber}\n` +
+                    `• البريد: ${email || 'لا يوجد'}\n` +
+                    `• البنك: ${bankName}\n` +
+                    `• رقم الحساب: ${bankAccountNumber}\n` +
+                    `• اسم الحساب: ${bankAccountName}\n\n` +
+                    `✅ /approve_kyc ${reqData._id}\n` +
+                    `❌ /reject_kyc ${reqData._id} [السبب]`,
+                parse_mode: 'Markdown'
+            });
+            
+            await bot.telegram.sendPhoto(ADMIN_ID, reqData.personalPhotoFileId, {
+                caption: `📸 *الصورة الشخصية للمستخدم*\n🆔 الطلب: ${reqData._id}`
+            });
+        }
+        
+        res.json(result);
+    } catch (error) {
+        console.error('KYC submit error:', error);
+        res.json({ success: false, message: error.message });
+    }
+});
+
 app.listen(PORT, '0.0.0.0', () => console.log(`🌐 Web server on port ${PORT}`));
 
-// ========== إعداد بوت التلجرام ==========
-(async () => { try { await db.connect(); console.log('✅ Database connected'); } catch (e) { console.error('❌ DB error:', e); } })();
-
-const bot = new Telegraf(process.env.BOT_TOKEN);
+// ========== إعداد بوت التلجرام بعد خادم الويب ==========
+const { Telegraf: TelegrafBot } = require('telegraf');
+bot = new TelegrafBot(process.env.BOT_TOKEN);
 
 // ========== نظام منع الإغراق ==========
 const userLastAction = new Map(), userLastMessage = new Map(), userActionCount = new Map(), userWarningCount = new Map(), bannedUsers = new Map();
-const RATE_LIMIT = {
+const RATE_LIMIT_BOT = {
     ACTION_DELAY: 2000, MESSAGE_DELAY: 1500, MAX_ACTIONS_PER_MINUTE: 8, MAX_MESSAGES_PER_MINUTE: 5,
     MAX_WARNINGS: 2, TEMP_BAN_DURATION: 600000, PERMANENT_BAN_THRESHOLD: 3, ADMIN_ID: ADMIN_ID
 };
@@ -108,7 +188,7 @@ function isBanned(userId) {
 
 function trackAction(userId, type = 'action') {
     const now = Date.now();
-    const limit = type === 'action' ? RATE_LIMIT.MAX_ACTIONS_PER_MINUTE : RATE_LIMIT.MAX_MESSAGES_PER_MINUTE;
+    const limit = type === 'action' ? RATE_LIMIT_BOT.MAX_ACTIONS_PER_MINUTE : RATE_LIMIT_BOT.MAX_MESSAGES_PER_MINUTE;
     const actions = (userActionCount.get(userId) || []).filter(t => now - t < 60000);
     actions.push(now);
     userActionCount.set(userId, actions);
@@ -116,13 +196,13 @@ function trackAction(userId, type = 'action') {
     if (actions.length > limit) {
         const warnings = (userWarningCount.get(userId) || 0) + 1;
         userWarningCount.set(userId, warnings);
-        if (warnings >= RATE_LIMIT.MAX_WARNINGS) {
+        if (warnings >= RATE_LIMIT_BOT.MAX_WARNINGS) {
             const banCount = (bannedUsers.get(userId)?.count || 0) + 1;
-            if (banCount >= RATE_LIMIT.PERMANENT_BAN_THRESHOLD) {
+            if (banCount >= RATE_LIMIT_BOT.PERMANENT_BAN_THRESHOLD) {
                 bannedUsers.set(userId, { expires: Infinity, count: banCount, permanent: true });
                 return { blocked: true, reason: '⛔ تم حظر حسابك نهائياً' };
             }
-            bannedUsers.set(userId, { expires: now + RATE_LIMIT.TEMP_BAN_DURATION, count: banCount });
+            bannedUsers.set(userId, { expires: now + RATE_LIMIT_BOT.TEMP_BAN_DURATION, count: banCount });
             return { blocked: true, reason: `⚠️ تم حظرك مؤقتاً 10 دقائق` };
         }
         return { blocked: true, reason: `⚠️ تحذير! ${actions.length}/${limit} إجراء` };
@@ -134,8 +214,8 @@ async function rateLimitMiddleware(ctx, next) {
     if (ctx.from.id === ADMIN_ID) return next();
     if (isBanned(ctx.from.id)) { await ctx.answerCbQuery('⛔ محظور مؤقتاً'); return; }
     const now = Date.now();
-    if (now - (userLastAction.get(ctx.from.id) || 0) < RATE_LIMIT.ACTION_DELAY) {
-        await ctx.answerCbQuery(`⚠️ انتظر ${Math.ceil((RATE_LIMIT.ACTION_DELAY - (now - (userLastAction.get(ctx.from.id) || 0))) / 1000)} ثانية`);
+    if (now - (userLastAction.get(ctx.from.id) || 0) < RATE_LIMIT_BOT.ACTION_DELAY) {
+        await ctx.answerCbQuery(`⚠️ انتظر ${Math.ceil((RATE_LIMIT_BOT.ACTION_DELAY - (now - (userLastAction.get(ctx.from.id) || 0))) / 1000)} ثانية`);
         return;
     }
     const track = trackAction(ctx.from.id, 'action');
@@ -148,7 +228,7 @@ async function messageRateLimitMiddleware(ctx, next) {
     if (ctx.from.id === ADMIN_ID) return next();
     if (isBanned(ctx.from.id)) { await ctx.reply('⛔ محظور مؤقتاً'); return; }
     const now = Date.now();
-    if (now - (userLastMessage.get(ctx.from.id) || 0) < RATE_LIMIT.MESSAGE_DELAY) return;
+    if (now - (userLastMessage.get(ctx.from.id) || 0) < RATE_LIMIT_BOT.MESSAGE_DELAY) return;
     const track = trackAction(ctx.from.id, 'message');
     if (track.blocked) { await ctx.reply(track.reason); return; }
     userLastMessage.set(ctx.from.id, now);
@@ -661,16 +741,23 @@ bot.command('kyc', async (ctx) => {
     await ctx.reply('📸 *الرجاء إرسال صورة واضحة للجواز الساري* (صورة أو ملف)\n\n📌 *نصيحة:* تأكد من وضوح الصورة وجودتها');
 });
 
-// معالجة الصور
+// معالجة الصور (تخزين مؤقت ثم إرسال للخادم)
 bot.on('photo', messageRateLimitMiddleware, async (ctx) => {
     if (ctx.session?.state === 'kyc_step2') {
         const photo = ctx.message.photo[ctx.message.photo.length - 1];
-        ctx.session.kycData.passportPhotoFileId = photo.file_id;
+        const fileId = photo.file_id;
+        // الحصول على رابط الصورة
+        const fileLink = await ctx.telegram.getFileLink(fileId);
+        ctx.session.kycData.passportPhotoUrl = fileLink.href;
+        ctx.session.kycData.passportPhotoFileId = fileId;
         ctx.session.state = 'kyc_step3';
         await ctx.reply('📸 *الرجاء إرسال صورة شخصية واضحة*');
     } else if (ctx.session?.state === 'kyc_step3') {
         const photo = ctx.message.photo[ctx.message.photo.length - 1];
-        ctx.session.kycData.personalPhotoFileId = photo.file_id;
+        const fileId = photo.file_id;
+        const fileLink = await ctx.telegram.getFileLink(fileId);
+        ctx.session.kycData.personalPhotoUrl = fileLink.href;
+        ctx.session.kycData.personalPhotoFileId = fileId;
         ctx.session.state = 'kyc_step4';
         await ctx.reply('🏦 *الرجاء إدخال بياناتك البنكية:*\n\n' +
             `/bank [اسم البنك] [رقم الحساب] [اسم صاحب الحساب]\n\n` +
@@ -679,65 +766,58 @@ bot.on('photo', messageRateLimitMiddleware, async (ctx) => {
     }
 });
 
-// معالجة البيانات البنكية
-// معالجة البيانات البنكية
+// معالجة البيانات البنكية وإرسال الطلب
 bot.on('text', messageRateLimitMiddleware, async (ctx) => {
     if (ctx.session?.state === 'kyc_step4') {
-        // ... الكود السابق ...
-
-        const result = await db.createKycRequest(
-            ctx.from.id,
-            ctx.session.kycData.fullName,
-            ctx.session.kycData.passportNumber,
-            ctx.session.kycData.nationalId,
-            ctx.session.kycData.phoneNumber,
-            ctx.session.kycData.email || '',
-            'SD',
-            '',
-            ctx.session.kycData.passportPhotoFileId,
-            ctx.session.kycData.personalPhotoFileId,
-            bankName,
-            bankAccountNumber,
-            bankAccountName
-        );
-        
-        await ctx.reply(result.message, { parse_mode: 'Markdown' });
-        
-        // 🔑 إرسال إشعار للأدمن باستخدام result.request
-        if (result.success && result.request) {
-            const newRequest = result.request;
-            
-            // إرسال صورة الجواز
-            await bot.telegram.sendPhoto(ADMIN_ID, newRequest.passportPhotoFileId, {
-                caption: `🆔 *طلب توثيق جديد!*\n\n` +
-                    `👤 *المستخدم:* ${ctx.from.first_name} (@${ctx.from.username || 'لا يوجد'})\n` +
-                    `🆔 *المعرف:* ${ctx.from.id}\n` +
-                    `📋 *رقم الطلب:* \`${newRequest._id}\`\n\n` +
-                    `📝 *البيانات:*\n` +
-                    `• الاسم: ${newRequest.fullName}\n` +
-                    `• الجواز: ${newRequest.passportNumber}\n` +
-                    `• الرقم الوطني: ${newRequest.nationalId}\n` +
-                    `• الهاتف: ${newRequest.phoneNumber}\n` +
-                    `• البريد: ${newRequest.email || 'لا يوجد'}\n` +
-                    `• البنك: ${newRequest.bankName}\n` +
-                    `• رقم الحساب: ${newRequest.bankAccountNumber}\n` +
-                    `• اسم الحساب: ${newRequest.bankAccountName}\n\n` +
-                    `✅ /approve_kyc ${newRequest._id}\n` +
-                    `❌ /reject_kyc ${newRequest._id} [السبب]`,
-                parse_mode: 'Markdown'
-            });
-            
-            // إرسال الصورة الشخصية
-            await bot.telegram.sendPhoto(ADMIN_ID, newRequest.personalPhotoFileId, {
-                caption: `📸 *الصورة الشخصية للمستخدم*\n🆔 الطلب: ${newRequest._id}`
-            });
+        const parts = ctx.message.text.split(' ');
+        if (parts.length < 4) {
+            await ctx.reply('❌ الصيغة: /bank [اسم البنك] [رقم الحساب] [اسم صاحب الحساب]');
+            return;
         }
+        
+        const bankName = parts[1];
+        const bankAccountNumber = parts[2];
+        const bankAccountName = parts.slice(3).join(' ');
+        
+        await ctx.reply('🔄 *جاري إرسال طلب التوثيق...*', { parse_mode: 'Markdown' });
+        
+        // إرسال الطلب إلى الخادم عبر API
+        const fetch = require('node-fetch');
+        const FormData = require('form-data');
+        const formData = new FormData();
+        formData.append('user_id', ctx.from.id);
+        formData.append('fullName', ctx.session.kycData.fullName);
+        formData.append('passportNumber', ctx.session.kycData.passportNumber);
+        formData.append('nationalId', ctx.session.kycData.nationalId);
+        formData.append('phoneNumber', ctx.session.kycData.phoneNumber);
+        formData.append('email', ctx.session.kycData.email || '');
+        formData.append('country', 'SD');
+        formData.append('city', '');
+        formData.append('bankName', bankName);
+        formData.append('bankAccountNumber', bankAccountNumber);
+        formData.append('bankAccountName', bankAccountName);
+        
+        // تحميل الصور من التلغرام وإضافتها
+        const passportRes = await fetch(ctx.session.kycData.passportPhotoUrl);
+        const passportBuffer = await passportRes.buffer();
+        formData.append('passportPhoto', passportBuffer, 'passport.jpg');
+        
+        const personalRes = await fetch(ctx.session.kycData.personalPhotoUrl);
+        const personalBuffer = await personalRes.buffer();
+        formData.append('personalPhoto', personalBuffer, 'personal.jpg');
+        
+        const response = await fetch(`${WEBAPP_URL}/api/kyc/submit`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        await ctx.reply(result.message, { parse_mode: 'Markdown' });
         
         delete ctx.session.state;
         delete ctx.session.kycData;
     }
 });
-
 
 // ========== أوامر الأدمن للتوثيق ==========
 
