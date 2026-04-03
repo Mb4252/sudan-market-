@@ -12,7 +12,6 @@ const fetch = require('node-fetch');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// إعداد multer لاستقبال الصور
 const upload = multer({ storage: multer.memoryStorage() });
 
 const limiter = rateLimit({
@@ -111,7 +110,6 @@ app.post('/api/kyc/submit', upload.fields([
         let passportFileId = null;
         let personalFileId = null;
         
-        // حفظ الصور في تلغرام
         if (req.files['passportPhoto'] && bot) {
             const passportBuffer = req.files['passportPhoto'][0].buffer;
             const passportMsg = await bot.telegram.sendPhoto(ADMIN_ID, { source: passportBuffer });
@@ -129,7 +127,6 @@ app.post('/api/kyc/submit', upload.fields([
             country, city, passportFileId, personalFileId, bankName, bankAccountNumber, bankAccountName
         );
         
-        // إرسال إشعار للأدمن
         if (result.success && result.request && bot) {
             const reqData = result.request;
             
@@ -146,10 +143,16 @@ app.post('/api/kyc/submit', upload.fields([
                     `• البريد: ${email || 'لا يوجد'}\n` +
                     `• البنك: ${bankName}\n` +
                     `• رقم الحساب: ${bankAccountNumber}\n` +
-                    `• اسم الحساب: ${bankAccountName}\n\n` +
-                    `✅ /approve_kyc ${reqData._id}\n` +
-                    `❌ /reject_kyc ${reqData._id} [السبب]`,
-                parse_mode: 'Markdown'
+                    `• اسم الحساب: ${bankAccountName}`,
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '✅ موافقة', callback_data: `approve_kyc_${reqData._id}` },
+                            { text: '❌ رفض', callback_data: `reject_kyc_${reqData._id}` }
+                        ]
+                    ]
+                }
             });
             
             await bot.telegram.sendPhoto(ADMIN_ID, reqData.personalPhotoFileId, {
@@ -738,15 +741,14 @@ bot.command('kyc', async (ctx) => {
     ctx.session.kycData = { fullName, passportNumber, nationalId, phoneNumber, email };
     ctx.session.state = 'kyc_step2';
     
-    await ctx.reply('📸 *الرجاء إرسال صورة واضحة للجواز الساري* (صورة أو ملف)\n\n📌 *نصيحة:* تأكد من وضوح الصورة وجودتها');
+    await ctx.reply('📸 *الرجاء إرسال صورة واضحة للجواز الساري* (صورة أو файл)\n\n📌 *نصيحة:* تأكد من وضوح الصورة وجودتها');
 });
 
-// معالجة الصور (تخزين مؤقت ثم إرسال للخادم)
+// معالجة الصور
 bot.on('photo', messageRateLimitMiddleware, async (ctx) => {
     if (ctx.session?.state === 'kyc_step2') {
         const photo = ctx.message.photo[ctx.message.photo.length - 1];
         const fileId = photo.file_id;
-        // الحصول على رابط الصورة
         const fileLink = await ctx.telegram.getFileLink(fileId);
         ctx.session.kycData.passportPhotoUrl = fileLink.href;
         ctx.session.kycData.passportPhotoFileId = fileId;
@@ -781,9 +783,6 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
         
         await ctx.reply('🔄 *جاري إرسال طلب التوثيق...*', { parse_mode: 'Markdown' });
         
-        // إرسال الطلب إلى الخادم عبر API
-        const fetch = require('node-fetch');
-        const FormData = require('form-data');
         const formData = new FormData();
         formData.append('user_id', ctx.from.id);
         formData.append('fullName', ctx.session.kycData.fullName);
@@ -797,7 +796,6 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
         formData.append('bankAccountNumber', bankAccountNumber);
         formData.append('bankAccountName', bankAccountName);
         
-        // تحميل الصور من التلغرام وإضافتها
         const passportRes = await fetch(ctx.session.kycData.passportPhotoUrl);
         const passportBuffer = await passportRes.buffer();
         formData.append('passportPhoto', passportBuffer, 'passport.jpg');
@@ -819,9 +817,77 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
     }
 });
 
-// ========== أوامر الأدمن للتوثيق ==========
+// ========== أزرار موافقة ورفض التوثيق للأدمن ==========
 
-// عرض طلبات التوثيق المعلقة
+// زر الموافقة
+bot.action(/approve_kyc_(.+)/, async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) {
+        await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
+        return;
+    }
+    
+    const requestId = ctx.match[1];
+    
+    await ctx.answerCbQuery('✅ جاري الموافقة...');
+    
+    const result = await db.approveKyc(requestId, ctx.from.id);
+    
+    await ctx.editMessageCaption(`✅ *تمت الموافقة على الطلب*\n📋 الطلب: ${requestId}`, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [] }
+    });
+    
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
+    
+    if (result.userId) {
+        await bot.telegram.sendMessage(result.userId, result.message, { parse_mode: 'Markdown' });
+    }
+});
+
+// زر الرفض
+bot.action(/reject_kyc_(.+)/, async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) {
+        await ctx.answerCbQuery('⛔ هذا الأمر للأدمن فقط!');
+        return;
+    }
+    
+    const requestId = ctx.match[1];
+    
+    await ctx.answerCbQuery('❌ الرجاء إرسال سبب الرفض');
+    await ctx.reply(`📝 *رفض طلب التوثيق #${requestId}*\n\nالرجاء إرسال سبب الرفض:`, {
+        parse_mode: 'Markdown'
+    });
+    
+    ctx.session = { state: 'reject_kyc_reason', requestId };
+});
+
+// معالجة سبب الرفض
+bot.on('text', async (ctx) => {
+    if (ctx.session?.state === 'reject_kyc_reason' && ctx.from.id === ADMIN_ID) {
+        const reason = ctx.message.text;
+        const requestId = ctx.session.requestId;
+        
+        const result = await db.rejectKyc(requestId, ctx.from.id, reason);
+        
+        await ctx.telegram.editMessageCaption(
+            ctx.chat.id,
+            ctx.message.message_id - 1,
+            null,
+            `❌ *تم رفض الطلب*\n📋 الطلب: ${requestId}\n📝 السبب: ${reason}`,
+            { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [] } }
+        );
+        
+        await ctx.reply(result.message, { parse_mode: 'Markdown' });
+        
+        if (result.userId) {
+            await bot.telegram.sendMessage(result.userId, result.message, { parse_mode: 'Markdown' });
+        }
+        
+        delete ctx.session.state;
+    }
+});
+
+// ========== أوامر الأدمن الأخرى ==========
 bot.action('pending_kyc', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return ctx.answerCbQuery('⛔ للأدمن فقط');
     
@@ -841,42 +907,10 @@ bot.action('pending_kyc', async (ctx) => {
         text += `📅 التاريخ: ${new Date(req.createdAt).toLocaleString()}\n`;
         text += `━━━━━━━━━━━━━━━━━━\n`;
     }
-    text += `\n📝 *للموافقة:* /approve_kyc [الرقم]\n❌ *للرفض:* /reject_kyc [الرقم] [السبب]`;
     
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
 
-// الموافقة على طلب توثيق
-bot.command('approve_kyc', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return;
-    const args = ctx.message.text.split(' ');
-    if (args.length !== 2) return ctx.reply('❌ /approve_kyc [رقم الطلب]');
-    
-    const result = await db.approveKyc(args[1], ctx.from.id);
-    await ctx.reply(result.message, { parse_mode: 'Markdown' });
-    
-    if (result.userId) {
-        await bot.telegram.sendMessage(result.userId, result.message, { parse_mode: 'Markdown' });
-    }
-});
-
-// رفض طلب توثيق
-bot.command('reject_kyc', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return;
-    const args = ctx.message.text.split(' ');
-    if (args.length < 3) return ctx.reply('❌ /reject_kyc [رقم الطلب] [السبب]');
-    
-    const requestId = args[1];
-    const reason = args.slice(2).join(' ');
-    const result = await db.rejectKyc(requestId, ctx.from.id, reason);
-    await ctx.reply(result.message, { parse_mode: 'Markdown' });
-    
-    if (result.userId) {
-        await bot.telegram.sendMessage(result.userId, result.message, { parse_mode: 'Markdown' });
-    }
-});
-
-// ========== أوامر الأدمن الأخرى ==========
 bot.action('pending_withdraws', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return ctx.answerCbQuery('⛔ للأدمن فقط');
     const p = await db.getPendingWithdraws();
@@ -1007,7 +1041,7 @@ bot.launch().then(() => {
     console.log('💵 Platform Fee:', PLATFORM_FEE, '%');
     console.log('🌍 Supported Currencies:', SUPPORTED_CURRENCIES.length);
     console.log('🏦 Sudanese Banks:', SUDAN_BANKS.length);
-    console.log('🆔 KYC System: Admin Review Mode');
+    console.log('🆔 KYC System: Admin Review Mode with Buttons');
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
