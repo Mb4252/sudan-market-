@@ -912,16 +912,46 @@ bot.action('pending_kyc', async (ctx) => {
         return;
     }
     
-    let text = '🆔 *طلبات التوثيق المعلقة*\n\n';
+    // إرسال كل طلب على حدة مع أزراره
     for (const req of pending) {
-        text += `🆔 الطلب: \`${req._id.toString().slice(-8)}\`\n`;
-        text += `👤 المستخدم: ${req.fullName}\n`;
-        text += `📞 الهاتف: ${req.phoneNumber}\n`;
-        text += `📅 التاريخ: ${new Date(req.createdAt).toLocaleString()}\n`;
-        text += `━━━━━━━━━━━━━━━━━━\n`;
+        const shortId = req._id.toString().slice(-8);
+        const text = `🆔 *طلب توثيق*\n\n` +
+            `📋 *رقم الطلب:* \`${shortId}\`\n` +
+            `👤 *المستخدم:* ${req.fullName}\n` +
+            `🆔 *المعرف:* \`${req.userId}\`\n` +
+            `📞 *الهاتف:* ${req.phoneNumber}\n` +
+            `📧 *البريد:* ${req.email || 'لا يوجد'}\n` +
+            `🏦 *البنك:* ${req.bankName}\n` +
+            `🔢 *رقم الحساب:* ${req.bankAccountNumber}\n` +
+            `👤 *اسم الحساب:* ${req.bankAccountName}\n` +
+            `📅 *التاريخ:* ${new Date(req.createdAt).toLocaleString()}`;
+        
+        // إرسال الصور إذا وجدت
+        if (req.passportPhotoFileId) {
+            await ctx.telegram.sendPhoto(ADMIN_ID, req.passportPhotoFileId);
+        }
+        if (req.personalPhotoFileId) {
+            await ctx.telegram.sendPhoto(ADMIN_ID, req.personalPhotoFileId);
+        }
+        
+        // إرسال الرسالة مع الأزرار
+        await ctx.telegram.sendMessage(ADMIN_ID, text, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '✅ موافقة', callback_data: `approve_kyc_${shortId}` },
+                        { text: '❌ رفض', callback_data: `reject_kyc_${shortId}` }
+                    ],
+                    [{ text: '🔙 رجوع للقائمة', callback_data: 'back_to_menu' }]
+                ]
+            }
+        });
     }
     
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(`✅ تم إرسال ${pending.length} طلب توثيق مع أزرار التحكم`, {
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]])
+    });
 });
 
 bot.action('pending_withdraws', async (ctx) => {
