@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Telegraf } = require('telegraf');
+const { Telegraf, Markup } = require('telegraf');
 const db = require('./database');
 const express = require('express');
 const path = require('path');
@@ -131,7 +131,7 @@ app.get('/api/user/trades/:userId', async (req, res) => {
     res.json(trades);
 });
 
-// ========== نقاط API لنظام الإحالات (معدلة بالكامل) ==========
+// ========== نقاط API لنظام الإحالات ==========
 app.get('/api/user/referral/:userId', async (req, res) => {
     try {
         const userId = parseInt(req.params.userId);
@@ -149,7 +149,6 @@ app.get('/api/user/referral/:userId', async (req, res) => {
     }
 });
 
-// تحويل رصيد الإحالات إلى المحفظة الرئيسية
 app.post('/api/referral/transfer', async (req, res) => {
     try {
         const { user_id } = req.body;
@@ -386,6 +385,7 @@ const mainKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('👑 كبار المتداولين', 'top_merchants')],
     [Markup.button.callback('📊 إحصائيات السوق', 'market_stats')],
     [Markup.button.callback('🎁 إحالاتي', 'my_referral')],
+    [Markup.button.callback('📖 تعليمات', 'instructions_menu')],
     [Markup.button.callback('🌐 اللغة', 'change_language')],
     [Markup.button.callback('📞 الدعم', 'support')],
     [Markup.button.url('📜 الشروط والأحكام', `${WEBAPP_URL}/terms`)]
@@ -401,6 +401,17 @@ const adminKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('🔍 بحث عن مستخدم', 'search_user')],
     [Markup.button.callback('🚫 مستخدمين محظورين', 'banned_users')],
     [Markup.button.callback('🔓 رفع الحظر عن الكل', 'unban_all')],
+    [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
+]);
+
+// ========== قائمة التعليمات الجديدة ==========
+const instructionsKeyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('📥 تعليمات الإيداع', 'deposit_instructions')],
+    [Markup.button.callback('📤 تعليمات السحب', 'withdraw_instructions')],
+    [Markup.button.callback('💵 تحويل الدولار للمنصة', 'convert_usd_instructions')],
+    [Markup.button.callback('🔄 السحب لمنصات أخرى', 'withdraw_to_exchange')],
+    [Markup.button.callback('🌐 الشبكات المدعومة', 'supported_networks')],
+    [Markup.button.callback('❓ الأسئلة الشائعة', 'faq_instructions')],
     [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
 ]);
 
@@ -433,12 +444,279 @@ bot.start(async (ctx) => {
         `📈 *نسبة النجاح:* ${stats.successRate || 100}%\n` +
         `${onlineStatus.statusText}\n` +
         `${verifiedMsg}\n\n` +
-        `🚀 *اضغط على الزر أدناه لفتح منصة التداول*`,
+        `🚀 *اضغط على الزر أدناه لفتح منصة التداول*\n\n` +
+        `📖 *لتعليمات الإيداع والسحب، استخدم الأمر* /help`,
         { parse_mode: 'Markdown', ...startKeyboard }
     );
 });
 
-// أمر عرض المعرف
+// أمر المساعدة الجديد
+bot.command('help', async (ctx) => {
+    await ctx.reply(
+        `📖 *قائمة المساعدة والدعم*\n\n` +
+        `📥 *لتعليمات الإيداع:* /deposit_help\n` +
+        `📤 *لتعليمات السحب:* /withdraw_help\n` +
+        `💵 *لتحويل الدولار:* /convert_help\n` +
+        `🌐 *للشبكات المدعومة:* /networks_help\n` +
+        `❓ *للأسئلة الشائعة:* /faq\n\n` +
+        `🔗 *أو افتح منصة التداول:* ${WEBAPP_URL}`,
+        { parse_mode: 'Markdown' }
+    );
+});
+
+// ========== أوامر التعليمات الجديدة ==========
+
+// تعليمات الإيداع
+bot.command('deposit_help', async (ctx) => {
+    const wallet = await db.getUserWallet(ctx.from.id);
+    await ctx.reply(
+        `📥 *كيفية الإيداع في المنصة*\n\n` +
+        `1️⃣ *انسخ عنوان محفظتك:*\n` +
+        `🟡 BNB: \`${wallet.bnbAddress}\`\n` +
+        `🟣 POLYGON: \`${wallet.polygonAddress}\`\n` +
+        `🟢 SOLANA: \`${wallet.solanaAddress}\`\n` +
+        `🔷 APTOS: \`${wallet.aptosAddress}\`\n\n` +
+        `2️⃣ *اشتر العملة* من أي منصة (Binance, Bybit, OKX)\n\n` +
+        `3️⃣ *أرسل العملة* إلى العنوان المنسوخ باستخدام نفس الشبكة\n\n` +
+        `4️⃣ *أرسل رابط المعاملة* للإدارة:\n` +
+        `/confirm_deposit [رقم الطلب] [رابط المعاملة]\n\n` +
+        `⚠️ *تحذيرات مهمة:*\n` +
+        `• لا ترسل عملات مختلفة عن الشبكة المحددة\n` +
+        `• تأكد من الشبكة - الإرسال على شبكة خاطئة يؤدي لفقدان الأموال\n` +
+        `• الحد الأدنى للإيداع: 10 دولار\n` +
+        `• وقت المعالجة: 5-30 دقيقة حسب الشبكة`,
+        { parse_mode: 'Markdown' }
+    );
+});
+
+// تعليمات السحب
+bot.command('withdraw_help', async (ctx) => {
+    await ctx.reply(
+        `📤 *كيفية السحب من المنصة*\n\n` +
+        `1️⃣ *افتح منصة التداول*: ${WEBAPP_URL}\n\n` +
+        `2️⃣ *اذهب إلى تبويب "محفظتي"*\n\n` +
+        `3️⃣ *أدخل المبلغ* الذي تريد سحبه (بالدولار)\n\n` +
+        `4️⃣ *اختر الشبكة* المناسبة (BEP-20, Polygon, Solana, Aptos)\n\n` +
+        `5️⃣ *أدخل عنوان المحفظة* المستلم\n\n` +
+        `6️⃣ *أدخل رمز 2FA* إذا كان مفعلاً\n\n` +
+        `7️⃣ *اضغط على سحب* وانتظر موافقة الإدارة\n\n` +
+        `⚠️ *تحذيرات مهمة:*\n` +
+        `• فعّل 2FA لحماية حسابك قبل السحب\n` +
+        `• عمولة السحب: 2% من قيمة المبلغ\n` +
+        `• تأكد من العنوان - التحويلات لا يمكن استرجاعها\n` +
+        `• الحد الأدنى للسحب: 20 دولار\n` +
+        `• المبالغ الكبيرة (+1000$) تحتاج موافقة إدارية`,
+        { parse_mode: 'Markdown' }
+    );
+});
+
+// تعليمات تحويل الدولار
+bot.command('convert_help', async (ctx) => {
+    await ctx.reply(
+        `💵 *كيفية تحويل الدولار إلى المنصة*\n\n` +
+        `1️⃣ *قم بشراء USDT أو BUSD* من أي منصة تداول (Binance, Bybit, OKX)\n\n` +
+        `2️⃣ *اختر الشبكة* (BEP-20 هي الأرخص والأسرع)\n\n` +
+        `3️⃣ *انسخ عنوان محفظتك* من الأمر /deposit_help\n\n` +
+        `4️⃣ *أرسل العملة* إلى العنوان المنسوخ\n\n` +
+        `5️⃣ *بعد وصولها*، سيتم تحويلها تلقائياً إلى دولار أمريكي في رصيدك\n\n` +
+        `💡 *نصيحة:* ابدأ بمبلغ صغير للتأكد من صحة العملية قبل إرسال مبالغ كبيرة`,
+        { parse_mode: 'Markdown' }
+    );
+});
+
+// تعليمات السحب لمنصات أخرى
+bot.command('withdraw_to_exchange', async (ctx) => {
+    await ctx.reply(
+        `🔄 *كيفية السحب إلى منصات أخرى*\n\n` +
+        `1️⃣ *اطلب سحب* من المنصة إلى عنوان محفظتك (استخدم /withdraw_help)\n\n` +
+        `2️⃣ *استخدم نفس الشبكة* التي تدعمها المنصة الهدف\n\n` +
+        `3️⃣ *اذهب إلى المنصة الهدف* (Binance, Bybit, إلخ)\n\n` +
+        `4️⃣ *اختر إيداع* وانسخ عنوان المحفظة الخاص بك هناك\n\n` +
+        `5️⃣ *أرسل من محفظتك* إلى عنوان المنصة الهدف\n\n` +
+        `⚠️ *تأكد من:*\n` +
+        `• الشبكة متطابقة (مثال: BEP-20 مع BEP-20)\n` +
+        `• العنوان صحيح 100%\n` +
+        `• عملة الإرسال مدعومة على المنصة الهدف`,
+        { parse_mode: 'Markdown' }
+    );
+});
+
+// الشبكات المدعومة
+bot.command('networks_help', async (ctx) => {
+    await ctx.reply(
+        `🌐 *الشبكات المدعومة للإيداع والسحب*\n\n` +
+        `🟡 *BNB (BEP-20)*\n` +
+        `• العمولة: ~0.1 دولار\n` +
+        `• الوقت: 5-10 دقائق\n` +
+        `• العملات: BUSD, USDT, BNB\n\n` +
+        `🟣 *POLYGON (MATIC)*\n` +
+        `• العمولة: ~0.05 دولار\n` +
+        `• الوقت: 5-15 دقيقة\n` +
+        `• العملات: USDT, USDC, MATIC\n\n` +
+        `🟢 *SOLANA (SOL)*\n` +
+        `• العمولة: ~0.01 دولار\n` +
+        `• الوقت: 2-5 دقائق\n` +
+        `• العملات: USDT, USDC, SOL\n\n` +
+        `🔷 *APTOS (APT)*\n` +
+        `• العمولة: ~0.02 دولار\n` +
+        `• الوقت: 2-5 دقائق\n` +
+        `• العملات: USDT, APT`,
+        { parse_mode: 'Markdown' }
+    );
+});
+
+// الأسئلة الشائعة
+bot.command('faq', async (ctx) => {
+    await ctx.reply(
+        `❓ *الأسئلة الشائعة*\n\n` +
+        `💵 *كم تبلغ عمولة الإيداع؟*\n` +
+        `الإيداع مجاني بالكامل، لكن قد تفرض شبكة البلوكشين رسوم غاز\n\n` +
+        `💰 *كم تبلغ عمولة السحب؟*\n` +
+        `عمولة السحب 2% من قيمة المبلغ، وتشمل رسوم الشبكة\n\n` +
+        `⏱️ *كم يستغرق وصول الأموال؟*\n` +
+        `الإيداع: 5-30 دقيقة حسب الشبكة\n` +
+        `السحب: حتى 24 ساعة للمراجعة + وقت الشبكة\n\n` +
+        `🔐 *هل أحتاج 2FA للسحب؟*\n` +
+        `نوصي بشدة بتفعيل 2FA، وهو إلزامي للمبالغ فوق 100 دولار\n\n` +
+        `🌐 *ما هي الشبكات المدعومة؟*\n` +
+        `BEP-20 (BNB)، Polygon (MATIC)، Solana (SOL)، Aptos (APT)\n\n` +
+        `📞 *كيف أتواصل مع الدعم؟*\n` +
+        `استخدم الأمر /support أو تواصل مع @${ADMIN_USERNAME}`,
+        { parse_mode: 'Markdown' }
+    );
+});
+
+// ========== أزرار التعليمات ==========
+bot.action('instructions_menu', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `📖 *قائمة التعليمات والدعم*\n\n` +
+        `اختر ما تريد معرفته من القائمة أدناه:`,
+        { parse_mode: 'Markdown', ...instructionsKeyboard }
+    );
+});
+
+bot.action('deposit_instructions', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    const wallet = await db.getUserWallet(ctx.from.id);
+    await ctx.editMessageText(
+        `📥 *كيفية الإيداع في المنصة*\n\n` +
+        `1️⃣ *انسخ عنوان محفظتك:*\n` +
+        `🟡 BNB: \`${wallet.bnbAddress}\`\n` +
+        `🟣 POLYGON: \`${wallet.polygonAddress}\`\n` +
+        `🟢 SOLANA: \`${wallet.solanaAddress}\`\n` +
+        `🔷 APTOS: \`${wallet.aptosAddress}\`\n\n` +
+        `2️⃣ *اشتر العملة* من أي منصة (Binance, Bybit, OKX)\n\n` +
+        `3️⃣ *أرسل العملة* إلى العنوان المنسوخ باستخدام نفس الشبكة\n\n` +
+        `4️⃣ *أرسل رابط المعاملة* للإدارة:\n` +
+        `/confirm_deposit [رقم الطلب] [رابط المعاملة]\n\n` +
+        `⚠️ *تحذيرات مهمة:*\n` +
+        `• لا ترسل عملات مختلفة عن الشبكة المحددة\n` +
+        `• تأكد من الشبكة - الإرسال على شبكة خاطئة يؤدي لفقدان الأموال\n` +
+        `• الحد الأدنى للإيداع: 10 دولار\n` +
+        `• وقت المعالجة: 5-30 دقيقة حسب الشبكة`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+    );
+});
+
+bot.action('withdraw_instructions', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `📤 *كيفية السحب من المنصة*\n\n` +
+        `1️⃣ *افتح منصة التداول*: ${WEBAPP_URL}\n\n` +
+        `2️⃣ *اذهب إلى تبويب "محفظتي"*\n\n` +
+        `3️⃣ *أدخل المبلغ* الذي تريد سحبه (بالدولار)\n\n` +
+        `4️⃣ *اختر الشبكة* المناسبة (BEP-20, Polygon, Solana, Aptos)\n\n` +
+        `5️⃣ *أدخل عنوان المحفظة* المستلم\n\n` +
+        `6️⃣ *أدخل رمز 2FA* إذا كان مفعلاً\n\n` +
+        `7️⃣ *اضغط على سحب* وانتظر موافقة الإدارة\n\n` +
+        `⚠️ *تحذيرات مهمة:*\n` +
+        `• فعّل 2FA لحماية حسابك قبل السحب\n` +
+        `• عمولة السحب: 2% من قيمة المبلغ\n` +
+        `• تأكد من العنوان - التحويلات لا يمكن استرجاعها\n` +
+        `• الحد الأدنى للسحب: 20 دولار\n` +
+        `• المبالغ الكبيرة (+1000$) تحتاج موافقة إدارية`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+    );
+});
+
+bot.action('convert_usd_instructions', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `💵 *كيفية تحويل الدولار إلى المنصة*\n\n` +
+        `1️⃣ *قم بشراء USDT أو BUSD* من أي منصة تداول (Binance, Bybit, OKX)\n\n` +
+        `2️⃣ *اختر الشبكة* (BEP-20 هي الأرخص والأسرع)\n\n` +
+        `3️⃣ *انسخ عنوان محفظتك* من تعليمات الإيداع\n\n` +
+        `4️⃣ *أرسل العملة* إلى العنوان المنسوخ\n\n` +
+        `5️⃣ *بعد وصولها*، سيتم تحويلها تلقائياً إلى دولار أمريكي في رصيدك\n\n` +
+        `💡 *نصيحة:* ابدأ بمبلغ صغير للتأكد من صحة العملية قبل إرسال مبالغ كبيرة`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+    );
+});
+
+bot.action('withdraw_to_exchange', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `🔄 *كيفية السحب إلى منصات أخرى*\n\n` +
+        `1️⃣ *اطلب سحب* من المنصة إلى عنوان محفظتك\n\n` +
+        `2️⃣ *استخدم نفس الشبكة* التي تدعمها المنصة الهدف\n\n` +
+        `3️⃣ *اذهب إلى المنصة الهدف* (Binance, Bybit, إلخ)\n\n` +
+        `4️⃣ *اختر إيداع* وانسخ عنوان المحفظة الخاص بك هناك\n\n` +
+        `5️⃣ *أرسل من محفظتك* إلى عنوان المنصة الهدف\n\n` +
+        `⚠️ *تأكد من:*\n` +
+        `• الشبكة متطابقة (مثال: BEP-20 مع BEP-20)\n` +
+        `• العنوان صحيح 100%\n` +
+        `• عملة الإرسال مدعومة على المنصة الهدف`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+    );
+});
+
+bot.action('supported_networks', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `🌐 *الشبكات المدعومة للإيداع والسحب*\n\n` +
+        `🟡 *BNB (BEP-20)*\n` +
+        `• العمولة: ~0.1 دولار\n` +
+        `• الوقت: 5-10 دقائق\n` +
+        `• العملات: BUSD, USDT, BNB\n\n` +
+        `🟣 *POLYGON (MATIC)*\n` +
+        `• العمولة: ~0.05 دولار\n` +
+        `• الوقت: 5-15 دقيقة\n` +
+        `• العملات: USDT, USDC, MATIC\n\n` +
+        `🟢 *SOLANA (SOL)*\n` +
+        `• العمولة: ~0.01 دولار\n` +
+        `• الوقت: 2-5 دقائق\n` +
+        `• العملات: USDT, USDC, SOL\n\n` +
+        `🔷 *APTOS (APT)*\n` +
+        `• العمولة: ~0.02 دولار\n` +
+        `• الوقت: 2-5 دقائق\n` +
+        `• العملات: USDT, APT`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+    );
+});
+
+bot.action('faq_instructions', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `❓ *الأسئلة الشائعة*\n\n` +
+        `💵 *كم تبلغ عمولة الإيداع؟*\n` +
+        `الإيداع مجاني بالكامل، لكن قد تفرض شبكة البلوكشين رسوم غاز\n\n` +
+        `💰 *كم تبلغ عمولة السحب؟*\n` +
+        `عمولة السحب 2% من قيمة المبلغ، وتشمل رسوم الشبكة\n\n` +
+        `⏱️ *كم يستغرق وصول الأموال؟*\n` +
+        `الإيداع: 5-30 دقيقة حسب الشبكة\n` +
+        `السحب: حتى 24 ساعة للمراجعة + وقت الشبكة\n\n` +
+        `🔐 *هل أحتاج 2FA للسحب؟*\n` +
+        `نوصي بشدة بتفعيل 2FA، وهو إلزامي للمبالغ فوق 100 دولار\n\n` +
+        `🌐 *ما هي الشبكات المدعومة؟*\n` +
+        `BEP-20 (BNB)، Polygon (MATIC)، Solana (SOL)، Aptos (APT)\n\n` +
+        `📞 *كيف أتواصل مع الدعم؟*\n` +
+        `استخدم الأمر /support أو تواصل مع @${ADMIN_USERNAME}`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+    );
+});
+
+// ========== عرض المعرف ==========
 bot.command('my_id', async (ctx) => {
     await ctx.reply(`🆔 *معرفك:* \`${ctx.from.id}\`\n👤 *اسمك:* ${ctx.from.first_name}\n📛 *يوزر:* @${ctx.from.username || 'لا يوجد'}`, { parse_mode: 'Markdown' });
 });
@@ -451,7 +729,7 @@ bot.command('admin', async (ctx) => {
     await ctx.reply('👑 *لوحة تحكم الأدمن*', { parse_mode: 'Markdown', ...adminKeyboard });
 });
 
-// ========== زر الإحالات الجديد ==========
+// ========== زر الإحالات ==========
 bot.action('my_referral', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const referralData = await db.getReferralData(ctx.from.id);
@@ -860,7 +1138,8 @@ bot.action('my_wallet', rateLimitMiddleware, async (ctx) => {
         `🟢 *SOLANA:*\n\`${w.solanaAddress}\`\n\n` +
         `🔷 *APTOS:*\n\`${w.aptosAddress}\`\n\n` +
         `📝 *لإيداع العملات:* /deposit [العملة] [المبلغ] [الشبكة]\n` +
-        `📝 *لسحب العملات:* /withdraw [العملة] [المبلغ] [الشبكة] [العنوان]`,
+        `📝 *لسحب العملات:* /withdraw [العملة] [المبلغ] [الشبكة] [العنوان]\n\n` +
+        `📖 *لتعليمات الإيداع والسحب:* /help`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('📋 نسخ العناوين', 'copy_addresses'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
 });
@@ -907,7 +1186,7 @@ bot.command('set_bank', async (ctx) => {
 // ========== إيداع وسحب ==========
 bot.command('deposit', async (ctx) => {
     const args = ctx.message.text.split(' ');
-    if (args.length < 4) return ctx.reply('❌ /deposit [العملة] [المبلغ] [الشبكة]\nمثال: /deposit USDT 100 bnb');
+    if (args.length < 4) return ctx.reply('❌ /deposit [العملة] [المبلغ] [الشبكة]\nمثال: /deposit USDT 100 bnb\n📖 لتعليمات الإيداع: /deposit_help');
     const currency = args[1].toUpperCase();
     const amount = parseFloat(args[2]);
     const network = args[3].toLowerCase();
@@ -918,7 +1197,7 @@ bot.command('deposit', async (ctx) => {
 
 bot.command('withdraw', async (ctx) => {
     const args = ctx.message.text.split(' ');
-    if (args.length < 5) return ctx.reply('❌ /withdraw [العملة] [المبلغ] [الشبكة] [العنوان]\nمثال: /withdraw USDT 100 bnb 0x...');
+    if (args.length < 5) return ctx.reply('❌ /withdraw [العملة] [المبلغ] [الشبكة] [العنوان]\nمثال: /withdraw USDT 100 bnb 0x...\n📖 لتعليمات السحب: /withdraw_help');
     const currency = args[1].toUpperCase();
     const amount = parseFloat(args[2]);
     const network = args[3].toLowerCase();
@@ -978,12 +1257,13 @@ bot.action('support', rateLimitMiddleware, async (ctx) => {
         `📞 *الدعم الفني*\n\n` +
         `👤 *الأدمن:* @${ADMIN_USERNAME}\n` +
         `🆔 *المعرف:* ${ADMIN_ID}\n\n` +
+        `📖 *لتعليمات الإيداع والسحب:* /help\n\n` +
         `💸 *عناوين العمولات:*\n` +
         `🟡 BNB: \`${process.env.COMMISSION_WALLET_BNB || '0x2a2548117C7113eB807298D74A44d451E330AC95'}\`\n` +
         `🟣 POLYGON: \`${process.env.COMMISSION_WALLET_POLYGON || '0x2a2548117C7113eB807298D74A44d451E330AC95'}\`\n` +
         `🟢 SOLANA: \`${process.env.COMMISSION_WALLET_SOLANA || 'HFMJRRqC76YdBE4fXDnyicYDq6ujFhkFJctBfQonStL'}\`\n` +
         `🔷 APTOS: \`${process.env.COMMISSION_WALLET_APTOS || '0xf0713a00655788d44218e42b71343be9f18d96533d322c28ce9830dcf9022468'}\``,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.url('📨 تواصل', `https://t.me/${ADMIN_USERNAME}`)], [Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.url('📨 تواصل', `https://t.me/${ADMIN_USERNAME}`)], [Markup.button.callback('📖 تعليمات', 'instructions_menu'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
 });
 
@@ -1357,6 +1637,7 @@ bot.launch().then(() => {
     console.log('🟢 User Online Status: Active');
     console.log('⏰ Auto-release after 24h: Active');
     console.log('🎁 Referral System: Active with 10% commission');
+    console.log('📖 Instructions System: Active with deposit/withdraw guides');
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
