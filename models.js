@@ -40,9 +40,8 @@ const kycRequestSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 
-// ========== نموذج المستخدم (مع جميع الحقول بما فيها الإحالات) ==========
+// ========== نموذج المستخدم ==========
 const userSchema = new mongoose.Schema({
-    // البيانات الأساسية
     userId: { type: Number, required: true, unique: true },
     username: { type: String, default: '' },
     firstName: { type: String, default: '' },
@@ -52,17 +51,13 @@ const userSchema = new mongoose.Schema({
     email: { type: String, default: '' },
     country: { type: String, default: 'SD' },
     city: { type: String, default: '' },
-    
-    // البيانات البنكية
     bankName: { type: String, default: '' },
     bankAccountNumber: { type: String, default: '' },
     bankAccountName: { type: String, default: '' },
-    
-    // حالة الحساب
     isVerified: { type: Boolean, default: false },
     isMerchant: { type: Boolean, default: false },
     
-    // ========== نظام الأمان ==========
+    // الأمان
     isLocked: { type: Boolean, default: false },
     isBanned: { type: Boolean, default: false },
     banReason: { type: String, default: '' },
@@ -70,22 +65,18 @@ const userSchema = new mongoose.Schema({
     warningCount: { type: Number, default: 0 },
     suspiciousActions: { type: Array, default: [] },
     
-    // ========== التحقق بخطوتين (2FA) ==========
+    // 2FA
     twoFAEnabled: { type: Boolean, default: false },
     twoFASecret: { type: String, default: '' },
     twoFABackupCodes: { type: Array, default: [] },
-    
-    // ========== إعدادات 2FA للتحرير ==========
     require2FAForRelease: { type: Boolean, default: true },
     release2FAThreshold: { type: Number, default: 100 },
     
-    // ========== الإحالات (Referral) ==========
-    referrerId: { type: Number, default: null },           // من قام بدعوة هذا المستخدم
-    referralCount: { type: Number, default: 0 },           // عدد المستخدمين الذين دعاهم هذا المستخدم
-    referralEarnings: { type: Number, default: 0 },        // رصيد الإحالات (عمولات غير محولة)
-    referralCommissionRate: { type: Number, default: 10 }, // نسبة العمولة من عمولة المنصة
-    
-    // قائمة المدعوين مع تفاصيل أرباحهم
+    // الإحالات
+    referrerId: { type: Number, default: null },
+    referralCount: { type: Number, default: 0 },
+    referralEarnings: { type: Number, default: 0 },
+    referralCommissionRate: { type: Number, default: 10 },
     referrals: [{ 
         userId: { type: Number, required: true },
         joinedAt: { type: Date, default: Date.now },
@@ -93,7 +84,7 @@ const userSchema = new mongoose.Schema({
         earned: { type: Number, default: 0 }
     }],
     
-    // ========== نشاط التاجر ==========
+    // نشاط التاجر
     lastSeen: { type: Date, default: Date.now },
     isOnline: { type: Boolean, default: false },
     totalDelays: { type: Number, default: 0 },
@@ -101,7 +92,7 @@ const userSchema = new mongoose.Schema({
     isFlagged: { type: Boolean, default: false },
     flagReason: { type: String, default: '' },
     
-    // ========== إحصائيات التداول ==========
+    // إحصائيات التداول
     usdBalance: { type: Number, default: 0 },
     totalTraded: { type: Number, default: 0 },
     totalProfit: { type: Number, default: 0 },
@@ -109,25 +100,14 @@ const userSchema = new mongoose.Schema({
     completedTrades: { type: Number, default: 0 },
     failedTrades: { type: Number, default: 0 },
     successRate: { type: Number, default: 100 },
-    
-    // ========== نشاط يومي ==========
-    dailyTrades: [{ 
-        date: { type: String },
-        amount: { type: Number },
-        timestamp: { type: Date, default: Date.now }
-    }],
-    
-    // ========== مراجع ==========
+    dailyTrades: [{ date: { type: String }, amount: { type: Number }, timestamp: { type: Date, default: Date.now } }],
     walletId: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet' },
-    
-    // ========== معلومات الدخول ==========
     lastLoginIp: { type: String, default: '' },
     loginAttempts: { type: Number, default: 0 },
-    
     createdAt: { type: Date, default: Date.now }
 });
 
-// ========== نموذج سجل التدقيق (Audit Log) ==========
+// ========== نماذج السجلات ==========
 const auditLogSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
     action: { type: String, required: true },
@@ -137,7 +117,6 @@ const auditLogSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 });
 
-// ========== نموذج البلاغات (Reports) ==========
 const reportSchema = new mongoose.Schema({
     reporterId: { type: Number, required: true },
     reportedId: { type: Number, required: true },
@@ -150,7 +129,6 @@ const reportSchema = new mongoose.Schema({
     resolvedAt: { type: Date, default: null }
 });
 
-// ========== نموذج القائمة السوداء (Blacklist) ==========
 const blacklistSchema = new mongoose.Schema({
     address: { type: String, required: true, unique: true },
     type: { type: String, enum: ['wallet', 'user', 'ip'], default: 'wallet' },
@@ -209,7 +187,7 @@ const tradeSchema = new mongoose.Schema({
     completedAt: { type: Date, default: null }
 });
 
-// ========== نموذج طلبات الإيداع ==========
+// ========== نماذج الإيداع والسحب ==========
 const depositRequestSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
     amount: { type: Number, required: true },
@@ -224,7 +202,6 @@ const depositRequestSchema = new mongoose.Schema({
     completedAt: { type: Date, default: null }
 });
 
-// ========== نموذج طلبات السحب ==========
 const withdrawRequestSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
     amount: { type: Number, required: true },
@@ -267,7 +244,32 @@ const dailyStatsSchema = new mongoose.Schema({
     securityAlerts: { type: Number, default: 0 }
 });
 
-// ========== إنشاء الفهارس (Indexes) لتحسين الأداء ==========
+// ========== نماذج الدردشة والتذكير (الجديدة) ==========
+
+// نموذج رسائل الدردشة
+const chatMessageSchema = new mongoose.Schema({
+    tradeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Trade', required: true, index: true },
+    senderId: { type: Number, required: true },
+    receiverId: { type: Number, required: true },
+    message: { type: String, default: '' },
+    messageType: { type: String, enum: ['text', 'image', 'system', 'reminder'], default: 'text' },
+    imageFileId: { type: String, default: '' },  // file_id من تلجرام للصور
+    isRead: { type: Boolean, default: false },
+    readAt: { type: Date, default: null },
+    createdAt: { type: Date, default: Date.now }
+});
+
+// نموذج تذكير الصفقات
+const reminderSchema = new mongoose.Schema({
+    tradeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Trade', required: true, unique: true },
+    lastReminderAt: { type: Date, default: null },
+    reminderCount: { type: Number, default: 0 },
+    nextReminderAt: { type: Date, default: null },
+    isActive: { type: Boolean, default: true },
+    lastMessageId: { type: String, default: '' }  // لتحديث الرسالة بدلاً من إرسال رسالة جديدة
+});
+
+// ========== إنشاء الفهارس (Indexes) ==========
 userSchema.index({ userId: 1 });
 userSchema.index({ username: 1 });
 userSchema.index({ isVerified: 1 });
@@ -307,6 +309,16 @@ auditLogSchema.index({ timestamp: -1 });
 
 dailyStatsSchema.index({ date: 1 });
 
+// فهارس الدردشة الجديدة
+chatMessageSchema.index({ tradeId: 1 });
+chatMessageSchema.index({ createdAt: -1 });
+chatMessageSchema.index({ senderId: 1 });
+chatMessageSchema.index({ receiverId: 1 });
+
+reminderSchema.index({ tradeId: 1 });
+reminderSchema.index({ nextReminderAt: 1 });
+reminderSchema.index({ isActive: 1 });
+
 // ========== إنشاء النماذج ==========
 const User = mongoose.model('User', userSchema);
 const Wallet = mongoose.model('Wallet', walletSchema);
@@ -321,6 +333,10 @@ const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 const Report = mongoose.model('Report', reportSchema);
 const Blacklist = mongoose.model('Blacklist', blacklistSchema);
 
+// النماذج الجديدة
+const ChatMessage = mongoose.model('ChatMessage', chatMessageSchema);
+const Reminder = mongoose.model('Reminder', reminderSchema);
+
 // ========== تصدير جميع النماذج ==========
 module.exports = { 
     User, 
@@ -334,5 +350,7 @@ module.exports = {
     DailyStats,
     AuditLog,
     Report,
-    Blacklist
+    Blacklist,
+    ChatMessage,   // <-- نموذج الدردشة
+    Reminder       // <-- نموذج التذكير
 };
