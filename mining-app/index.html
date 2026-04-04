@@ -24,6 +24,35 @@
             margin: 0 auto;
         }
 
+        /* شاشة التحميل */
+        #loadingScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: white;
+            backdrop-filter: blur(5px);
+        }
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top-color: #4caf50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         .card {
             background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
@@ -211,13 +240,6 @@
             border-radius: 12px;
             padding: 2px 8px;
             font-size: 10px;
-        }
-
-        .trust-badge {
-            display: inline-flex;
-            gap: 5px;
-            margin-top: 5px;
-            flex-wrap: wrap;
         }
 
         .trade-input, .offer-input, .bank-input, .kyc-input {
@@ -487,17 +509,6 @@
             font-size: 16px;
         }
 
-        .info-box ul, .info-box ol {
-            margin-right: 20px;
-            margin-top: 10px;
-        }
-
-        .info-box li {
-            margin: 8px 0;
-            font-size: 13px;
-            color: #ddd;
-        }
-
         .step-box {
             background: rgba(76, 175, 80, 0.15);
             border: 1px solid #4caf50;
@@ -519,51 +530,6 @@
             padding: 15px;
             margin: 15px 0;
             text-align: right;
-        }
-
-        .twofa-instructions h4 {
-            color: #2196F3;
-            margin-bottom: 10px;
-            font-size: 16px;
-        }
-
-        .twofa-instructions ol {
-            margin-right: 20px;
-            margin-top: 10px;
-        }
-
-        .twofa-instructions li {
-            margin: 8px 0;
-            font-size: 13px;
-            color: #ddd;
-        }
-
-        .twofa-instructions .secret-key {
-            background: rgba(0,0,0,0.5);
-            padding: 8px;
-            border-radius: 8px;
-            font-family: monospace;
-            font-size: 14px;
-            text-align: center;
-            margin: 10px 0;
-            direction: ltr;
-        }
-
-        .twofa-instructions .warning {
-            color: #ff9800;
-            font-size: 12px;
-            margin-top: 10px;
-        }
-
-        .copy-secret-btn {
-            background: #2196F3;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            margin-top: 10px;
-            font-size: 12px;
         }
 
         .referral-stats-grid {
@@ -606,10 +572,37 @@
         .network-solana { border-right-color: #14F195; }
         .network-aptos { border-right-color: #FF7B00; }
 
+        .limit-inputs {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .limit-inputs input {
+            flex: 1;
+        }
+
+        /* أزرار التصفح */
+        .pagination-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            justify-content: center;
+        }
+        .pagination-buttons button {
+            background: #2196F3;
+            padding: 8px 20px;
+            font-size: 14px;
+        }
+        .pagination-buttons button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         @media (max-width: 480px) {
             .tab-button { font-size: 11px; padding: 8px; }
             .stat-value { font-size: 18px; }
             .referral-stat-value { font-size: 22px; }
+            .limit-inputs { flex-direction: column; }
         }
     </style>
 </head>
@@ -643,18 +636,18 @@
             <button class="tab-button" onclick="switchTab('instructions')">📖 تعليمات</button>
         </div>
 
-        <!-- سوق التداول -->
+        <!-- سوق التداول مع Pagination -->
         <div id="market-tab" class="tab-content active">
             <div class="card">
                 <div class="escrow-info">
                     🔐 *نظام الضمان* - العملات محتجزة حتى تأكيد الدفع
                 </div>
                 <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
-                    <select id="marketType" class="currency-select" onchange="loadMarket()" style="flex:1">
+                    <select id="marketType" class="currency-select" onchange="resetAndLoadMarket()" style="flex:1">
                         <option value="sell">🟢 عروض البيع</option>
                         <option value="buy">🔴 عروض الشراء</option>
                     </select>
-                    <select id="marketCurrency" class="currency-select" onchange="loadMarket()" style="flex:1">
+                    <select id="marketCurrency" class="currency-select" onchange="resetAndLoadMarket()" style="flex:1">
                         <option value="">جميع العملات</option>
                         <option value="USD">🇺🇸 دولار أمريكي</option>
                         <option value="EUR">🇪🇺 يورو</option>
@@ -675,13 +668,13 @@
                     </select>
                 </div>
                 <div id="marketStats" style="background:rgba(0,0,0,0.3); padding:10px; border-radius:10px; margin-bottom:10px; text-align:center; font-size:12px">
-                    📊 جاري تحميل إحصائيات السوق...
+                    📊 جاري تحميل الإحصائيات...
                 </div>
-                <div id="offersList"><div class="loading">جاري تحميل العروض...</div></div>
+                <div id="offersList"><div class="loading">🔄 جاري تحميل العروض...</div></div>
             </div>
         </div>
 
-        <!-- إنشاء عرض -->
+        <!-- إنشاء عرض مع الحدود -->
         <div id="create-tab" class="tab-content">
             <div class="card">
                 <h3 style="color:white; margin-bottom:15px">➕ إنشاء عرض جديد</h3>
@@ -712,6 +705,12 @@
                 </select>
                 <input type="number" id="offerAmount" placeholder="المبلغ بالعملة المحلية" class="trade-input">
                 <input type="number" id="offerPrice" placeholder="سعر العملة المحلية مقابل الدولار" class="trade-input">
+                
+                <div class="limit-inputs">
+                    <input type="number" id="offerMinAmount" placeholder="الحد الأدنى للشراء" class="trade-input" style="margin:0">
+                    <input type="number" id="offerMaxAmount" placeholder="الحد الأقصى للشراء" class="trade-input" style="margin:0">
+                </div>
+                
                 <select id="offerPaymentMethod" class="currency-select">
                     <option value="bank_transfer">🏦 تحويل بنكي</option>
                     <option value="paypal">💳 باي بال</option>
@@ -761,111 +760,21 @@
             </div>
         </div>
 
-        <!-- محفظتي - مع تعليمات الإيداع والسحب -->
+        <!-- محفظتي -->
         <div id="wallet-tab" class="tab-content">
             <div class="card">
                 <h3 style="color:white">💼 محفظتي</h3>
                 <div id="walletInfo"><div class="loading">جاري التحميل...</div></div>
                 
-                <!-- تعليمات الإيداع -->
                 <div class="info-box" style="margin-top: 15px;">
-                    <h4>📥 *كيفية الإيداع في المنصة*</h4>
-                    <ol style="margin-right: 20px;">
-                        <li>🔗 <strong>انسخ عنوان محفظتك</strong> من القسم أعلاه (اختر الشبكة المناسبة)</li>
-                        <li>💰 <strong>أرسل العملة</strong> من محفظتك الخارجية (Binance, Trust Wallet, MetaMask) إلى هذا العنوان</li>
-                        <li>📱 <strong>استخدم نفس الشبكة</strong> التي اخترتها (BEP-20, Polygon, Solana, Aptos)</li>
-                        <li>✅ <strong>بعد الإرسال</strong>، استخدم الأمر <code>/confirm_deposit</code> مع رابط المعاملة</li>
-                        <li>⏳ <strong>سيتم إضافة الرصيد</strong> إلى محفظتك بعد تأكيد الإدارة</li>
-                    </ol>
+                    <h4>📥 كيفية الإيداع</h4>
+                    <ol><li>انسخ عنوان محفظتك من الأعلى</li><li>أرسل العملة من محفظتك الخارجية</li><li>استخدم نفس الشبكة</li><li>بعد الإرسال استخدم /confirm_deposit</li></ol>
                 </div>
 
-                <!-- تحذيرات مهمة للإيداع -->
                 <div class="warning-box">
-                    ⚠️ *تحذيرات مهمة قبل الإيداع:*<br><br>
-                    • 🚫 *لا ترسل عملات مختلفة* عن الشبكة المحددة (مثال: لا ترسل BNB على شبكة Solana)<br>
-                    • 🔍 *تأكد من الشبكة* - الإرسال على شبكة خاطئة يؤدي إلى فقدان الأموال<br>
-                    • 📝 *استخدم نفس الشبكة* التي اخترتها عند نسخ العنوان<br>
-                    • 💡 *الحد الأدنى للإيداع*: 10 دولار أمريكي<br>
-                    • ⏰ *وقت المعالجة*: 5-30 دقيقة حسب الشبكة
+                    ⚠️ تأكد من الشبكة - الإرسال على شبكة خاطئة يؤدي لفقدان الأموال
                 </div>
 
-                <!-- تعليمات السحب -->
-                <div class="info-box">
-                    <h4>📤 *كيفية السحب من المنصة*</h4>
-                    <ol style="margin-right: 20px;">
-                        <li>💰 <strong>أدخل المبلغ</strong> الذي تريد سحبه (بالدولار)</li>
-                        <li>🌐 <strong>اختر الشبكة</strong> المناسبة (BEP-20, Polygon, Solana, Aptos)</li>
-                        <li>📤 <strong>أدخل عنوان المحفظة</strong> المستلم (انسخه من محفظتك الخارجية)</li>
-                        <li>🔐 <strong>أدخل رمز 2FA</strong> إذا كان مفعلاً على حسابك</li>
-                        <li>✅ <strong>اضغط على سحب</strong> وانتظر موافقة الإدارة</li>
-                    </ol>
-                </div>
-
-                <!-- تحذيرات مهمة للسحب -->
-                <div class="warning-box">
-                    ⚠️ *تحذيرات مهمة قبل السحب:*<br><br>
-                    • 🔐 *فعّل 2FA* لحماية حسابك قبل إجراء أي سحب<br>
-                    • 💸 *عمولة السحب*: 2% من قيمة المبلغ<br>
-                    • 📝 *تأكد من العنوان* - التحويلات لا يمكن استرجاعها<br>
-                    • 🔍 *تأكد من الشبكة* - استخدم نفس شبكة المحفظة المستلمة<br>
-                    • ⏳ *المبالغ الكبيرة (+1000$)* تحتاج موافقة إدارية<br>
-                    • 💡 *الحد الأدنى للسحب*: 20 دولار أمريكي
-                </div>
-
-                <!-- كيفية تحويل الدولار -->
-                <div class="info-box">
-                    <h4>💵 *كيفية تحويل الدولار إلى المنصة*</h4>
-                    <ol style="margin-right: 20px;">
-                        <li>🔄 <strong>قم بشراء USDT أو BUSD</strong> من أي منصة تداول (Binance, Bybit, OKX)</li>
-                        <li>🌐 <strong>اختر الشبكة</strong> (BEP-20 هي الأرخص والأسرع)</li>
-                        <li>📤 <strong>انسخ عنوان محفظتك</strong> من قسم "محفظتي" أعلاه</li>
-                        <li>💰 <strong>أرسل العملة</strong> إلى العنوان المنسوخ</li>
-                        <li>✅ <strong>بعد وصولها</strong>، سيتم تحويلها تلقائياً إلى دولار أمريكي في رصيدك</li>
-                    </ol>
-                </div>
-
-                <!-- كيفية السحب إلى منصات أخرى -->
-                <div class="info-box">
-                    <h4>🔄 *كيفية السحب إلى منصات أخرى*</h4>
-                    <ol style="margin-right: 20px;">
-                        <li>📤 <strong>اطلب سحب</strong> من المنصة إلى عنوان محفظتك</li>
-                        <li>🌐 <strong>استخدم نفس الشبكة</strong> التي تدعمها المنصة الهدف</li>
-                        <li>📱 <strong>اذهب إلى المنصة الهدف</strong> (Binance, Bybit, إلخ)</li>
-                        <li>💰 <strong>اختر إيداع</strong> وانسخ عنوان المحفظة الخاص بك هناك</li>
-                        <li>✅ <strong>أرسل من محفظتك</strong> إلى عنوان المنصة الهدف</li>
-                    </ol>
-                </div>
-
-                <!-- الشبكات المدعومة -->
-                <div class="info-box">
-                    <h4>🌐 *الشبكات المدعومة للإيداع والسحب*</h4>
-                    <div class="network-card network-bnb">
-                        <strong>🟡 BNB (BEP-20)</strong><br>
-                        • العمولة: ~0.1 دولار<br>
-                        • الوقت: 5-10 دقائق<br>
-                        • العملات المدعومة: BUSD, USDT, BNB
-                    </div>
-                    <div class="network-card network-polygon">
-                        <strong>🟣 POLYGON (MATIC)</strong><br>
-                        • العمولة: ~0.05 دولار<br>
-                        • الوقت: 5-15 دقيقة<br>
-                        • العملات المدعومة: USDT, USDC, MATIC
-                    </div>
-                    <div class="network-card network-solana">
-                        <strong>🟢 SOLANA (SOL)</strong><br>
-                        • العمولة: ~0.01 دولار<br>
-                        • الوقت: 2-5 دقائق<br>
-                        • العملات المدعومة: USDT, USDC, SOL
-                    </div>
-                    <div class="network-card network-aptos">
-                        <strong>🔷 APTOS (APT)</strong><br>
-                        • العمولة: ~0.02 دولار<br>
-                        • الوقت: 2-5 دقائق<br>
-                        • العملات المدعومة: USDT, APT
-                    </div>
-                </div>
-
-                <!-- نموذج الإيداع والسحب -->
                 <div style="margin-top: 15px;">
                     <h4 style="color:white">💰 إيداع وسحب</h4>
                     <select id="walletNetwork" class="currency-select">
@@ -889,50 +798,27 @@
             <div class="card">
                 <h3 style="color:white">🆔 توثيق الهوية (KYC)</h3>
                 <button class="refresh-btn" onclick="refreshKycStatus()">🔄 تحديث حالة التوثيق</button>
-                <div id="kycStatus" class="kyc-status-card">
-                    <div class="loading">جاري التحميل...</div>
-                </div>
+                <div id="kycStatus" class="kyc-status-card"><div class="loading">جاري التحميل...</div></div>
                 <div id="kycForm" style="display: none;">
                     <h4 style="color:white; margin:15px 0 10px">📝 البيانات الشخصية</h4>
                     <input type="text" id="kycFullName" placeholder="الاسم الكامل" class="kyc-input">
                     <input type="text" id="kycPassport" placeholder="رقم الجواز" class="kyc-input">
                     <input type="text" id="kycNationalId" placeholder="الرقم الوطني" class="kyc-input">
                     <input type="tel" id="kycPhone" placeholder="رقم الهاتف" class="kyc-input">
-                    <input type="email" id="kycEmail" placeholder="البريد الإلكتروني (اختياري)" class="kyc-input">
-                    <select id="kycCountry" class="currency-select">
-                        <option value="SD">🇸🇩 السودان</option>
-                        <option value="EG">🇪🇬 مصر</option>
-                        <option value="SA">🇸🇦 السعودية</option>
-                        <option value="AE">🇦🇪 الإمارات</option>
-                        <option value="QA">🇶🇦 قطر</option>
-                        <option value="KW">🇰🇼 الكويت</option>
-                        <option value="BH">🇧🇭 البحرين</option>
-                        <option value="OM">🇴🇲 عمان</option>
-                        <option value="JO">🇯🇴 الأردن</option>
-                        <option value="IQ">🇮🇶 العراق</option>
-                    </select>
+                    <input type="email" id="kycEmail" placeholder="البريد الإلكتروني" class="kyc-input">
+                    <select id="kycCountry" class="currency-select"><option value="SD">🇸🇩 السودان</option><option value="EG">🇪🇬 مصر</option><option value="SA">🇸🇦 السعودية</option></select>
                     <input type="text" id="kycCity" placeholder="المدينة" class="kyc-input">
-                    
-                    <h4 style="color:white; margin:15px 0 10px">📸 المستندات المطلوبة</h4>
-                    <div class="photo-upload" onclick="document.getElementById('passportPhoto').click()">
-                        📄 اضغط لرفع صورة الجواز
-                    </div>
+                    <h4 style="color:white; margin:15px 0 10px">📸 المستندات</h4>
+                    <div class="photo-upload" onclick="document.getElementById('passportPhoto').click()">📄 اضغط لرفع صورة الجواز</div>
                     <input type="file" id="passportPhoto" accept="image/*" style="display:none" onchange="previewPassport(event)">
                     <div id="passportPreview" class="photo-preview"></div>
-                    
-                    <div class="photo-upload" onclick="document.getElementById('personalPhoto').click()">
-                        📸 اضغط لرفع الصورة الشخصية
-                    </div>
+                    <div class="photo-upload" onclick="document.getElementById('personalPhoto').click()">📸 اضغط لرفع الصورة الشخصية</div>
                     <input type="file" id="personalPhoto" accept="image/*" style="display:none" onchange="previewPersonal(event)">
                     <div id="personalPreview" class="photo-preview"></div>
-                    
                     <h4 style="color:white; margin:15px 0 10px">🏦 البيانات البنكية</h4>
-                    <select id="kycBank" class="currency-select">
-                        <option value="">اختر البنك</option>
-                    </select>
-                    <input type="text" id="kycAccountNumber" placeholder="رقم الحساب البنكي" class="kyc-input">
+                    <select id="kycBank" class="currency-select"><option value="">اختر البنك</option></select>
+                    <input type="text" id="kycAccountNumber" placeholder="رقم الحساب" class="kyc-input">
                     <input type="text" id="kycAccountName" placeholder="اسم صاحب الحساب" class="kyc-input">
-                    
                     <button class="kyc-btn" onclick="submitKyc()">📤 إرسال طلب التوثيق</button>
                 </div>
             </div>
@@ -953,9 +839,7 @@
                 <div id="bankInfo"><div class="loading">جاري التحميل...</div></div>
                 <div style="margin-top: 15px;">
                     <h4 style="color:white">✏️ تحديث البيانات</h4>
-                    <select id="bankName" class="currency-select">
-                        <option value="">اختر البنك</option>
-                    </select>
+                    <select id="bankName" class="currency-select"><option value="">اختر البنك</option></select>
                     <input type="text" id="accountNumber" placeholder="رقم الحساب" class="trade-input">
                     <input type="text" id="accountName" placeholder="اسم صاحب الحساب" class="trade-input">
                     <button class="trade-btn" onclick="updateBank()">💾 حفظ البيانات</button>
@@ -963,173 +847,47 @@
             </div>
         </div>
 
-        <!-- تبويب الإحالات -->
+        <!-- الإحالات -->
         <div id="referral-tab" class="tab-content">
             <div class="card">
                 <h3 style="color:white">🎁 برنامج الإحالات</h3>
-                
-                <!-- إحصائيات الإحالات -->
                 <div class="referral-stats-grid">
-                    <div class="referral-stat-card">
-                        <div class="referral-stat-value" id="referralCount">0</div>
-                        <div class="referral-stat-label">👥 عدد المدعوين</div>
-                    </div>
-                    <div class="referral-stat-card">
-                        <div class="referral-stat-value" id="referralEarnings">0</div>
-                        <div class="referral-stat-label">💰 رصيد الإحالات (USD)</div>
-                    </div>
-                    <div class="referral-stat-card">
-                        <div class="referral-stat-value" id="referralCommission">10%</div>
-                        <div class="referral-stat-label">📊 نسبة العمولة</div>
-                    </div>
+                    <div class="referral-stat-card"><div class="referral-stat-value" id="referralCount">0</div><div class="referral-stat-label">👥 عدد المدعوين</div></div>
+                    <div class="referral-stat-card"><div class="referral-stat-value" id="referralEarnings">0</div><div class="referral-stat-label">💰 رصيد الإحالات (USD)</div></div>
+                    <div class="referral-stat-card"><div class="referral-stat-value">10%</div><div class="referral-stat-label">📊 نسبة العمولة</div></div>
                 </div>
-                
-                <div class="address-box" id="referralLink" style="margin:10px 0; text-align:center; word-break:break-all"></div>
+                <div class="address-box" id="referralLink" style="text-align:center"></div>
                 <button class="copy-btn" onclick="copyReferralLink()">📋 نسخ رابط الإحالة</button>
-                
                 <div id="referralStats" style="margin-top:15px"></div>
-                
-                <div class="info-box" style="margin-top:15px">
-                    💡 *كيف يعمل نظام الإحالات؟*<br><br>
-                    • 🎁 *رابطك الخاص* - شاركه مع أصدقائك<br>
-                    • 📊 *نسبة العمولة:* <strong>10%</strong> من عمولة المنصة من صفقات كل مدعو<br>
-                    • 💰 *الأرباح تتراكم* في رصيد الإحالات الخاص بك<br>
-                    • 🚀 *سحب الأرباح* - يمكنك تحويل رصيد الإحالات إلى محفظتك الرئيسية<br>
-                    • 👥 *عدد غير محدود* - كلما زاد عدد المدعوين، زادت أرباحك<br>
-                    • 🔥 *كل صفقة* - تحصل عن عمولة عن كل صفقة يقوم بها المدعو
-                </div>
-                
-                <button class="trade-btn" onclick="transferReferralEarnings()" style="margin-top:15px; background:#2196F3">
-                    💸 تحويل رصيد الإحالات إلى المحفظة
-                </button>
+                <div class="info-box"><h4>💡 كيف يعمل؟</h4><p>• 10% من عمولة المنصة عن كل مدعو<br>• مكافأة ترحيبية 5 دولار<br>• يمكنك تحويل الرصيد للمحفظة</p></div>
+                <button class="trade-btn" onclick="transferReferralEarnings()" style="background:#2196F3">💸 تحويل رصيد الإحالات</button>
             </div>
         </div>
 
-        <!-- تبويب الأمان -->
+        <!-- الأمان -->
         <div id="security-tab" class="tab-content">
             <div class="card">
                 <h3 style="color:white">🔐 إعدادات الأمان</h3>
                 <div id="securityInfo"></div>
                 <div id="twofaSection">
                     <button class="trade-btn" onclick="setup2FA()" id="enable2faBtn">🔐 تفعيل التحقق بخطوتين</button>
-                    <div id="twofaQR" style="display:none; text-align:center; margin:15px 0"></div>
-                    <input type="text" id="twofaCode" placeholder="📱 أدخل الرقم المكون من 6 أرقام من التطبيق" class="trade-input" style="display:none; text-align:center; font-size:20px; letter-spacing:5px">
-                    <button class="trade-btn" onclick="verify2FA()" id="verify2faBtn" style="display:none">✅ تأكيد التفعيل</button>
-                    <button class="sell-btn" onclick="disable2FA()" id="disable2faBtn" style="display:none">❌ تعطيل التحقق بخطوتين</button>
+                    <div id="twofaQR" style="display:none"></div>
+                    <input type="text" id="twofaCode" placeholder="📱 أدخل الرقم" class="trade-input" style="display:none">
+                    <button class="trade-btn" onclick="verify2FA()" id="verify2faBtn" style="display:none">✅ تأكيد</button>
+                    <button class="sell-btn" onclick="disable2FA()" id="disable2faBtn" style="display:none">❌ تعطيل</button>
                 </div>
-                <div class="warning-box" style="margin-top:15px">
-                    ⚠️ *نصائح أمانية مهمة:*<br>
-                    • 🔐 فعّل التحقق بخطوتين لحماية حسابك<br>
-                    • 📱 استخدم تطبيق Google Authenticator أو Authy<br>
-                    • 💾 احفظ المفتاح السري في مكان آمن (لن نتمكن من استعادته إذا فقدته)<br>
-                    • 🔑 لا تشارك رمز التحقق مع أي شخص<br>
-                    • ⏰ الرمز يتغير كل 30 ثانية - أدخله بسرعة<br>
-                    • 📞 أبلغ الإدارة عن أي نشاط مشبوه
-                </div>
+                <div class="warning-box">⚠️ نصائح أمانية: فعّل 2FA، احفظ المفتاح السري، لا تشاركه مع أحد</div>
             </div>
         </div>
 
-        <!-- تبويب التعليمات الجديد -->
+        <!-- التعليمات -->
         <div id="instructions-tab" class="tab-content">
             <div class="card">
-                <h3 style="color:white">📖 دليل المستخدم الشامل</h3>
-                
-                <!-- تعليمات الإيداع -->
-                <div class="info-box">
-                    <h4>📥 *كيفية الإيداع في المنصة*</h4>
-                    <div class="step-box">
-                        <div class="step-title">الخطوة 1: نسخ عنوان المحفظة</div>
-                        <p>اذهب إلى تبويب "محفظتي" وانسخ عنوان المحفظة المناسب للشبكة التي تريد استخدامها (BNB, Polygon, Solana, Aptos)</p>
-                    </div>
-                    <div class="step-box">
-                        <div class="step-title">الخطوة 2: شراء العملة</div>
-                        <p>قم بشراء USDT أو BUSD من أي منصة تداول موثوقة مثل Binance أو Bybit</p>
-                    </div>
-                    <div class="step-box">
-                        <div class="step-title">الخطوة 3: الإرسال</div>
-                        <p>اختر سحب من المنصة التي اشتريت منها، وألصق عنوان محفظتك، وتأكد من اختيار نفس الشبكة</p>
-                    </div>
-                    <div class="step-box">
-                        <div class="step-title">الخطوة 4: التأكيد</div>
-                        <p>بعد الإرسال، استخدم الأمر /confirm_deposit [رقم الطلب] [رابط المعاملة] لإعلام الإدارة</p>
-                    </div>
-                </div>
-
-                <!-- تعليمات السحب -->
-                <div class="info-box">
-                    <h4>📤 *كيفية السحب من المنصة*</h4>
-                    <div class="step-box">
-                        <div class="step-title">الخطوة 1: إدخال البيانات</div>
-                        <p>في تبويب "محفظتي"، أدخل المبلغ وعنوان المحفظة المستلم واختر الشبكة المناسبة</p>
-                    </div>
-                    <div class="step-box">
-                        <div class="step-title">الخطوة 2: التحقق بخطوتين</div>
-                        <p>إذا كان 2FA مفعلاً، أدخل الرمز المكون من 6 أرقام من تطبيق Google Authenticator</p>
-                    </div>
-                    <div class="step-box">
-                        <div class="step-title">الخطوة 3: تأكيد الطلب</div>
-                        <p>سيتم إنشاء طلب سحب ومراجعته من قبل الإدارة خلال 24 ساعة</p>
-                    </div>
-                    <div class="step-box">
-                        <div class="step-title">الخطوة 4: الاستلام</div>
-                        <p>بعد الموافقة، ستصل الأموال إلى محفظتك الخارجية خلال 5-30 دقيقة حسب الشبكة</p>
-                    </div>
-                </div>
-
-                <!-- نصائح لتجنب الأخطاء -->
-                <div class="warning-box">
-                    ⚠️ *نصائح مهمة لتجنب فقدان الأموال:*<br><br>
-                    • 🚫 <strong>لا ترسل عملات مختلفة</strong> عن الشبكة المحددة<br>
-                    • 🔍 <strong>تأكد من الشبكة</strong> - الإرسال على شبكة خاطئة يؤدي إلى فقدان الأموال نهائياً<br>
-                    • 📝 <strong>انسخ العنوان بشكل صحيح</strong> - حرف واحد خاطئ قد يضيع أموالك<br>
-                    • 💡 <strong>ابدأ بمبلغ صغير</strong> للتأكد من صحة العملية قبل إرسال مبالغ كبيرة<br>
-                    • 🔐 <strong>فعّل 2FA</strong> لحماية حسابك من الاختراق<br>
-                    • 📞 <strong>تواصل مع الدعم</strong> إذا واجهت أي مشكلة
-                </div>
-
-                <!-- الأسئلة الشائعة -->
-                <div class="info-box">
-                    <h4>❓ *الأسئلة الشائعة*</h4>
-                    <div class="step-box">
-                        <div class="step-title">💵 كم تبلغ عمولة الإيداع؟</div>
-                        <p>الإيداع مجاني بالكامل، لكن قد تفرض شبكة البلوكشين رسوم غاز (Gas Fees) تختلف حسب الشبكة</p>
-                    </div>
-                    <div class="step-box">
-                        <div class="step-title">💰 كم تبلغ عمولة السحب؟</div>
-                        <p>عمولة السحب 2% من قيمة المبلغ، وتشمل رسوم الشبكة</p>
-                    </div>
-                    <div class="step-box">
-                        <div class="step-title">⏱️ كم يستغرق وصول الأموال؟</div>
-                        <p>الإيداع: 5-30 دقيقة حسب الشبكة<br>السحب: حتى 24 ساعة للمراجعة + وقت الشبكة</p>
-                    </div>
-                    <div class="step-box">
-                        <div class="step-title">🔐 هل أحتاج 2FA للسحب؟</div>
-                        <p>نوصي بشدة بتفعيل 2FA، وهو إلزامي للمبالغ فوق 100 دولار</p>
-                    </div>
-                    <div class="step-box">
-                        <div class="step-title">🌐 ما هي الشبكات المدعومة؟</div>
-                        <p>BEP-20 (BNB)، Polygon (MATIC)، Solana (SOL)، Aptos (APT)</p>
-                    </div>
-                </div>
-
-                <!-- العملات المدعومة -->
-                <div class="info-box">
-                    <h4>💱 *العملات المدعومة للتداول*</h4>
-                    <p>USD (دولار أمريكي) - العملة الرئيسية<br>
-                    EUR (يورو) - GBP (جنيه إسترليني)<br>
-                    SAR (ريال سعودي) - AED (درهم إماراتي)<br>
-                    EGP (جنيه مصري) - SDG (جنيه سوداني)<br>
-                    IQD (دينار عراقي) - JOD (دينار أردني)<br>
-                    KWD (دينار كويتي) - QAR (ريال قطري)<br>
-                    BHD (دينار بحريني) - OMR (ريال عماني)<br>
-                    TRY (ليرة تركية) - INR (روبية هندية) - PKR (روبية باكستانية)</p>
-                </div>
-
-                <!-- طرق الدفع -->
-                <div class="info-box">
-                    <h4>🏦 *طرق الدفع المدعومة*</h4>
-                    <p>• تحويل بنكي<br>• باي بال (PayPal)<br>• فيزا / ماستركارد<br>• فوري (Fawry)<br>• انستا باي (Instapay)<br>• فودافون كاش (Vodafone Cash)<br>• أورنج كاش (Orange Cash)</p>
-                </div>
+                <h3 style="color:white">📖 دليل المستخدم</h3>
+                <div class="info-box"><h4>📥 الإيداع</h4><div class="step-box"><div class="step-title">الخطوة 1</div><p>انسخ عنوان محفظتك من تبويب "محفظتي"</p></div><div class="step-box"><div class="step-title">الخطوة 2</div><p>أرسل العملة إلى العنوان المنسوخ</p></div></div>
+                <div class="info-box"><h4>📤 السحب</h4><div class="step-box"><div class="step-title">الخطوة 1</div><p>اذهب إلى تبويب "محفظتي"</p></div><div class="step-box"><div class="step-title">الخطوة 2</div><p>أدخل المبلغ وعنوان المحفظة المستلم</p></div></div>
+                <div class="warning-box">⚠️ تأكد من الشبكة قبل الإرسال - الإرسال على شبكة خاطئة يؤدي لفقدان الأموال</div>
+                <div class="info-box"><h4>🌐 الشبكات المدعومة</h4><div class="network-card network-bnb"><strong>BNB (BEP-20)</strong> - عمولة ~0.1$</div><div class="network-card network-polygon"><strong>POLYGON</strong> - عمولة ~0.05$</div><div class="network-card network-solana"><strong>SOLANA</strong> - عمولة ~0.01$</div><div class="network-card network-aptos"><strong>APTOS</strong> - عمولة ~0.02$</div></div>
             </div>
         </div>
     </div>
@@ -1145,28 +903,57 @@
         let passportPhotoFile = null;
         let personalPhotoFile = null;
         let currentSecretKey = null;
+        let currentPage = 1;
+        let totalOffers = 0;
+        const OFFERS_PER_PAGE = 10;
         const API_URL = window.location.origin;
         const BOT_USERNAME = 'YourBotUsername';
         
-        const sudanBanks = [
-            "Bank of Khartoum", "Blue Nile Mashreq Bank", "Al Salam Bank", "Agricultural Bank",
-            "Al Baraka Bank", "Al Nilein Bank", "Al Shamal Islamic Bank", "Animal Resources Bank",
-            "Bank of Sudan", "Byblos Bank", "Egyptian Sudanese Bank", "Industrial Development Bank",
-            "National Bank of Abu Dhabi", "National Bank of Egypt", "National Bank of Sudan",
-            "Omdurman National Bank", "Qatar National Bank", "Saudi Sudanese Bank",
-            "Sudanese French Bank", "United Capital Bank"
-        ];
+        const sudanBanks = ["Bank of Khartoum", "Blue Nile Mashreq Bank", "Al Salam Bank", "Agricultural Bank", "Al Baraka Bank", "Al Nilein Bank", "Al Shamal Islamic Bank", "Animal Resources Bank", "Bank of Sudan", "Byblos Bank", "Egyptian Sudanese Bank", "Industrial Development Bank", "National Bank of Abu Dhabi", "National Bank of Egypt", "National Bank of Sudan", "Omdurman National Bank", "Qatar National Bank", "Saudi Sudanese Bank", "Sudanese French Bank", "United Capital Bank"];
         
-        const currencyNames = {
-            USD: "🇺🇸 دولار أمريكي", EUR: "🇪🇺 يورو", GBP: "🇬🇧 جنيه إسترليني",
-            SAR: "🇸🇦 ريال سعودي", AED: "🇦🇪 درهم إماراتي", EGP: "🇪🇬 جنيه مصري",
-            SDG: "🇸🇩 جنيه سوداني", IQD: "🇮🇶 دينار عراقي", JOD: "🇯🇴 دينار أردني",
-            KWD: "🇰🇼 دينار كويتي", QAR: "🇶🇦 ريال قطري", BHD: "🇧🇭 دينار بحريني",
-            OMR: "🇴🇲 ريال عماني", TRY: "🇹🇷 ليرة تركية", INR: "🇮🇳 روبية هندية", PKR: "🇵🇰 روبية باكستانية"
-        };
+        const currencyNames = { USD: "🇺🇸 دولار أمريكي", EUR: "🇪🇺 يورو", GBP: "🇬🇧 جنيه إسترليني", SAR: "🇸🇦 ريال سعودي", AED: "🇦🇪 درهم إماراتي", EGP: "🇪🇬 جنيه مصري", SDG: "🇸🇩 جنيه سوداني", IQD: "🇮🇶 دينار عراقي", JOD: "🇯🇴 دينار أردني", KWD: "🇰🇼 دينار كويتي", QAR: "🇶🇦 ريال قطري", BHD: "🇧🇭 دينار بحريني", OMR: "🇴🇲 ريال عماني", TRY: "🇹🇷 ليرة تركية", INR: "🇮🇳 روبية هندية", PKR: "🇵🇰 روبية باكستانية" };
         
-        // ========== الوظائف الأساسية ==========
-        async function loadUserData() {
+        // شاشة التحميل
+        function showLoading() {
+            let loader = document.getElementById('loadingScreen');
+            if (!loader) {
+                loader = document.createElement('div');
+                loader.id = 'loadingScreen';
+                loader.innerHTML = '<div class="spinner"></div><div>جاري تحميل المنصة...</div>';
+                document.body.appendChild(loader);
+            }
+            loader.style.display = 'flex';
+        }
+        
+        function hideLoading() {
+            const loader = document.getElementById('loadingScreen');
+            if (loader) loader.style.display = 'none';
+        }
+        
+        // تحميل تدريجي
+        async function loadUserDataLight() {
+            try {
+                const uid = tg.initDataUnsafe.user.id;
+                const res = await fetch(`${API_URL}/api/user/light/${uid}`);
+                const data = await res.json();
+                userData = data;
+                document.getElementById('usdBalance').textContent = data.usdBalance?.toFixed(2) || '0';
+                document.getElementById('userRating').textContent = data.rating?.toFixed(1) || '5.0';
+                document.getElementById('completedTrades').textContent = data.completedTrades || '0';
+                document.getElementById('successRate').textContent = data.successRate || '100';
+                
+                const verificationDiv = document.getElementById('verificationStatus');
+                if (data.isVerified) {
+                    verificationDiv.innerHTML = '<div class="verified-badge">✅ حساب موثق</div>';
+                    document.getElementById('createWarning').style.display = 'none';
+                } else {
+                    verificationDiv.innerHTML = '<div class="unverified-badge">⚠️ حساب غير موثق - يرجى التوثيق</div>';
+                    document.getElementById('createWarning').style.display = 'block';
+                }
+            } catch(e) { console.error(e); }
+        }
+        
+        async function loadUserFull() {
             try {
                 const uid = tg.initDataUnsafe.user.id;
                 const res = await fetch(`${API_URL}/api/user/stats/${uid}`);
@@ -1176,153 +963,119 @@
                 document.getElementById('userRating').textContent = data.rating?.toFixed(1) || '5.0';
                 document.getElementById('completedTrades').textContent = data.completedTrades || '0';
                 document.getElementById('successRate').textContent = data.successRate || '100';
-                
-                if (data.onlineStatus) {
-                    document.getElementById('onlineStatus').innerHTML = data.onlineStatus;
-                }
-                
-                const verificationDiv = document.getElementById('verificationStatus');
-                const kycStatusRes = await fetch(`${API_URL}/api/kyc/status/${uid}`);
-                const kycStatusData = await kycStatusRes.json();
-                
-                if (data.isVerified) {
-                    verificationDiv.innerHTML = '<div class="verified-badge">✅ حساب موثق</div>';
-                    document.getElementById('createWarning').style.display = 'none';
-                } else if (kycStatusData.status === 'pending') {
-                    verificationDiv.innerHTML = '<div class="pending-badge">⏳ طلب توثيق قيد المراجعة</div>';
-                    document.getElementById('createWarning').style.display = 'block';
-                } else if (kycStatusData.status === 'rejected') {
-                    verificationDiv.innerHTML = '<div class="unverified-badge">⚠️ تم رفض التوثيق - يرجى إعادة المحاولة</div>';
-                    document.getElementById('createWarning').style.display = 'block';
-                } else {
-                    verificationDiv.innerHTML = '<div class="unverified-badge">⚠️ حساب غير موثق - يرجى التوثيق للمتاجرة</div>';
-                    document.getElementById('createWarning').style.display = 'block';
-                }
+                if (data.onlineStatus) document.getElementById('onlineStatus').innerHTML = data.onlineStatus;
             } catch(e) { console.error(e); }
         }
         
-        // ========== نظام الإحالات ==========
+        // Pagination للعروض
+        async function loadMarket(page = 1) {
+            currentPage = page;
+            const type = document.getElementById('marketType').value;
+            const currency = document.getElementById('marketCurrency').value;
+            const offset = (page - 1) * OFFERS_PER_PAGE;
+            
+            const container = document.getElementById('offersList');
+            container.innerHTML = '<div class="loading">🔄 جاري تحميل العروض...</div>';
+            
+            try {
+                const res = await fetch(`${API_URL}/api/offers?type=${type}&currency=${currency}&sortBy=price&order=asc&limit=${OFFERS_PER_PAGE}&offset=${offset}`);
+                const result = await res.json();
+                const offers = result.offers || result;
+                totalOffers = result.total || offers.length;
+                
+                if (!offers || offers.length === 0) {
+                    container.innerHTML = '<div class="loading">📭 لا توجد عروض</div>';
+                    return;
+                }
+                
+                let html = '';
+                for (const o of offers) {
+                    html += `
+                        <div class="offer-card ${type === 'sell' ? 'offer-sell' : 'offer-buy'}">
+                            <div class="offer-header">
+                                <div class="offer-user">👤 ${o.firstName || o.username} ${o.isVerified ? '<span class="verified-icon">موثق</span>' : ''} ${o.isOnline ? '<span class="online-badge">🟢 متصل</span>' : '<span class="offline-badge">⚫ غير متصل</span>'}</div>
+                                <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
+                            </div>
+                            <div class="offer-amount">💰 ${o.fiatAmount.toFixed(2)} ${o.currency} (${currencyNames[o.currency] || o.currency})</div>
+                            <div class="offer-price">📊 السعر: ${o.price.toFixed(2)} ${o.currency}/USD</div>
+                            <div class="offer-details">💵 القيمة: ${(o.fiatAmount / o.price).toFixed(2)} USD</div>
+                            <div class="offer-details">🏦 ${o.paymentMethod}</div>
+                            <div class="offer-details">📊 الحدود: ${o.minAmount || 10} - ${o.maxAmount || 100000} ${o.currency}</div>
+                            <div class="offer-details">✅ ${o.completedTrades || 0} صفقة</div>
+                            <button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button>
+                        </div>
+                    `;
+                }
+                
+                // أزرار التصفح
+                if (totalOffers > OFFERS_PER_PAGE) {
+                    const totalPages = Math.ceil(totalOffers / OFFERS_PER_PAGE);
+                    html += `<div class="pagination-buttons">
+                        <button class="copy-btn" onclick="loadMarket(${page - 1})" ${page === 1 ? 'disabled' : ''}>⬅️ السابق</button>
+                        <span style="color:white; margin:0 10px">${page} / ${totalPages}</span>
+                        <button class="copy-btn" onclick="loadMarket(${page + 1})" ${page === totalPages ? 'disabled' : ''}>التالي ➡️</button>
+                    </div>`;
+                }
+                
+                container.innerHTML = html;
+            } catch(e) {
+                console.error(e);
+                container.innerHTML = '<div class="loading">❌ خطأ في تحميل العروض</div>';
+            }
+        }
+        
+        function resetAndLoadMarket() {
+            currentPage = 1;
+            loadMarket(1);
+        }
+        
+        async function loadMarketStats() {
+            try {
+                const res = await fetch(`${API_URL}/api/market/stats`);
+                const stats = await res.json();
+                document.getElementById('marketStats').innerHTML = `📋 ${stats.totalOffers || 0} عرض | 💰 متوسط السعر: ${stats.avgPrice || 0} USD | 👥 ${stats.totalTraders || 0} متداول`;
+            } catch(e) { console.error(e); }
+        }
+        
         async function loadReferralInfo() {
             try {
                 const uid = tg.initDataUnsafe.user.id;
                 const res = await fetch(`${API_URL}/api/user/referral/${uid}`);
                 const data = await res.json();
-                
-                const referralLink = `https://t.me/${BOT_USERNAME}?start=${uid}`;
-                
-                document.getElementById('referralLink').innerHTML = `🔗 رابط الإحالة الخاص بك:<br><code style="font-size:12px; word-break:break-all">${referralLink}</code>`;
-                
-                const referralCount = data.referralCount || 0;
-                const referralEarnings = data.referralEarnings || 0;
-                
-                document.getElementById('referralCount').textContent = referralCount;
-                document.getElementById('referralEarnings').textContent = referralEarnings.toFixed(2);
-                
-                if (data.referrals && data.referrals.length > 0) {
-                    let referralsHtml = '<h4 style="margin-top:15px; color:white; margin-bottom:10px">📋 قائمة المدعوين:</h4>';
+                document.getElementById('referralLink').innerHTML = `🔗 رابط الإحالة:<br><code>https://t.me/${BOT_USERNAME}?start=${uid}</code>`;
+                document.getElementById('referralCount').textContent = data.referralCount || 0;
+                document.getElementById('referralEarnings').textContent = (data.referralEarnings || 0).toFixed(2);
+                if (data.referrals && data.referrals.length) {
+                    let html = '<h4 style="margin-top:15px; color:white">📋 المدعوين:</h4>';
                     for (const ref of data.referrals) {
-                        const joinedDate = new Date(ref.joinedAt).toLocaleDateString('ar');
-                        const earnedAmount = (ref.earned || 0).toFixed(2);
-                        referralsHtml += `
-                            <div class="history-item" style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    👤 <strong>${ref.name || ref.userId}</strong>
-                                    <div style="font-size: 11px; color: #aaa;">📅 ${joinedDate}</div>
-                                </div>
-                                <div style="color: #4caf50; font-weight: bold;">
-                                    💰 ${earnedAmount} USD
-                                </div>
-                            </div>
-                        `;
+                        html += `<div class="history-item">👤 ${ref.name || ref.userId} | 📅 ${new Date(ref.joinedAt).toLocaleDateString()} | 💰 ${(ref.earned || 0).toFixed(2)} USD</div>`;
                     }
-                    document.getElementById('referralStats').innerHTML = referralsHtml;
+                    document.getElementById('referralStats').innerHTML = html;
                 } else {
-                    document.getElementById('referralStats').innerHTML = '<div class="loading" style="margin-top:15px">📭 لا يوجد مدعوين بعد</div>';
+                    document.getElementById('referralStats').innerHTML = '<div class="loading">📭 لا يوجد مدعوين بعد</div>';
                 }
-            } catch(e) { 
-                console.error('Referral load error:', e);
-                document.getElementById('referralCount').textContent = '0';
-                document.getElementById('referralEarnings').textContent = '0';
-                document.getElementById('referralStats').innerHTML = '<div class="loading">❌ حدث خطأ في تحميل بيانات الإحالات</div>';
-            }
+            } catch(e) { console.error(e); }
         }
         
         async function transferReferralEarnings() {
             try {
-                tg.showAlert('🔄 جاري تحويل رصيد الإحالات...');
-                
+                tg.showAlert('🔄 جاري التحويل...');
                 const uid = tg.initDataUnsafe.user.id;
                 const res = await fetch(`${API_URL}/api/referral/transfer`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ user_id: uid })
                 });
                 const result = await res.json();
-                
                 tg.showAlert(result.message);
-                
-                if (result.success) {
-                    await loadReferralInfo();
-                    await loadUserData();
-                    await loadWallet();
-                }
-            } catch(e) {
-                console.error('Transfer error:', e);
-                tg.showAlert('❌ حدث خطأ، حاول مرة أخرى');
-            }
+                if (result.success) { await loadReferralInfo(); await loadUserFull(); await loadWallet(); }
+            } catch(e) { tg.showAlert('❌ حدث خطأ'); }
         }
         
         function copyReferralLink() {
-            const linkText = document.getElementById('referralLink').innerText;
-            const link = linkText.replace('🔗 رابط الإحالة الخاص بك:', '').trim();
+            const text = document.getElementById('referralLink').innerText;
+            const link = text.replace('🔗 رابط الإحالة:', '').trim();
             navigator.clipboard.writeText(link);
-            tg.showAlert('✅ تم نسخ رابط الإحالة');
-        }
-        
-        // ========== نظام الأمان و 2FA ==========
-        function show2FAInstructions(secretKey, qrCode) {
-            const instructions = `
-                <div class="twofa-instructions">
-                    <h4>📱 🔐 كيفية تفعيل التحقق بخطوتين</h4>
-                    <ol>
-                        <li>📥 <strong>حمّل تطبيق Google Authenticator</strong> من متجر هاتفك:
-                            <br>• <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" target="_blank" style="color:#4caf50">للأندرويد من Google Play</a>
-                            <br>• <a href="https://apps.apple.com/us/app/google-authenticator/id388497605" target="_blank" style="color:#4caf50">للايفون من App Store</a>
-                        </li>
-                        <li>📸 <strong>امسح الباركود (QR Code)</strong> باستخدام التطبيق</li>
-                        <li style="color:#ff9800">⚠️ <strong>إذا لم تعمل الكاميرا أو واجهتك مشكلة:</strong>
-                            <br>• اضغط على "إدخال مفتاح" في التطبيق
-                            <br>• انسخ المفتاح أدناه وألصقه في التطبيق
-                        </li>
-                    </ol>
-                    <div class="secret-key">
-                        🔑 المفتاح السري: <strong id="secretKeyValue">${secretKey}</strong>
-                        <button class="copy-secret-btn" onclick="copySecretKey()">📋 نسخ المفتاح</button>
-                    </div>
-                    <div style="text-align: center; margin: 15px 0;">
-                        <img src="${qrCode}" style="max-width: 200px; border-radius: 10px; border: 2px solid #2196F3;">
-                    </div>
-                    <div class="warning">
-                        ⚡ ملاحظة: بعد إضافة المفتاح، سيظهر لك رقم مكون من 6 أرقام يتغير كل 30 ثانية<br>
-                        📝 أدخل هذا الرقم في الحقل أدناه ثم اضغط "تأكيد التفعيل"
-                    </div>
-                </div>
-            `;
-            
-            document.getElementById('twofaQR').innerHTML = instructions;
-            document.getElementById('twofaQR').style.display = 'block';
-            document.getElementById('enable2faBtn').style.display = 'none';
-            document.getElementById('twofaCode').style.display = 'block';
-            document.getElementById('verify2faBtn').style.display = 'block';
-            
-            currentSecretKey = secretKey;
-        }
-        
-        function copySecretKey() {
-            if (currentSecretKey) {
-                navigator.clipboard.writeText(currentSecretKey);
-                tg.showAlert('✅ تم نسخ المفتاح السري');
-            }
+            tg.showAlert('✅ تم نسخ الرابط');
         }
         
         async function loadSecurityInfo() {
@@ -1330,34 +1083,10 @@
                 const uid = tg.initDataUnsafe.user.id;
                 const res = await fetch(`${API_URL}/api/user/security/${uid}`);
                 const data = await res.json();
-                
-                document.getElementById('securityInfo').innerHTML = `
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-value">${data.twoFAEnabled ? '✅ مفعل' : '❌ غير مفعل'}</div>
-                            <div class="stat-label">التحقق بخطوتين</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${data.warningCount || 0}</div>
-                            <div class="stat-label">عدد التحذيرات</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${data.lastLoginIp || 'غير معروف'}</div>
-                            <div class="stat-label">آخر IP</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${data.completedTrades || 0}</div>
-                            <div class="stat-label">الصفقات المكتملة</div>
-                        </div>
-                    </div>
-                `;
-                
+                document.getElementById('securityInfo').innerHTML = `<div class="stats-grid"><div class="stat-card"><div class="stat-value">${data.twoFAEnabled ? '✅ مفعل' : '❌ غير مفعل'}</div><div class="stat-label">2FA</div></div><div class="stat-card"><div class="stat-value">${data.completedTrades || 0}</div><div class="stat-label">الصفقات</div></div></div>`;
                 if (data.twoFAEnabled) {
                     document.getElementById('enable2faBtn').style.display = 'none';
                     document.getElementById('disable2faBtn').style.display = 'block';
-                    document.getElementById('twofaQR').style.display = 'none';
-                    document.getElementById('twofaCode').style.display = 'none';
-                    document.getElementById('verify2faBtn').style.display = 'none';
                 } else {
                     document.getElementById('enable2faBtn').style.display = 'block';
                     document.getElementById('disable2faBtn').style.display = 'none';
@@ -1366,84 +1095,56 @@
         }
         
         async function setup2FA() {
-            tg.showAlert('🔄 جاري تجهيز رمز التحقق...');
+            tg.showAlert('🔄 جاري التجهيز...');
             try {
                 const res = await fetch(`${API_URL}/api/2fa/generate`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
                 });
                 const data = await res.json();
-                
                 if (data.success) {
-                    show2FAInstructions(data.secret, data.qrCode);
-                    tg.showAlert('✅ تم إنشاء رمز QR. امسحه باستخدام Google Authenticator');
-                } else {
-                    tg.showAlert(data.message);
-                }
-            } catch(e) {
-                console.error(e);
-                tg.showAlert('حدث خطأ، حاول مرة أخرى');
-            }
+                    document.getElementById('twofaQR').innerHTML = `<div class="twofa-instructions"><div class="secret-key">المفتاح: <strong>${data.secret}</strong></div><img src="${data.qrCode}" style="max-width:200px"><div class="warning">ادخل الرقم أدناه</div></div>`;
+                    document.getElementById('twofaQR').style.display = 'block';
+                    document.getElementById('enable2faBtn').style.display = 'none';
+                    document.getElementById('twofaCode').style.display = 'block';
+                    document.getElementById('verify2faBtn').style.display = 'block';
+                    currentSecretKey = data.secret;
+                    tg.showAlert('✅ امسح الرمز باستخدام Google Authenticator');
+                } else { tg.showAlert(data.message); }
+            } catch(e) { tg.showAlert('حدث خطأ'); }
         }
         
         async function verify2FA() {
             const code = document.getElementById('twofaCode').value;
-            if (!code) {
-                tg.showAlert('📱 أدخل الرقم المكون من 6 أرقام الذي يظهر في تطبيق Google Authenticator');
-                return;
-            }
-            
-            tg.showAlert('🔄 جاري التحقق...');
+            if (!code) { tg.showAlert('أدخل الرقم'); return; }
             const res = await fetch(`${API_URL}/api/2fa/enable`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, code })
             });
             const data = await res.json();
             tg.showAlert(data.message);
-            
             if (data.success) {
                 document.getElementById('twofaQR').style.display = 'none';
                 document.getElementById('twofaCode').style.display = 'none';
                 document.getElementById('verify2faBtn').style.display = 'none';
                 document.getElementById('disable2faBtn').style.display = 'block';
-                document.getElementById('enable2faBtn').style.display = 'none';
                 loadSecurityInfo();
             }
         }
         
         async function disable2FA() {
-            const code = prompt('📱 أدخل رمز التحقق بخطوتين لتعطيله:');
+            const code = prompt('أدخل رمز 2FA:');
             if (!code) return;
-            
             const res = await fetch(`${API_URL}/api/2fa/disable`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, code })
             });
             const data = await res.json();
             tg.showAlert(data.message);
-            if (data.success) {
-                document.getElementById('disable2faBtn').style.display = 'none';
-                document.getElementById('enable2faBtn').style.display = 'block';
-                document.getElementById('twofaQR').style.display = 'none';
-                loadSecurityInfo();
-            }
+            if (data.success) loadSecurityInfo();
         }
         
-        // ========== باقي الوظائف ==========
-        async function refreshKycStatus() {
-            tg.showAlert('🔄 جاري تحديث حالة التوثيق...');
-            await loadUserData();
-            await loadKycStatus();
-            if (userData.isVerified) {
-                tg.showAlert('✅ حسابك موثق! يمكنك الآن التداول');
-                document.getElementById('createWarning').style.display = 'none';
-            } else {
-                tg.showAlert('⚠️ لا يزال حسابك غير موثق');
-            }
-        }
+        async function refreshKycStatus() { await loadKycStatus(); await loadUserFull(); }
         
         async function loadKycStatus() {
             try {
@@ -1451,79 +1152,31 @@
                 const res = await fetch(`${API_URL}/api/kyc/status/${uid}`);
                 const data = await res.json();
                 kycStatus = data;
-                
-                const userRes = await fetch(`${API_URL}/api/user/stats/${uid}`);
-                const userStats = await userRes.json();
-                
                 const container = document.getElementById('kycStatus');
                 const form = document.getElementById('kycForm');
-                
-                if (userStats.isVerified) {
-                    container.innerHTML = `
-                        <div class="kyc-approved" style="text-align:center;">
-                            <div style="font-size:48px">✅</div>
-                            <h3>حسابك موثق</h3>
-                            <p>يمكنك التداول بحرية على المنصة</p>
-                            <button class="trade-btn" onclick="switchTab('market')" style="margin-top:10px">🚀 ابدأ التداول</button>
-                        </div>
-                    `;
+                if (userData.isVerified) {
+                    container.innerHTML = '<div class="kyc-approved"><div style="font-size:48px">✅</div><h3>حسابك موثق</h3></div>';
                     form.style.display = 'none';
                 } else if (data.status === 'pending') {
-                    container.innerHTML = `
-                        <div class="kyc-pending" style="text-align:center;">
-                            <div style="font-size:48px">⏳</div>
-                            <h3>طلب التوثيق قيد المراجعة</h3>
-                            <p>سيتم إعلامك عند اكتمال المراجعة</p>
-                            <button class="copy-btn" onclick="refreshKycStatus()" style="margin-top:10px">🔄 تحديث</button>
-                        </div>
-                    `;
+                    container.innerHTML = '<div class="kyc-pending"><div style="font-size:48px">⏳</div><h3>قيد المراجعة</h3></div>';
                     form.style.display = 'none';
                 } else if (data.status === 'rejected') {
-                    container.innerHTML = `
-                        <div class="kyc-rejected" style="text-align:center;">
-                            <div style="font-size:48px">❌</div>
-                            <h3>تم رفض طلب التوثيق</h3>
-                            <p>السبب: ${data.rejectionReason || 'بيانات غير صحيحة'}</p>
-                            <button class="kyc-btn" onclick="retryKyc()" style="margin-top:10px">🔄 إعادة المحاولة</button>
-                        </div>
-                    `;
+                    container.innerHTML = `<div class="kyc-rejected"><div style="font-size:48px">❌</div><h3>تم الرفض</h3><p>${data.rejectionReason || ''}</p></div>`;
                     form.style.display = 'none';
                 } else {
-                    container.innerHTML = `
-                        <div class="kyc-not-submitted" style="text-align:center;">
-                            <div style="font-size:48px">🆔</div>
-                            <h3>حسابك غير موثق</h3>
-                            <p>يرجى إكمال عملية التوثيق للمتاجرة</p>
-                        </div>
-                    `;
+                    container.innerHTML = '<div class="kyc-not-submitted"><div style="font-size:48px">🆔</div><h3>حساب غير موثق</h3></div>';
                     form.style.display = 'block';
                 }
-                return data;
-            } catch(e) { console.error(e); return { status: 'not_submitted' }; }
+            } catch(e) { console.error(e); }
         }
         
-        function previewPassport(event) {
-            const file = event.target.files[0];
-            if (file) {
-                passportPhotoFile = file;
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    document.getElementById('passportPreview').innerHTML = `<img src="${e.target.result}" style="max-width:100%; border-radius:8px;">`;
-                };
-                reader.readAsDataURL(file);
-            }
+        function previewPassport(e) {
+            const file = e.target.files[0];
+            if (file) { passportPhotoFile = file; const reader = new FileReader(); reader.onload = (e) => { document.getElementById('passportPreview').innerHTML = `<img src="${e.target.result}" style="max-width:100%">`; }; reader.readAsDataURL(file); }
         }
-        
-        function previewPersonal(event) {
-            const file = event.target.files[0];
-            if (file) {
-                personalPhotoFile = file;
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    document.getElementById('personalPreview').innerHTML = `<img src="${e.target.result}" style="max-width:100%; border-radius:8px;">`;
-                };
-                reader.readAsDataURL(file);
-            }
+        function previewPersonal(e) {
+            const file = e.target.files[0];
+            if (file) { personalPhotoFile = file; const reader = new FileReader(); reader.onload = (e) => { document.getElementById('personalPreview').innerHTML = `<img src="${e.target.result}" style="max-width:100%">`; }; reader.readAsDataURL(file); }
         }
         
         async function submitKyc() {
@@ -1537,107 +1190,19 @@
             const bankName = document.getElementById('kycBank').value;
             const accountNumber = document.getElementById('kycAccountNumber').value;
             const accountName = document.getElementById('kycAccountName').value;
-            
-            if (!fullName || !passportNumber || !nationalId || !phoneNumber || !bankName || !accountNumber || !accountName) {
-                tg.showAlert('يرجى ملء جميع الحقول المطلوبة');
-                return;
-            }
-            
-            if (!passportPhotoFile || !personalPhotoFile) {
-                tg.showAlert('يرجى رفع صورة الجواز والصورة الشخصية');
-                return;
-            }
-            
-            tg.showAlert('جاري إرسال طلب التوثيق...');
-            
+            if (!fullName || !passportNumber || !nationalId || !phoneNumber || !bankName || !accountNumber || !accountName) { tg.showAlert('املأ جميع الحقول'); return; }
+            if (!passportPhotoFile || !personalPhotoFile) { tg.showAlert('ارفع الصور المطلوبة'); return; }
+            tg.showAlert('جاري الإرسال...');
             const formData = new FormData();
             formData.append('user_id', tg.initDataUnsafe.user.id);
-            formData.append('fullName', fullName);
-            formData.append('passportNumber', passportNumber);
-            formData.append('nationalId', nationalId);
-            formData.append('phoneNumber', phoneNumber);
-            formData.append('email', email);
-            formData.append('country', country);
-            formData.append('city', city);
-            formData.append('bankName', bankName);
-            formData.append('bankAccountNumber', accountNumber);
-            formData.append('bankAccountName', accountName);
-            formData.append('passportPhoto', passportPhotoFile);
-            formData.append('personalPhoto', personalPhotoFile);
-            
-            const res = await fetch(`${API_URL}/api/kyc/submit`, {
-                method: 'POST',
-                body: formData
-            });
+            formData.append('fullName', fullName); formData.append('passportNumber', passportNumber); formData.append('nationalId', nationalId);
+            formData.append('phoneNumber', phoneNumber); formData.append('email', email); formData.append('country', country); formData.append('city', city);
+            formData.append('bankName', bankName); formData.append('bankAccountNumber', accountNumber); formData.append('bankAccountName', accountName);
+            formData.append('passportPhoto', passportPhotoFile); formData.append('personalPhoto', personalPhotoFile);
+            const res = await fetch(`${API_URL}/api/kyc/submit`, { method: 'POST', body: formData });
             const result = await res.json();
             tg.showAlert(result.message);
-            if (result.success) {
-                passportPhotoFile = null;
-                personalPhotoFile = null;
-                document.getElementById('passportPreview').innerHTML = '';
-                document.getElementById('personalPreview').innerHTML = '';
-                await loadKycStatus();
-                await loadUserData();
-            }
-        }
-        
-        async function retryKyc() {
-            tg.showAlert('جاري إعادة محاولة التوثيق...');
-            const res = await fetch(`${API_URL}/api/kyc/retry`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
-            });
-            const result = await res.json();
-            tg.showAlert(result.message);
-            if (result.success) {
-                await loadKycStatus();
-                await loadUserData();
-            }
-        }
-        
-        async function loadMarketStats() {
-            try {
-                const res = await fetch(`${API_URL}/api/market/stats`);
-                const stats = await res.json();
-                document.getElementById('marketStats').innerHTML = `
-                    📋 ${stats.totalOffers} عرض | 💰 متوسط السعر: ${stats.avgPrice} USD | 🌍 الأكثر نشاطاً: ${stats.mostActiveCurrency} | 👥 ${stats.totalTraders} متداول
-                `;
-            } catch(e) { console.error(e); }
-        }
-        
-        async function loadMarket() {
-            const type = document.getElementById('marketType').value;
-            const currency = document.getElementById('marketCurrency').value;
-            const res = await fetch(`${API_URL}/api/offers?type=${type}&currency=${currency}&sortBy=price&order=asc`);
-            const offers = await res.json();
-            const container = document.getElementById('offersList');
-            if (!offers.length) {
-                container.innerHTML = '<div class="loading">لا توجد عروض</div>';
-                return;
-            }
-            container.innerHTML = offers.map(o => `
-                <div class="offer-card ${type === 'sell' ? 'offer-sell' : 'offer-buy'}">
-                    <div class="offer-header">
-                        <div class="offer-user">
-                            👤 ${o.firstName || o.username}
-                            ${o.isVerified ? '<span class="verified-icon">موثق</span>' : ''}
-                            ${o.isMerchant ? '<span class="merchant-icon">تاجر</span>' : ''}
-                            ${o.badges ? `<span class="badge">${o.badges.split(' ')[0]}</span>` : ''}
-                            ${o.isOnline ? '<span class="online-badge">🟢 متصل</span>' : '<span class="offline-badge">⚫ غير متصل</span>'}
-                        </div>
-                        <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'} | ✅ ${o.successRate || 100}%</div>
-                    </div>
-                    <div class="offer-amount">💰 ${o.fiatAmount.toFixed(2)} ${o.currency} (${currencyNames[o.currency] || o.currency})</div>
-                    <div class="offer-price">📊 السعر: ${o.price.toFixed(2)} ${o.currency}/USD</div>
-                    <div class="offer-details">💵 القيمة: ${(o.fiatAmount / o.price).toFixed(2)} USD</div>
-                    <div class="offer-details">🏦 ${o.paymentMethod}</div>
-                    <div class="offer-details">✅ ${o.completedTrades || 0} صفقة</div>
-                    <div class="trust-badge">${o.trustBadge ? `<span class="badge trust-${o.trustLevel}">${o.trustBadge}</span>` : ''}</div>
-                    <div class="offer-details">🆔 <code>${o._id}</code></div>
-                    <button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button>
-                </div>
-            `).join('');
+            if (result.success) { await loadKycStatus(); await loadUserFull(); }
         }
         
         async function loadMyOffers() {
@@ -1646,19 +1211,9 @@
                 const res = await fetch(`${API_URL}/api/user/offers/${uid}`);
                 const offers = await res.json();
                 const container = document.getElementById('myOffersList');
-                if (!offers.length) {
-                    container.innerHTML = '<div class="loading">لا توجد عروض نشطة</div>';
-                    return;
-                }
-                container.innerHTML = offers.map(o => `
-                    <div class="offer-card ${o.type === 'sell' ? 'offer-sell' : 'offer-buy'}">
-                        <div class="offer-amount">💰 ${o.fiatAmount} ${o.currency}</div>
-                        <div class="offer-price">📊 السعر: ${o.price} ${o.currency}/USD</div>
-                        <div class="offer-details">🏦 ${o.paymentMethod}</div>
-                        <button class="cancel-btn" onclick="cancelOffer('${o._id}')">❌ إلغاء العرض</button>
-                    </div>
-                `).join('');
-            } catch(e) { document.getElementById('myOffersList').innerHTML = '<div class="loading">خطأ في التحميل</div>'; }
+                if (!offers.length) { container.innerHTML = '<div class="loading">لا توجد عروض</div>'; return; }
+                container.innerHTML = offers.map(o => `<div class="offer-card"><div class="offer-amount">💰 ${o.fiatAmount} ${o.currency}</div><div class="offer-price">📊 ${o.price} ${o.currency}/USD</div><div class="offer-details">📊 الحدود: ${o.minAmount || 10}-${o.maxAmount || 100000}</div><button class="cancel-btn" onclick="cancelOffer('${o._id}')">❌ إلغاء</button></div>`).join('');
+            } catch(e) { console.error(e); }
         }
         
         async function loadMyTrades() {
@@ -1667,19 +1222,9 @@
                 const res = await fetch(`${API_URL}/api/user/trades/${uid}`);
                 const trades = await res.json();
                 const container = document.getElementById('myTradesList');
-                if (!trades.length) {
-                    container.innerHTML = '<div class="loading">لا توجد صفقات</div>';
-                    return;
-                }
-                container.innerHTML = trades.map(t => `
-                    <div class="offer-card">
-                        <div class="offer-amount">💰 ${t.amount} ${t.currency}</div>
-                        <div class="offer-details">📊 الحالة: ${t.status === 'pending' ? '⏳ معلقة' : t.status === 'paid' ? '✅ تم الدفع' : t.status === 'completed' ? '✔️ مكتملة' : '❌ ملغية'}</div>
-                        ${t.status === 'pending' ? `<button class="cancel-btn" onclick="cancelTrade('${t._id}')">❌ إلغاء الصفقة</button>` : ''}
-                        ${t.status === 'paid' && t.sellerId === uid ? `<button class="trade-btn" onclick="releaseCrystals('${t._id}')">🔓 تحرير العملة</button>` : ''}
-                    </div>
-                `).join('');
-            } catch(e) { document.getElementById('myTradesList').innerHTML = '<div class="loading">خطأ في التحميل</div>'; }
+                if (!trades.length) { container.innerHTML = '<div class="loading">لا توجد صفقات</div>'; return; }
+                container.innerHTML = trades.map(t => `<div class="offer-card"><div class="offer-amount">💰 ${t.amount} ${t.currency}</div><div class="offer-details">📊 ${t.status === 'pending' ? '⏳ معلقة' : t.status === 'paid' ? '✅ تم الدفع' : t.status === 'completed' ? '✔️ مكتملة' : '❌ ملغية'}</div>${t.status === 'pending' ? `<button class="cancel-btn" onclick="cancelTrade('${t._id}')">❌ إلغاء</button>` : ''}${t.status === 'paid' && t.sellerId === uid ? `<button class="trade-btn" onclick="releaseCrystals('${t._id}')">🔓 تحرير</button>` : ''}</div>`).join('');
+            } catch(e) { console.error(e); }
         }
         
         async function loadHistory() {
@@ -1687,59 +1232,30 @@
                 const uid = tg.initDataUnsafe.user.id;
                 const res = await fetch(`${API_URL}/api/user/history/${uid}`);
                 const data = await res.json();
-                
-                const offersContainer = document.getElementById('offersHistory');
-                if (data.offers && data.offers.length > 0) {
-                    offersContainer.innerHTML = data.offers.map(o => {
-                        let statusClass = '', statusText = '';
-                        if (o.status === 'completed') { statusClass = 'status-completed'; statusText = 'مكتمل'; }
-                        else if (o.status === 'active') { statusClass = 'status-pending'; statusText = 'نشط'; }
-                        else { statusClass = 'status-cancelled'; statusText = 'ملغي'; }
-                        return `<div class="history-item"><div><strong>${o.type === 'sell' ? '🟢 بيع' : '🔴 شراء'}</strong><span class="history-status ${statusClass}">${statusText}</span></div><div>💰 ${o.fiatAmount} ${o.currency} | 📊 ${o.price} ${o.currency}/USD</div><div>📅 ${new Date(o.createdAt).toLocaleDateString('ar')}</div></div>`;
-                    }).join('');
-                } else { offersContainer.innerHTML = '<div class="loading">لا توجد عروض سابقة</div>'; }
-                
-                const tradesContainer = document.getElementById('tradesHistory');
-                if (data.trades && data.trades.length > 0) {
-                    tradesContainer.innerHTML = data.trades.map(t => {
-                        let statusClass = '', statusText = '';
-                        if (t.status === 'completed') { statusClass = 'status-completed'; statusText = 'مكتمل'; }
-                        else if (t.status === 'pending') { statusClass = 'status-pending'; statusText = 'قيد التنفيذ'; }
-                        else { statusClass = 'status-cancelled'; statusText = 'ملغي'; }
-                        return `<div class="history-item"><div><strong>${t.role}</strong><span class="history-status ${statusClass}">${statusText}</span></div><div>💰 ${t.amount} ${t.currency} | مع ${t.otherParty}</div><div>📅 ${new Date(t.createdAt).toLocaleDateString('ar')}</div></div>`;
-                    }).join('');
-                } else { tradesContainer.innerHTML = '<div class="loading">لا توجد صفقات سابقة</div>'; }
+                document.getElementById('offersHistory').innerHTML = (data.offers?.length ? data.offers.map(o => `<div class="history-item">${o.type === 'sell' ? '🟢 بيع' : '🔴 شراء'} ${o.fiatAmount} ${o.currency} | ${new Date(o.createdAt).toLocaleDateString()}</div>`).join('') : '<div class="loading">لا توجد عروض سابقة</div>');
+                document.getElementById('tradesHistory').innerHTML = (data.trades?.length ? data.trades.map(t => `<div class="history-item">${t.role} ${t.amount} ${t.currency} | ${new Date(t.createdAt).toLocaleDateString()}</div>`).join('') : '<div class="loading">لا توجد صفقات سابقة</div>');
             } catch(e) { console.error(e); }
         }
         
         async function cancelOffer(offerId) {
-            tg.showAlert('جاري إلغاء العرض...');
-            const res = await fetch(`${API_URL}/api/offer/cancel`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId })
-            });
+            tg.showAlert('جاري الإلغاء...');
+            const res = await fetch(`${API_URL}/api/offer/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId }) });
             const result = await res.json();
             tg.showAlert(result.message);
             if (result.success) loadMyOffers();
         }
         
         async function cancelTrade(tradeId) {
-            tg.showAlert('⚠️ هل أنت متأكد من إلغاء الصفقة؟');
-            const res = await fetch(`${API_URL}/api/trade/cancel`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, trade_id: tradeId })
-            });
+            tg.showAlert('جاري الإلغاء...');
+            const res = await fetch(`${API_URL}/api/trade/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, trade_id: tradeId }) });
             const result = await res.json();
             tg.showAlert(result.message);
             if (result.success) loadMyTrades();
         }
         
         async function releaseCrystals(tradeId) {
-            tg.showAlert('جاري تحرير العملة...');
-            const res = await fetch(`${API_URL}/api/trade/release`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, trade_id: tradeId })
-            });
+            tg.showAlert('جاري التحرير...');
+            const res = await fetch(`${API_URL}/api/trade/release`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, trade_id: tradeId }) });
             const result = await res.json();
             tg.showAlert(result.message);
             if (result.success) loadMyTrades();
@@ -1750,14 +1266,7 @@
                 const uid = tg.initDataUnsafe.user.id;
                 const res = await fetch(`${API_URL}/api/wallet/${uid}`);
                 const data = await res.json();
-                document.getElementById('walletInfo').innerHTML = `
-                    <div class="stat-card"><div class="stat-value">${data.usdBalance?.toFixed(2) || 0} USD</div><div class="stat-label">رصيد الدولار</div></div>
-                    <div class="address-box">🟡 BNB: ${data.addresses?.bnb || 'جاري التحميل'}</div>
-                    <div class="address-box">🟣 POLYGON: ${data.addresses?.polygon || 'جاري التحميل'}</div>
-                    <div class="address-box">🟢 SOLANA: ${data.addresses?.solana || 'جاري التحميل'}</div>
-                    <div class="address-box">🔷 APTOS: ${data.addresses?.aptos || 'جاري التحميل'}</div>
-                    <div class="offer-details" style="margin-top:10px">🔑 بصمة المحفظة: <code>${data.walletSignature?.slice(0, 16)}...</code></div>
-                `;
+                document.getElementById('walletInfo').innerHTML = `<div class="stat-card"><div class="stat-value">${data.usdBalance?.toFixed(2) || 0} USD</div></div><div class="address-box">🟡 BNB: ${data.addresses?.bnb || ''}</div><div class="address-box">🟣 POLYGON: ${data.addresses?.polygon || ''}</div><div class="address-box">🟢 SOLANA: ${data.addresses?.solana || ''}</div><div class="address-box">🔷 APTOS: ${data.addresses?.aptos || ''}</div>`;
             } catch(e) { console.error(e); }
         }
         
@@ -1767,7 +1276,7 @@
                 const leaders = await res.json();
                 const container = document.getElementById('leaderboardList');
                 if (!leaders.length) { container.innerHTML = '<div class="loading">لا يوجد متصدرين</div>'; return; }
-                container.innerHTML = leaders.map((l, i) => `<div class="leader-item"><div class="leader-rank">${i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`}</div><div class="leader-name">${l.name} ${l.verified ? '✅' : ''}</div><div class="leader-trades">💰 ${l.trades?.toFixed(0) || 0}</div><div class="leader-rating">⭐ ${l.rating?.toFixed(1) || '5.0'}</div></div>`).join('');
+                container.innerHTML = leaders.map((l, i) => `<div class="leader-item"><div class="leader-rank">${i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`}</div><div class="leader-name">${l.name}</div><div class="leader-trades">💰 ${l.trades?.toFixed(0) || 0}</div><div class="leader-rating">⭐ ${l.rating?.toFixed(1) || '5.0'}</div></div>`).join('');
             } catch(e) { console.error(e); }
         }
         
@@ -1776,17 +1285,12 @@
                 const uid = tg.initDataUnsafe.user.id;
                 const res = await fetch(`${API_URL}/api/user/${uid}`);
                 const user = await res.json();
-                document.getElementById('bankInfo').innerHTML = `
-                    <div class="stat-card"><div class="stat-value">${user.bankName || 'غير محدد'}</div><div class="stat-label">البنك</div></div>
-                    <div class="stat-card"><div class="stat-value">${user.bankAccountNumber || 'غير محدد'}</div><div class="stat-label">رقم الحساب</div></div>
-                    <div class="stat-card"><div class="stat-value">${user.bankAccountName || 'غير محدد'}</div><div class="stat-label">اسم الحساب</div></div>
-                `;
+                document.getElementById('bankInfo').innerHTML = `<div class="stat-card"><div class="stat-value">${user.bankName || 'غير محدد'}</div><div class="stat-label">البنك</div></div><div class="stat-card"><div class="stat-value">${user.bankAccountNumber || 'غير محدد'}</div><div class="stat-label">رقم الحساب</div></div>`;
                 const bankSelect = document.getElementById('bankName');
                 bankSelect.innerHTML = '<option value="">اختر البنك</option>' + sudanBanks.map(b => `<option value="${b}">${b}</option>`).join('');
                 if (user.bankName) bankSelect.value = user.bankName;
                 document.getElementById('accountNumber').value = user.bankAccountNumber || '';
                 document.getElementById('accountName').value = user.bankAccountName || '';
-                
                 const kycBankSelect = document.getElementById('kycBank');
                 kycBankSelect.innerHTML = '<option value="">اختر البنك</option>' + sudanBanks.map(b => `<option value="${b}">${b}</option>`).join('');
                 const offerBankSelect = document.getElementById('offerBank');
@@ -1795,11 +1299,13 @@
         }
         
         async function createOffer() {
-            if (!userData.isVerified) { tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً'); switchTab('kyc'); return; }
+            if (!userData.isVerified) { tg.showAlert('⚠️ يرجى توثيق حسابك أولاً'); switchTab('kyc'); return; }
             const type = document.getElementById('offerType').value;
             const currency = document.getElementById('offerCurrency').value;
             const fiatAmount = parseFloat(document.getElementById('offerAmount').value);
             const price = parseFloat(document.getElementById('offerPrice').value);
+            const minAmount = parseFloat(document.getElementById('offerMinAmount').value) || 10;
+            const maxAmount = parseFloat(document.getElementById('offerMaxAmount').value) || 100000;
             const paymentMethod = document.getElementById('offerPaymentMethod').value;
             const bankName = document.getElementById('offerBank').value;
             const accountNumber = document.getElementById('offerAccountNumber').value;
@@ -1807,26 +1313,26 @@
             const details = document.getElementById('offerDetails').value;
             if (!fiatAmount || fiatAmount <= 0) return tg.showAlert('أدخل المبلغ');
             if (!price || price <= 0) return tg.showAlert('أدخل السعر');
-            const body = { user_id: tg.initDataUnsafe.user.id, type, currency, fiatAmount, price, paymentMethod, paymentDetails: details, bankName, bankAccountNumber: accountNumber, bankAccountName: accountName, minAmount: 10, maxAmount: 100000 };
-            const res = await fetch(`${API_URL}/api/offer/create`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+            if (minAmount >= maxAmount) return tg.showAlert('الحد الأدنى أقل من الحد الأقصى');
+            const body = { user_id: tg.initDataUnsafe.user.id, type, currency, fiatAmount, price, paymentMethod, paymentDetails: details, bankName, bankAccountNumber: accountNumber, bankAccountName: accountName, minAmount, maxAmount };
+            const res = await fetch(`${API_URL}/api/offer/create`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             const result = await res.json();
             tg.showAlert(result.message);
             if (result.success) switchTab('market');
         }
         
         async function startTrade(offerId) {
-            if (!userData.isVerified) { tg.showAlert('⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً'); switchTab('kyc'); return; }
-            const res = await fetch(`${API_URL}/api/trade/start`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId }) });
+            if (!userData.isVerified) { tg.showAlert('⚠️ يرجى توثيق حسابك أولاً'); switchTab('kyc'); return; }
+            const res = await fetch(`${API_URL}/api/trade/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId }) });
             const result = await res.json();
             tg.showAlert(result.message);
-            if (result.success && result.sellerPaymentDetails) { tg.showAlert(`📤 تفاصيل الدفع:\n${result.sellerPaymentDetails}\n\nبعد التحويل: /send_proof ${result.tradeId} [رابط الصورة]\n\nلإلغاء الصفقة: /cancel_trade ${result.tradeId}`); }
         }
         
         async function deposit() {
             const amount = parseFloat(document.getElementById('depositAmount').value);
             const network = document.getElementById('walletNetwork').value;
             if (!amount || amount <= 0) return tg.showAlert('أدخل المبلغ');
-            const res = await fetch(`${API_URL}/api/deposit`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USD', network }) });
+            const res = await fetch(`${API_URL}/api/deposit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USD', network }) });
             const result = await res.json();
             tg.showAlert(result.message);
         }
@@ -1838,7 +1344,7 @@
             const twoFACode = document.getElementById('withdraw2FA').value;
             if (!amount || amount <= 0) return tg.showAlert('أدخل المبلغ');
             if (!address) return tg.showAlert('أدخل عنوان المحفظة');
-            const res = await fetch(`${API_URL}/api/withdraw`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USD', network, address, twofa_code: twoFACode }) });
+            const res = await fetch(`${API_URL}/api/withdraw`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USD', network, address, twofa_code: twoFACode }) });
             const result = await res.json();
             tg.showAlert(result.message);
         }
@@ -1847,10 +1353,10 @@
             const bankName = document.getElementById('bankName').value;
             const accountNumber = document.getElementById('accountNumber').value;
             const accountName = document.getElementById('accountName').value;
-            if (!bankName || !accountNumber || !accountName) return tg.showAlert('يرجى ملء جميع الحقول');
-            const res = await fetch(`${API_URL}/api/update_bank`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, bankName, accountNumber, accountName }) });
-            const result = await res.json();
-            tg.showAlert('✅ تم تحديث بيانات البنك');
+            if (!bankName || !accountNumber || !accountName) return tg.showAlert('املأ جميع الحقول');
+            const res = await fetch(`${API_URL}/api/update_bank`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, bankName, accountNumber, accountName }) });
+            await res.json();
+            tg.showAlert('✅ تم التحديث');
             loadBankInfo();
         }
         
@@ -1866,7 +1372,7 @@
             document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
             document.getElementById(`${tab}-tab`).classList.add('active');
             if (event && event.target) event.target.classList.add('active');
-            if (tab === 'market') { loadMarket(); loadMarketStats(); }
+            if (tab === 'market') { loadMarket(currentPage); loadMarketStats(); }
             if (tab === 'my') loadMyOffers();
             if (tab === 'trades') loadMyTrades();
             if (tab === 'history') loadHistory();
@@ -1879,15 +1385,20 @@
         }
         
         document.getElementById('offerPaymentMethod').addEventListener('change', function() {
-            const bankFields = document.getElementById('bankFields');
-            bankFields.style.display = this.value === 'bank_transfer' ? 'block' : 'none';
+            document.getElementById('bankFields').style.display = this.value === 'bank_transfer' ? 'block' : 'none';
         });
         
+        // التحميل التدريجي
         async function init() {
-            await loadUserData();
-            await loadMarket();
+            showLoading();
+            await loadUserDataLight();
+            await loadMarket(1);
             await loadMarketStats();
-            await loadKycStatus();
+            setTimeout(async () => {
+                await loadKycStatus();
+                await loadUserFull();
+                hideLoading();
+            }, 500);
         }
         
         init();
