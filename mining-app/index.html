@@ -435,11 +435,157 @@
             flex: 1;
         }
 
+        /* ========== أنماط الدردشة ========== */
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 70vh;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        .chat-header {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .message {
+            max-width: 80%;
+            padding: 10px 12px;
+            border-radius: 15px;
+            word-wrap: break-word;
+        }
+        .message-sent {
+            background: #2196F3;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 5px;
+        }
+        .message-received {
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+        }
+        .message-system {
+            background: rgba(255, 152, 0, 0.2);
+            color: #ff9800;
+            text-align: center;
+            align-self: center;
+            font-size: 12px;
+            max-width: 90%;
+        }
+        .message-image {
+            max-width: 200px;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        .message-time {
+            font-size: 10px;
+            opacity: 0.7;
+            margin-top: 5px;
+            text-align: left;
+        }
+        .chat-input-area {
+            display: flex;
+            gap: 10px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.5);
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        .chat-input {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 25px;
+            background: rgba(255,255,255,0.9);
+            font-size: 14px;
+        }
+        .chat-send-btn {
+            background: #4caf50;
+            border: none;
+            width: 45px;
+            height: 45px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 20px;
+        }
+        .chat-image-btn {
+            background: #2196F3;
+            border: none;
+            width: 45px;
+            height: 45px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 20px;
+        }
+        .unread-badge {
+            background: #f44336;
+            color: white;
+            border-radius: 10px;
+            padding: 2px 6px;
+            font-size: 10px;
+            margin-left: 5px;
+        }
+        .trade-chat-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: 10px;
+        }
+        .back-to-trades {
+            background: #666;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            font-size: 12px;
+        }
+        .chat-loading {
+            text-align: center;
+            padding: 20px;
+            color: #aaa;
+        }
+        .image-preview-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 10000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        .image-preview-img {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 10px;
+        }
+
         @media (max-width: 480px) {
             .tab-button { font-size: 11px; padding: 8px; }
             .stat-value { font-size: 18px; }
             .referral-stat-value { font-size: 22px; }
             .limit-inputs { flex-direction: column; }
+            .message { max-width: 90%; }
         }
     </style>
 </head>
@@ -460,7 +606,7 @@
 
         <div class="tab-buttons">
             <button class="tab-button active" onclick="switchTab('market')">📊 السوق</button>
-            <button class="tab-button" onclick="switchTab('create')">➕ إنشاء عرض</button>
+            <button class="tab-button" onclick="switchTab('create')">➕ عرض</button>
             <button class="tab-button" onclick="switchTab('my')">📋 عروضي</button>
             <button class="tab-button" onclick="switchTab('trades')">🔄 صفقاتي</button>
             <button class="tab-button" onclick="switchTab('history')">📜 تاريخي</button>
@@ -486,22 +632,15 @@
                     </select>
                     <select id="marketCurrency" class="currency-select" onchange="resetAndLoadMarket()" style="flex:1">
                         <option value="">جميع العملات</option>
-                        <option value="USD">🇺🇸 دولار أمريكي</option>
+                        <option value="USD">🇺🇸 دولار</option>
                         <option value="EUR">🇪🇺 يورو</option>
-                        <option value="GBP">🇬🇧 جنيه إسترليني</option>
-                        <option value="SAR">🇸🇦 ريال سعودي</option>
-                        <option value="AED">🇦🇪 درهم إماراتي</option>
-                        <option value="EGP">🇪🇬 جنيه مصري</option>
-                        <option value="SDG">🇸🇩 جنيه سوداني</option>
-                        <option value="IQD">🇮🇶 دينار عراقي</option>
-                        <option value="JOD">🇯🇴 دينار أردني</option>
-                        <option value="KWD">🇰🇼 دينار كويتي</option>
-                        <option value="QAR">🇶🇦 ريال قطري</option>
-                        <option value="BHD">🇧🇭 دينار بحريني</option>
-                        <option value="OMR">🇴🇲 ريال عماني</option>
-                        <option value="TRY">🇹🇷 ليرة تركية</option>
-                        <option value="INR">🇮🇳 روبية هندية</option>
-                        <option value="PKR">🇵🇰 روبية باكستانية</option>
+                        <option value="GBP">🇬🇧 جنيه</option>
+                        <option value="SAR">🇸🇦 ريال</option>
+                        <option value="AED">🇦🇪 درهم</option>
+                        <option value="EGP">🇪🇬 جنيه</option>
+                        <option value="SDG">🇸🇩 جنيه</option>
+                        <option value="IQD">🇮🇶 دينار</option>
+                        <option value="TRY">🇹🇷 ليرة</option>
                     </select>
                 </div>
                 <div id="marketStats" style="background:rgba(0,0,0,0.3); padding:10px; border-radius:10px; margin-bottom:10px; text-align:center; font-size:12px">
@@ -523,25 +662,12 @@
                     <option value="buy">🔴 شراء دولار</option>
                 </select>
                 <select id="offerCurrency" class="currency-select">
-                    <option value="USD">🇺🇸 دولار أمريكي (USD)</option>
-                    <option value="EUR">🇪🇺 يورو (EUR)</option>
-                    <option value="GBP">🇬🇧 جنيه إسترليني (GBP)</option>
-                    <option value="SAR">🇸🇦 ريال سعودي (SAR)</option>
-                    <option value="AED">🇦🇪 درهم إماراتي (AED)</option>
-                    <option value="EGP">🇪🇬 جنيه مصري (EGP)</option>
-                    <option value="SDG">🇸🇩 جنيه سوداني (SDG)</option>
-                    <option value="IQD">🇮🇶 دينار عراقي (IQD)</option>
-                    <option value="JOD">🇯🇴 دينار أردني (JOD)</option>
-                    <option value="KWD">🇰🇼 دينار كويتي (KWD)</option>
-                    <option value="QAR">🇶🇦 ريال قطري (QAR)</option>
-                    <option value="BHD">🇧🇭 دينار بحريني (BHD)</option>
-                    <option value="OMR">🇴🇲 ريال عماني (OMR)</option>
-                    <option value="TRY">🇹🇷 ليرة تركية (TRY)</option>
-                    <option value="INR">🇮🇳 روبية هندية (INR)</option>
-                    <option value="PKR">🇵🇰 روبية باكستانية (PKR)</option>
+                    <option value="USD">🇺🇸 دولار</option>
+                    <option value="EUR">🇪🇺 يورو</option>
+                    <option value="SDG">🇸🇩 جنيه</option>
                 </select>
-                <input type="number" id="offerAmount" placeholder="المبلغ بالعملة المحلية" class="trade-input">
-                <input type="number" id="offerPrice" placeholder="سعر العملة المحلية مقابل الدولار" class="trade-input">
+                <input type="number" id="offerAmount" placeholder="المبلغ" class="trade-input">
+                <input type="number" id="offerPrice" placeholder="السعر" class="trade-input">
                 <div class="limit-inputs">
                     <input type="number" id="offerMinAmount" placeholder="الحد الأدنى" class="trade-input" style="margin:0">
                     <input type="number" id="offerMaxAmount" placeholder="الحد الأقصى" class="trade-input" style="margin:0">
@@ -549,12 +675,6 @@
                 <select id="offerPaymentMethod" class="currency-select">
                     <option value="bank_transfer">🏦 تحويل بنكي</option>
                     <option value="paypal">💳 باي بال</option>
-                    <option value="visa">💳 فيزا</option>
-                    <option value="mastercard">💳 ماستركارد</option>
-                    <option value="fawry">📱 فوري</option>
-                    <option value="instapay">📱 انستا باي</option>
-                    <option value="vodafone_cash">📱 فودافون كاش</option>
-                    <option value="orange_cash">📱 أورنج كاش</option>
                 </select>
                 <div id="bankFields" style="display: none;">
                     <select id="offerBank" class="currency-select"><option value="">اختر البنك</option></select>
@@ -571,9 +691,34 @@
             <div class="card"><h3 style="color:white">📋 عروضي</h3><div id="myOffersList"><div class="loading">جاري التحميل...</div></div></div>
         </div>
 
-        <!-- صفقاتي -->
+        <!-- صفقاتي مع زر دردشة -->
         <div id="trades-tab" class="tab-content">
-            <div class="card"><h3 style="color:white">🔄 صفقاتي</h3><div id="myTradesList"><div class="loading">جاري التحميل...</div></div></div>
+            <div class="card">
+                <h3 style="color:white">🔄 صفقاتي</h3>
+                <div id="myTradesList"><div class="loading">جاري التحميل...</div></div>
+            </div>
+        </div>
+
+        <!-- شاشة الدردشة -->
+        <div id="chat-tab" class="tab-content">
+            <div class="card" style="padding: 0; overflow: hidden;">
+                <div style="padding: 15px; background: rgba(0,0,0,0.3); display: flex; align-items: center; gap: 10px;">
+                    <button class="back-to-trades" onclick="switchTab('trades')">← رجوع</button>
+                    <div style="flex:1; text-align: center;">
+                        <strong id="chatPartnerName">الدردشة</strong>
+                        <div style="font-size: 11px; color: #aaa;" id="chatTradeId"></div>
+                    </div>
+                </div>
+                <div id="chatMessagesContainer" class="chat-messages" style="height: 60vh;">
+                    <div class="chat-loading">🔄 جاري تحميل الرسائل...</div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chatInput" class="chat-input" placeholder="اكتب رسالتك...">
+                    <input type="file" id="chatImageInput" accept="image/*" style="display:none">
+                    <button class="chat-image-btn" onclick="document.getElementById('chatImageInput').click()">📷</button>
+                    <button class="chat-send-btn" onclick="sendChatMessage()">📤</button>
+                </div>
+            </div>
         </div>
 
         <!-- تاريخي -->
@@ -611,7 +756,7 @@
         <div id="kyc-tab" class="tab-content">
             <div class="card">
                 <h3 style="color:white">🆔 توثيق الهوية</h3>
-                <button class="refresh-btn" onclick="refreshKycStatus()">🔄 تحديث</button>
+                <button class="refresh-btn" onclick="refreshKyc()">🔄 تحديث</button>
                 <div id="kycStatus" class="kyc-status-card"><div class="loading">جاري التحميل...</div></div>
                 <div id="kycForm" style="display:none">
                     <input type="text" id="kycFullName" placeholder="الاسم الكامل" class="kyc-input">
@@ -661,7 +806,7 @@
                 <div class="address-box" id="referralLink" style="text-align:center"></div>
                 <button class="copy-btn" onclick="copyReferralLink()">📋 نسخ الرابط</button>
                 <div id="referralStats" style="margin-top:15px"></div>
-                <button class="trade-btn" onclick="transferReferralEarnings()" style="background:#2196F3">💸 تحويل الرصيد للمحفظة</button>
+                <button class="trade-btn" onclick="transferReferral()" style="background:#2196F3">💸 تحويل الرصيد للمحفظة</button>
             </div>
         </div>
 
@@ -687,6 +832,7 @@
                 <div class="info-box"><h4>📤 السحب</h4><p>أدخل المبلغ وعنوان المحفظة ← اختر الشبكة ← أدخل رمز 2FA ← انتظر الموافقة</p></div>
                 <div class="warning-box">⚠️ تأكد من الشبكة - الإرسال على شبكة خاطئة يؤدي لفقدان الأموال</div>
                 <div class="info-box"><h4>🌐 الشبكات المدعومة</h4><p>🟡 BNB (BEP-20) عمولة ~0.1$<br>🟣 POLYGON عمولة ~0.05$<br>🟢 SOLANA عمولة ~0.01$<br>🔷 APTOS عمولة ~0.02$</p></div>
+                <div class="info-box"><h4>💬 الدردشة</h4><p>يمكنك الدردشة مع البائع/المشتري مباشرة من خلال تبويب "صفقاتي" ← اضغط على زر "💬 دردشة"</p></div>
             </div>
         </div>
     </div>
@@ -702,34 +848,31 @@
         let personalPhotoFile = null;
         let currentPage = 1;
         let totalOffers = 0;
+        let currentTradeId = null;
+        let currentPartnerId = null;
+        let chatInterval = null;
         const API_URL = window.location.origin;
         const BOT_USERNAME = 'YourBotUsername';
         
-        const sudanBanks = ["Bank of Khartoum", "Blue Nile Mashreq Bank", "Al Salam Bank", "Agricultural Bank", "Al Baraka Bank", "Al Nilein Bank", "Al Shamal Islamic Bank", "Animal Resources Bank", "Bank of Sudan", "Byblos Bank", "Egyptian Sudanese Bank", "Industrial Development Bank", "National Bank of Abu Dhabi", "National Bank of Egypt", "National Bank of Sudan", "Omdurman National Bank", "Qatar National Bank", "Saudi Sudanese Bank", "Sudanese French Bank", "United Capital Bank"];
+        const sudanBanks = ["Bank of Khartoum", "Blue Nile Mashreq Bank", "Al Salam Bank", "Agricultural Bank", "Al Baraka Bank", "Al Nilein Bank"];
         
-        // ========== التحميل المباشر والسريع (بدون شاشة تحميل) ==========
-        
-        // 1. عرض الرصيد فوراً من التخزين المؤقت
+        // ========== التحميل السريع ==========
         function showCachedBalance() {
             const cached = localStorage.getItem('cachedBalance');
             if (cached) document.getElementById('usdBalance').textContent = cached;
         }
         
-        // 2. تحميل البيانات الأساسية فقط (الأهم)
         async function loadBasicData() {
             try {
                 const uid = tg.initDataUnsafe.user.id;
                 const res = await fetch(`${API_URL}/api/user/light/${uid}`);
                 const data = await res.json();
                 userData = data;
-                
-                // تحديث الرصيد فوراً
                 document.getElementById('usdBalance').textContent = data.usdBalance?.toFixed(2) || '0';
                 localStorage.setItem('cachedBalance', data.usdBalance?.toFixed(2) || '0');
                 document.getElementById('userRating').textContent = data.rating?.toFixed(1) || '5.0';
                 document.getElementById('completedTrades').textContent = data.completedTrades || '0';
                 
-                // حالة التوثيق
                 const verificationDiv = document.getElementById('verificationStatus');
                 if (data.isVerified) {
                     verificationDiv.innerHTML = '<div class="verified-badge">✅ حساب موثق</div>';
@@ -741,7 +884,6 @@
             } catch(e) { console.error(e); }
         }
         
-        // 3. تحميل العروض (أول 5 عروض فقط للسرعة)
         async function loadMarketFast(page = 1) {
             currentPage = page;
             const type = document.getElementById('marketType').value;
@@ -793,7 +935,6 @@
             }
         }
         
-        // 4. تحميل المزيد من العروض (عند الطلب)
         async function loadMoreOffers() {
             const type = document.getElementById('marketType').value;
             const currency = document.getElementById('marketCurrency').value;
@@ -834,20 +975,7 @@
             }
         }
         
-        // 5. باقي البيانات تحمل في الخلفية (لا تعلق الواجهة)
-        function loadBackgroundData() {
-            setTimeout(() => {
-                loadMarketStats();
-                loadKycStatus();
-                loadReferralInfo();
-                loadWallet();
-                loadBankInfo();
-                loadLeaderboard();
-                loadSecurityInfo();
-            }, 50);
-        }
-        
-        // ========== باقي الدوال ==========
+        function resetAndLoadMarket() { currentPage = 1; loadMarketFast(1); }
         
         async function loadMarketStats() {
             try {
@@ -857,7 +985,186 @@
             } catch(e) { console.error(e); }
         }
         
-        function resetAndLoadMarket() { currentPage = 1; loadMarketFast(1); }
+        // ========== دوال الدردشة ==========
+        let currentChatTradeId = null;
+        let currentChatPartnerId = null;
+        
+        async function openChat(tradeId, partnerId, partnerName) {
+            currentChatTradeId = tradeId;
+            currentChatPartnerId = partnerId;
+            
+            document.getElementById('chatPartnerName').innerHTML = partnerName || 'محادثة';
+            document.getElementById('chatTradeId').innerHTML = `الصفقة #${tradeId.slice(-8)}`;
+            
+            await loadChatMessages();
+            
+            if (chatInterval) clearInterval(chatInterval);
+            chatInterval = setInterval(loadChatMessages, 5000);
+            
+            switchTab('chat');
+        }
+        
+        async function loadChatMessages() {
+            if (!currentChatTradeId) return;
+            
+            const container = document.getElementById('chatMessagesContainer');
+            const uid = tg.initDataUnsafe.user.id;
+            
+            try {
+                const res = await fetch(`${API_URL}/api/chat/${currentChatTradeId}/${uid}`);
+                const data = await res.json();
+                
+                if (!data.success || !data.messages) {
+                    container.innerHTML = '<div class="chat-loading">لا توجد رسائل</div>';
+                    return;
+                }
+                
+                let html = '';
+                for (const msg of data.messages) {
+                    const time = new Date(msg.createdAt).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' });
+                    const isSent = msg.senderId == uid;
+                    
+                    if (msg.messageType === 'system') {
+                        html += `<div class="message message-system">🔄 ${msg.message}<div class="message-time">${time}</div></div>`;
+                    } else if (msg.messageType === 'image') {
+                        html += `
+                            <div class="message ${isSent ? 'message-sent' : 'message-received'}">
+                                <img src="/api/chat/image/${msg.imageFileId}" class="message-image" onclick="showImagePreview(this.src)" style="max-width:150px; border-radius:10px; cursor:pointer">
+                                <div class="message-time">${time}</div>
+                            </div>
+                        `;
+                    } else {
+                        html += `
+                            <div class="message ${isSent ? 'message-sent' : 'message-received'}">
+                                ${escapeHtml(msg.message)}
+                                <div class="message-time">${time}</div>
+                            </div>
+                        `;
+                    }
+                }
+                
+                if (html === '') html = '<div class="chat-loading">لا توجد رسائل، ابدأ المحادثة</div>';
+                container.innerHTML = html;
+                container.scrollTop = container.scrollHeight;
+                
+                // تحديث حالة القراءة
+                await fetch(`${API_URL}/api/chat/read`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tradeId: currentChatTradeId, userId: uid })
+                });
+                
+            } catch(e) {
+                console.error('Load messages error:', e);
+                container.innerHTML = '<div class="chat-loading">❌ خطأ في تحميل الرسائل</div>';
+            }
+        }
+        
+        async function sendChatMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            const uid = tg.initDataUnsafe.user.id;
+            
+            try {
+                const res = await fetch(`${API_URL}/api/chat/send`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tradeId: currentChatTradeId,
+                        senderId: uid,
+                        receiverId: currentChatPartnerId,
+                        message: message
+                    })
+                });
+                
+                const result = await res.json();
+                if (result.success) {
+                    input.value = '';
+                    await loadChatMessages();
+                } else {
+                    tg.showAlert('❌ فشل إرسال الرسالة');
+                }
+            } catch(e) {
+                console.error('Send error:', e);
+                tg.showAlert('❌ خطأ في الإرسال');
+            }
+        }
+        
+        async function sendChatImage(file) {
+            const uid = tg.initDataUnsafe.user.id;
+            const formData = new FormData();
+            formData.append('tradeId', currentChatTradeId);
+            formData.append('senderId', uid);
+            formData.append('receiverId', currentChatPartnerId);
+            formData.append('image', file);
+            formData.append('message', '📸 صورة');
+            
+            try {
+                const res = await fetch(`${API_URL}/api/chat/send-image`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await res.json();
+                if (result.success) {
+                    await loadChatMessages();
+                } else {
+                    tg.showAlert('❌ فشل رفع الصورة');
+                }
+            } catch(e) {
+                console.error('Send image error:', e);
+                tg.showAlert('❌ خطأ في رفع الصورة');
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function showImagePreview(src) {
+            const div = document.createElement('div');
+            div.className = 'image-preview-container';
+            div.onclick = function() { this.remove(); };
+            div.innerHTML = `<img src="${src}" class="image-preview-img">`;
+            document.body.appendChild(div);
+        }
+        
+        // ========== باقي الدوال ==========
+        
+        async function loadMyTrades() {
+            try {
+                const uid = tg.initDataUnsafe.user.id;
+                const res = await fetch(`${API_URL}/api/user/trades/${uid}`);
+                const trades = await res.json();
+                const container = document.getElementById('myTradesList');
+                if (!trades.length) { container.innerHTML = '<div class="loading">لا توجد صفقات</div>'; return; }
+                
+                // جلب أسماء الشركاء
+                let html = '';
+                for (const t of trades) {
+                    const partnerId = t.buyerId === uid ? t.sellerId : t.buyerId;
+                    const partnerName = t.otherParty || (t.buyerId === uid ? 'البائع' : 'المشتري');
+                    const statusText = t.status === 'pending' ? '⏳ معلقة' : t.status === 'paid' ? '✅ تم الدفع' : t.status === 'completed' ? '✔️ مكتملة' : '❌ ملغية';
+                    
+                    html += `
+                        <div class="offer-card">
+                            <div class="offer-amount">💰 ${t.amount} ${t.currency}</div>
+                            <div class="offer-details">📊 الحالة: ${statusText}</div>
+                            <div class="offer-details">👤 الطرف الآخر: ${partnerName}</div>
+                            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                                <button class="trade-chat-btn" onclick="openChat('${t._id}', ${partnerId}, '${partnerName}')">💬 دردشة</button>
+                                ${t.status === 'pending' ? `<button class="cancel-btn" onclick="cancelTrade('${t._id}')">❌ إلغاء</button>` : ''}
+                                ${t.status === 'paid' && t.sellerId === uid ? `<button class="trade-btn" onclick="releaseCrystals('${t._id}')">🔓 تحرير</button>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+                container.innerHTML = html;
+            } catch(e) { console.error(e); }
+        }
         
         async function loadReferralInfo() {
             try {
@@ -879,7 +1186,7 @@
             } catch(e) { console.error(e); }
         }
         
-        async function transferReferralEarnings() {
+        async function transferReferral() {
             tg.showAlert('🔄 جاري التحويل...');
             const res = await fetch(`${API_URL}/api/referral/transfer`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -960,7 +1267,7 @@
             if (data.success) loadSecurityInfo();
         }
         
-        async function refreshKycStatus() { await loadKycStatus(); await loadBasicData(); }
+        async function refreshKyc() { await loadKycStatus(); await loadBasicData(); }
         
         async function loadKycStatus() {
             try {
@@ -1028,17 +1335,6 @@
                 const container = document.getElementById('myOffersList');
                 if (!offers.length) { container.innerHTML = '<div class="loading">لا توجد عروض</div>'; return; }
                 container.innerHTML = offers.map(o => `<div class="offer-card"><div class="offer-amount">💰 ${o.fiatAmount} ${o.currency}</div><div class="offer-price">📊 ${o.price}</div><button class="cancel-btn" onclick="cancelOffer('${o._id}')">❌ إلغاء</button></div>`).join('');
-            } catch(e) { console.error(e); }
-        }
-        
-        async function loadMyTrades() {
-            try {
-                const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/user/trades/${uid}`);
-                const trades = await res.json();
-                const container = document.getElementById('myTradesList');
-                if (!trades.length) { container.innerHTML = '<div class="loading">لا توجد صفقات</div>'; return; }
-                container.innerHTML = trades.map(t => `<div class="offer-card"><div class="offer-amount">💰 ${t.amount} ${t.currency}</div><div class="offer-details">${t.status === 'pending' ? '⏳ معلقة' : t.status === 'paid' ? '✅ تم الدفع' : t.status === 'completed' ? '✔️ مكتملة' : '❌ ملغية'}</div>${t.status === 'pending' ? `<button class="cancel-btn" onclick="cancelTrade('${t._id}')">❌ إلغاء</button>` : ''}${t.status === 'paid' && t.sellerId === uid ? `<button class="trade-btn" onclick="releaseCrystals('${t._id}')">🔓 تحرير</button>` : ''}</div>`).join('');
             } catch(e) { console.error(e); }
         }
         
@@ -1137,6 +1433,7 @@
             const res = await fetch(`${API_URL}/api/trade/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId }) });
             const result = await res.json();
             tg.showAlert(result.message);
+            if (result.success) setTimeout(() => loadMyTrades(), 1000);
         }
         
         async function deposit() {
@@ -1183,6 +1480,7 @@
             document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
             document.getElementById(`${tab}-tab`).classList.add('active');
             if (event && event.target) event.target.classList.add('active');
+            
             if (tab === 'market') { loadMarketFast(currentPage); loadMarketStats(); }
             if (tab === 'my') loadMyOffers();
             if (tab === 'trades') loadMyTrades();
@@ -1193,17 +1491,34 @@
             if (tab === 'bank') loadBankInfo();
             if (tab === 'referral') loadReferralInfo();
             if (tab === 'security') loadSecurityInfo();
+            
+            if (tab !== 'chat' && chatInterval) {
+                clearInterval(chatInterval);
+                chatInterval = null;
+            }
         }
         
         document.getElementById('offerPaymentMethod').addEventListener('change', function() {
             document.getElementById('bankFields').style.display = this.value === 'bank_transfer' ? 'block' : 'none';
         });
         
-        // ========== بدء التشغيل السريع ==========
-        showCachedBalance();           // عرض الرصيد المخزن فوراً
-        loadBasicData();               // تحميل البيانات الأساسية
-        loadMarketFast(1);             // تحميل أول 5 عروض
-        loadBackgroundData();          // باقي البيانات في الخلفية
+        document.getElementById('chatImageInput').addEventListener('change', function(e) {
+            if (e.target.files && e.target.files[0]) {
+                sendChatImage(e.target.files[0]);
+                e.target.value = '';
+            }
+        });
+        
+        document.getElementById('chatInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') sendChatMessage();
+        });
+        
+        // بدء التشغيل
+        showCachedBalance();
+        loadBasicData();
+        loadMarketFast(1);
+        loadMarketStats();
+        loadKycStatus();
         
         tg.MainButton.setText("🚀 فتح البوت");
         tg.MainButton.onClick(() => tg.close());
