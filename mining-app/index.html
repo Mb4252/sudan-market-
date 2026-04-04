@@ -526,9 +526,37 @@
             font-size: 12px;
         }
 
+        .referral-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .referral-stat-card {
+            background: rgba(76, 175, 80, 0.2);
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+            border: 1px solid #4caf50;
+        }
+
+        .referral-stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #4caf50;
+        }
+
+        .referral-stat-label {
+            font-size: 11px;
+            color: #ccc;
+            margin-top: 5px;
+        }
+
         @media (max-width: 480px) {
             .tab-button { font-size: 11px; padding: 8px; }
             .stat-value { font-size: 18px; }
+            .referral-stat-value { font-size: 22px; }
         }
     </style>
 </head>
@@ -781,20 +809,45 @@
             </div>
         </div>
 
-        <!-- تبويب الإحالات -->
+        <!-- تبويب الإحالات - معدل بالكامل -->
         <div id="referral-tab" class="tab-content">
             <div class="card">
                 <h3 style="color:white">🎁 برنامج الإحالات</h3>
-                <div id="referralInfo"></div>
+                
+                <!-- إحصائيات الإحالات -->
+                <div class="referral-stats-grid">
+                    <div class="referral-stat-card">
+                        <div class="referral-stat-value" id="referralCount">0</div>
+                        <div class="referral-stat-label">👥 عدد المدعوين</div>
+                    </div>
+                    <div class="referral-stat-card">
+                        <div class="referral-stat-value" id="referralEarnings">0</div>
+                        <div class="referral-stat-label">💰 رصيد الإحالات (USD)</div>
+                    </div>
+                    <div class="referral-stat-card">
+                        <div class="referral-stat-value" id="referralCommission">10%</div>
+                        <div class="referral-stat-label">📊 نسبة العمولة</div>
+                    </div>
+                </div>
+                
                 <div class="address-box" id="referralLink" style="margin:10px 0; text-align:center; word-break:break-all"></div>
                 <button class="copy-btn" onclick="copyReferralLink()">📋 نسخ رابط الإحالة</button>
+                
                 <div id="referralStats" style="margin-top:15px"></div>
+                
                 <div class="info" style="margin-top:15px; background:rgba(76,175,80,0.2); padding:10px; border-radius:10px">
-                    💡 *كيف يعمل؟*<br>
-                    • كل صديق تسجله عبر رابطك، تحصل على <strong>10%</strong> من عمولة المنصة من صفقاته<br>
-                    • الأرباح تضاف تلقائياً لمحفظتك<br>
-                    • يمكنك دعوة عدد غير محدود من الأصدقاء
+                    💡 *كيف يعمل نظام الإحالات؟*<br><br>
+                    • 🎁 *رابطك الخاص* - شاركه مع أصدقائك<br>
+                    • 📊 *نسبة العمولة:* <strong>10%</strong> من عمولة المنصة من صفقات كل مدعو<br>
+                    • 💰 *الأرباح تتراكم* في رصيد الإحالات الخاص بك<br>
+                    • 🚀 *سحب الأرباح* - يمكنك تحويل رصيد الإحالات إلى محفظتك الرئيسية<br>
+                    • 👥 *عدد غير محدود* - كلما زاد عدد المدعوين، زادت أرباحك<br>
+                    • 🔥 *كل صفقة* - تحصل على عمولة عن كل صفقة يقوم بها المدعو
                 </div>
+                
+                <button class="trade-btn" onclick="transferReferralEarnings()" style="margin-top:15px; background:#2196F3">
+                    💸 تحويل رصيد الإحالات إلى المحفظة
+                </button>
             </div>
         </div>
 
@@ -866,7 +919,6 @@
                 document.getElementById('completedTrades').textContent = data.completedTrades || '0';
                 document.getElementById('successRate').textContent = data.successRate || '100';
                 
-                // عرض حالة الاتصال
                 if (data.onlineStatus) {
                     document.getElementById('onlineStatus').innerHTML = data.onlineStatus;
                 }
@@ -891,7 +943,7 @@
             } catch(e) { console.error(e); }
         }
         
-        // ========== نظام الإحالات ==========
+        // ========== نظام الإحالات المعدل بالكامل ==========
         async function loadReferralInfo() {
             try {
                 const uid = tg.initDataUnsafe.user.id;
@@ -900,30 +952,70 @@
                 
                 const referralLink = `https://t.me/${BOT_USERNAME}?start=${uid}`;
                 
-                document.getElementById('referralLink').innerHTML = `🔗 رابط الإحالة الخاص بك:<br><code>${referralLink}</code>`;
-                document.getElementById('referralInfo').innerHTML = `
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-value">${data.referralCount || 0}</div>
-                            <div class="stat-label">عدد المدعوين</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${(data.referralEarnings || 0).toFixed(2)} USD</div>
-                            <div class="stat-label">أرباح الإحالات</div>
-                        </div>
-                    </div>
-                `;
+                // عرض رابط الإحالة
+                document.getElementById('referralLink').innerHTML = `🔗 رابط الإحالة الخاص بك:<br><code style="font-size:12px; word-break:break-all">${referralLink}</code>`;
                 
+                // عرض عدد المدعوين ورصيد الإحالات
+                const referralCount = data.referralCount || 0;
+                const referralEarnings = data.referralEarnings || 0;
+                
+                document.getElementById('referralCount').textContent = referralCount;
+                document.getElementById('referralEarnings').textContent = referralEarnings.toFixed(2);
+                
+                // عرض قائمة المدعوين
                 if (data.referrals && data.referrals.length > 0) {
-                    let referralsHtml = '<h4 style="margin-top:15px; color:white">📋 المدعوين:</h4>';
+                    let referralsHtml = '<h4 style="margin-top:15px; color:white; margin-bottom:10px">📋 قائمة المدعوين:</h4>';
                     for (const ref of data.referrals) {
-                        referralsHtml += `<div class="history-item">👤 مستخدم جديد | 📅 ${new Date(ref.joinedAt).toLocaleDateString()} | 💰 ربح: ${ref.earned?.toFixed(2) || 0} USD</div>`;
+                        const joinedDate = new Date(ref.joinedAt).toLocaleDateString('ar');
+                        const earnedAmount = (ref.earned || 0).toFixed(2);
+                        referralsHtml += `
+                            <div class="history-item" style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    👤 <strong>${ref.userId}</strong>
+                                    <div style="font-size: 11px; color: #aaa;">📅 ${joinedDate}</div>
+                                </div>
+                                <div style="color: #4caf50; font-weight: bold;">
+                                    💰 ${earnedAmount} USD
+                                </div>
+                            </div>
+                        `;
                     }
                     document.getElementById('referralStats').innerHTML = referralsHtml;
                 } else {
-                    document.getElementById('referralStats').innerHTML = '<div class="loading">لا يوجد مدعوين بعد</div>';
+                    document.getElementById('referralStats').innerHTML = '<div class="loading" style="margin-top:15px">📭 لا يوجد مدعوين بعد</div>';
                 }
-            } catch(e) { console.error(e); }
+            } catch(e) { 
+                console.error('Referral load error:', e);
+                document.getElementById('referralCount').textContent = '0';
+                document.getElementById('referralEarnings').textContent = '0';
+                document.getElementById('referralStats').innerHTML = '<div class="loading">❌ حدث خطأ في تحميل بيانات الإحالات</div>';
+            }
+        }
+        
+        // دالة تحويل رصيد الإحالات إلى المحفظة الرئيسية
+        async function transferReferralEarnings() {
+            try {
+                tg.showAlert('🔄 جاري تحويل رصيد الإحالات...');
+                
+                const uid = tg.initDataUnsafe.user.id;
+                const res = await fetch(`${API_URL}/api/referral/transfer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: uid })
+                });
+                const result = await res.json();
+                
+                tg.showAlert(result.message);
+                
+                if (result.success) {
+                    await loadReferralInfo();
+                    await loadUserData();
+                    await loadWallet();
+                }
+            } catch(e) {
+                console.error('Transfer error:', e);
+                tg.showAlert('❌ حدث خطأ، حاول مرة أخرى');
+            }
         }
         
         function copyReferralLink() {
@@ -1378,7 +1470,7 @@
         }
         
         async function cancelTrade(tradeId) {
-            tg.showAlert('⚠️ هل أنت متأكد من إلغاء الصفقة؟', true);
+            tg.showAlert('⚠️ هل أنت متأكد من إلغاء الصفقة؟');
             const res = await fetch(`${API_URL}/api/trade/cancel`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, trade_id: tradeId })
@@ -1492,7 +1584,7 @@
             const twoFACode = document.getElementById('withdraw2FA').value;
             if (!amount || amount <= 0) return tg.showAlert('أدخل المبلغ');
             if (!address) return tg.showAlert('أدخل عنوان المحفظة');
-            const res = await fetch(`${API_URL}/api/withdraw`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USD', network, address, twoFACode }) });
+            const res = await fetch(`${API_URL}/api/withdraw`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USD', network, address, twofa_code: twoFACode }) });
             const result = await res.json();
             tg.showAlert(result.message);
         }
@@ -1519,7 +1611,7 @@
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
             document.getElementById(`${tab}-tab`).classList.add('active');
-            event.target.classList.add('active');
+            if (event && event.target) event.target.classList.add('active');
             if (tab === 'market') { loadMarket(); loadMarketStats(); }
             if (tab === 'my') loadMyOffers();
             if (tab === 'trades') loadMyTrades();
