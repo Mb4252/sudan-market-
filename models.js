@@ -40,7 +40,7 @@ const kycRequestSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 
-// ========== نموذج المستخدم (مع جميع الحقول الجديدة) ==========
+// ========== نموذج المستخدم (مع جميع الحقول الجديدة بما فيها الإحالات) ==========
 const userSchema = new mongoose.Schema({
     // البيانات الأساسية
     userId: { type: Number, required: true, unique: true },
@@ -79,16 +79,18 @@ const userSchema = new mongoose.Schema({
     require2FAForRelease: { type: Boolean, default: true },
     release2FAThreshold: { type: Number, default: 100 },
     
-    // ========== الإحالات (Referral) ==========
-    referrerId: { type: Number, default: null },
-    referralCount: { type: Number, default: 0 },
-    referralEarnings: { type: Number, default: 0 },
-    referralCommissionRate: { type: Number, default: 10 },
+    // ========== الإحالات (Referral) - المعدلة بالكامل ==========
+    referrerId: { type: Number, default: null },  // من قام بدعوة هذا المستخدم
+    referralCount: { type: Number, default: 0 },  // عدد المستخدمين الذين دعاهم هذا المستخدم
+    referralEarnings: { type: Number, default: 0 },  // رصيد الإحالات (عمولات غير محولة بعد)
+    referralCommissionRate: { type: Number, default: 10 },  // نسبة العمولة من عمولة المنصة
+    
+    // قائمة المدعوين مع تفاصيل أرباحهم
     referrals: [{ 
-        userId: { type: Number },
-        joinedAt: { type: Date, default: Date.now },
-        totalCommission: { type: Number, default: 0 },
-        earned: { type: Number, default: 0 }
+        userId: { type: Number, required: true },  // معرف المستخدم المدعو
+        joinedAt: { type: Date, default: Date.now },  // تاريخ انضمامه
+        totalCommission: { type: Number, default: 0 },  // إجمالي العمولات التي حققها
+        earned: { type: Number, default: 0 }  // العمولة التي حصل عليها المُحيل من هذا المدعو
     }],
     
     // ========== نشاط التاجر ==========
