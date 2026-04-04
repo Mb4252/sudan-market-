@@ -13,7 +13,7 @@ class Database {
         this.connected = false;
         this.encryptionKey = process.env.ENCRYPTION_KEY || 'default_key_32_bytes_long';
         this.platformFee = (parseFloat(process.env.PLATFORM_FEE_PERCENT) / 100) || 0.005;
-        this.referralCommissionRate = 10;
+        this.referralCommissionRate = 10; // نسبة عمولة الإحالات 10%
         
         // إعدادات 2FA للتحرير
         this.release2FAThreshold = 100; // أي مبلغ فوق 100 دولار يحتاج 2FA
@@ -435,13 +435,18 @@ class Database {
             const wallet = await this.getUserWallet(userId);
             
             let validReferrer = null;
+            let referralBonus = 0;
+            
             if (referrerId && referrerId !== userId) {
                 validReferrer = await User.findOne({ userId: referrerId });
                 if (validReferrer && !validReferrer.isBanned && !validReferrer.isLocked) {
+                    // مكافأة ترحيبية للمُحيل (اختيارية)
+                    referralBonus = 5; // 5 دولار مكافأة ترحيبية
+                    
                     await User.updateOne(
                         { userId: referrerId },
                         { 
-                            $inc: { referralCount: 1 },
+                            $inc: { referralCount: 1, referralEarnings: referralBonus },
                             $push: { 
                                 referrals: { 
                                     userId: userId, 
@@ -452,6 +457,11 @@ class Database {
                             }
                         }
                     );
+                    
+                    // إضافة المكافأة لمحفظة المُحيل
+                    await Wallet.updateOne({ userId: referrerId }, { $inc: { usdBalance: referralBonus } });
+                    
+                    await this.addAuditLog(referrerId, 'referral_bonus', { amount: referralBonus, newUser: userId }, ip, userAgent);
                 } else {
                     validReferrer = null;
                 }
@@ -469,6 +479,10 @@ class Database {
                 language, 
                 walletId: wallet._id,
                 referrerId: validReferrer ? referrerId : null,
+                referralCount: 0,
+                referralEarnings: 0,
+                referralCommissionRate: this.referralCommissionRate,
+                referrals: [],
                 isVerified: false,
                 lastSeen: new Date(),
                 isOnline: true,
@@ -489,9 +503,9 @@ class Database {
             });
             
             await this.updateDailyStats('totalUsers', 'newUsers');
-            await this.addAuditLog(userId, 'register', { referrer: referrerId }, ip, userAgent);
+            await this.addAuditLog(userId, 'register', { referrer: referrerId, referralBonus }, ip, userAgent);
             
-            return { success: true, isNew: true, referrer: validReferrer };
+            return { success: true, isNew: true, referrer: validReferrer, referralBonus };
         }
         
         await User.updateOne({ userId }, { lastSeen: new Date(), isOnline: true, lastLoginIp: ip });
@@ -561,23 +575,88 @@ class Database {
     // ========== نظام الإحالات - إضافة عمولة للمُحيل ==========
     async addReferralCommission(referrerId, userId, tradeAmount, platformFee) {
         const referrer = await User.findOne({ userId: referrerId });
-        if (!referrer || referrer.isBanned) return;
+        if (!referrer || referrer.isBanned) return 0;
         
         const commission = platformFee * (this.referralCommissionRate / 100);
-        if (commission <= 0) return;
+        if (commission <= 0) return 0;
         
-        await Wallet.updateOne({ userId: referrerId }, { $inc: { usdBalance: commission } });
-        await User.updateOne({ userId: referrerId }, { $inc: { referralEarnings: commission } });
+        // إضافة العمولة لرصيد الإحالات (ليس الرصيد الرئيسي)
+        await User.updateOne({ userId: referrerId }, { 
+            $inc: { referralEarnings: commission } 
+        });
         
+        // تحديث قائمة الإحالات
         await User.updateOne(
             { userId: referrerId, 'referrals.userId': userId },
-            { $inc: { 'referrals.$.earned': commission } }
+            { 
+                $inc: { 'referrals.$.earned': commission, 'referrals.$.totalCommission': commission }
+            }
         );
         
         await this.addAuditLog(referrerId, 'referral_commission', { amount: commission, fromUser: userId, tradeAmount }, '', '');
         await this.updateDailyStats('totalReferralCommissions', commission);
         
         return commission;
+    }
+    
+    // ========== تحويل رصيد الإحالات إلى المحفظة الرئيسية ==========
+    async transferReferralEarningsToWallet(userId) {
+        const user = await User.findOne({ userId });
+        if (!user) return { success: false, message: 'المستخدم غير موجود' };
+        
+        const referralEarnings = user.referralEarnings || 0;
+        
+        if (referralEarnings <= 0) {
+            return { success: false, message: '⚠️ لا يوجد رصيد إحالات للتحويل' };
+        }
+        
+        // تحويل الرصيد من الإحالات إلى المحفظة الرئيسية
+        await Wallet.updateOne({ userId }, { $inc: { usdBalance: referralEarnings } });
+        await User.updateOne({ userId }, { $set: { referralEarnings: 0 } });
+        
+        await this.addAuditLog(userId, 'transfer_referral_earnings', { amount: referralEarnings }, '', '');
+        
+        return { 
+            success: true, 
+            amount: referralEarnings,
+            message: `✅ *تم تحويل ${referralEarnings.toFixed(2)} USD من رصيد الإحالات إلى محفظتك الرئيسية*`
+        };
+    }
+    
+    // ========== الحصول على بيانات الإحالات ==========
+    async getReferralData(userId) {
+        const user = await User.findOne({ userId });
+        if (!user) {
+            return {
+                referralCount: 0,
+                referralEarnings: 0,
+                referralCommissionRate: this.referralCommissionRate,
+                referrals: [],
+                referralLink: `https://t.me/${process.env.BOT_USERNAME || 'YourBotUsername'}?start=${userId}`
+            };
+        }
+        
+        // جلب أسماء المدعوين (اختياري)
+        const referralsWithDetails = [];
+        for (const ref of (user.referrals || [])) {
+            const referredUser = await User.findOne({ userId: ref.userId }).select('firstName username completedTrades');
+            referralsWithDetails.push({
+                userId: ref.userId,
+                joinedAt: ref.joinedAt,
+                totalCommission: ref.totalCommission || 0,
+                earned: ref.earned || 0,
+                name: referredUser ? (referredUser.firstName || referredUser.username || ref.userId) : ref.userId,
+                trades: referredUser ? referredUser.completedTrades || 0 : 0
+            });
+        }
+        
+        return {
+            referralCount: user.referralCount || 0,
+            referralEarnings: user.referralEarnings || 0,
+            referralCommissionRate: user.referralCommissionRate || this.referralCommissionRate,
+            referrals: referralsWithDetails,
+            referralLink: `https://t.me/${process.env.BOT_USERNAME || 'YourBotUsername'}?start=${userId}`
+        };
     }
 
     // ========== نظام التوثيق ==========
@@ -973,44 +1052,13 @@ class Database {
                 
                 // تذكير أول بعد 15 دقيقة
                 if (timeSincePaid >= 15 * 60 * 1000 && timeSincePaid < 30 * 60 * 1000) {
-                    await bot.telegram.sendMessage(trade.sellerId,
-                        `⏰ *تذكير: لم تقم بتحرير العملة بعد!*\n\n` +
-                        `📋 *الصفقة:* ${tradeId}\n` +
-                        `💰 *المبلغ:* ${trade.amount} ${trade.currency}\n` +
-                        `⏱️ *مضى:* 15 دقيقة على تأكيد الدفع\n\n` +
-                        `🔓 *يرجى تحرير العملة الآن:*\n/release_crystals ${tradeId}\n\n` +
-                        `⚠️ إذا لم تكن الأموال قد وصلتك، افتح نزاعاً:\n/dispute ${tradeId} "لم استلم الأموال"`,
-                        { parse_mode: 'Markdown' }
-                    );
-                    
-                    await bot.telegram.sendMessage(trade.buyerId,
-                        `⏰ *تحديث الصفقة*\n\n` +
-                        `📋 *الصفقة:* ${tradeId}\n` +
-                        `💰 *المبلغ:* ${trade.amount} ${trade.currency}\n` +
-                        `📤 *تم إرسال إثبات الدفع منذ 15 دقيقة*\n\n` +
-                        `⏳ *البائع لم يحرر العملة بعد*\n` +
-                        `📞 يمكنك تذكير البائع: /remind_seller ${tradeId}`,
-                        { parse_mode: 'Markdown' }
-                    );
+                    // نحتاج إلى bot هنا - سيتم تعيينه لاحقاً
+                    console.log(`⏰ Reminder: Trade ${tradeId} needs seller release`);
                 }
                 
-                // تذكير ثانٍ بعد 30 دقيقة مع إشعار الأدمن
+                // تذكير ثانٍ بعد 30 دقيقة
                 if (timeSincePaid >= 30 * 60 * 1000 && timeSincePaid < 60 * 60 * 1000) {
-                    await bot.telegram.sendMessage(trade.sellerId,
-                        `⚠️ *تذكير مهم: لم تقم بتحرير العملة!*\n\n` +
-                        `📋 *الصفقة:* ${tradeId}\n` +
-                        `⏱️ *مضى:* 30 دقيقة على تأكيد الدفع\n\n` +
-                        `🔓 /release_crystals ${tradeId}\n\n` +
-                        `⚠️ إذا لم تتحرر العملة قريباً، سيتم إشعار الإدارة.`,
-                        { parse_mode: 'Markdown' }
-                    );
-                    
-                    // إشعار الأدمن
-                    const ADMIN_ID = parseInt(process.env.ADMIN_ID) || 6701743450;
-                    await bot.telegram.sendMessage(ADMIN_ID,
-                        `⚠️ *صفقة متأخرة*\n📋 الصفقة: ${tradeId}\n👤 البائع: ${trade.sellerId}\n👤 المشتري: ${trade.buyerId}\n💰 المبلغ: ${trade.amount} USD\n⏱️ مضى 30 دقيقة على تأكيد الدفع ولم يحرر`,
-                        { parse_mode: 'Markdown' }
-                    );
+                    console.log(`⚠️ Second reminder: Trade ${tradeId} still pending`);
                 }
                 
                 // تحرير تلقائي بعد 24 ساعة
@@ -1035,16 +1083,7 @@ class Database {
                 // تحرير تلقائي
                 await this.releaseCrystals(tradeId, trade.sellerId);
                 
-                // إشعار الطرفين
-                await bot.telegram.sendMessage(trade.sellerId,
-                    `🤖 *تم تحرير العملة تلقائياً*\n\n📋 الصفقة: ${tradeId}\n⏱️ مضى 24 ساعة على تأكيد الدفع\n\n⚠️ تم تحرير العملة تلقائياً لصالح المشتري`,
-                    { parse_mode: 'Markdown' }
-                );
-                
-                await bot.telegram.sendMessage(trade.buyerId,
-                    `✅ *تم تحرير العملة تلقائياً*\n\n📋 الصفقة: ${tradeId}\n💰 المبلغ: ${trade.amount} ${trade.currency}\n\n🎉 تم تحرير العملة بعد انقضاء المهلة الزمنية`,
-                    { parse_mode: 'Markdown' }
-                );
+                console.log(`🤖 Auto-released trade ${tradeId} after 24h`);
             }
         }
     }
@@ -1397,18 +1436,8 @@ class Database {
         const trade = await Trade.findOne({ _id: tradeId, buyerId, status: 'paid' });
         if (!trade) return { success: false, message: 'الصفقة غير موجودة أو لم يتم الدفع بعد' };
         
-        await bot.telegram.sendMessage(trade.sellerId,
-            `🔔 *تذكير من المشتري*\n\n` +
-            `👤 المشتري يطلب منك تحرير العملة للصفقة #${tradeId}\n` +
-            `💰 المبلغ: ${trade.amount} ${trade.currency}\n` +
-            `⏱️ تم تأكيد الدفع منذ ${Math.floor((Date.now() - new Date(trade.paidAt).getTime()) / 60000)} دقيقة\n\n` +
-            `🔓 /release_crystals ${tradeId}`,
-            { parse_mode: 'Markdown' }
-        );
-        
-        await this.addAuditLog(buyerId, 'remind_seller', { tradeId }, '', '');
-        
-        return { success: true, message: `✅ تم إرسال تذكير للبائع للصفقة #${tradeId}` };
+        // سيتم إرسال التذكير عبر البوت
+        return { success: true, trade, message: `✅ تم إرسال تذكير للبائع للصفقة #${tradeId}` };
     }
 }
 
