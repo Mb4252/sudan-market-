@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Telegraf, Markup } = require('telegraf');
+const { Telegraf } = require('telegraf');
 const db = require('./database');
 const express = require('express');
 const path = require('path');
@@ -35,6 +35,7 @@ const WEBAPP_URL = process.env.WEBAPP_URL || `https://sdm-security-bot.onrender.
 const ADMIN_ID = parseInt(process.env.ADMIN_ID) || 6701743450;
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'hmood19931130';
 const PLATFORM_FEE = parseFloat(process.env.PLATFORM_FEE_PERCENT) || 0.5;
+const BOT_USERNAME = process.env.BOT_USERNAME || 'YourBotUsername';
 
 const SUPPORTED_CURRENCIES = process.env.SUPPORTED_CURRENCIES 
     ? process.env.SUPPORTED_CURRENCIES.split(',') 
@@ -130,22 +131,33 @@ app.get('/api/user/trades/:userId', async (req, res) => {
     res.json(trades);
 });
 
-// ========== نقاط API لنظام الإحالات ==========
+// ========== نقاط API لنظام الإحالات (معدلة بالكامل) ==========
 app.get('/api/user/referral/:userId', async (req, res) => {
     try {
         const userId = parseInt(req.params.userId);
-        const user = await db.getUser(userId);
-        if (!user) {
-            return res.json({ referralCount: 0, referralEarnings: 0, referrals: [] });
-        }
-        res.json({
-            referralCount: user.referralCount || 0,
-            referralEarnings: user.referralEarnings || 0,
-            referrals: user.referrals || []
-        });
+        const referralData = await db.getReferralData(userId);
+        res.json(referralData);
     } catch (error) {
         console.error('Referral API error:', error);
-        res.json({ referralCount: 0, referralEarnings: 0, referrals: [] });
+        res.json({ 
+            referralCount: 0, 
+            referralEarnings: 0, 
+            referralCommissionRate: 10,
+            referrals: [],
+            referralLink: `https://t.me/${BOT_USERNAME}?start=${userId}`
+        });
+    }
+});
+
+// تحويل رصيد الإحالات إلى المحفظة الرئيسية
+app.post('/api/referral/transfer', async (req, res) => {
+    try {
+        const { user_id } = req.body;
+        const result = await db.transferReferralEarningsToWallet(parseInt(user_id));
+        res.json(result);
+    } catch (error) {
+        console.error('Referral transfer error:', error);
+        res.json({ success: false, message: 'حدث خطأ في الخادم' });
     }
 });
 
@@ -373,6 +385,7 @@ const mainKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('🏆 المتصدرين', 'leaderboard')],
     [Markup.button.callback('👑 كبار المتداولين', 'top_merchants')],
     [Markup.button.callback('📊 إحصائيات السوق', 'market_stats')],
+    [Markup.button.callback('🎁 إحالاتي', 'my_referral')],
     [Markup.button.callback('🌐 اللغة', 'change_language')],
     [Markup.button.callback('📞 الدعم', 'support')],
     [Markup.button.url('📜 الشروط والأحكام', `${WEBAPP_URL}/terms`)]
@@ -438,6 +451,62 @@ bot.command('admin', async (ctx) => {
     await ctx.reply('👑 *لوحة تحكم الأدمن*', { parse_mode: 'Markdown', ...adminKeyboard });
 });
 
+// ========== زر الإحالات الجديد ==========
+bot.action('my_referral', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    const referralData = await db.getReferralData(ctx.from.id);
+    
+    let text = `🎁 *برنامج الإحالات*\n\n` +
+        `👥 *عدد المدعوين:* ${referralData.referralCount}\n` +
+        `💰 *رصيد الإحالات:* ${referralData.referralEarnings.toFixed(2)} USD\n` +
+        `📊 *نسبة العمولة:* ${referralData.referralCommissionRate}%\n\n` +
+        `🔗 *رابط الإحالة الخاص بك:*\n` +
+        `\`${referralData.referralLink}\`\n\n` +
+        `💡 *كيف يعمل؟*\n` +
+        `• كل صديق يسجل عبر رابطك تحصل على 10% من عمولة المنصة من صفقاته\n` +
+        `• مكافأة ترحيبية 5 دولار عند أول تسجيل\n` +
+        `• يمكنك تحويل رصيد الإحالات إلى محفظتك الرئيسية\n\n`;
+    
+    if (referralData.referrals && referralData.referrals.length > 0) {
+        text += `📋 *قائمة المدعوين:*\n`;
+        for (const ref of referralData.referrals.slice(0, 10)) {
+            const joinedDate = new Date(ref.joinedAt).toLocaleDateString('ar');
+            text += `• 👤 ${ref.name || ref.userId} | 📅 ${joinedDate} | 💰 ${ref.earned.toFixed(2)} USD\n`;
+        }
+        if (referralData.referrals.length > 10) {
+            text += `\n*و${referralData.referrals.length - 10} آخرين...*`;
+        }
+    } else {
+        text += `📭 *لا يوجد مدعوين بعد*\nشارك رابطك مع أصدقائك لبدء الربح!`;
+    }
+    
+    await ctx.editMessageText(text, { 
+        parse_mode: 'Markdown', 
+        ...Markup.inlineKeyboard([
+            [Markup.button.callback('💸 تحويل الرصيد للمحفظة', 'transfer_referral')],
+            [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
+        ]) 
+    });
+});
+
+// تحويل رصيد الإحالات
+bot.action('transfer_referral', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery('🔄 جاري التحويل...');
+    const result = await db.transferReferralEarningsToWallet(ctx.from.id);
+    await ctx.answerCbQuery(result.message);
+    if (result.success) {
+        await ctx.editMessageText(result.message, { 
+            parse_mode: 'Markdown', 
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'my_referral')]]) 
+        });
+    } else {
+        await ctx.editMessageText(result.message, { 
+            parse_mode: 'Markdown', 
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'my_referral')]]) 
+        });
+    }
+});
+
 // ========== الرصيد ==========
 bot.action('my_balance', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
@@ -450,7 +519,9 @@ bot.action('my_balance', rateLimitMiddleware, async (ctx) => {
         `✅ *الصفقات المكتملة:* ${stats.completedTrades}\n` +
         `📈 *نسبة النجاح:* ${stats.successRate || 100}%\n` +
         `📋 *العروض النشطة:* ${stats.activeOffers}\n` +
-        `⏳ *صفقات معلقة:* ${stats.pendingTrades}`,
+        `⏳ *صفقات معلقة:* ${stats.pendingTrades}\n` +
+        `🎁 *رصيد الإحالات:* ${stats.referralEarnings?.toFixed(2) || 0} USD\n` +
+        `👥 *عدد المدعوين:* ${stats.referralCount || 0}`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
 });
@@ -623,6 +694,16 @@ bot.command('remind_seller', async (ctx) => {
     if (!tradeId) return ctx.reply('❌ /remind_seller [رقم الصفقة]');
     
     const result = await db.remindSeller(tradeId, ctx.from.id);
+    if (result.success && result.trade) {
+        await bot.telegram.sendMessage(result.trade.sellerId,
+            `🔔 *تذكير من المشتري*\n\n` +
+            `👤 المشتري يطلب منك تحرير العملة للصفقة #${tradeId}\n` +
+            `💰 المبلغ: ${result.trade.amount} ${result.trade.currency}\n` +
+            `⏱️ تم تأكيد الدفع منذ ${Math.floor((Date.now() - new Date(result.trade.paidAt).getTime()) / 60000)} دقيقة\n\n` +
+            `🔓 /release_crystals ${tradeId}`,
+            { parse_mode: 'Markdown' }
+        );
+    }
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
 });
 
@@ -771,6 +852,7 @@ bot.action('my_wallet', rateLimitMiddleware, async (ctx) => {
     await ctx.editMessageText(
         `💼 *محفظتي*\n\n` +
         `💵 *USD:* ${stats.usdBalance.toFixed(2)}\n` +
+        `🎁 *رصيد الإحالات:* ${stats.referralEarnings?.toFixed(2) || 0} USD\n` +
         `🔑 *بصمة المحفظة:* \`${w.walletSignature ? w.walletSignature.slice(0, 16) : 'جاري الإنشاء'}...\`\n\n` +
         `📤 *عناوين استقبال العملات:*\n\n` +
         `🟡 *BNB:*\n\`${w.bnbAddress}\`\n\n` +
@@ -910,7 +992,7 @@ bot.action('back_to_menu', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const stats = await db.getUserStats(ctx.from.id);
     const onlineStatus = await db.getUserOnlineStatus(ctx.from.id);
-    const text = `✨ *القائمة الرئيسية*\n👤 ${ctx.from.first_name}\n💵 ${stats.usdBalance.toFixed(2)} USD\n⭐ ${stats.rating.toFixed(1)}/5\n✅ ${stats.completedTrades} صفقة\n📈 نجاح: ${stats.successRate || 100}%\n${onlineStatus.statusText}\n${stats.isVerified ? '✅ موثق' : '⚠️ غير موثق'}`;
+    const text = `✨ *القائمة الرئيسية*\n👤 ${ctx.from.first_name}\n💵 ${stats.usdBalance.toFixed(2)} USD\n🎁 ${stats.referralEarnings?.toFixed(2) || 0} USD (إحالات)\n⭐ ${stats.rating.toFixed(1)}/5\n✅ ${stats.completedTrades} صفقة\n📈 نجاح: ${stats.successRate || 100}%\n${onlineStatus.statusText}\n${stats.isVerified ? '✅ موثق' : '⚠️ غير موثق'}`;
     const kb = ctx.from.id === ADMIN_ID ? adminKeyboard : mainKeyboard;
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb });
 });
@@ -1274,6 +1356,7 @@ bot.launch().then(() => {
     console.log('🔐 2FA System: Enabled for withdrawals and large releases');
     console.log('🟢 User Online Status: Active');
     console.log('⏰ Auto-release after 24h: Active');
+    console.log('🎁 Referral System: Active with 10% commission');
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
