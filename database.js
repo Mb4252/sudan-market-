@@ -6,7 +6,7 @@ const { AptosAccount } = require('aptos');
 const CryptoJS = require('crypto-js');
 const speakeasy = require('speakeasy');
 const qrcode = require('qrcode');
-const { User, Wallet, KycRequest, P2pOffer, Trade, DepositRequest, WithdrawRequest, Review, DailyStats, AuditLog, Report, Blacklist } = require('./models');
+const { User, Wallet, KycRequest, P2pOffer, Trade, DepositRequest, WithdrawRequest, Review, DailyStats, AuditLog, Report, Blacklist, ChatMessage, Reminder } = require('./models');
 
 class Database {
     constructor() {
@@ -49,6 +49,8 @@ class Database {
         this.Wallet = Wallet;
         this.P2pOffer = P2pOffer;
         this.Trade = Trade;
+        this.ChatMessage = ChatMessage;
+        this.Reminder = Reminder;
     }
 
     generateSignature(data) {
@@ -599,11 +601,18 @@ class Database {
         await P2pOffer.updateOne({ _id: offerId }, { status: 'pending', counterpartyId: buyerId });
         await this.addAuditLog(buyerId, 'start_trade', { tradeId: trade._id, offerId, amount: totalUsd }, '', '');
         await this.updateLastSeen(buyerId);
+        
+        // إرسال رسالة نظام في الدردشة عند بدء الصفقة
+        await this.sendSystemMessage(trade._id, buyerId, offer.userId, `🔄 تم بدء الصفقة! المبلغ: ${offer.fiatAmount} ${offer.currency} (${totalUsd.toFixed(2)} USD)`);
+        
+        // تفعيل التذكير للصفقة
+        await this.activateTradeReminder(trade._id);
+        
         return {
             success: true, tradeId: trade._id,
             sellerPaymentDetails: offer.type === 'sell' ? offer.paymentDetails : '',
             totalUsd, fee,
-            message: `🔄 تم بدء الصفقة!\n💰 المبلغ: ${offer.fiatAmount} ${offer.currency}\n💵 القيمة: ${totalUsd.toFixed(2)} USD\n📝 تفاصيل الدفع: ${offer.type === 'sell' ? offer.paymentDetails : ''}`
+            message: `🔄 تم بدء الصفقة!\n💰 المبلغ: ${offer.fiatAmount} ${offer.currency}\n💵 القيمة: ${totalUsd.toFixed(2)} USD`
         };
     }
 
@@ -618,18 +627,94 @@ class Database {
         await Trade.updateOne({ _id: tradeId }, { paymentProof: proofImage, status: 'paid', paidAt: new Date() });
         await this.addAuditLog(buyerId, 'confirm_payment', { tradeId, proofImage }, '', '');
         await this.updateLastSeen(buyerId);
+        
+        // إرسال رسالة نظام في الدردشة عند تأكيد الدفع
+        await this.sendSystemMessage(tradeId, buyerId, trade.sellerId, `✅ تم تأكيد الدفع! رابط الإثبات: ${proofImage}`);
+        
+        // بدء جدولة التذكير
         this.scheduleReleaseReminder(tradeId);
+        
         return { success: true, sellerId: trade.sellerId, message: `✅ تم استلام إثبات الدفع!` };
     }
 
     async scheduleReleaseReminder(tradeId) {
+        // جدولة التذكير بعد 15 دقيقة
         setTimeout(async () => {
-            const trade = await Trade.findById(tradeId);
-            if (trade && trade.status === 'paid') {
-                const timeSincePaid = Date.now() - new Date(trade.paidAt).getTime();
-                if (timeSincePaid >= 24 * 60 * 60 * 1000) await this.autoReleaseAfterDelay(tradeId);
-            }
+            await this.sendReminderMessage(tradeId);
         }, 15 * 60 * 1000);
+        
+        // جدولة التذكير الثاني بعد 30 دقيقة
+        setTimeout(async () => {
+            await this.sendSecondReminderMessage(tradeId);
+        }, 30 * 60 * 1000);
+        
+        // تحرير تلقائي بعد 24 ساعة
+        setTimeout(async () => {
+            await this.autoReleaseAfterDelay(tradeId);
+        }, 24 * 60 * 60 * 1000);
+    }
+    
+    async sendReminderMessage(tradeId) {
+        const trade = await Trade.findById(tradeId);
+        if (!trade || trade.status !== 'paid') return;
+        
+        // تحديث عداد التذكير
+        await this.updateReminderCount(tradeId);
+        
+        // إرسال رسالة تذكير في الدردشة
+        await this.sendSystemMessage(tradeId, trade.sellerId, trade.buyerId, 
+            `⏰ *تذكير!* مضى 15 دقيقة على تأكيد الدفع.\n🔓 يرجى تحرير العملة باستخدام الأمر:\n/release_crystals ${tradeId}`);
+        
+        // إرسال إشعار للبائع عبر البوت
+        const bot = require('./server').bot;
+        if (bot) {
+            await bot.telegram.sendMessage(trade.sellerId,
+                `⏰ *تذكير الصفقة #${tradeId}*\n\n` +
+                `💰 المبلغ: ${trade.amount} ${trade.currency}\n` +
+                `⏱️ مضى 15 دقيقة على تأكيد الدفع\n\n` +
+                `🔓 /release_crystals ${tradeId}`,
+                { parse_mode: 'Markdown' }
+            );
+        }
+    }
+    
+    async sendSecondReminderMessage(tradeId) {
+        const trade = await Trade.findById(tradeId);
+        if (!trade || trade.status !== 'paid') return;
+        
+        await this.sendSystemMessage(tradeId, trade.sellerId, trade.buyerId,
+            `⚠️ *تذكير مهم!* مضى 30 دقيقة على تأكيد الدفع.\n🔓 الرجاء تحرير العملة فوراً:\n/release_crystals ${tradeId}`);
+        
+        const bot = require('./server').bot;
+        if (bot) {
+            await bot.telegram.sendMessage(trade.sellerId,
+                `⚠️ *تذكير مهم - الصفقة #${tradeId}*\n\n` +
+                `💰 المبلغ: ${trade.amount} ${trade.currency}\n` +
+                `⏱️ مضى 30 دقيقة على تأكيد الدفع\n\n` +
+                `🔓 /release_crystals ${tradeId}\n\n` +
+                `⚠️ إذا لم تتحرر العملة قريباً، سيتم إشعار الإدارة.`,
+                { parse_mode: 'Markdown' }
+            );
+        }
+    }
+    
+    async updateReminderCount(tradeId) {
+        let reminder = await Reminder.findOne({ tradeId });
+        if (!reminder) {
+            reminder = await Reminder.create({ tradeId, reminderCount: 1, lastReminderAt: new Date() });
+        } else {
+            reminder.reminderCount += 1;
+            reminder.lastReminderAt = new Date();
+            await reminder.save();
+        }
+    }
+    
+    async activateTradeReminder(tradeId) {
+        await Reminder.findOneAndUpdate(
+            { tradeId },
+            { isActive: true, reminderCount: 0, lastReminderAt: null },
+            { upsert: true }
+        );
     }
 
     async autoReleaseAfterDelay(tradeId) {
@@ -639,6 +724,9 @@ class Database {
             if (timeSincePaid >= 24 * 60 * 60 * 1000) {
                 await this.trackSellerDelay(trade.sellerId, tradeId, 24 * 60);
                 await this.releaseCrystals(tradeId, trade.sellerId);
+                
+                await this.sendSystemMessage(tradeId, trade.sellerId, trade.buyerId,
+                    `🤖 *تم تحرير العملة تلقائياً* بعد انقضاء 24 ساعة.`);
             }
         }
     }
@@ -687,6 +775,13 @@ class Database {
         await this.updateDailyStats('totalCommission', trade.fee);
         await this.updateDailyStats('activeOffers', -1);
         await this.addAuditLog(sellerId, 'release_crystals', { tradeId, amount: trade.totalUsd }, ip, userAgent);
+        
+        // إرسال رسالة نظام في الدردشة عند تحرير العملة
+        await this.sendSystemMessage(tradeId, sellerId, trade.buyerId, `✅ *تم تحرير العملة بنجاح!* المبلغ: ${trade.amount} ${trade.currency}`);
+        
+        // إلغاء التذكير
+        await Reminder.updateOne({ tradeId }, { isActive: false });
+        
         return { success: true, buyerId: trade.buyerId, message: `✅ تم تحرير العملة بنجاح!` };
     }
 
@@ -698,6 +793,11 @@ class Database {
         await User.updateOne({ userId: trade.buyerId }, { $inc: { failedTrades: 1 } });
         await User.updateOne({ userId: trade.sellerId }, { $inc: { failedTrades: 1 } });
         await this.addAuditLog(userId, 'cancel_trade', { tradeId }, '', '');
+        
+        // إرسال رسالة نظام في الدردشة عند إلغاء الصفقة
+        await this.sendSystemMessage(tradeId, userId, trade.buyerId === userId ? trade.sellerId : trade.buyerId, `❌ تم إلغاء الصفقة.`);
+        
+        await Reminder.updateOne({ tradeId }, { isActive: false });
         return { success: true, message: `✅ تم إلغاء الصفقة` };
     }
 
@@ -706,6 +806,10 @@ class Database {
         if (!trade) return { success: false, message: 'الصفقة غير موجودة' };
         await Trade.updateOne({ _id: tradeId }, { status: 'disputed', disputeReason: reason, disputeOpenedBy: userId });
         await this.addAuditLog(userId, 'open_dispute', { tradeId, reason }, '', '');
+        
+        // إرسال رسالة نظام في الدردشة عند فتح نزاع
+        await this.sendSystemMessage(tradeId, userId, trade.buyerId === userId ? trade.sellerId : trade.buyerId, `⚠️ تم فتح نزاع!\nالسبب: ${reason}`);
+        
         return { success: true, message: `⚠️ تم فتح نزاع! سيتم مراجعته خلال 24 ساعة` };
     }
 
@@ -721,6 +825,64 @@ class Database {
         await User.updateOne({ userId: targetId }, { rating: avgRating });
         await this.addAuditLog(reviewerId, 'add_review', { tradeId, targetId, rating }, '', '');
         return { success: true, message: `⭐ تم التقييم! ${rating}/5` };
+    }
+
+    // ========== دوال الدردشة الجديدة ==========
+    
+    async sendMessage(tradeId, senderId, receiverId, message, imageFileId = null) {
+        const chatMessage = await ChatMessage.create({
+            tradeId, senderId, receiverId, message,
+            messageType: imageFileId ? 'image' : 'text',
+            imageFileId: imageFileId || '',
+            isRead: false,
+            createdAt: new Date()
+        });
+        return chatMessage;
+    }
+    
+    async sendSystemMessage(tradeId, senderId, receiverId, message) {
+        const chatMessage = await ChatMessage.create({
+            tradeId, senderId, receiverId, message,
+            messageType: 'system',
+            isRead: false,
+            createdAt: new Date()
+        });
+        return chatMessage;
+    }
+    
+    async getChatMessages(tradeId, userId, limit = 50, before = null) {
+        const query = { tradeId };
+        if (before) query.createdAt = { $lt: new Date(before) };
+        
+        const messages = await ChatMessage.find(query)
+            .sort({ createdAt: -1 })
+            .limit(limit)
+            .sort({ createdAt: 1 });
+        
+        // تحديث حالة القراءة للرسائل المرسلة للمستخدم
+        await ChatMessage.updateMany(
+            { tradeId, receiverId: userId, isRead: false },
+            { $set: { isRead: true, readAt: new Date() } }
+        );
+        
+        return messages;
+    }
+    
+    async getUnreadCount(userId) {
+        return await ChatMessage.countDocuments({ receiverId: userId, isRead: false, messageType: { $ne: 'system' } });
+    }
+    
+    async getTradeChatPartner(tradeId, userId) {
+        const trade = await Trade.findById(tradeId);
+        if (!trade) return null;
+        return trade.buyerId === userId ? trade.sellerId : trade.buyerId;
+    }
+    
+    async markMessagesAsRead(tradeId, userId) {
+        await ChatMessage.updateMany(
+            { tradeId, receiverId: userId, isRead: false },
+            { $set: { isRead: true, readAt: new Date() } }
+        );
     }
 
     async requestDeposit(userId, amount, currency, network) {
