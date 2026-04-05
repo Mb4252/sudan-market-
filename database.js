@@ -296,47 +296,48 @@ class Database {
     }
 
     async registerUser(userId, username, firstName, lastName, phone, email, country, city, referrerId = null, language = 'ar', ip = '', userAgent = '') {
-    await this.connect();
-    
-    let user = await User.findOne({ userId });
-    if (!user) {
-        const wallet = await this.getUserWallet(userId);
+        await this.connect();
         
-        let validReferrer = null;
-        
-        if (referrerId && referrerId !== userId) {
-            validReferrer = await User.findOne({ userId: referrerId });
-            if (validReferrer && !validReferrer.isBanned && !validReferrer.isLocked) {
-                // فقط زيادة عدد المدعوين، بدون مكافأة 5 دولار
-                await User.updateOne({ userId: referrerId }, { 
-                    $inc: { referralCount: 1 },
-                    $push: { referrals: { userId: userId, joinedAt: new Date(), totalCommission: 0, earned: 0 } }
-                });
-                await this.addAuditLog(referrerId, 'referral_new_user', { newUser: userId }, ip, userAgent);
-            } else {
-                validReferrer = null;
+        let user = await User.findOne({ userId });
+        if (!user) {
+            const wallet = await this.getUserWallet(userId);
+            
+            let validReferrer = null;
+            
+            if (referrerId && referrerId !== userId) {
+                validReferrer = await User.findOne({ userId: referrerId });
+                if (validReferrer && !validReferrer.isBanned && !validReferrer.isLocked) {
+                    // ✅ فقط زيادة عدد المدعوين، بدون مكافأة 5 دولار
+                    await User.updateOne({ userId: referrerId }, { 
+                        $inc: { referralCount: 1 },
+                        $push: { referrals: { userId: userId, joinedAt: new Date(), totalCommission: 0, earned: 0 } }
+                    });
+                    await this.addAuditLog(referrerId, 'referral_new_user', { newUser: userId }, ip, userAgent);
+                } else {
+                    validReferrer = null;
+                }
             }
+            
+            user = await User.create({
+                userId, username: username || '', firstName: firstName || '', lastName: lastName || '',
+                phoneNumber: phone || '', email: email || '', country: country || 'SD', city: city || '',
+                language, walletId: wallet._id, referrerId: validReferrer ? referrerId : null,
+                referralCount: 0, referralEarnings: 0, referralCommissionRate: this.referralCommissionRate, referrals: [],
+                isVerified: false, lastSeen: new Date(), isOnline: true, lastLoginIp: ip, loginAttempts: 0,
+                twoFAEnabled: false, twoFASecret: '', twoFABackupCodes: [], require2FAForRelease: true, release2FAThreshold: 100,
+                dailyTrades: [], suspiciousActions: [], warningCount: 0, totalDelays: 0, totalDelayMinutes: 0, isFlagged: false, flagReason: ''
+            });
+            
+            await this.updateDailyStats('totalUsers', 'newUsers');
+            await this.addAuditLog(userId, 'register', { referrer: referrerId }, ip, userAgent);
+            return { success: true, isNew: true, referrer: validReferrer };
         }
         
-        user = await User.create({
-            userId, username: username || '', firstName: firstName || '', lastName: lastName || '',
-            phoneNumber: phone || '', email: email || '', country: country || 'SD', city: city || '',
-            language, walletId: wallet._id, referrerId: validReferrer ? referrerId : null,
-            referralCount: 0, referralEarnings: 0, referralCommissionRate: this.referralCommissionRate, referrals: [],
-            isVerified: false, lastSeen: new Date(), isOnline: true, lastLoginIp: ip, loginAttempts: 0,
-            twoFAEnabled: false, twoFASecret: '', twoFABackupCodes: [], require2FAForRelease: true, release2FAThreshold: 100,
-            dailyTrades: [], suspiciousActions: [], warningCount: 0, totalDelays: 0, totalDelayMinutes: 0, isFlagged: false, flagReason: ''
-        });
-        
-        await this.updateDailyStats('totalUsers', 'newUsers');
-        await this.addAuditLog(userId, 'register', { referrer: referrerId }, ip, userAgent);
-        return { success: true, isNew: true, referrer: validReferrer };
+        await User.updateOne({ userId }, { lastSeen: new Date(), isOnline: true, lastLoginIp: ip });
+        await this.addAuditLog(userId, 'login', {}, ip, userAgent);
+        return { success: true, isNew: false };
     }
-    
-    await User.updateOne({ userId }, { lastSeen: new Date(), isOnline: true, lastLoginIp: ip });
-    await this.addAuditLog(userId, 'login', {}, ip, userAgent);
-    return { success: true, isNew: false };
-}
+
     async getUser(userId) { return await User.findOne({ userId }); }
     
     async getUserStats(userId) {
@@ -835,7 +836,7 @@ class Database {
         return { success: true, message: `⭐ تم التقييم! ${rating}/5` };
     }
 
-    // ========== دوال الدردشة الجديدة ==========
+    // ========== دوال الدردشة ==========
     
     async sendMessage(tradeId, senderId, receiverId, message, imageFileId = null) {
         const chatMessage = await ChatMessage.create({
@@ -894,6 +895,11 @@ class Database {
     }
 
     async requestDeposit(userId, amount, currency, network) {
+        // ✅ الحد الأدنى للإيداع 1 دولار
+        if (amount < 1) {
+            return { success: false, message: '⚠️ الحد الأدنى للإيداع هو 1 دولار' };
+        }
+        
         const wallet = await this.getUserWallet(userId);
         let address;
         switch(network) {
@@ -903,41 +909,89 @@ class Database {
             case 'aptos': address = wallet.aptosAddress; break;
             default: return { success: false, message: 'شبكة غير مدعومة' };
         }
+        
         const request = await DepositRequest.create({ userId, amount, currency, network, address });
         await this.addAuditLog(userId, 'request_deposit', { amount, currency, network }, '', '');
-        return { success: true, requestId: request._id, address, message: `📤 طلب إيداع ${currency}\n🌐 الشبكة: ${network}\n💰 المبلغ: ${amount}\n📤 العنوان: ${address}` };
+        await this.updateLastSeen(userId);
+        
+        return {
+            success: true,
+            requestId: request._id,
+            address,
+            message: `📤 *طلب إيداع ${currency}*\n\n🌐 *الشبكة:* ${network.toUpperCase()}\n💰 *المبلغ:* ${amount} ${currency}\n📤 *العنوان:*\n\`${address}\`\n\n⚠️ *أرسل فقط ${currency} على شبكة ${network.toUpperCase()}*\n📎 *بعد الإرسال:* /confirm_deposit ${request._id} [رابط المعاملة]`
+        };
     }
 
     async confirmDeposit(requestId, transactionHash, adminId) {
         const request = await DepositRequest.findOne({ _id: requestId, status: 'pending' });
         if (!request) return { success: false, message: 'الطلب غير موجود' };
-        await DepositRequest.updateOne({ _id: requestId }, { status: 'completed', transactionHash, completedAt: new Date(), verifiedBy: adminId });
+        
+        await DepositRequest.updateOne({ _id: requestId }, { status: 'completed', transactionHash, completedAt: new Date(), verifiedBy: adminId, verifiedAt: new Date() });
         await Wallet.updateOne({ userId: request.userId }, { $inc: { usdBalance: request.amount } });
         await this.addAuditLog(adminId, 'confirm_deposit', { requestId, amount: request.amount }, '', '');
+        
         return { success: true, message: `✅ تم إضافة ${request.amount} USD إلى رصيدك` };
     }
 
     async requestWithdraw(userId, amount, currency, network, address, twoFACode = null) {
         const wallet = await this.getUserWallet(userId);
-        if (wallet.usdBalance < amount) return { success: false, message: `❌ رصيد غير كافٍ! لديك ${wallet.usdBalance.toFixed(2)} USD` };
+        if (wallet.usdBalance < amount) {
+            return { success: false, message: `❌ رصيد غير كافٍ! لديك ${wallet.usdBalance.toFixed(2)} USD` };
+        }
+        
+        // ✅ الحد الأدنى للسحب 5 دولار
+        if (amount < 5) {
+            return { success: false, message: '⚠️ الحد الأدنى للسحب هو 5 دولار' };
+        }
+        
         const user = await User.findOne({ userId });
         if (user.twoFAEnabled) {
-            if (!twoFACode) return { success: false, message: '🔐 يرجى إدخال رمز 2FA' };
+            if (!twoFACode) {
+                return { success: false, message: '🔐 يرجى إدخال رمز التحقق بخطوتين:\n/withdraw [المبلغ] [الشبكة] [العنوان] [الرمز]' };
+            }
             const verified = await this.verify2FACode(userId, twoFACode);
-            if (!verified) return { success: false, message: '❌ رمز التحقق غير صحيح' };
+            if (!verified) {
+                await this.trackSuspiciousBehavior(userId, 'failed_2fa_withdraw', { amount, address });
+                return { success: false, message: '❌ رمز التحقق غير صحيح' };
+            }
         }
+        
         const fee = amount * 0.02;
+        
+        // المبالغ الكبيرة (فوق 1000) تحتاج موافقة إدارية
+        if (amount > 1000) {
+            const request = await WithdrawRequest.create({ userId, amount, currency, network, address, fee, status: 'pending' });
+            await this.addAuditLog(userId, 'request_large_withdraw', { amount, address }, '', '');
+            await this.updateLastSeen(userId);
+            
+            return {
+                success: true,
+                requestId: request._id,
+                message: `✅ *تم استلام طلب السحب #${request._id.toString().slice(-6)}*\n\n💰 *المبلغ:* ${amount} ${currency}\n💸 *العمولة:* ${fee.toFixed(2)} USD\n📤 *العنوان:* \`${address}\`\n\n⏳ *سيتم مراجعة الطلب من قبل الإدارة خلال 24 ساعة*`
+            };
+        }
+        
+        // المبالغ الصغيرة (5 - 1000) تتم تلقائياً
         const request = await WithdrawRequest.create({ userId, amount, currency, network, address, fee, twoFAVerified: user.twoFAEnabled });
+        await Wallet.updateOne({ userId }, { $inc: { usdBalance: -(amount + fee) } });
         await this.addAuditLog(userId, 'request_withdraw', { amount, address }, '', '');
-        return { success: true, requestId: request._id, message: `✅ تم إنشاء طلب سحب #${request._id.toString().slice(-6)}\n💰 المبلغ: ${amount} USD\n💸 العمولة: ${fee.toFixed(2)} USD` };
+        await this.updateLastSeen(userId);
+        
+        return {
+            success: true,
+            requestId: request._id,
+            message: `✅ *تم سحب ${amount} USD بنجاح!*\n\n💰 *المبلغ:* ${amount} USD\n💸 *العمولة:* ${fee.toFixed(2)} USD\n📤 *العنوان:* \`${address}\`\n\n📋 *رقم الطلب:* #${request._id.toString().slice(-6)}`
+        };
     }
 
     async confirmWithdraw(requestId, transactionHash, adminId) {
         const request = await WithdrawRequest.findOne({ _id: requestId, status: 'pending' });
         if (!request) return { success: false, message: 'الطلب غير موجود' };
+        
         await WithdrawRequest.updateOne({ _id: requestId }, { status: 'completed', transactionHash, approvedAt: new Date(), approvedBy: adminId });
         await Wallet.updateOne({ userId: request.userId }, { $inc: { usdBalance: -(request.amount + request.fee) } });
         await this.addAuditLog(adminId, 'confirm_withdraw', { requestId, amount: request.amount }, '', '');
+        
         return { success: true, message: `✅ تمت الموافقة على سحب ${request.amount} USD` };
     }
 
@@ -1006,7 +1060,7 @@ class Database {
     async remindSeller(tradeId, buyerId) {
         const trade = await Trade.findOne({ _id: tradeId, buyerId, status: 'paid' });
         if (!trade) return { success: false, message: 'الصفقة غير موجودة' };
-        return { success: true, trade, message: `✅ تم إرسال تذكير للبائع` };
+        return { success: true, trade, message: `✅ تم إرسال تذكير للبائع للصفقة #${tradeId}` };
     }
 }
 
