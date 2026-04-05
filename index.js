@@ -188,7 +188,7 @@ app.get('/api/user/referral/:userId', async (req, res) => {
             referralEarnings: 0, 
             referralCommissionRate: 10,
             referrals: [],
-            referralLink: `https://t.me/${BOT_USERNAME}?start=${userId}`
+            referralLink: `https://t.me/${my_edu_199311_bot}?start=${userId}`
         });
     }
 });
