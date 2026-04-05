@@ -12,8 +12,11 @@ class Database {
     constructor() {
         this.connected = false;
         this.encryptionKey = process.env.ENCRYPTION_KEY || 'default_key_32_bytes_long';
-        this.platformFee = (parseFloat(process.env.PLATFORM_FEE_PERCENT) / 100) || 0.005;
-        this.referralCommissionRate = 10;
+        
+        // ✅ رسوم المنصة الثابتة
+        this.platformWithdrawFee = 0.05;      // 0.05 دولار ثابت للسحب
+        this.platformTradeFee = 0.05;         // 0.05 دولار ثابت لكل صفقة P2P
+        this.referralCommissionRate = 10;     // 10% من رسوم المنصة
         
         this.release2FAThreshold = 100;
         this.release2FAForAll = true;
@@ -44,6 +47,18 @@ class Database {
                 'Sudanese French Bank', 'United Capital Bank'
             ];
         
+        // ✅ رسوم الشبكة (سيتم تحديثها كل ساعة)
+        this.networkFees = {
+            bnb: 0.10,      // BEP-20
+            polygon: 0.05,  // Polygon
+            solana: 0.01,   // Solana
+            aptos: 0.02,    // Aptos
+            trc20: 0.80,    // TRC-20 (Tron)
+            erc20: 8.00     // ERC-20 (Ethereum)
+        };
+        
+        this.lastNetworkFeeUpdate = null;
+        
         // ربط النماذج للاستخدام المباشر
         this.User = User;
         this.Wallet = Wallet;
@@ -51,6 +66,72 @@ class Database {
         this.Trade = Trade;
         this.ChatMessage = ChatMessage;
         this.Reminder = Reminder;
+        
+        // بدء تحديث رسوم الشبكة
+        this.startNetworkFeeUpdater();
+    }
+
+    // ========== دوال رسوم الشبكة ==========
+    
+    async updateNetworkFees() {
+        try {
+            // 1. لشبكة BNB (BSC)
+            try {
+                const bscRes = await fetch('https://api.bscscan.com/api?module=gastracker&action=gasoracle&apikey=YourApiKey');
+                const bscData = await bscRes.json();
+                if (bscData.status === '1') {
+                    const bscGasGwei = parseFloat(bscData.result.SafeGasPrice);
+                    this.networkFees.bnb = (bscGasGwei * 0.0005).toFixed(4);
+                }
+            } catch(e) { console.log('BSC fee update failed:', e.message); }
+            
+            // 2. لشبكة Polygon
+            try {
+                const polygonRes = await fetch('https://api.polygonscan.com/api?module=gastracker&action=gasoracle&apikey=YourApiKey');
+                const polygonData = await polygonRes.json();
+                if (polygonData.status === '1') {
+                    const polygonGasGwei = parseFloat(polygonData.result.SafeGasPrice);
+                    this.networkFees.polygon = (polygonGasGwei * 0.0003).toFixed(4);
+                }
+            } catch(e) { console.log('Polygon fee update failed:', e.message); }
+            
+            // 3. لشبكة Ethereum
+            try {
+                const ethRes = await fetch('https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey=YourApiKey');
+                const ethData = await ethRes.json();
+                if (ethData.status === '1') {
+                    const ethGasGwei = parseFloat(ethData.result.SafeGasPrice);
+                    this.networkFees.erc20 = ((ethGasGwei * 21000) / 1e9).toFixed(2);
+                }
+            } catch(e) { console.log('ETH fee update failed:', e.message); }
+            
+            this.lastNetworkFeeUpdate = new Date();
+            console.log('✅ Network fees updated:', this.networkFees);
+            
+        } catch (error) {
+            console.error('Failed to update network fees:', error);
+        }
+    }
+    
+    startNetworkFeeUpdater() {
+        // تحديث فوري عند بدء التشغيل
+        this.updateNetworkFees();
+        // تحديث كل ساعة
+        setInterval(async () => {
+            await this.updateNetworkFees();
+        }, 3600000);
+    }
+    
+    getNetworkFee(network) {
+        const fees = {
+            'bnb': this.networkFees.bnb,
+            'polygon': this.networkFees.polygon,
+            'solana': this.networkFees.solana,
+            'aptos': this.networkFees.aptos,
+            'trc20': this.networkFees.trc20,
+            'erc20': this.networkFees.erc20
+        };
+        return parseFloat(fees[network]) || 0.10;
     }
 
     generateSignature(data) {
@@ -307,7 +388,7 @@ class Database {
             if (referrerId && referrerId !== userId) {
                 validReferrer = await User.findOne({ userId: referrerId });
                 if (validReferrer && !validReferrer.isBanned && !validReferrer.isLocked) {
-                    // ✅ فقط زيادة عدد المدعوين، بدون مكافأة 5 دولار
+                    // فقط زيادة عدد المدعوين، بدون مكافأة 5 دولار
                     await User.updateOne({ userId: referrerId }, { 
                         $inc: { referralCount: 1 },
                         $push: { referrals: { userId: userId, joinedAt: new Date(), totalCommission: 0, earned: 0 } }
@@ -592,7 +673,10 @@ class Database {
         const totalUsd = offer.fiatAmount / offer.price;
         const limitCheck = await this.checkUserLimits(buyerId, totalUsd);
         if (!limitCheck.allowed) return { success: false, message: limitCheck.reason };
-        const fee = totalUsd * this.platformFee;
+        
+        // ✅ رسوم المنصة ثابتة 0.05 دولار (وليس نسبة مئوية)
+        const fee = this.platformTradeFee;
+        
         if (offer.type === 'sell') {
             const sellerWallet = await this.getUserWallet(offer.userId);
             if (sellerWallet.usdBalance < totalUsd) {
@@ -612,7 +696,7 @@ class Database {
         await this.updateLastSeen(buyerId);
         
         // إرسال رسالة نظام في الدردشة عند بدء الصفقة
-        await this.sendSystemMessage(trade._id, buyerId, offer.userId, `🔄 تم بدء الصفقة! المبلغ: ${offer.fiatAmount} ${offer.currency} (${totalUsd.toFixed(2)} USD)`);
+        await this.sendSystemMessage(trade._id, buyerId, offer.userId, `🔄 تم بدء الصفقة! المبلغ: ${offer.fiatAmount} ${offer.currency} (${totalUsd.toFixed(2)} USD) - رسوم المنصة: ${fee} $`);
         
         // تفعيل التذكير للصفقة
         await this.activateTradeReminder(trade._id);
@@ -621,7 +705,7 @@ class Database {
             success: true, tradeId: trade._id,
             sellerPaymentDetails: offer.type === 'sell' ? offer.paymentDetails : '',
             totalUsd, fee,
-            message: `🔄 تم بدء الصفقة!\n💰 المبلغ: ${offer.fiatAmount} ${offer.currency}\n💵 القيمة: ${totalUsd.toFixed(2)} USD`
+            message: `🔄 تم بدء الصفقة!\n💰 المبلغ: ${offer.fiatAmount} ${offer.currency}\n💵 القيمة: ${totalUsd.toFixed(2)} USD\n💸 رسوم المنصة: ${fee} $`
         };
     }
 
@@ -894,6 +978,7 @@ class Database {
         );
     }
 
+    // ========== الإيداع ==========
     async requestDeposit(userId, amount, currency, network) {
         // ✅ الحد الأدنى للإيداع 1 دولار
         if (amount < 1) {
@@ -933,6 +1018,7 @@ class Database {
         return { success: true, message: `✅ تم إضافة ${request.amount} USD إلى رصيدك` };
     }
 
+    // ========== السحب مع رسوم الشبكة ==========
     async requestWithdraw(userId, amount, currency, network, address, twoFACode = null) {
         const wallet = await this.getUserWallet(userId);
         if (wallet.usdBalance < amount) {
@@ -947,7 +1033,7 @@ class Database {
         const user = await User.findOne({ userId });
         if (user.twoFAEnabled) {
             if (!twoFACode) {
-                return { success: false, message: '🔐 يرجى إدخال رمز التحقق بخطوتين:\n/withdraw [المبلغ] [الشبكة] [العنوان] [الرمز]' };
+                return { success: false, message: '🔐 يرجى إدخال رمز التحقق بخطوتين' };
             }
             const verified = await this.verify2FACode(userId, twoFACode);
             if (!verified) {
@@ -956,31 +1042,69 @@ class Database {
             }
         }
         
-        const fee = amount * 0.02;
+        // ✅ رسوم المنصة ثابتة 0.05 دولار
+        const platformFee = this.platformWithdrawFee;
+        
+        // ✅ رسوم الشبكة حسب الشبكة المختارة (تتغير حسب السوق)
+        const networkFee = this.getNetworkFee(network);
+        
+        // إجمالي الرسوم = رسوم المنصة + رسوم الشبكة
+        const totalFees = platformFee + networkFee;
+        const totalDeduct = amount + totalFees;
+        
+        // التحقق من أن الرصيد يكفي لتغطية المبلغ + الرسوم
+        if (wallet.usdBalance < totalDeduct) {
+            return { success: false, message: `❌ رصيد غير كافٍ للرسوم! تحتاج ${totalDeduct.toFixed(2)} USD (المبلغ ${amount} + رسوم ${totalFees.toFixed(2)})` };
+        }
         
         // المبالغ الكبيرة (فوق 1000) تحتاج موافقة إدارية
         if (amount > 1000) {
-            const request = await WithdrawRequest.create({ userId, amount, currency, network, address, fee, status: 'pending' });
-            await this.addAuditLog(userId, 'request_large_withdraw', { amount, address }, '', '');
+            const request = await WithdrawRequest.create({ 
+                userId, amount, currency, network, address, 
+                fee: platformFee, networkFee: networkFee, 
+                status: 'pending' 
+            });
+            await this.addAuditLog(userId, 'request_large_withdraw', { amount, address, networkFee, platformFee }, '', '');
             await this.updateLastSeen(userId);
             
             return {
                 success: true,
                 requestId: request._id,
-                message: `✅ *تم استلام طلب السحب #${request._id.toString().slice(-6)}*\n\n💰 *المبلغ:* ${amount} ${currency}\n💸 *العمولة:* ${fee.toFixed(2)} USD\n📤 *العنوان:* \`${address}\`\n\n⏳ *سيتم مراجعة الطلب من قبل الإدارة خلال 24 ساعة*`
+                message: `✅ *تم استلام طلب السحب #${request._id.toString().slice(-6)}*\n\n` +
+                         `💰 *المبلغ:* ${amount} USD\n` +
+                         `🏢 *رسوم المنصة:* ${platformFee} $\n` +
+                         `🌐 *رسوم الشبكة (${network.toUpperCase()}):* ${networkFee} $\n` +
+                         `📊 *إجمالي الرسوم:* ${totalFees.toFixed(2)} $\n` +
+                         `💎 *الإجمالي المخصوم:* ${totalDeduct.toFixed(2)} $\n` +
+                         `📤 *العنوان:* \`${address}\`\n\n` +
+                         `⏳ *سيتم مراجعة الطلب من قبل الإدارة خلال 24 ساعة*`
             };
         }
         
         // المبالغ الصغيرة (5 - 1000) تتم تلقائياً
-        const request = await WithdrawRequest.create({ userId, amount, currency, network, address, fee, twoFAVerified: user.twoFAEnabled });
-        await Wallet.updateOne({ userId }, { $inc: { usdBalance: -(amount + fee) } });
-        await this.addAuditLog(userId, 'request_withdraw', { amount, address }, '', '');
+        const request = await WithdrawRequest.create({ 
+            userId, amount, currency, network, address, 
+            fee: platformFee, networkFee: networkFee, 
+            twoFAVerified: user.twoFAEnabled,
+            status: 'completed' 
+        });
+        
+        // خصم المبلغ + رسوم المنصة + رسوم الشبكة
+        await Wallet.updateOne({ userId }, { $inc: { usdBalance: -totalDeduct } });
+        await this.addAuditLog(userId, 'request_withdraw', { amount, address, networkFee, platformFee }, '', '');
         await this.updateLastSeen(userId);
         
         return {
             success: true,
             requestId: request._id,
-            message: `✅ *تم سحب ${amount} USD بنجاح!*\n\n💰 *المبلغ:* ${amount} USD\n💸 *العمولة:* ${fee.toFixed(2)} USD\n📤 *العنوان:* \`${address}\`\n\n📋 *رقم الطلب:* #${request._id.toString().slice(-6)}`
+            message: `✅ *تم سحب ${amount} USD بنجاح!*\n\n` +
+                     `💰 *المبلغ:* ${amount} USD\n` +
+                     `🏢 *رسوم المنصة:* ${platformFee} $\n` +
+                     `🌐 *رسوم الشبكة (${network.toUpperCase()}):* ${networkFee} $\n` +
+                     `📊 *إجمالي الرسوم:* ${totalFees.toFixed(2)} $\n` +
+                     `💎 *الإجمالي المخصوم:* ${totalDeduct.toFixed(2)} $\n` +
+                     `📤 *العنوان:* \`${address}\`\n\n` +
+                     `📋 *رقم الطلب:* #${request._id.toString().slice(-6)}`
         };
     }
 
@@ -988,13 +1112,24 @@ class Database {
         const request = await WithdrawRequest.findOne({ _id: requestId, status: 'pending' });
         if (!request) return { success: false, message: 'الطلب غير موجود' };
         
-        await WithdrawRequest.updateOne({ _id: requestId }, { status: 'completed', transactionHash, approvedAt: new Date(), approvedBy: adminId });
-        await Wallet.updateOne({ userId: request.userId }, { $inc: { usdBalance: -(request.amount + request.fee) } });
+        await WithdrawRequest.updateOne({ _id: requestId }, { 
+            status: 'completed', 
+            transactionHash, 
+            approvedAt: new Date(), 
+            approvedBy: adminId 
+        });
+        
+        // خصم المبلغ + الرسوم (إذا لم تكن خصمت سابقاً)
+        const totalFees = request.fee + (request.networkFee || 0);
+        const totalDeduct = request.amount + totalFees;
+        await Wallet.updateOne({ userId: request.userId }, { $inc: { usdBalance: -totalDeduct } });
+        
         await this.addAuditLog(adminId, 'confirm_withdraw', { requestId, amount: request.amount }, '', '');
         
         return { success: true, message: `✅ تمت الموافقة على سحب ${request.amount} USD` };
     }
 
+    // ========== الإحصائيات ==========
     async getLeaderboard(limit = 15) {
         return await User.find({}).sort({ totalTraded: -1 }).limit(limit).select('userId username firstName totalTraded completedTrades rating isVerified isMerchant').lean();
     }
