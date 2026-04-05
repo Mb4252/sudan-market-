@@ -36,16 +36,55 @@ app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().
 // ========== المتغيرات البيئية ==========
 const WEBAPP_URL = process.env.WEBAPP_URL || `https://sdm-security-bot.onrender.com`;
 
-// ========== قائمة الأدمن (قابلة للتوسيع) ==========
+// ========== قائمة الأدمن ==========
 const ADMIN_IDS = [6701743450, 8181305474];
 const ADMIN_ID = ADMIN_IDS[0];
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'hmood19931130';
-const PLATFORM_FEE = parseFloat(process.env.PLATFORM_FEE_PERCENT) || 0.5;
 const BOT_USERNAME = process.env.BOT_USERNAME || 'YourBotUsername';
+
+// رسوم المنصة الثابتة
+const PLATFORM_WITHDRAW_FEE = 0.05;  // 0.05 دولار للسحب
+const PLATFORM_TRADE_FEE = 0.05;     // 0.05 دولار للتداول
 
 function isAdmin(userId) {
     return ADMIN_IDS.includes(userId);
 }
+
+// رسوم الشبكة الافتراضية (سيتم تحديثها من قاعدة البيانات)
+let cachedNetworkFees = {
+    bnb: 0.10,
+    polygon: 0.05,
+    solana: 0.01,
+    aptos: 0.02,
+    trc20: 0.80,
+    erc20: 8.00
+};
+
+// تحديث رسوم الشبكة المخبأة كل ساعة
+async function updateCachedNetworkFees() {
+    try {
+        const bnbFee = db.getNetworkFee('bnb');
+        const polygonFee = db.getNetworkFee('polygon');
+        const solanaFee = db.getNetworkFee('solana');
+        const aptosFee = db.getNetworkFee('aptos');
+        
+        cachedNetworkFees = {
+            bnb: bnbFee,
+            polygon: polygonFee,
+            solana: solanaFee,
+            aptos: aptosFee,
+            trc20: 0.80,
+            erc20: 8.00
+        };
+        console.log('✅ Cached network fees updated:', cachedNetworkFees);
+    } catch(e) {
+        console.log('Failed to update cached fees:', e.message);
+    }
+}
+
+// تحديث كل ساعة
+setInterval(updateCachedNetworkFees, 3600000);
+updateCachedNetworkFees();
 
 const SUPPORTED_CURRENCIES = process.env.SUPPORTED_CURRENCIES 
     ? process.env.SUPPORTED_CURRENCIES.split(',') 
@@ -188,7 +227,7 @@ app.get('/api/user/referral/:userId', async (req, res) => {
             referralEarnings: 0, 
             referralCommissionRate: 10,
             referrals: [],
-            referralLink: `https://t.me/${my_edu_199311_bot}?start=${userId}`
+            referralLink: `https://t.me/${BOT_USERNAME}?start=${userId}`
         });
     }
 });
@@ -204,9 +243,7 @@ app.post('/api/referral/transfer', async (req, res) => {
     }
 });
 
-// ========== نقاط API لنظام الدردشة الجديدة ==========
-
-// جلب رسائل الدردشة لصفقة معينة
+// ========== نقاط API لنظام الدردشة ==========
 app.get('/api/chat/:tradeId/:userId', async (req, res) => {
     try {
         const tradeId = req.params.tradeId;
@@ -225,7 +262,6 @@ app.get('/api/chat/:tradeId/:userId', async (req, res) => {
     }
 });
 
-// إرسال رسالة نصية
 app.post('/api/chat/send', async (req, res) => {
     try {
         const { tradeId, senderId, receiverId, message } = req.body;
@@ -236,7 +272,6 @@ app.post('/api/chat/send', async (req, res) => {
         
         const chatMessage = await db.sendMessage(tradeId, parseInt(senderId), parseInt(receiverId), message);
         
-        // إرسال إشعار للمستقبل عبر البوت
         if (bot) {
             await bot.telegram.sendMessage(parseInt(receiverId),
                 `💬 *رسالة جديدة في الصفقة #${tradeId}*\n\n` +
@@ -253,7 +288,6 @@ app.post('/api/chat/send', async (req, res) => {
     }
 });
 
-// إرسال صورة
 app.post('/api/chat/send-image', upload.single('image'), async (req, res) => {
     try {
         const { tradeId, senderId, receiverId, message } = req.body;
@@ -262,7 +296,6 @@ app.post('/api/chat/send-image', upload.single('image'), async (req, res) => {
             return res.json({ success: false, message: 'لم يتم رفع صورة' });
         }
         
-        // رفع الصورة إلى تلجرام للحصول على file_id
         let imageFileId = null;
         if (bot) {
             const photoMsg = await bot.telegram.sendPhoto(ADMIN_IDS[0], { source: req.file.buffer });
@@ -274,7 +307,6 @@ app.post('/api/chat/send-image', upload.single('image'), async (req, res) => {
             message || '📸 صورة إثبات', imageFileId
         );
         
-        // إرسال إشعار للمستقبل
         if (bot) {
             await bot.telegram.sendPhoto(parseInt(receiverId), imageFileId, {
                 caption: `💬 *صورة جديدة في الصفقة #${tradeId}*\n\n📝 ${message || '📸 صورة إثبات'}\n\n🔗 افتح التطبيق: ${WEBAPP_URL}`,
@@ -289,7 +321,6 @@ app.post('/api/chat/send-image', upload.single('image'), async (req, res) => {
     }
 });
 
-// تحديث حالة القراءة
 app.post('/api/chat/read', async (req, res) => {
     try {
         const { tradeId, userId } = req.body;
@@ -301,7 +332,6 @@ app.post('/api/chat/read', async (req, res) => {
     }
 });
 
-// جلب عدد الرسائل غير المقروءة
 app.get('/api/chat/unread/:userId', async (req, res) => {
     try {
         const userId = parseInt(req.params.userId);
@@ -310,6 +340,17 @@ app.get('/api/chat/unread/:userId', async (req, res) => {
     } catch (error) {
         console.error('Unread count error:', error);
         res.json({ success: false, count: 0 });
+    }
+});
+
+// ========== نقطة API لرسوم الشبكة ==========
+app.get('/api/network-fee/:network', async (req, res) => {
+    try {
+        const network = req.params.network;
+        const fee = cachedNetworkFees[network] || 0.10;
+        res.json({ success: true, network, fee, currency: 'USD' });
+    } catch (error) {
+        res.json({ success: false, fee: 0.10 });
     }
 });
 
@@ -571,6 +612,7 @@ const instructionsKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('💵 تحويل الدولار', 'convert_usd_instructions')],
     [Markup.button.callback('🔄 السحب لمنصات أخرى', 'withdraw_to_exchange')],
     [Markup.button.callback('🌐 الشبكات المدعومة', 'supported_networks')],
+    [Markup.button.callback('💰 تفصيل الرسوم', 'fee_details')],
     [Markup.button.callback('❓ الأسئلة الشائعة', 'faq_instructions')],
     [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
 ]);
@@ -611,12 +653,36 @@ bot.start(async (ctx) => {
                 `📈 *نسبة النجاح:* ${stats.successRate || 100}%\n` +
                 `${onlineStatus.statusText}\n` +
                 `${verifiedMsg}\n\n` +
+                `💰 *رسوم المنصة:*\n` +
+                `• سحب: ${PLATFORM_WITHDRAW_FEE} $ (ثابت)\n` +
+                `• تداول P2P: ${PLATFORM_TRADE_FEE} $ (ثابت)\n` +
+                `• رسوم الشبكة: تختلف حسب الشبكة (تتغير كل ساعة)\n\n` +
                 `🚀 *اضغط على الزر أدناه لفتح المنصة*\n\n` +
                 `💬 *يمكنك الآن الدردشة مع البائع/المشتري داخل التطبيق*`,
                 { parse_mode: 'Markdown', ...startKeyboard }
             );
         } catch(e) { console.error(e); }
     }, 200);
+});
+
+// ========== أزرار التعليمات الجديدة ==========
+bot.action('fee_details', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `💰 *تفصيل رسوم المنصة*\n\n` +
+        `🏢 *رسوم السحب:* ${PLATFORM_WITHDRAW_FEE} $ (ثابتة)\n` +
+        `🏢 *رسوم التداول P2P:* ${PLATFORM_TRADE_FEE} $ (ثابتة)\n\n` +
+        `🌐 *رسوم الشبكة الحالية:*\n` +
+        `• 🟡 BNB (BEP-20): ~${cachedNetworkFees.bnb} $\n` +
+        `• 🟣 POLYGON: ~${cachedNetworkFees.polygon} $\n` +
+        `• 🟢 SOLANA: ~${cachedNetworkFees.solana} $\n` +
+        `• 🔷 APTOS: ~${cachedNetworkFees.aptos} $\n` +
+        `• 💠 TRC-20: ~0.80 $\n` +
+        `• ⬜ ERC-20: ~8.00 $\n\n` +
+        `📊 *إجمالي رسوم السحب:* رسوم المنصة (${PLATFORM_WITHDRAW_FEE}$) + رسوم الشبكة\n` +
+        `⚠️ *ملاحظة:* رسوم الشبكة تتغير كل ساعة حسب ازدحام الشبكة`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+    );
 });
 
 bot.command('help', async (ctx) => {
@@ -626,8 +692,24 @@ bot.command('help', async (ctx) => {
         `📤 /withdraw_help - تعليمات السحب\n` +
         `💵 /convert_help - تحويل الدولار\n` +
         `🌐 /networks_help - الشبكات المدعومة\n` +
+        `💰 /fees - تفصيل الرسوم\n` +
         `❓ /faq - الأسئلة الشائعة\n\n` +
         `💬 *الدردشة متاحة داخل التطبيق مع البائع/المشتري*`,
+        { parse_mode: 'Markdown' }
+    );
+});
+
+bot.command('fees', async (ctx) => {
+    await ctx.reply(
+        `💰 *تفصيل الرسوم*\n\n` +
+        `🏢 *رسوم السحب:* ${PLATFORM_WITHDRAW_FEE} $ (ثابتة)\n` +
+        `🏢 *رسوم التداول:* ${PLATFORM_TRADE_FEE} $ (ثابتة)\n\n` +
+        `🌐 *رسوم الشبكة الحالية:*\n` +
+        `• BNB: ~${cachedNetworkFees.bnb} $\n` +
+        `• POLYGON: ~${cachedNetworkFees.polygon} $\n` +
+        `• SOLANA: ~${cachedNetworkFees.solana} $\n` +
+        `• APTOS: ~${cachedNetworkFees.aptos} $\n\n` +
+        `⚠️ رسوم الشبكة تتغير كل ساعة`,
         { parse_mode: 'Markdown' }
     );
 });
@@ -640,6 +722,7 @@ bot.command('deposit_help', async (ctx) => {
         `🟣 POLYGON: \`${wallet.polygonAddress}\`\n` +
         `🟢 SOLANA: \`${wallet.solanaAddress}\`\n` +
         `🔷 APTOS: \`${wallet.aptosAddress}\`\n\n` +
+        `💰 *الحد الأدنى للإيداع:* 1 $\n` +
         `⚠️ تأكد من الشبكة - الإرسال الخاطئ يؤدي لفقدان الأموال`,
         { parse_mode: 'Markdown' }
     );
@@ -653,7 +736,10 @@ bot.command('withdraw_help', async (ctx) => {
         `3. أدخل المبلغ والعنوان\n` +
         `4. اختر الشبكة\n` +
         `5. أدخل رمز 2FA\n\n` +
-        `⚠️ عمولة 2%، الحد الأدنى 20 دولار`,
+        `💰 *الحد الأدنى للسحب:* 5 $\n` +
+        `🏢 *رسوم المنصة:* ${PLATFORM_WITHDRAW_FEE} $\n` +
+        `🌐 *رسوم الشبكة:* حسب الشبكة المختارة\n` +
+        `⚠️ إجمالي الرسوم = ${PLATFORM_WITHDRAW_FEE}$ + رسوم الشبكة`,
         { parse_mode: 'Markdown' }
     );
 });
@@ -665,18 +751,23 @@ bot.command('convert_help', async (ctx) => {
         `2. اختر شبكة BEP-20\n` +
         `3. انسخ عنوان محفظتك\n` +
         `4. أرسل العملة\n` +
-        `5. ستتحول تلقائياً لدولار`,
+        `5. ستتحول تلقائياً لدولار\n\n` +
+        `💰 *الحد الأدنى للإيداع:* 1 $`,
         { parse_mode: 'Markdown' }
     );
 });
 
 bot.command('networks_help', async (ctx) => {
     await ctx.reply(
-        `🌐 *الشبكات المدعومة*\n\n` +
-        `🟡 BNB - عمولة ~0.1$\n` +
-        `🟣 POLYGON - عمولة ~0.05$\n` +
-        `🟢 SOLANA - عمولة ~0.01$\n` +
-        `🔷 APTOS - عمولة ~0.02$`,
+        `🌐 *الشبكات المدعومة ورسومها*\n\n` +
+        `🟡 BNB - رسوم الشبكة: ~${cachedNetworkFees.bnb} $\n` +
+        `🟣 POLYGON - رسوم الشبكة: ~${cachedNetworkFees.polygon} $\n` +
+        `🟢 SOLANA - رسوم الشبكة: ~${cachedNetworkFees.solana} $\n` +
+        `🔷 APTOS - رسوم الشبكة: ~${cachedNetworkFees.aptos} $\n` +
+        `💠 TRC-20 - رسوم الشبكة: ~0.80 $\n` +
+        `⬜ ERC-20 - رسوم الشبكة: ~8.00 $\n\n` +
+        `🏢 *رسوم المنصة الثابتة:* ${PLATFORM_WITHDRAW_FEE} $\n` +
+        `⚠️ الرسوم تتغير كل ساعة حسب ازدحام الشبكة`,
         { parse_mode: 'Markdown' }
     );
 });
@@ -684,70 +775,20 @@ bot.command('networks_help', async (ctx) => {
 bot.command('faq', async (ctx) => {
     await ctx.reply(
         `❓ *الأسئلة الشائعة*\n\n` +
-        `💵 عمولة الإيداع؟ مجاني\n` +
-        `💰 عمولة السحب؟ 2%\n` +
-        `⏱️ وقت وصول الأموال؟ إيداع 5-30د، سحب حتى 24 ساعة\n` +
-        `🔐 هل أحتاج 2FA؟ إلزامي للمبالغ فوق 100 دولار\n` +
-        `💬 هل توجد دردشة؟ نعم، داخل التطبيق`,
+        `💵 *عمولة الإيداع؟* مجاني (رسوم الشبكة فقط)\n` +
+        `💰 *عمولة السحب؟* ${PLATFORM_WITHDRAW_FEE} $ (ثابتة) + رسوم الشبكة\n` +
+        `📊 *عمولة التداول P2P؟* ${PLATFORM_TRADE_FEE} $ (ثابتة)\n` +
+        `⏱️ *وقت وصول الأموال؟* إيداع 5-30د، سحب حتى 24 ساعة\n` +
+        `🔐 *هل أحتاج 2FA؟* إلزامي للمبالغ فوق 100 دولار\n` +
+        `🌐 *ما هي الشبكات المدعومة؟* BEP-20, Polygon, Solana, Aptos\n` +
+        `💬 *هل توجد دردشة؟* نعم، داخل التطبيق\n` +
+        `💰 *الحد الأدنى للإيداع؟* 1 $\n` +
+        `💰 *الحد الأدنى للسحب؟* 5 $`,
         { parse_mode: 'Markdown' }
     );
 });
 
-// ========== أزرار التعليمات ==========
-bot.action('instructions_menu', rateLimitMiddleware, async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText(`📖 *قائمة التعليمات*`, { parse_mode: 'Markdown', ...instructionsKeyboard });
-});
-
-bot.action('deposit_instructions', rateLimitMiddleware, async (ctx) => {
-    await ctx.answerCbQuery();
-    const wallet = await db.getUserWallet(ctx.from.id);
-    await ctx.editMessageText(
-        `📥 *الإيداع*\n🟡 BNB: \`${wallet.bnbAddress}\`\n🟣 POLYGON: \`${wallet.polygonAddress}\`\n🟢 SOLANA: \`${wallet.solanaAddress}\`\n🔷 APTOS: \`${wallet.aptosAddress}\``,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
-    );
-});
-
-bot.action('withdraw_instructions', rateLimitMiddleware, async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText(
-        `📤 *السحب*\n1. افتح التطبيق\n2. اذهب إلى محفظتي\n3. أدخل المبلغ والعنوان\n4. اختر الشبكة\n5. أدخل 2FA`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
-    );
-});
-
-bot.action('convert_usd_instructions', rateLimitMiddleware, async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText(
-        `💵 *تحويل الدولار*\n1. اشتر USDT/BUSD\n2. اختر BEP-20\n3. انسخ عنوانك\n4. أرسل`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
-    );
-});
-
-bot.action('withdraw_to_exchange', rateLimitMiddleware, async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText(
-        `🔄 *السحب لمنصات أخرى*\n1. اسحب لمحفظتك\n2. استخدم نفس الشبكة\n3. أرسل للمنصة الهدف`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
-    );
-});
-
-bot.action('supported_networks', rateLimitMiddleware, async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText(
-        `🌐 *الشبكات*\n🟡 BNB ~0.1$\n🟣 POLYGON ~0.05$\n🟢 SOLANA ~0.01$\n🔷 APTOS ~0.02$`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
-    );
-});
-
-bot.action('faq_instructions', rateLimitMiddleware, async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText(
-        `❓ *الأسئلة الشائعة*\n💵 إيداع: مجاني\n💰 سحب: 2%\n⏱️ وقت: 5-30د\n🔐 2FA: إلزامي فوق 100$`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
-    );
-});
-
+// ========== باقي أوامر البوت ==========
 bot.command('my_id', async (ctx) => {
     await ctx.reply(`🆔 *معرفك:* \`${ctx.from.id}\``, { parse_mode: 'Markdown' });
 });
@@ -815,7 +856,7 @@ bot.action('create_offer', rateLimitMiddleware, async (ctx) => {
         return;
     }
     await ctx.editMessageText(
-        `➕ *إنشاء عرض*\n/sell [العملة] [المبلغ] [السعر] [طريقة] [تفاصيل]\n/buy [العملة] [المبلغ] [السعر] [طريقة] [تفاصيل]\nمثال: /sell SDG 100000 560 بنكي "بنك الخرطوم"`,
+        `➕ *إنشاء عرض*\n/sell [العملة] [المبلغ] [السعر] [طريقة] [تفاصيل]\n/buy [العملة] [المبلغ] [السعر] [طريقة] [تفاصيل]\nمثال: /sell SDG 100000 560 بنكي "بنك الخرطوم"\n\n💰 *رسوم التداول:* ${PLATFORM_TRADE_FEE} $ (ثابتة)`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
 });
@@ -835,7 +876,7 @@ bot.command('sell', async (ctx) => {
     if (isNaN(fiatAmount) || fiatAmount <= 0) return ctx.reply('❌ مبلغ غير صحيح');
     if (isNaN(price) || price <= 0) return ctx.reply('❌ سعر غير صحيح');
     const result = await db.createOffer(ctx.from.id, 'sell', currency, fiatAmount, price, paymentMethod, paymentDetails, '', '', '', 10, 100000);
-    await ctx.reply(result.message, { parse_mode: 'Markdown' });
+    await ctx.reply(result.message + `\n💰 *رسوم التداول:* ${PLATFORM_TRADE_FEE} $`, { parse_mode: 'Markdown' });
 });
 
 bot.command('buy', async (ctx) => {
@@ -852,7 +893,7 @@ bot.command('buy', async (ctx) => {
     if (isNaN(fiatAmount) || fiatAmount <= 0) return ctx.reply('❌ مبلغ غير صحيح');
     if (isNaN(price) || price <= 0) return ctx.reply('❌ سعر غير صحيح');
     const result = await db.createOffer(ctx.from.id, 'buy', currency, fiatAmount, price, paymentMethod, paymentDetails, '', '', '', 10, 100000);
-    await ctx.reply(result.message, { parse_mode: 'Markdown' });
+    await ctx.reply(result.message + `\n💰 *رسوم التداول:* ${PLATFORM_TRADE_FEE} $`, { parse_mode: 'Markdown' });
 });
 
 bot.command('buy_offer', async (ctx) => {
@@ -938,6 +979,62 @@ bot.command('rate', async (ctx) => {
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
 });
 
+// ========== أزرار التعليمات ==========
+bot.action('instructions_menu', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(`📖 *قائمة التعليمات*`, { parse_mode: 'Markdown', ...instructionsKeyboard });
+});
+
+bot.action('deposit_instructions', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    const wallet = await db.getUserWallet(ctx.from.id);
+    await ctx.editMessageText(
+        `📥 *الإيداع*\n🟡 BNB: \`${wallet.bnbAddress}\`\n🟣 POLYGON: \`${wallet.polygonAddress}\`\n🟢 SOLANA: \`${wallet.solanaAddress}\`\n🔷 APTOS: \`${wallet.aptosAddress}\`\n\n💰 الحد الأدنى: 1 $`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+    );
+});
+
+bot.action('withdraw_instructions', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `📤 *السحب*\n1. افتح التطبيق\n2. اذهب إلى محفظتي\n3. أدخل المبلغ والعنوان\n4. اختر الشبكة\n5. أدخل 2FA\n\n💰 الحد الأدنى: 5 $\n🏢 رسوم المنصة: ${PLATFORM_WITHDRAW_FEE} $\n🌐 رسوم الشبكة: حسب الشبكة`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+    );
+});
+
+bot.action('convert_usd_instructions', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `💵 *تحويل الدولار*\n1. اشتر USDT/BUSD\n2. اختر BEP-20\n3. انسخ عنوانك\n4. أرسل\n\n💰 الحد الأدنى: 1 $`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+    );
+});
+
+bot.action('withdraw_to_exchange', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `🔄 *السحب لمنصات أخرى*\n1. اسحب لمحفظتك\n2. استخدم نفس الشبكة\n3. أرسل للمنصة الهدف`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+    );
+});
+
+bot.action('supported_networks', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `🌐 *الشبكات ورسومها*\n🟡 BNB ~${cachedNetworkFees.bnb} $\n🟣 POLYGON ~${cachedNetworkFees.polygon} $\n🟢 SOLANA ~${cachedNetworkFees.solana} $\n🔷 APTOS ~${cachedNetworkFees.aptos} $\n💠 TRC-20 ~0.80 $\n⬜ ERC-20 ~8.00 $\n\n🏢 رسوم المنصة: ${PLATFORM_WITHDRAW_FEE} $`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+    );
+});
+
+bot.action('faq_instructions', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `❓ *الأسئلة الشائعة*\n💵 إيداع: مجاني\n💰 سحب: ${PLATFORM_WITHDRAW_FEE}$ + رسوم الشبكة\n📊 تداول: ${PLATFORM_TRADE_FEE}$\n⏱️ وقت: 5-30د\n🔐 2FA: إلزامي فوق 100$\n💰 حد الإيداع: 1$\n💰 حد السحب: 5$`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+    );
+});
+
+// ========== باقي الأزرار ==========
 bot.action('my_trades', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const stats = await db.getUserStats(ctx.from.id);
@@ -973,7 +1070,10 @@ bot.action('my_wallet', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const w = await db.getUserWallet(ctx.from.id);
     const stats = await db.getUserStats(ctx.from.id);
-    await ctx.editMessageText(`💼 محفظتي\n💵 ${stats.usdBalance.toFixed(2)} USD\n🎁 إحالات: ${stats.referralEarnings?.toFixed(2) || 0} USD\n🟡 BNB: \`${w.bnbAddress.slice(0, 10)}...\``, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(
+        `💼 محفظتي\n💵 ${stats.usdBalance.toFixed(2)} USD\n🎁 إحالات: ${stats.referralEarnings?.toFixed(2) || 0} USD\n🏢 رسوم السحب: ${PLATFORM_WITHDRAW_FEE} $\n🟡 BNB: \`${w.bnbAddress.slice(0, 10)}...\``,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
+    );
 });
 
 bot.action('bank_details', rateLimitMiddleware, async (ctx) => {
@@ -991,18 +1091,20 @@ bot.command('set_bank', async (ctx) => {
 
 bot.command('deposit', async (ctx) => {
     const args = ctx.message.text.split(' ');
-    if (args.length < 4) return ctx.reply('❌ /deposit [العملة] [المبلغ] [الشبكة]');
+    if (args.length < 4) return ctx.reply('❌ /deposit [العملة] [المبلغ] [الشبكة]\n💰 الحد الأدنى 1$');
     const amount = parseFloat(args[2]);
     if (isNaN(amount) || amount <= 0) return ctx.reply('❌ مبلغ غير صحيح');
+    if (amount < 1) return ctx.reply('⚠️ الحد الأدنى للإيداع هو 1 دولار');
     const result = await db.requestDeposit(ctx.from.id, amount, 'USDT', args[3].toLowerCase());
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
 });
 
 bot.command('withdraw', async (ctx) => {
     const args = ctx.message.text.split(' ');
-    if (args.length < 5) return ctx.reply('❌ /withdraw [العملة] [المبلغ] [الشبكة] [العنوان]');
+    if (args.length < 5) return ctx.reply('❌ /withdraw [العملة] [المبلغ] [الشبكة] [العنوان]\n💰 الحد الأدنى 5$');
     const amount = parseFloat(args[2]);
     if (isNaN(amount) || amount <= 0) return ctx.reply('❌ مبلغ غير صحيح');
+    if (amount < 5) return ctx.reply('⚠️ الحد الأدنى للسحب هو 5 دولار');
     const result = await db.requestWithdraw(ctx.from.id, amount, 'USDT', args[3].toLowerCase(), args[4], args[5] || null);
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
 });
@@ -1036,13 +1138,13 @@ bot.action('lang_en', rateLimitMiddleware, async (ctx) => {
 
 bot.action('support', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.editMessageText(`📞 الدعم\n👤 @${ADMIN_USERNAME}`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.url('📨 تواصل', `https://t.me/${ADMIN_USERNAME}`)], [Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(`📞 الدعم\n👤 @${ADMIN_USERNAME}\n💰 رسوم السحب: ${PLATFORM_WITHDRAW_FEE}$\n🌐 رسوم الشبكة: تتغير كل ساعة`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.url('📨 تواصل', `https://t.me/${ADMIN_USERNAME}`)], [Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
 
 bot.action('back_to_menu', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const stats = await db.getUserStats(ctx.from.id);
-    const text = `✨ القائمة الرئيسية\n👤 ${ctx.from.first_name}\n💵 ${stats.usdBalance.toFixed(2)} USD\n⭐ ${stats.rating.toFixed(1)}/5\n✅ ${stats.completedTrades} صفقة\n💬 دردشة متاحة`;
+    const text = `✨ القائمة الرئيسية\n👤 ${ctx.from.first_name}\n💵 ${stats.usdBalance.toFixed(2)} USD\n⭐ ${stats.rating.toFixed(1)}/5\n✅ ${stats.completedTrades} صفقة\n💰 رسوم السحب: ${PLATFORM_WITHDRAW_FEE}$\n💬 دردشة متاحة`;
     const kb = isAdmin(ctx.from.id) ? adminKeyboard : mainKeyboard;
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb });
 });
@@ -1271,6 +1373,7 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
 bot.launch().then(() => {
     console.log('🚀 P2P Exchange Bot running');
     console.log('👑 Admins:', ADMIN_IDS.join(', '));
+    console.log('💰 Platform Fees: Withdraw=' + PLATFORM_WITHDRAW_FEE + '$, Trade=' + PLATFORM_TRADE_FEE + '$');
     console.log('💬 Chat System: Active with 15min reminders');
     console.log('🎁 Referral System: Active');
     console.log('📖 Instructions System: Active');
