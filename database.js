@@ -296,39 +296,47 @@ class Database {
     }
 
     async registerUser(userId, username, firstName, lastName, phone, email, country, city, referrerId = null, language = 'ar', ip = '', userAgent = '') {
-        await this.connect();
-        let user = await User.findOne({ userId });
-        if (!user) {
-            const wallet = await this.getUserWallet(userId);
-            let validReferrer = null;
-            let referralBonus = 0;
-            if (referrerId && referrerId !== userId) {
-                validReferrer = await User.findOne({ userId: referrerId });
-                if (validReferrer && !validReferrer.isBanned && !validReferrer.isLocked) {
-                    referralBonus = 5;
-                    await User.updateOne({ userId: referrerId }, { $inc: { referralCount: 1, referralEarnings: referralBonus }, $push: { referrals: { userId: userId, joinedAt: new Date(), totalCommission: 0, earned: 0 } } });
-                    await Wallet.updateOne({ userId: referrerId }, { $inc: { usdBalance: referralBonus } });
-                    await this.addAuditLog(referrerId, 'referral_bonus', { amount: referralBonus, newUser: userId }, ip, userAgent);
-                } else { validReferrer = null; }
+    await this.connect();
+    
+    let user = await User.findOne({ userId });
+    if (!user) {
+        const wallet = await this.getUserWallet(userId);
+        
+        let validReferrer = null;
+        
+        if (referrerId && referrerId !== userId) {
+            validReferrer = await User.findOne({ userId: referrerId });
+            if (validReferrer && !validReferrer.isBanned && !validReferrer.isLocked) {
+                // فقط زيادة عدد المدعوين، بدون مكافأة 5 دولار
+                await User.updateOne({ userId: referrerId }, { 
+                    $inc: { referralCount: 1 },
+                    $push: { referrals: { userId: userId, joinedAt: new Date(), totalCommission: 0, earned: 0 } }
+                });
+                await this.addAuditLog(referrerId, 'referral_new_user', { newUser: userId }, ip, userAgent);
+            } else {
+                validReferrer = null;
             }
-            user = await User.create({
-                userId, username: username || '', firstName: firstName || '', lastName: lastName || '',
-                phoneNumber: phone || '', email: email || '', country: country || 'SD', city: city || '',
-                language, walletId: wallet._id, referrerId: validReferrer ? referrerId : null,
-                referralCount: 0, referralEarnings: 0, referralCommissionRate: this.referralCommissionRate, referrals: [],
-                isVerified: false, lastSeen: new Date(), isOnline: true, lastLoginIp: ip, loginAttempts: 0,
-                twoFAEnabled: false, twoFASecret: '', twoFABackupCodes: [], require2FAForRelease: true, release2FAThreshold: 100,
-                dailyTrades: [], suspiciousActions: [], warningCount: 0, totalDelays: 0, totalDelayMinutes: 0, isFlagged: false, flagReason: ''
-            });
-            await this.updateDailyStats('totalUsers', 'newUsers');
-            await this.addAuditLog(userId, 'register', { referrer: referrerId, referralBonus }, ip, userAgent);
-            return { success: true, isNew: true, referrer: validReferrer, referralBonus };
         }
-        await User.updateOne({ userId }, { lastSeen: new Date(), isOnline: true, lastLoginIp: ip });
-        await this.addAuditLog(userId, 'login', {}, ip, userAgent);
-        return { success: true, isNew: false };
+        
+        user = await User.create({
+            userId, username: username || '', firstName: firstName || '', lastName: lastName || '',
+            phoneNumber: phone || '', email: email || '', country: country || 'SD', city: city || '',
+            language, walletId: wallet._id, referrerId: validReferrer ? referrerId : null,
+            referralCount: 0, referralEarnings: 0, referralCommissionRate: this.referralCommissionRate, referrals: [],
+            isVerified: false, lastSeen: new Date(), isOnline: true, lastLoginIp: ip, loginAttempts: 0,
+            twoFAEnabled: false, twoFASecret: '', twoFABackupCodes: [], require2FAForRelease: true, release2FAThreshold: 100,
+            dailyTrades: [], suspiciousActions: [], warningCount: 0, totalDelays: 0, totalDelayMinutes: 0, isFlagged: false, flagReason: ''
+        });
+        
+        await this.updateDailyStats('totalUsers', 'newUsers');
+        await this.addAuditLog(userId, 'register', { referrer: referrerId }, ip, userAgent);
+        return { success: true, isNew: true, referrer: validReferrer };
     }
-
+    
+    await User.updateOne({ userId }, { lastSeen: new Date(), isOnline: true, lastLoginIp: ip });
+    await this.addAuditLog(userId, 'login', {}, ip, userAgent);
+    return { success: true, isNew: false };
+}
     async getUser(userId) { return await User.findOne({ userId }); }
     
     async getUserStats(userId) {
