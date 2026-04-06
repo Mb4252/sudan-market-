@@ -1428,19 +1428,24 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
 
 // ✅ تصدير البوت لاستخدامه في database.js
 module.exports.bot = bot;
+// ========== تشغيل البوت ==========
+console.log('🔄 Starting bot...');
 
-// تشغيل البوت
-bot.launch().then(() => {
-    console.log('🚀 P2P Exchange Bot running');
-    console.log('👑 Admins:', ADMIN_IDS.join(', '));
-    console.log('💰 Platform Fees: Withdraw=' + PLATFORM_WITHDRAW_FEE + '$, Trade=' + PLATFORM_TRADE_FEE + '$');
-    console.log('🧩 Partial Fill: Active (buy partial amounts from sell offers)');
-    console.log('💬 Chat System: Active');
-    console.log('🎁 Referral System: Active');
-    console.log('📖 Instructions System: Active');
-}).catch(err => {
-    console.error('❌ Bot failed to start:', err.message);
-});
+// تأكد من وجود التوكن
+if (!process.env.BOT_TOKEN) {
+    console.error('❌ BOT_TOKEN is missing! Please check .env file');
+} else {
+    bot.launch().then(() => {
+        console.log('🚀 P2P Exchange Bot running');
+        console.log('👑 Admins:', ADMIN_IDS.join(', '));
+        console.log('💰 Platform Fees: Withdraw=' + PLATFORM_WITHDRAW_FEE + '$, Trade=' + PLATFORM_TRADE_FEE + '$');
+        console.log('🧩 Partial Fill: Active');
+        console.log('💬 Chat System: Active');
+        console.log('🎁 Referral System: Active');
+    }).catch(err => {
+        console.error('❌ Bot failed to start:', err.message);
+    });
+}
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
