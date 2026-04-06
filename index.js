@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Telegraf, Markup } = require('telegraf');
+const { Telegraf } = require('telegraf');
 const db = require('./database');
 const express = require('express');
 const path = require('path');
@@ -489,11 +489,7 @@ app.post('/api/kyc/submit', upload.fields([
 const server = app.listen(PORT, '0.0.0.0', () => console.log(`🌐 Web server on port ${PORT}`));
 
 // ========== إعداد بوت التلجرام ==========
-const { Telegraf: TelegrafBot } = require('telegraf');
-bot = new TelegrafBot(process.env.BOT_TOKEN);
-
-// تصدير البوت للاستخدام في database.js
-module.exports.bot = bot;
+bot = new Telegraf(process.env.BOT_TOKEN);
 
 // ========== نظام منع الإغراق ==========
 const userLastAction = new Map(), userLastMessage = new Map(), userActionCount = new Map(), userWarningCount = new Map(), bannedUsers = new Map();
@@ -565,63 +561,69 @@ async function messageRateLimitMiddleware(ctx, next) {
 }
 
 // ========== القوائم ==========
-const startKeyboard = Markup.inlineKeyboard([
-    [Markup.button.webApp('🚀 فتح منصة P2P', WEBAPP_URL)],
-    [Markup.button.url('📜 الشروط والأحكام', `${WEBAPP_URL}/terms`)]
-]);
+const startKeyboard = {
+    reply_markup: {
+        inline_keyboard: [
+            [{ text: '🚀 فتح منصة P2P', web_app: { url: WEBAPP_URL } }],
+            [{ text: '📜 الشروط والأحكام', url: `${WEBAPP_URL}/terms` }]
+        ]
+    }
+};
 
-const mainKeyboard = Markup.inlineKeyboard([
-    [Markup.button.webApp('🚀 فتح منصة P2P', WEBAPP_URL)],
-    [Markup.button.callback('💰 رصيدي', 'my_balance')],
-    [Markup.button.callback('📊 عروض البيع', 'offers_sell')],
-    [Markup.button.callback('📊 عروض الشراء', 'offers_buy')],
-    [Markup.button.callback('➕ إنشاء عرض', 'create_offer')],
-    [Markup.button.callback('📋 صفقاتي', 'my_trades')],
-    [Markup.button.callback('📜 تاريخي', 'my_history')],
-    [Markup.button.callback('💼 محفظتي', 'my_wallet')],
-    [Markup.button.callback('🏦 بيانات البنك', 'bank_details')],
-    [Markup.button.callback('🆔 توثيق الهوية', 'kyc_menu')],
-    [Markup.button.callback('🏆 المتصدرين', 'leaderboard')],
-    [Markup.button.callback('👑 كبار المتداولين', 'top_merchants')],
-    [Markup.button.callback('📊 إحصائيات السوق', 'market_stats')],
-    [Markup.button.callback('🎁 إحالاتي', 'my_referral')],
-    [Markup.button.callback('📖 تعليمات', 'instructions_menu')],
-    [Markup.button.callback('🌐 اللغة', 'change_language')],
-    [Markup.button.callback('📞 الدعم', 'support')],
-    [Markup.button.url('📜 الشروط والأحكام', `${WEBAPP_URL}/terms`)]
-]);
+const mainKeyboard = {
+    reply_markup: {
+        inline_keyboard: [
+            [{ text: '🚀 فتح منصة P2P', web_app: { url: WEBAPP_URL } }],
+            [{ text: '💰 رصيدي', callback_data: 'my_balance' }],
+            [{ text: '📊 عروض البيع', callback_data: 'offers_sell' }, { text: '📊 عروض الشراء', callback_data: 'offers_buy' }],
+            [{ text: '➕ إنشاء عرض', callback_data: 'create_offer' }],
+            [{ text: '📋 صفقاتي', callback_data: 'my_trades' }, { text: '📜 تاريخي', callback_data: 'my_history' }],
+            [{ text: '💼 محفظتي', callback_data: 'my_wallet' }, { text: '🏦 بيانات البنك', callback_data: 'bank_details' }],
+            [{ text: '🆔 توثيق الهوية', callback_data: 'kyc_menu' }],
+            [{ text: '🏆 المتصدرين', callback_data: 'leaderboard' }, { text: '👑 كبار المتداولين', callback_data: 'top_merchants' }],
+            [{ text: '📊 إحصائيات السوق', callback_data: 'market_stats' }],
+            [{ text: '🎁 إحالاتي', callback_data: 'my_referral' }],
+            [{ text: '📖 تعليمات', callback_data: 'instructions_menu' }],
+            [{ text: '🌐 اللغة', callback_data: 'change_language' }, { text: '📞 الدعم', callback_data: 'support' }],
+            [{ text: '📜 الشروط والأحكام', url: `${WEBAPP_URL}/terms` }]
+        ]
+    }
+};
 
-const adminKeyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('🆔 طلبات التوثيق', 'pending_kyc')],
-    [Markup.button.callback('💰 طلبات السحب', 'pending_withdraws')],
-    [Markup.button.callback('📤 طلبات الإيداع', 'pending_deposits')],
-    [Markup.button.callback('⚠️ النزاعات', 'pending_disputes')],
-    [Markup.button.callback('📊 إحصائيات عامة', 'global_stats')],
-    [Markup.button.callback('📅 إحصائيات اليوم', 'today_stats')],
-    [Markup.button.callback('🔍 بحث عن مستخدم', 'search_user')],
-    [Markup.button.callback('🚫 مستخدمين محظورين', 'banned_users')],
-    [Markup.button.callback('🔓 رفع الحظر عن الكل', 'unban_all')],
-    [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-]);
+const adminKeyboard = {
+    reply_markup: {
+        inline_keyboard: [
+            [{ text: '🆔 طلبات التوثيق', callback_data: 'pending_kyc' }],
+            [{ text: '💰 طلبات السحب', callback_data: 'pending_withdraws' }, { text: '📤 طلبات الإيداع', callback_data: 'pending_deposits' }],
+            [{ text: '⚠️ النزاعات', callback_data: 'pending_disputes' }],
+            [{ text: '📊 إحصائيات عامة', callback_data: 'global_stats' }, { text: '📅 إحصائيات اليوم', callback_data: 'today_stats' }],
+            [{ text: '🔍 بحث عن مستخدم', callback_data: 'search_user' }],
+            [{ text: '🚫 مستخدمين محظورين', callback_data: 'banned_users' }, { text: '🔓 رفع الحظر عن الكل', callback_data: 'unban_all' }],
+            [{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]
+        ]
+    }
+};
 
-const instructionsKeyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('🧩 البيع الجزئي', 'partial_instructions')],
-    [Markup.button.callback('📥 تعليمات الإيداع', 'deposit_instructions')],
-    [Markup.button.callback('📤 تعليمات السحب', 'withdraw_instructions')],
-    [Markup.button.callback('💵 تحويل الدولار', 'convert_usd_instructions')],
-    [Markup.button.callback('🔄 السحب لمنصات أخرى', 'withdraw_to_exchange')],
-    [Markup.button.callback('🌐 الشبكات المدعومة', 'supported_networks')],
-    [Markup.button.callback('💰 تفصيل الرسوم', 'fee_details')],
-    [Markup.button.callback('❓ الأسئلة الشائعة', 'faq_instructions')],
-    [Markup.button.callback('🔙 رجوع', 'back_to_menu')]
-]);
+const instructionsKeyboard = {
+    reply_markup: {
+        inline_keyboard: [
+            [{ text: '🧩 البيع الجزئي', callback_data: 'partial_instructions' }],
+            [{ text: '📥 تعليمات الإيداع', callback_data: 'deposit_instructions' }, { text: '📤 تعليمات السحب', callback_data: 'withdraw_instructions' }],
+            [{ text: '💵 تحويل الدولار', callback_data: 'convert_usd_instructions' }, { text: '🔄 السحب لمنصات أخرى', callback_data: 'withdraw_to_exchange' }],
+            [{ text: '🌐 الشبكات المدعومة', callback_data: 'supported_networks' }],
+            [{ text: '💰 تفصيل الرسوم', callback_data: 'fee_details' }],
+            [{ text: '❓ الأسئلة الشائعة', callback_data: 'faq_instructions' }],
+            [{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]
+        ]
+    }
+};
 
 // ========== أوامر البوت الأساسية ==========
 bot.start(async (ctx) => {
     const user = ctx.from;
     const referrer = ctx.startPayload ? parseInt(ctx.startPayload) : null;
     
-    db.registerUser(user.id, user.username, user.first_name, '', '', '', 'SD', '', referrer, 'ar', ctx.message?.chat?.id, ctx.message?.from?.is_bot ? 'Bot' : 'User').catch(e => console.error(e));
+    await db.registerUser(user.id, user.username, user.first_name, '', '', '', 'SD', '', referrer, 'ar', ctx.message?.chat?.id, ctx.message?.from?.is_bot ? 'Bot' : 'User').catch(e => console.error(e));
     
     await ctx.reply(
         `✨ *مرحباً بك في منصة P2P للتداول!* ✨\n\n` +
@@ -643,7 +645,7 @@ bot.start(async (ctx) => {
             else if (kycStatus.status === 'pending') verifiedMsg = '⏳ *طلب التوثيق قيد المراجعة*';
             else verifiedMsg = '⚠️ *يرجى توثيق حسابك للمتاجرة*';
             
-            await ctx.editMessageText(
+            await ctx.telegram.editMessageText(ctx.chat.id, ctx.message.message_id, null,
                 `✨ *مرحباً بك في منصة P2P للتداول!* ✨\n\n` +
                 `👤 *المستخدم:* ${user.first_name}\n` +
                 `💵 *الرصيد:* ${stats.usdBalance.toFixed(2)} USD\n` +
@@ -685,7 +687,7 @@ bot.action('partial_instructions', rateLimitMiddleware, async (ctx) => {
         `• يدفع محمد 10 دولار\n` +
         `• أحمد يحرر 10 دولار فقط\n` +
         `• يبقى 90 دولار متاحة لمشترين آخرين`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'instructions_menu' }]] } }
     );
 });
 
@@ -705,7 +707,7 @@ bot.action('fee_details', rateLimitMiddleware, async (ctx) => {
         `• ⬜ ERC-20: ~8.00 $\n\n` +
         `📊 *إجمالي رسوم السحب:* رسوم المنصة (${PLATFORM_WITHDRAW_FEE}$) + رسوم الشبكة\n` +
         `⚠️ *ملاحظة:* رسوم الشبكة تتغير كل ساعة حسب ازدحام الشبكة`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'instructions_menu' }]] } }
     );
 });
 
@@ -854,14 +856,14 @@ bot.action('my_referral', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const referralData = await db.getReferralData(ctx.from.id);
     let text = `🎁 *الإحالات*\n👥 المدعوين: ${referralData.referralCount}\n💰 رصيد: ${referralData.referralEarnings.toFixed(2)} USD\n📊 عمولة: ${referralData.referralCommissionRate}%\n\n🔗 \`${referralData.referralLink}\``;
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('💸 تحويل', 'transfer_referral')], [Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '💸 تحويل', callback_data: 'transfer_referral' }], [{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('transfer_referral', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery('🔄 جاري...');
     const result = await db.transferReferralEarningsToWallet(ctx.from.id);
     await ctx.answerCbQuery(result.message);
-    await ctx.editMessageText(result.message, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'my_referral')]]) });
+    await ctx.editMessageText(result.message, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'my_referral' }]] } });
 });
 
 // ========== الرصيد ==========
@@ -870,7 +872,7 @@ bot.action('my_balance', rateLimitMiddleware, async (ctx) => {
     const stats = await db.getUserStats(ctx.from.id);
     await ctx.editMessageText(
         `💰 *رصيدك*\n💵 ${stats.usdBalance.toFixed(2)} USD\n⭐ ${stats.rating.toFixed(1)}/5\n✅ ${stats.completedTrades} صفقة\n🎁 إحالات: ${stats.referralEarnings?.toFixed(2) || 0} USD`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
+        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } }
     );
 });
 
@@ -878,25 +880,25 @@ bot.action('my_balance', rateLimitMiddleware, async (ctx) => {
 bot.action('offers_sell', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const offers = await db.getOffers('sell', null, 'price', 'asc', 15);
-    if (!offers.offers?.length) return ctx.editMessageText('📭 لا توجد عروض', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    if (!offers.offers?.length) return ctx.editMessageText('📭 لا توجد عروض', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
     let text = '🟢 *عروض البيع*\n🧩 *يمكنك شراء جزء من أي عرض*\n\n';
     for (const o of offers.offers.slice(0, 10)) {
         const remaining = o.remainingAmount || o.fiatAmount;
         text += `👤 ${o.firstName || o.username}\n💰 ${o.fiatAmount} ${o.currency} | 📊 ${o.price}\n📦 متبقي: ${remaining} ${o.currency}\n🆔 \`${o._id}\`\n━━━━━━━━━━━━━━━━━━\n`;
     }
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔄 تحديث', 'offers_sell'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔄 تحديث', callback_data: 'offers_sell' }, { text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 // ========== عروض الشراء ==========
 bot.action('offers_buy', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const offers = await db.getOffers('buy', null, 'price', 'desc', 15);
-    if (!offers.offers?.length) return ctx.editMessageText('📭 لا توجد عروض', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    if (!offers.offers?.length) return ctx.editMessageText('📭 لا توجد عروض', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
     let text = '🔴 *عروض الشراء*\n\n';
     for (const o of offers.offers.slice(0, 10)) {
         text += `👤 ${o.firstName || o.username}\n💰 ${o.fiatAmount} ${o.currency} | 📊 ${o.price}\n🆔 \`${o._id}\`\n━━━━━━━━━━━━━━━━━━\n`;
     }
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔄 تحديث', 'offers_buy'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔄 تحديث', callback_data: 'offers_buy' }, { text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 // ========== إنشاء عرض ==========
@@ -904,12 +906,12 @@ bot.action('create_offer', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const user = await db.getUser(ctx.from.id);
     if (!user.isVerified) {
-        await ctx.editMessageText(`⚠️ يرجى توثيق حسابك`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🆔 توثيق', 'kyc_menu'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+        await ctx.editMessageText(`⚠️ يرجى توثيق حسابك`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🆔 توثيق', callback_data: 'kyc_menu' }, { text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
         return;
     }
     await ctx.editMessageText(
         `➕ *إنشاء عرض*\n/sell [العملة] [المبلغ] [السعر] [طريقة] [تفاصيل]\n/buy [العملة] [المبلغ] [السعر] [طريقة] [تفاصيل]\nمثال: /sell SDG 100000 560 بنكي "بنك الخرطوم"\n\n🧩 *عروض البيع تدعم البيع الجزئي*\n💰 *رسوم التداول:* ${PLATFORM_TRADE_FEE} $ (ثابتة)`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
+        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } }
     );
 });
 
@@ -1046,7 +1048,7 @@ bot.action('deposit_instructions', rateLimitMiddleware, async (ctx) => {
     const wallet = await db.getUserWallet(ctx.from.id);
     await ctx.editMessageText(
         `📥 *الإيداع*\n🟡 BNB: \`${wallet.bnbAddress}\`\n🟣 POLYGON: \`${wallet.polygonAddress}\`\n🟢 SOLANA: \`${wallet.solanaAddress}\`\n🔷 APTOS: \`${wallet.aptosAddress}\`\n\n💰 الحد الأدنى: 1 $`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'instructions_menu' }]] } }
     );
 });
 
@@ -1054,7 +1056,7 @@ bot.action('withdraw_instructions', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.editMessageText(
         `📤 *السحب*\n1. افتح التطبيق\n2. اذهب إلى محفظتي\n3. أدخل المبلغ والعنوان\n4. اختر الشبكة\n5. أدخل 2FA\n\n💰 الحد الأدنى: 5 $\n🏢 رسوم المنصة: ${PLATFORM_WITHDRAW_FEE} $\n🌐 رسوم الشبكة: حسب الشبكة`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'instructions_menu' }]] } }
     );
 });
 
@@ -1062,7 +1064,7 @@ bot.action('convert_usd_instructions', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.editMessageText(
         `💵 *تحويل الدولار*\n1. اشتر USDT/BUSD\n2. اختر BEP-20\n3. انسخ عنوانك\n4. أرسل\n\n💰 الحد الأدنى: 1 $`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'instructions_menu' }]] } }
     );
 });
 
@@ -1070,7 +1072,7 @@ bot.action('withdraw_to_exchange', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.editMessageText(
         `🔄 *السحب لمنصات أخرى*\n1. اسحب لمحفظتك\n2. استخدم نفس الشبكة\n3. أرسل للمنصة الهدف`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'instructions_menu' }]] } }
     );
 });
 
@@ -1078,7 +1080,7 @@ bot.action('supported_networks', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.editMessageText(
         `🌐 *الشبكات ورسومها*\n🟡 BNB ~${cachedNetworkFees.bnb} $\n🟣 POLYGON ~${cachedNetworkFees.polygon} $\n🟢 SOLANA ~${cachedNetworkFees.solana} $\n🔷 APTOS ~${cachedNetworkFees.aptos} $\n💠 TRC-20 ~0.80 $\n⬜ ERC-20 ~8.00 $\n\n🏢 رسوم المنصة: ${PLATFORM_WITHDRAW_FEE} $`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'instructions_menu' }]] } }
     );
 });
 
@@ -1086,7 +1088,7 @@ bot.action('faq_instructions', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.editMessageText(
         `❓ *الأسئلة الشائعة*\n🧩 البيع الجزئي: شراء جزء من العرض\n💵 إيداع: مجاني\n💰 سحب: ${PLATFORM_WITHDRAW_FEE}$ + رسوم الشبكة\n📊 تداول: ${PLATFORM_TRADE_FEE}$\n⏱️ وقت: 5-30د\n🔐 2FA: إلزامي فوق 100$\n💰 حد الإيداع: 1$\n💰 حد السحب: 5$`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'instructions_menu' }]] } }
     );
 });
 
@@ -1094,7 +1096,7 @@ bot.action('faq_instructions', rateLimitMiddleware, async (ctx) => {
 bot.action('my_trades', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const stats = await db.getUserStats(ctx.from.id);
-    await ctx.editMessageText(`📋 صفقاتي\n✅ ${stats.completedTrades} مكتملة\n💰 ${stats.totalTraded.toFixed(2)} USD`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(`📋 صفقاتي\n✅ ${stats.completedTrades} مكتملة\n💰 ${stats.totalTraded.toFixed(2)} USD`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('my_history', rateLimitMiddleware, async (ctx) => {
@@ -1102,13 +1104,13 @@ bot.action('my_history', rateLimitMiddleware, async (ctx) => {
     const offers = await db.getUserOffersHistory(ctx.from.id, 5);
     let text = '📜 تاريخي\n';
     for (const o of offers) text += `${o.type === 'sell' ? '🟢' : '🔴'} ${o.fiatAmount} ${o.currency}\n`;
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('market_stats', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const stats = await db.getMarketStats();
-    await ctx.editMessageText(`📊 السوق\n📋 ${stats.totalOffers} عرض\n💰 متوسط ${stats.avgPrice} USD\n🧩 يدعم البيع الجزئي`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔄 تحديث', 'market_stats'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(`📊 السوق\n📋 ${stats.totalOffers} عرض\n💰 متوسط ${stats.avgPrice} USD\n🧩 يدعم البيع الجزئي`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔄 تحديث', callback_data: 'market_stats' }, { text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('top_merchants', rateLimitMiddleware, async (ctx) => {
@@ -1119,7 +1121,7 @@ bot.action('top_merchants', rateLimitMiddleware, async (ctx) => {
         const m = merchants[i];
         text += `${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`} ${m.firstName}\n📊 ${m.completedTrades} صفقة\n`;
     }
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔄 تحديث', 'top_merchants'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔄 تحديث', callback_data: 'top_merchants' }, { text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('my_wallet', rateLimitMiddleware, async (ctx) => {
@@ -1128,14 +1130,14 @@ bot.action('my_wallet', rateLimitMiddleware, async (ctx) => {
     const stats = await db.getUserStats(ctx.from.id);
     await ctx.editMessageText(
         `💼 محفظتي\n💵 ${stats.usdBalance.toFixed(2)} USD\n🎁 إحالات: ${stats.referralEarnings?.toFixed(2) || 0} USD\n🏢 رسوم السحب: ${PLATFORM_WITHDRAW_FEE} $\n🟡 BNB: \`${w.bnbAddress.slice(0, 10)}...\``,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
+        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } }
     );
 });
 
 bot.action('bank_details', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const user = await db.getUser(ctx.from.id);
-    await ctx.editMessageText(`🏦 بيانات البنك\n🏛️ ${user.bankName || 'غير محدد'}\n🔢 ${user.bankAccountNumber || 'غير محدد'}`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(`🏦 بيانات البنك\n🏛️ ${user.bankName || 'غير محدد'}\n🔢 ${user.bankAccountNumber || 'غير محدد'}`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.command('set_bank', async (ctx) => {
@@ -1172,29 +1174,29 @@ bot.action('leaderboard', rateLimitMiddleware, async (ctx) => {
     for (let i = 0; i < leaders.length; i++) {
         text += `${i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`} ${leaders[i].firstName}\n💰 ${leaders[i].totalTraded?.toFixed(2) || 0} USD\n`;
     }
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔄 تحديث', 'leaderboard'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔄 تحديث', callback_data: 'leaderboard' }, { text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('change_language', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.editMessageText('🌐 اللغة', { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🇸🇦 العربية', 'lang_ar'), Markup.button.callback('🇬🇧 English', 'lang_en')], [Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText('🌐 اللغة', { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🇸🇦 العربية', callback_data: 'lang_ar' }, { text: '🇬🇧 English', callback_data: 'lang_en' }], [{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('lang_ar', rateLimitMiddleware, async (ctx) => {
     await db.setLanguage(ctx.from.id, 'ar');
     await ctx.answerCbQuery('✅ العربية');
-    await ctx.editMessageText('✅ تم تغيير اللغة', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText('✅ تم تغيير اللغة', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('lang_en', rateLimitMiddleware, async (ctx) => {
     await db.setLanguage(ctx.from.id, 'en');
     await ctx.answerCbQuery('✅ English');
-    await ctx.editMessageText('✅ Language changed', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText('✅ Language changed', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('support', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.editMessageText(`📞 الدعم\n👤 @${ADMIN_USERNAME}\n💰 رسوم السحب: ${PLATFORM_WITHDRAW_FEE}$\n🌐 رسوم الشبكة: تتغير كل ساعة\n🧩 البيع الجزئي: شراء جزء من العرض`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.url('📨 تواصل', `https://t.me/${ADMIN_USERNAME}`)], [Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(`📞 الدعم\n👤 @${ADMIN_USERNAME}\n💰 رسوم السحب: ${PLATFORM_WITHDRAW_FEE}$\n🌐 رسوم الشبكة: تتغير كل ساعة\n🧩 البيع الجزئي: شراء جزء من العرض`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '📨 تواصل', url: `https://t.me/${ADMIN_USERNAME}` }], [{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('back_to_menu', rateLimitMiddleware, async (ctx) => {
@@ -1213,18 +1215,18 @@ bot.action('kyc_menu', rateLimitMiddleware, async (ctx) => {
     let statusText = '', actionButton = [];
     if (user.isVerified) {
         statusText = '✅ حساب موثق';
-        actionButton = [[Markup.button.callback('🔙 رجوع', 'back_to_menu')]];
+        actionButton = [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]];
     } else if (kycStatus.status === 'pending') {
         statusText = '⏳ قيد المراجعة';
-        actionButton = [[Markup.button.callback('🔙 رجوع', 'back_to_menu')]];
+        actionButton = [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]];
     } else if (kycStatus.status === 'rejected') {
         statusText = `❌ مرفوض\n${kycStatus.rejectionReason || ''}`;
-        actionButton = [[Markup.button.callback('📝 تقديم طلب', 'start_kyc'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]];
+        actionButton = [[{ text: '📝 تقديم طلب', callback_data: 'start_kyc' }, { text: '🔙 رجوع', callback_data: 'back_to_menu' }]];
     } else {
         statusText = '⚠️ حساب غير موثق';
-        actionButton = [[Markup.button.callback('📝 تقديم طلب', 'start_kyc'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]];
+        actionButton = [[{ text: '📝 تقديم طلب', callback_data: 'start_kyc' }, { text: '🔙 رجوع', callback_data: 'back_to_menu' }]];
     }
-    await ctx.editMessageText(`🆔 توثيق الهوية\n\n${statusText}`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(actionButton) });
+    await ctx.editMessageText(`🆔 توثيق الهوية\n\n${statusText}`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: actionButton } });
 });
 
 bot.action('start_kyc', rateLimitMiddleware, async (ctx) => {
@@ -1314,19 +1316,19 @@ bot.action(/reject_kyc_(.+)/, async (ctx) => {
 bot.action('pending_kyc', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
     const pending = await db.getPendingKycRequests();
-    if (!pending.length) return ctx.editMessageText('📭 لا توجد طلبات', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    if (!pending.length) return ctx.editMessageText('📭 لا توجد طلبات', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
     let text = '🆔 طلبات التوثيق\n\n';
     for (const req of pending) text += `📋 ${req._id.toString().slice(-8)} | 👤 ${req.fullName}\n`;
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('pending_withdraws', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
     const p = await db.getPendingWithdraws();
-    if (!p.length) return ctx.editMessageText('📭 لا طلبات سحب', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    if (!p.length) return ctx.editMessageText('📭 لا طلبات سحب', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
     let text = '💰 طلبات السحب\n\n';
     p.forEach(r => text += `🆔 ${r._id.toString().slice(-8)} | 👤 ${r.userId} | 💰 ${r.amount}\n`);
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.command('confirm_withdraw', async (ctx) => {
@@ -1340,10 +1342,10 @@ bot.command('confirm_withdraw', async (ctx) => {
 bot.action('pending_deposits', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
     const p = await db.getPendingDeposits();
-    if (!p.length) return ctx.editMessageText('📭 لا طلبات إيداع', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    if (!p.length) return ctx.editMessageText('📭 لا طلبات إيداع', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
     let text = '📤 طلبات الإيداع\n\n';
     p.forEach(r => text += `🆔 ${r._id.toString().slice(-8)} | 👤 ${r.userId} | 💰 ${r.amount}\n`);
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.command('confirm_deposit', async (ctx) => {
@@ -1357,22 +1359,22 @@ bot.command('confirm_deposit', async (ctx) => {
 bot.action('pending_disputes', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
     const p = await db.getDisputedTrades();
-    if (!p.length) return ctx.editMessageText('📭 لا نزاعات', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    if (!p.length) return ctx.editMessageText('📭 لا نزاعات', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
     let text = '⚠️ النزاعات\n\n';
     p.forEach(r => text += `🆔 ${r._id.toString().slice(-8)} | 💰 ${r.amount} ${r.currency}\n📝 ${r.disputeReason}\n`);
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('global_stats', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
     const s = await db.getGlobalStats();
-    await ctx.editMessageText(`📊 إحصائيات\n👥 مستخدمين: ${s.users}\n✅ موثقين: ${s.verifiedUsers}\n💰 تداول: ${s.totalTraded} USD\n🧩 البيع الجزئي: مفعل`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(`📊 إحصائيات\n👥 مستخدمين: ${s.users}\n✅ موثقين: ${s.verifiedUsers}\n💰 تداول: ${s.totalTraded} USD\n🧩 البيع الجزئي: مفعل`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('today_stats', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
     const s = await db.getTodayStats();
-    await ctx.editMessageText(`📅 إحصائيات اليوم\n👥 جدد: ${s?.newUsers || 0}\n📈 صفقات: ${s?.totalTrades || 0}`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(`📅 إحصائيات اليوم\n👥 جدد: ${s?.newUsers || 0}\n📈 صفقات: ${s?.totalTrades || 0}`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('search_user', async (ctx) => {
@@ -1386,17 +1388,17 @@ bot.action('banned_users', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
     const now = Date.now();
     const bans = [...bannedUsers.entries()].filter(([_, b]) => b.expires > now || b.permanent);
-    if (!bans.length) return ctx.editMessageText('✅ لا يوجد محظورين', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    if (!bans.length) return ctx.editMessageText('✅ لا يوجد محظورين', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
     let text = '🚫 المحظورين\n';
     bans.forEach(([id, b]) => text += `🆔 ${id}\n⏰ ${b.permanent ? 'دائم' : Math.ceil((b.expires - now)/60000)+' دقيقة'}\n`);
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔓 رفع الكل', 'unban_all'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔓 رفع الكل', callback_data: 'unban_all' }, { text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.action('unban_all', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
     bannedUsers.clear(); userWarningCount.clear(); userActionCount.clear();
     await ctx.answerCbQuery('✅ تم رفع الحظر');
-    await ctx.editMessageText('✅ تم رفع الحظر', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText('✅ تم رفع الحظر', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'back_to_menu' }]] } });
 });
 
 bot.on('text', messageRateLimitMiddleware, async (ctx) => {
@@ -1409,7 +1411,23 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
         await ctx.reply(text);
         delete ctx.session.state;
     }
+    
+    if (ctx.session?.state === 'reject_kyc_reason' && isAdmin(ctx.from.id)) {
+        const reason = ctx.message.text;
+        const requestId = ctx.session.requestId;
+        const pendingRequests = await db.getPendingKycRequests();
+        const targetRequest = pendingRequests.find(req => req._id.toString().slice(-8) === requestId);
+        if (!targetRequest) return ctx.reply('❌ لم يتم العثور');
+        const result = await db.rejectKyc(targetRequest._id, ctx.from.id, reason);
+        await ctx.reply(`✅ تم رفض الطلب #${requestId}\nالسبب: ${reason}`);
+        if (result.userId) await bot.telegram.sendMessage(result.userId, result.message);
+        delete ctx.session.state;
+        delete ctx.session.requestId;
+    }
 });
+
+// ✅ تصدير البوت لاستخدامه في database.js
+module.exports.bot = bot;
 
 // تشغيل البوت
 bot.launch().then(() => {
