@@ -137,37 +137,33 @@ const blacklistSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
-// ========== نموذج عروض P2P (معدل لدعم التجزئة) ==========
+// ========== نموذج عروض P2P ==========
 const p2pOfferSchema = new mongoose.Schema({
     userId: { type: Number, required: true, index: true },
     type: { type: String, enum: ['buy', 'sell'], required: true },
     currency: { type: String, required: true },
-    fiatAmount: { type: Number, required: true },        // المبلغ الأصلي
+    fiatAmount: { type: Number, required: true },
     price: { type: Number, required: true },
     paymentMethod: { type: String, required: true },
     paymentDetails: { type: String, default: '' },
     bankName: { type: String, default: '' },
     bankAccountNumber: { type: String, default: '' },
     bankAccountName: { type: String, default: '' },
-    minAmount: { type: Number, default: 1 },             // الحد الأدنى للشراء (1 دولار)
-    maxAmount: { type: Number, default: 100000 },        // الحد الأقصى للشراء
-    remainingAmount: { type: Number, default: 0 },       // المبلغ المتبقي للبيع (جديد)
-    originalAmount: { type: Number, default: 0 },        // المبلغ الأصلي (جديد)
-    isPartial: { type: Boolean, default: true },         // هل يقبل التجزئة (جديد)
+    minAmount: { type: Number, default: 10 },
+    maxAmount: { type: Number, default: 100000 },
     status: { type: String, enum: ['active', 'pending', 'completed', 'cancelled'], default: 'active' },
     counterpartyId: { type: Number, default: null },
     createdAt: { type: Date, default: Date.now },
     completedAt: { type: Date, default: null }
 });
 
-// ========== نموذج الصفقات (معدل لدعم التجزئة) ==========
+// ========== نموذج الصفقات ==========
 const tradeSchema = new mongoose.Schema({
     offerId: { type: mongoose.Schema.Types.ObjectId, ref: 'P2pOffer' },
     buyerId: { type: Number, required: true },
     sellerId: { type: Number, required: true },
     currency: { type: String, required: true },
-    amount: { type: Number, required: true },            // المبلغ المشترى (قد يكون أقل من fiatAmount)
-    originalOfferAmount: { type: Number, default: 0 },   // المبلغ الأصلي للعرض (جديد)
+    amount: { type: Number, required: true },
     price: { type: Number, required: true },
     totalUsd: { type: Number, required: true },
     fee: { type: Number, required: true },
@@ -175,7 +171,6 @@ const tradeSchema = new mongoose.Schema({
     paymentProof: { type: String, default: '' },
     buyerBankDetails: { type: String, default: '' },
     sellerBankDetails: { type: String, default: '' },
-    isPartialTrade: { type: Boolean, default: false },   // هل هي صفقة جزئية (جديد)
     status: { 
         type: String, 
         enum: ['pending', 'paid', 'released', 'disputed', 'completed', 'cancelled'], 
@@ -192,7 +187,7 @@ const tradeSchema = new mongoose.Schema({
     completedAt: { type: Date, default: null }
 });
 
-// ========== نموذج طلبات الإيداع ==========
+// ========== نماذج الإيداع والسحب ==========
 const depositRequestSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
     amount: { type: Number, required: true },
@@ -207,7 +202,6 @@ const depositRequestSchema = new mongoose.Schema({
     completedAt: { type: Date, default: null }
 });
 
-// ========== نموذج طلبات السحب ==========
 const withdrawRequestSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
     amount: { type: Number, required: true },
@@ -217,7 +211,6 @@ const withdrawRequestSchema = new mongoose.Schema({
     status: { type: String, enum: ['pending', 'approved', 'rejected', 'completed'], default: 'pending' },
     transactionHash: { type: String, default: '' },
     fee: { type: Number, default: 0 },
-    networkFee: { type: Number, default: 0 },            // رسوم الشبكة (جديد)
     twoFACode: { type: String, default: '' },
     twoFAVerified: { type: Boolean, default: false },
     approvedBy: { type: Number, default: null },
@@ -251,7 +244,7 @@ const dailyStatsSchema = new mongoose.Schema({
     securityAlerts: { type: Number, default: 0 }
 });
 
-// ========== نماذج الدردشة والتذكير ==========
+// ========== نماذج الدردشة والتذكير (الجديدة) ==========
 
 // نموذج رسائل الدردشة
 const chatMessageSchema = new mongoose.Schema({
@@ -260,7 +253,7 @@ const chatMessageSchema = new mongoose.Schema({
     receiverId: { type: Number, required: true },
     message: { type: String, default: '' },
     messageType: { type: String, enum: ['text', 'image', 'system', 'reminder'], default: 'text' },
-    imageFileId: { type: String, default: '' },
+    imageFileId: { type: String, default: '' },  // file_id من تلجرام للصور
     isRead: { type: Boolean, default: false },
     readAt: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now }
@@ -273,7 +266,7 @@ const reminderSchema = new mongoose.Schema({
     reminderCount: { type: Number, default: 0 },
     nextReminderAt: { type: Date, default: null },
     isActive: { type: Boolean, default: true },
-    lastMessageId: { type: String, default: '' }
+    lastMessageId: { type: String, default: '' }  // لتحديث الرسالة بدلاً من إرسال رسالة جديدة
 });
 
 // ========== إنشاء الفهارس (Indexes) ==========
@@ -290,7 +283,6 @@ p2pOfferSchema.index({ type: 1 });
 p2pOfferSchema.index({ currency: 1 });
 p2pOfferSchema.index({ price: 1 });
 p2pOfferSchema.index({ createdAt: -1 });
-p2pOfferSchema.index({ remainingAmount: 1 });  // فهرس جديد للعروض الجزئية
 
 tradeSchema.index({ buyerId: 1 });
 tradeSchema.index({ sellerId: 1 });
@@ -317,6 +309,7 @@ auditLogSchema.index({ timestamp: -1 });
 
 dailyStatsSchema.index({ date: 1 });
 
+// فهارس الدردشة الجديدة
 chatMessageSchema.index({ tradeId: 1 });
 chatMessageSchema.index({ createdAt: -1 });
 chatMessageSchema.index({ senderId: 1 });
@@ -339,6 +332,8 @@ const DailyStats = mongoose.model('DailyStats', dailyStatsSchema);
 const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 const Report = mongoose.model('Report', reportSchema);
 const Blacklist = mongoose.model('Blacklist', blacklistSchema);
+
+// النماذج الجديدة
 const ChatMessage = mongoose.model('ChatMessage', chatMessageSchema);
 const Reminder = mongoose.model('Reminder', reminderSchema);
 
@@ -356,6 +351,6 @@ module.exports = {
     AuditLog,
     Report,
     Blacklist,
-    ChatMessage,
-    Reminder
+    ChatMessage,   // <-- نموذج الدردشة
+    Reminder       // <-- نموذج التذكير
 };
