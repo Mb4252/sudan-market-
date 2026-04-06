@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+اconst mongoose = require('mongoose');
 const crypto = require('crypto');
 const { ethers } = require('ethers');
 const { Connection, Keypair, LAMPORTS_PER_SOL } = require('@solana/web3.js');
