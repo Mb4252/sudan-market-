@@ -1429,23 +1429,42 @@ bot.on('text', messageRateLimitMiddleware, async (ctx) => {
 // ✅ تصدير البوت لاستخدامه في database.js
 module.exports.bot = bot;
 // ========== تشغيل البوت ==========
-console.log('🔄 Starting bot...');
+// ========== تشغيل البوت مع Webhook (لـ Render.com) ==========
+console.log('🔄 Setting up bot with webhook...');
 
-// تأكد من وجود التوكن
 if (!process.env.BOT_TOKEN) {
-    console.error('❌ BOT_TOKEN is missing! Please check .env file');
+    console.error('❌ BOT_TOKEN is missing!');
 } else {
-    bot.launch().then(() => {
-        console.log('🚀 P2P Exchange Bot running');
-        console.log('👑 Admins:', ADMIN_IDS.join(', '));
-        console.log('💰 Platform Fees: Withdraw=' + PLATFORM_WITHDRAW_FEE + '$, Trade=' + PLATFORM_TRADE_FEE + '$');
-        console.log('🧩 Partial Fill: Active');
-        console.log('💬 Chat System: Active');
-        console.log('🎁 Referral System: Active');
-    }).catch(err => {
-        console.error('❌ Bot failed to start:', err.message);
-    });
+    const WEBHOOK_URL = `${WEBAPP_URL}/webhook/${process.env.BOT_TOKEN}`;
+    
+    // حذف أي webhook موجود
+    await bot.telegram.deleteWebhook();
+    console.log('✅ Old webhook deleted');
+    
+    // تعيين webhook جديد
+    await bot.telegram.setWebhook(WEBHOOK_URL);
+    console.log('✅ Webhook set to:', WEBHOOK_URL);
+    
+    // الحصول على معلومات webhook للتحقق
+    const webhookInfo = await bot.telegram.getWebhookInfo();
+    console.log('📡 Webhook Info:', webhookInfo);
+    
+    console.log('🚀 Bot is ready with webhook!');
 }
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+// إضافة مسار webhook في Express
+app.post(`/webhook/${process.env.BOT_TOKEN}`, express.json(), (req, res) => {
+    bot.handleUpdate(req.body);
+    res.sendStatus(200);
+});
+
+// أوامر بسيطة للاختبار
+bot.command('start', (ctx) => {
+    ctx.reply('✅ البوت يعمل! مرحباً ' + ctx.from.first_name);
+});
+
+bot.command('ping', (ctx) => {
+    ctx.reply('🏓 Pong!');
+});
+
+console.log('🌐 Web server running on port', PORT);
