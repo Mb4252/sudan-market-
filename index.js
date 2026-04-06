@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Telegraf, Markup } = require('telegraf');
+const { Telegraf } = require('telegraf');
 const db = require('./database');
 const express = require('express');
 const path = require('path');
@@ -162,7 +162,13 @@ app.get('/api/offers', async (req, res) => {
 
 app.post('/api/offer/create', async (req, res) => res.json(await db.createOffer(parseInt(req.body.user_id), req.body.type, req.body.currency, parseFloat(req.body.fiatAmount), parseFloat(req.body.price), req.body.paymentMethod, req.body.paymentDetails, req.body.bankName, req.body.bankAccountNumber, req.body.bankAccountName, parseFloat(req.body.minAmount), parseFloat(req.body.maxAmount))));
 app.post('/api/offer/cancel', async (req, res) => res.json(await db.cancelOffer(req.body.offer_id, parseInt(req.body.user_id))));
-app.post('/api/trade/start', async (req, res) => res.json(await db.startTrade(req.body.offer_id, parseInt(req.body.user_id))));
+
+// ========== نقطة بدء الصفقة مع دعم البيع الجزئي ==========
+app.post('/api/trade/start', async (req, res) => {
+    const requestedAmount = req.body.requested_amount ? parseFloat(req.body.requested_amount) : null;
+    res.json(await db.startTrade(req.body.offer_id, parseInt(req.body.user_id), requestedAmount));
+});
+
 app.post('/api/trade/confirm', async (req, res) => res.json(await db.confirmPayment(req.body.trade_id, parseInt(req.body.user_id), req.body.proof_image)));
 app.post('/api/trade/release', async (req, res) => res.json(await db.releaseCrystals(req.body.trade_id, parseInt(req.body.user_id), req.body.twofa_code || null, req.ip, req.headers['user-agent'] || '')));
 app.post('/api/trade/dispute', async (req, res) => res.json(await db.openDispute(req.body.trade_id, parseInt(req.body.user_id), req.body.reason)));
@@ -227,7 +233,7 @@ app.get('/api/user/referral/:userId', async (req, res) => {
             referralEarnings: 0, 
             referralCommissionRate: 10,
             referrals: [],
-            referralLink: `https://t.me/${my_edu_199311_bot}?start=${userId}`
+            referralLink: `https://t.me/${BOT_USERNAME}?start=${userId}`
         });
     }
 });
@@ -607,6 +613,7 @@ const adminKeyboard = Markup.inlineKeyboard([
 ]);
 
 const instructionsKeyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('🧩 البيع الجزئي', 'partial_instructions')],
     [Markup.button.callback('📥 تعليمات الإيداع', 'deposit_instructions')],
     [Markup.button.callback('📤 تعليمات السحب', 'withdraw_instructions')],
     [Markup.button.callback('💵 تحويل الدولار', 'convert_usd_instructions')],
@@ -627,6 +634,7 @@ bot.start(async (ctx) => {
     await ctx.reply(
         `✨ *مرحباً بك في منصة P2P للتداول!* ✨\n\n` +
         `👤 *المستخدم:* ${user.first_name}\n\n` +
+        `🧩 *ميزة البيع الجزئي:* يمكنك شراء جزء من أي عرض!\n\n` +
         `🔄 *جاري تحميل بياناتك...*\n` +
         `🚀 *اضغط على الزر أدناه لفتح المنصة*`,
         { parse_mode: 'Markdown', ...startKeyboard }
@@ -653,6 +661,7 @@ bot.start(async (ctx) => {
                 `📈 *نسبة النجاح:* ${stats.successRate || 100}%\n` +
                 `${onlineStatus.statusText}\n` +
                 `${verifiedMsg}\n\n` +
+                `🧩 *ميزة البيع الجزئي:* يمكنك شراء جزء من العرض!\n\n` +
                 `💰 *رسوم المنصة:*\n` +
                 `• سحب: ${PLATFORM_WITHDRAW_FEE} $ (ثابت)\n` +
                 `• تداول P2P: ${PLATFORM_TRADE_FEE} $ (ثابت)\n` +
@@ -665,13 +674,41 @@ bot.start(async (ctx) => {
     }, 200);
 });
 
-// ========== أزرار التعليمات الجديدة ==========
+// ========== تعليمات البيع الجزئي الجديدة ==========
+bot.action('partial_instructions', rateLimitMiddleware, async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `🧩 *ميزة البيع الجزئي (Partial Fill)*\n\n` +
+        `📖 *ما هي؟*\n` +
+        `يمكنك شراء جزء من عرض البيع بدلاً من المبلغ الكامل.\n\n` +
+        `📝 *كيف تعمل؟*\n` +
+        `1️⃣ اذهب إلى "السوق" واختر عروض البيع\n` +
+        `2️⃣ بجانب كل عرض، يوجد حقل "المبلغ المطلوب"\n` +
+        `3️⃣ أدخل المبلغ الذي تريد شراءه\n` +
+        `4️⃣ اضغط "شراء" وابدأ الصفقة\n` +
+        `5️⃣ بعد الدفع، سيحرر البائع المبلغ الذي اشتريته فقط\n\n` +
+        `✅ *مثال:*\n` +
+        `• أحمد يعرض 100 دولار للبيع\n` +
+        `• محمد يريد شراء 10 دولار فقط\n` +
+        `• محمد يدخل 10 في حقل المبلغ\n` +
+        `• يدفع محمد 10 دولار\n` +
+        `• أحمد يحرر 10 دولار فقط\n` +
+        `• يبقى 90 دولار متاحة لمشترين آخرين\n\n` +
+        `🎯 *الفوائد:*\n` +
+        `• مرونة أكبر للمشترين\n` +
+        `• سيولة أفضل للبائعين\n` +
+        `• تقليل المخاطر للمبتدئين`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
+    );
+});
+
 bot.action('fee_details', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.editMessageText(
         `💰 *تفصيل رسوم المنصة*\n\n` +
         `🏢 *رسوم السحب:* ${PLATFORM_WITHDRAW_FEE} $ (ثابتة)\n` +
-        `🏢 *رسوم التداول P2P:* ${PLATFORM_TRADE_FEE} $ (ثابتة)\n\n` +
+        `🏢 *رسوم التداول P2P:* ${PLATFORM_TRADE_FEE} $ (ثابتة)\n` +
+        `🧩 *رسوم الصفقات الجزئية:* نفس رسوم الصفقات العادية\n\n` +
         `🌐 *رسوم الشبكة الحالية:*\n` +
         `• 🟡 BNB (BEP-20): ~${cachedNetworkFees.bnb} $\n` +
         `• 🟣 POLYGON: ~${cachedNetworkFees.polygon} $\n` +
@@ -688,6 +725,7 @@ bot.action('fee_details', rateLimitMiddleware, async (ctx) => {
 bot.command('help', async (ctx) => {
     await ctx.reply(
         `📖 *قائمة المساعدة*\n\n` +
+        `🧩 /partial_help - تعليمات البيع الجزئي\n` +
         `📥 /deposit_help - تعليمات الإيداع\n` +
         `📤 /withdraw_help - تعليمات السحب\n` +
         `💵 /convert_help - تحويل الدولار\n` +
@@ -699,11 +737,34 @@ bot.command('help', async (ctx) => {
     );
 });
 
+bot.command('partial_help', async (ctx) => {
+    await ctx.reply(
+        `🧩 *تعليمات البيع الجزئي*\n\n` +
+        `📖 *ما هي؟* شراء جزء من عرض البيع\n\n` +
+        `📝 *الخطوات:*\n` +
+        `1. اذهب إلى "السوق" ← "عروض البيع"\n` +
+        `2. أدخل المبلغ المطلوب في الحقل\n` +
+        `3. اضغط "شراء"\n` +
+        `4. ادفع المبلغ المطلوب فقط\n` +
+        `5. البائع يحرر المبلغ الذي اشتريته\n\n` +
+        `✅ *مثال:*\n` +
+        `• العرض: 100 دولار\n` +
+        `• تريد: 10 دولار\n` +
+        `• تدخل: 10\n` +
+        `• تدفع: 10\n` +
+        `• تحصل على: 10 دولار\n` +
+        `• الباقي: 90 دولار متاح للآخرين\n\n` +
+        `💰 *الحد الأدنى للشراء الجزئي:* حسب التاجر (عادة 10)`,
+        { parse_mode: 'Markdown' }
+    );
+});
+
 bot.command('fees', async (ctx) => {
     await ctx.reply(
         `💰 *تفصيل الرسوم*\n\n` +
         `🏢 *رسوم السحب:* ${PLATFORM_WITHDRAW_FEE} $ (ثابتة)\n` +
-        `🏢 *رسوم التداول:* ${PLATFORM_TRADE_FEE} $ (ثابتة)\n\n` +
+        `🏢 *رسوم التداول:* ${PLATFORM_TRADE_FEE} $ (ثابتة)\n` +
+        `🧩 *رسوم الصفقات الجزئية:* نفس رسوم الصفقات العادية\n\n` +
         `🌐 *رسوم الشبكة الحالية:*\n` +
         `• BNB: ~${cachedNetworkFees.bnb} $\n` +
         `• POLYGON: ~${cachedNetworkFees.polygon} $\n` +
@@ -775,20 +836,23 @@ bot.command('networks_help', async (ctx) => {
 bot.command('faq', async (ctx) => {
     await ctx.reply(
         `❓ *الأسئلة الشائعة*\n\n` +
+        `🧩 *ما هو البيع الجزئي؟* شراء جزء من عرض البيع\n` +
         `💵 *عمولة الإيداع؟* مجاني (رسوم الشبكة فقط)\n` +
         `💰 *عمولة السحب؟* ${PLATFORM_WITHDRAW_FEE} $ (ثابتة) + رسوم الشبكة\n` +
         `📊 *عمولة التداول P2P؟* ${PLATFORM_TRADE_FEE} $ (ثابتة)\n` +
+        `🧩 *رسوم الصفقات الجزئية؟* نفس رسوم الصفقات العادية\n` +
         `⏱️ *وقت وصول الأموال؟* إيداع 5-30د، سحب حتى 24 ساعة\n` +
         `🔐 *هل أحتاج 2FA؟* إلزامي للمبالغ فوق 100 دولار\n` +
         `🌐 *ما هي الشبكات المدعومة؟* BEP-20, Polygon, Solana, Aptos\n` +
         `💬 *هل توجد دردشة؟* نعم، داخل التطبيق\n` +
         `💰 *الحد الأدنى للإيداع؟* 1 $\n` +
-        `💰 *الحد الأدنى للسحب؟* 5 $`,
+        `💰 *الحد الأدنى للسحب؟* 5 $\n` +
+        `🧩 *الحد الأدنى للشراء الجزئي؟* حسب التاجر (عادة 10)`,
         { parse_mode: 'Markdown' }
     );
 });
 
-// ========== باقي أوامر البوت ==========
+// ========== أوامر البوت الأخرى ==========
 bot.command('my_id', async (ctx) => {
     await ctx.reply(`🆔 *معرفك:* \`${ctx.from.id}\``, { parse_mode: 'Markdown' });
 });
@@ -828,9 +892,10 @@ bot.action('offers_sell', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const offers = await db.getOffers('sell', null, 'price', 'asc', 15);
     if (!offers.offers?.length) return ctx.editMessageText('📭 لا توجد عروض', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
-    let text = '🟢 *عروض البيع*\n\n';
+    let text = '🟢 *عروض البيع*\n🧩 *يمكنك شراء جزء من أي عرض*\n\n';
     for (const o of offers.offers.slice(0, 10)) {
-        text += `👤 ${o.firstName || o.username}\n💰 ${o.fiatAmount} ${o.currency} | 📊 ${o.price}\n🆔 \`${o._id}\`\n━━━━━━━━━━━━━━━━━━\n`;
+        const remaining = o.remainingAmount || o.fiatAmount;
+        text += `👤 ${o.firstName || o.username}\n💰 ${o.fiatAmount} ${o.currency} | 📊 ${o.price}\n📦 متبقي: ${remaining} ${o.currency}\n🆔 \`${o._id}\`\n━━━━━━━━━━━━━━━━━━\n`;
     }
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔄 تحديث', 'offers_sell'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
@@ -856,7 +921,7 @@ bot.action('create_offer', rateLimitMiddleware, async (ctx) => {
         return;
     }
     await ctx.editMessageText(
-        `➕ *إنشاء عرض*\n/sell [العملة] [المبلغ] [السعر] [طريقة] [تفاصيل]\n/buy [العملة] [المبلغ] [السعر] [طريقة] [تفاصيل]\nمثال: /sell SDG 100000 560 بنكي "بنك الخرطوم"\n\n💰 *رسوم التداول:* ${PLATFORM_TRADE_FEE} $ (ثابتة)`,
+        `➕ *إنشاء عرض*\n/sell [العملة] [المبلغ] [السعر] [طريقة] [تفاصيل]\n/buy [العملة] [المبلغ] [السعر] [طريقة] [تفاصيل]\nمثال: /sell SDG 100000 560 بنكي "بنك الخرطوم"\n\n🧩 *عروض البيع تدعم البيع الجزئي*\n💰 *رسوم التداول:* ${PLATFORM_TRADE_FEE} $ (ثابتة)`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) }
     );
 });
@@ -876,7 +941,7 @@ bot.command('sell', async (ctx) => {
     if (isNaN(fiatAmount) || fiatAmount <= 0) return ctx.reply('❌ مبلغ غير صحيح');
     if (isNaN(price) || price <= 0) return ctx.reply('❌ سعر غير صحيح');
     const result = await db.createOffer(ctx.from.id, 'sell', currency, fiatAmount, price, paymentMethod, paymentDetails, '', '', '', 10, 100000);
-    await ctx.reply(result.message + `\n💰 *رسوم التداول:* ${PLATFORM_TRADE_FEE} $`, { parse_mode: 'Markdown' });
+    await ctx.reply(result.message + `\n🧩 *هذا العرض يدعم البيع الجزئي*\n💰 *رسوم التداول:* ${PLATFORM_TRADE_FEE} $`, { parse_mode: 'Markdown' });
 });
 
 bot.command('buy', async (ctx) => {
@@ -899,18 +964,22 @@ bot.command('buy', async (ctx) => {
 bot.command('buy_offer', async (ctx) => {
     const user = await db.getUser(ctx.from.id);
     if (!user.isVerified) return ctx.reply('⚠️ يرجى توثيق حسابك');
-    const id = ctx.message.text.split(' ')[1];
-    if (!id) return ctx.reply('❌ /buy_offer [رقم العرض]');
-    const result = await db.startTrade(id, ctx.from.id);
+    const args = ctx.message.text.split(' ');
+    const id = args[1];
+    const amount = args[2] ? parseFloat(args[2]) : null;
+    if (!id) return ctx.reply('❌ /buy_offer [رقم العرض] [المبلغ_المطلوب_اختياري]');
+    const result = await db.startTrade(id, ctx.from.id, amount);
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
 });
 
 bot.command('sell_offer', async (ctx) => {
     const user = await db.getUser(ctx.from.id);
     if (!user.isVerified) return ctx.reply('⚠️ يرجى توثيق حسابك');
-    const id = ctx.message.text.split(' ')[1];
-    if (!id) return ctx.reply('❌ /sell_offer [رقم العرض]');
-    const result = await db.startTrade(id, ctx.from.id);
+    const args = ctx.message.text.split(' ');
+    const id = args[1];
+    const amount = args[2] ? parseFloat(args[2]) : null;
+    if (!id) return ctx.reply('❌ /sell_offer [رقم العرض] [المبلغ_المطلوب_اختياري]');
+    const result = await db.startTrade(id, ctx.from.id, amount);
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
 });
 
@@ -982,7 +1051,7 @@ bot.command('rate', async (ctx) => {
 // ========== أزرار التعليمات ==========
 bot.action('instructions_menu', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.editMessageText(`📖 *قائمة التعليمات*`, { parse_mode: 'Markdown', ...instructionsKeyboard });
+    await ctx.editMessageText(`📖 *قائمة التعليمات*\n🧩 *جديد: ميزة البيع الجزئي*`, { parse_mode: 'Markdown', ...instructionsKeyboard });
 });
 
 bot.action('deposit_instructions', rateLimitMiddleware, async (ctx) => {
@@ -1029,7 +1098,7 @@ bot.action('supported_networks', rateLimitMiddleware, async (ctx) => {
 bot.action('faq_instructions', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.editMessageText(
-        `❓ *الأسئلة الشائعة*\n💵 إيداع: مجاني\n💰 سحب: ${PLATFORM_WITHDRAW_FEE}$ + رسوم الشبكة\n📊 تداول: ${PLATFORM_TRADE_FEE}$\n⏱️ وقت: 5-30د\n🔐 2FA: إلزامي فوق 100$\n💰 حد الإيداع: 1$\n💰 حد السحب: 5$`,
+        `❓ *الأسئلة الشائعة*\n🧩 البيع الجزئي: شراء جزء من العرض\n💵 إيداع: مجاني\n💰 سحب: ${PLATFORM_WITHDRAW_FEE}$ + رسوم الشبكة\n📊 تداول: ${PLATFORM_TRADE_FEE}$\n⏱️ وقت: 5-30د\n🔐 2FA: إلزامي فوق 100$\n💰 حد الإيداع: 1$\n💰 حد السحب: 5$`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
     );
 });
@@ -1052,7 +1121,7 @@ bot.action('my_history', rateLimitMiddleware, async (ctx) => {
 bot.action('market_stats', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const stats = await db.getMarketStats();
-    await ctx.editMessageText(`📊 السوق\n📋 ${stats.totalOffers} عرض\n💰 متوسط ${stats.avgPrice} USD`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔄 تحديث', 'market_stats'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(`📊 السوق\n📋 ${stats.totalOffers} عرض\n💰 متوسط ${stats.avgPrice} USD\n🧩 يدعم البيع الجزئي`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔄 تحديث', 'market_stats'), Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
 
 bot.action('top_merchants', rateLimitMiddleware, async (ctx) => {
@@ -1138,13 +1207,13 @@ bot.action('lang_en', rateLimitMiddleware, async (ctx) => {
 
 bot.action('support', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.editMessageText(`📞 الدعم\n👤 @${ADMIN_USERNAME}\n💰 رسوم السحب: ${PLATFORM_WITHDRAW_FEE}$\n🌐 رسوم الشبكة: تتغير كل ساعة`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.url('📨 تواصل', `https://t.me/${ADMIN_USERNAME}`)], [Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(`📞 الدعم\n👤 @${ADMIN_USERNAME}\n💰 رسوم السحب: ${PLATFORM_WITHDRAW_FEE}$\n🌐 رسوم الشبكة: تتغير كل ساعة\n🧩 البيع الجزئي: شراء جزء من العرض`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.url('📨 تواصل', `https://t.me/${ADMIN_USERNAME}`)], [Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
 
 bot.action('back_to_menu', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const stats = await db.getUserStats(ctx.from.id);
-    const text = `✨ القائمة الرئيسية\n👤 ${ctx.from.first_name}\n💵 ${stats.usdBalance.toFixed(2)} USD\n⭐ ${stats.rating.toFixed(1)}/5\n✅ ${stats.completedTrades} صفقة\n💰 رسوم السحب: ${PLATFORM_WITHDRAW_FEE}$\n💬 دردشة متاحة`;
+    const text = `✨ القائمة الرئيسية\n👤 ${ctx.from.first_name}\n💵 ${stats.usdBalance.toFixed(2)} USD\n⭐ ${stats.rating.toFixed(1)}/5\n✅ ${stats.completedTrades} صفقة\n💰 رسوم السحب: ${PLATFORM_WITHDRAW_FEE}$\n🧩 البيع الجزئي متاح\n💬 دردشة متاحة`;
     const kb = isAdmin(ctx.from.id) ? adminKeyboard : mainKeyboard;
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb });
 });
@@ -1324,7 +1393,7 @@ bot.action('pending_disputes', async (ctx) => {
 bot.action('global_stats', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
     const s = await db.getGlobalStats();
-    await ctx.editMessageText(`📊 إحصائيات\n👥 مستخدمين: ${s.users}\n✅ موثقين: ${s.verifiedUsers}\n💰 تداول: ${s.totalTraded} USD`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
+    await ctx.editMessageText(`📊 إحصائيات\n👥 مستخدمين: ${s.users}\n✅ موثقين: ${s.verifiedUsers}\n💰 تداول: ${s.totalTraded} USD\n🧩 البيع الجزئي: مفعل`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
 
 bot.action('today_stats', async (ctx) => {
@@ -1374,6 +1443,7 @@ bot.launch().then(() => {
     console.log('🚀 P2P Exchange Bot running');
     console.log('👑 Admins:', ADMIN_IDS.join(', '));
     console.log('💰 Platform Fees: Withdraw=' + PLATFORM_WITHDRAW_FEE + '$, Trade=' + PLATFORM_TRADE_FEE + '$');
+    console.log('🧩 Partial Fill: Active (buy partial amounts from sell offers)');
     console.log('💬 Chat System: Active with 15min reminders');
     console.log('🎁 Referral System: Active');
     console.log('📖 Instructions System: Active');
