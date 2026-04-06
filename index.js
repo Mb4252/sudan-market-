@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Telegraf } = require('telegraf');
+const { Telegraf, Markup } = require('telegraf');
 const db = require('./database');
 const express = require('express');
 const path = require('path');
@@ -40,17 +40,17 @@ const WEBAPP_URL = process.env.WEBAPP_URL || `https://sdm-security-bot.onrender.
 const ADMIN_IDS = [6701743450, 8181305474];
 const ADMIN_ID = ADMIN_IDS[0];
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'hmood19931130';
-const BOT_USERNAME = process.env.BOT_USERNAME || 'YourBotUsername';
+const BOT_USERNAME = process.env.BOT_USERNAME || 'my_edu_199311_bot';
 
 // رسوم المنصة الثابتة
-const PLATFORM_WITHDRAW_FEE = 0.05;  // 0.05 دولار للسحب
-const PLATFORM_TRADE_FEE = 0.05;     // 0.05 دولار للتداول
+const PLATFORM_WITHDRAW_FEE = 0.05;
+const PLATFORM_TRADE_FEE = 0.05;
 
 function isAdmin(userId) {
     return ADMIN_IDS.includes(userId);
 }
 
-// رسوم الشبكة الافتراضية (سيتم تحديثها من قاعدة البيانات)
+// رسوم الشبكة الافتراضية
 let cachedNetworkFees = {
     bnb: 0.10,
     polygon: 0.05,
@@ -60,7 +60,6 @@ let cachedNetworkFees = {
     erc20: 8.00
 };
 
-// تحديث رسوم الشبكة المخبأة كل ساعة
 async function updateCachedNetworkFees() {
     try {
         const bnbFee = db.getNetworkFee('bnb');
@@ -82,7 +81,6 @@ async function updateCachedNetworkFees() {
     }
 }
 
-// تحديث كل ساعة
 setInterval(updateCachedNetworkFees, 3600000);
 updateCachedNetworkFees();
 
@@ -90,20 +88,14 @@ const SUPPORTED_CURRENCIES = process.env.SUPPORTED_CURRENCIES
     ? process.env.SUPPORTED_CURRENCIES.split(',') 
     : ['USD', 'EUR', 'GBP', 'SAR', 'AED', 'EGP', 'SDG', 'IQD', 'JOD', 'KWD', 'QAR', 'BHD', 'OMR', 'TRY', 'INR', 'PKR'];
 
-const PAYMENT_METHODS = process.env.PAYMENT_METHODS 
-    ? process.env.PAYMENT_METHODS.split(',') 
-    : ['bank_transfer', 'paypal', 'visa', 'mastercard', 'fawry', 'instapay', 'vodafone_cash', 'orange_cash'];
-
-const SUDAN_BANKS = process.env.SUDAN_BANKS 
-    ? process.env.SUDAN_BANKS.split(',') 
-    : [
-        'Bank of Khartoum', 'Blue Nile Mashreq Bank', 'Al Salam Bank', 'Agricultural Bank',
-        'Al Baraka Bank', 'Al Nilein Bank', 'Al Shamal Islamic Bank', 'Animal Resources Bank',
-        'Bank of Sudan', 'Byblos Bank', 'Egyptian Sudanese Bank', 'Industrial Development Bank',
-        'National Bank of Abu Dhabi', 'National Bank of Egypt', 'National Bank of Sudan',
-        'Omdurman National Bank', 'Qatar National Bank', 'Saudi Sudanese Bank',
-        'Sudanese French Bank', 'United Capital Bank'
-    ];
+const SUDAN_BANKS = [
+    'Bank of Khartoum', 'Blue Nile Mashreq Bank', 'Al Salam Bank', 'Agricultural Bank',
+    'Al Baraka Bank', 'Al Nilein Bank', 'Al Shamal Islamic Bank', 'Animal Resources Bank',
+    'Bank of Sudan', 'Byblos Bank', 'Egyptian Sudanese Bank', 'Industrial Development Bank',
+    'National Bank of Abu Dhabi', 'National Bank of Egypt', 'National Bank of Sudan',
+    'Omdurman National Bank', 'Qatar National Bank', 'Saudi Sudanese Bank',
+    'Sudanese French Bank', 'United Capital Bank'
+];
 
 let bot;
 
@@ -690,14 +682,9 @@ bot.action('partial_instructions', rateLimitMiddleware, async (ctx) => {
         `✅ *مثال:*\n` +
         `• أحمد يعرض 100 دولار للبيع\n` +
         `• محمد يريد شراء 10 دولار فقط\n` +
-        `• محمد يدخل 10 في حقل المبلغ\n` +
         `• يدفع محمد 10 دولار\n` +
         `• أحمد يحرر 10 دولار فقط\n` +
-        `• يبقى 90 دولار متاحة لمشترين آخرين\n\n` +
-        `🎯 *الفوائد:*\n` +
-        `• مرونة أكبر للمشترين\n` +
-        `• سيولة أفضل للبائعين\n` +
-        `• تقليل المخاطر للمبتدئين`,
+        `• يبقى 90 دولار متاحة لمشترين آخرين`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'instructions_menu')]]) }
     );
 });
@@ -1324,20 +1311,6 @@ bot.action(/reject_kyc_(.+)/, async (ctx) => {
     ctx.session = { state: 'reject_kyc_reason', requestId };
 });
 
-bot.on('text', async (ctx) => {
-    if (ctx.session?.state === 'reject_kyc_reason' && isAdmin(ctx.from.id)) {
-        const reason = ctx.message.text;
-        const requestId = ctx.session.requestId;
-        const pendingRequests = await db.getPendingKycRequests();
-        const targetRequest = pendingRequests.find(req => req._id.toString().slice(-8) === requestId);
-        if (!targetRequest) return ctx.reply('❌ لم يتم العثور');
-        const result = await db.rejectKyc(targetRequest._id, ctx.from.id, reason);
-        await ctx.reply(`❌ تم رفض الطلب #${requestId}\nالسبب: ${reason}`);
-        if (result.userId) await bot.telegram.sendMessage(result.userId, result.message);
-        delete ctx.session.state;
-    }
-});
-
 bot.action('pending_kyc', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
     const pending = await db.getPendingKycRequests();
@@ -1444,9 +1417,11 @@ bot.launch().then(() => {
     console.log('👑 Admins:', ADMIN_IDS.join(', '));
     console.log('💰 Platform Fees: Withdraw=' + PLATFORM_WITHDRAW_FEE + '$, Trade=' + PLATFORM_TRADE_FEE + '$');
     console.log('🧩 Partial Fill: Active (buy partial amounts from sell offers)');
-    console.log('💬 Chat System: Active with 15min reminders');
+    console.log('💬 Chat System: Active');
     console.log('🎁 Referral System: Active');
     console.log('📖 Instructions System: Active');
+}).catch(err => {
+    console.error('❌ Bot failed to start:', err.message);
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
