@@ -137,7 +137,7 @@ const blacklistSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
-// ========== نموذج عروض P2P ==========
+// ========== نموذج عروض P2P مع دعم البيع الجزئي ==========
 const p2pOfferSchema = new mongoose.Schema({
     userId: { type: Number, required: true, index: true },
     type: { type: String, enum: ['buy', 'sell'], required: true },
@@ -151,19 +151,20 @@ const p2pOfferSchema = new mongoose.Schema({
     bankAccountName: { type: String, default: '' },
     minAmount: { type: Number, default: 10 },
     maxAmount: { type: Number, default: 100000 },
+    remainingAmount: { type: Number, default: null },  // ✅ المبلغ المتبقي للبيع الجزئي
     status: { type: String, enum: ['active', 'pending', 'completed', 'cancelled'], default: 'active' },
     counterpartyId: { type: Number, default: null },
     createdAt: { type: Date, default: Date.now },
     completedAt: { type: Date, default: null }
 });
 
-// ========== نموذج الصفقات ==========
+// ========== نموذج الصفقات مع دعم البيع الجزئي ==========
 const tradeSchema = new mongoose.Schema({
     offerId: { type: mongoose.Schema.Types.ObjectId, ref: 'P2pOffer' },
     buyerId: { type: Number, required: true },
     sellerId: { type: Number, required: true },
     currency: { type: String, required: true },
-    amount: { type: Number, required: true },
+    amount: { type: Number, required: true },  // المبلغ الذي تم شراؤه (قد يكون جزئياً)
     price: { type: Number, required: true },
     totalUsd: { type: Number, required: true },
     fee: { type: Number, required: true },
@@ -171,6 +172,11 @@ const tradeSchema = new mongoose.Schema({
     paymentProof: { type: String, default: '' },
     buyerBankDetails: { type: String, default: '' },
     sellerBankDetails: { type: String, default: '' },
+    
+    // ✅ حقول جديدة لدعم البيع الجزئي
+    isPartial: { type: Boolean, default: false },           // هل هذه الصفقة جزئية؟
+    originalOfferAmount: { type: Number, default: null },   // المبلغ الأصلي للعرض (للمقارنة)
+    
     status: { 
         type: String, 
         enum: ['pending', 'paid', 'released', 'disputed', 'completed', 'cancelled'], 
@@ -241,10 +247,11 @@ const dailyStatsSchema = new mongoose.Schema({
     totalReferralCommissions: { type: Number, default: 0 },
     activeOffers: { type: Number, default: 0 },
     pendingKyc: { type: Number, default: 0 },
-    securityAlerts: { type: Number, default: 0 }
+    securityAlerts: { type: Number, default: 0 },
+    partialTrades: { type: Number, default: 0 }  // ✅ عدد الصفقات الجزئية اليوم
 });
 
-// ========== نماذج الدردشة والتذكير (الجديدة) ==========
+// ========== نماذج الدردشة والتذكير ==========
 
 // نموذج رسائل الدردشة
 const chatMessageSchema = new mongoose.Schema({
@@ -253,7 +260,7 @@ const chatMessageSchema = new mongoose.Schema({
     receiverId: { type: Number, required: true },
     message: { type: String, default: '' },
     messageType: { type: String, enum: ['text', 'image', 'system', 'reminder'], default: 'text' },
-    imageFileId: { type: String, default: '' },  // file_id من تلجرام للصور
+    imageFileId: { type: String, default: '' },
     isRead: { type: Boolean, default: false },
     readAt: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now }
@@ -266,7 +273,7 @@ const reminderSchema = new mongoose.Schema({
     reminderCount: { type: Number, default: 0 },
     nextReminderAt: { type: Date, default: null },
     isActive: { type: Boolean, default: true },
-    lastMessageId: { type: String, default: '' }  // لتحديث الرسالة بدلاً من إرسال رسالة جديدة
+    lastMessageId: { type: String, default: '' }
 });
 
 // ========== إنشاء الفهارس (Indexes) ==========
@@ -283,11 +290,13 @@ p2pOfferSchema.index({ type: 1 });
 p2pOfferSchema.index({ currency: 1 });
 p2pOfferSchema.index({ price: 1 });
 p2pOfferSchema.index({ createdAt: -1 });
+p2pOfferSchema.index({ remainingAmount: 1 });  // ✅ فهرس للبحث عن العروض التي لديها مبلغ متبقي
 
 tradeSchema.index({ buyerId: 1 });
 tradeSchema.index({ sellerId: 1 });
 tradeSchema.index({ status: 1 });
 tradeSchema.index({ createdAt: -1 });
+tradeSchema.index({ isPartial: 1 });  // ✅ فهرس للبحث عن الصفقات الجزئية
 
 walletSchema.index({ userId: 1 });
 walletSchema.index({ usdBalance: 1 });
@@ -309,7 +318,7 @@ auditLogSchema.index({ timestamp: -1 });
 
 dailyStatsSchema.index({ date: 1 });
 
-// فهارس الدردشة الجديدة
+// فهارس الدردشة
 chatMessageSchema.index({ tradeId: 1 });
 chatMessageSchema.index({ createdAt: -1 });
 chatMessageSchema.index({ senderId: 1 });
@@ -351,6 +360,6 @@ module.exports = {
     AuditLog,
     Report,
     Blacklist,
-    ChatMessage,   // <-- نموذج الدردشة
-    Reminder       // <-- نموذج التذكير
+    ChatMessage,
+    Reminder
 };
