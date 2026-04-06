@@ -137,34 +137,37 @@ const blacklistSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
-// ========== نموذج عروض P2P مع دعم البيع الجزئي ==========
+// ========== نموذج عروض P2P (معدل لدعم التجزئة) ==========
 const p2pOfferSchema = new mongoose.Schema({
     userId: { type: Number, required: true, index: true },
     type: { type: String, enum: ['buy', 'sell'], required: true },
     currency: { type: String, required: true },
-    fiatAmount: { type: Number, required: true },
+    fiatAmount: { type: Number, required: true },        // المبلغ الأصلي
     price: { type: Number, required: true },
     paymentMethod: { type: String, required: true },
     paymentDetails: { type: String, default: '' },
     bankName: { type: String, default: '' },
     bankAccountNumber: { type: String, default: '' },
     bankAccountName: { type: String, default: '' },
-    minAmount: { type: Number, default: 10 },
-    maxAmount: { type: Number, default: 100000 },
-    remainingAmount: { type: Number, default: null },  // ✅ المبلغ المتبقي للبيع الجزئي
+    minAmount: { type: Number, default: 1 },             // الحد الأدنى للشراء (1 دولار)
+    maxAmount: { type: Number, default: 100000 },        // الحد الأقصى للشراء
+    remainingAmount: { type: Number, default: 0 },       // المبلغ المتبقي للبيع (جديد)
+    originalAmount: { type: Number, default: 0 },        // المبلغ الأصلي (جديد)
+    isPartial: { type: Boolean, default: true },         // هل يقبل التجزئة (جديد)
     status: { type: String, enum: ['active', 'pending', 'completed', 'cancelled'], default: 'active' },
     counterpartyId: { type: Number, default: null },
     createdAt: { type: Date, default: Date.now },
     completedAt: { type: Date, default: null }
 });
 
-// ========== نموذج الصفقات مع دعم البيع الجزئي ==========
+// ========== نموذج الصفقات (معدل لدعم التجزئة) ==========
 const tradeSchema = new mongoose.Schema({
     offerId: { type: mongoose.Schema.Types.ObjectId, ref: 'P2pOffer' },
     buyerId: { type: Number, required: true },
     sellerId: { type: Number, required: true },
     currency: { type: String, required: true },
-    amount: { type: Number, required: true },  // المبلغ الذي تم شراؤه (قد يكون جزئياً)
+    amount: { type: Number, required: true },            // المبلغ المشترى (قد يكون أقل من fiatAmount)
+    originalOfferAmount: { type: Number, default: 0 },   // المبلغ الأصلي للعرض (جديد)
     price: { type: Number, required: true },
     totalUsd: { type: Number, required: true },
     fee: { type: Number, required: true },
@@ -172,11 +175,7 @@ const tradeSchema = new mongoose.Schema({
     paymentProof: { type: String, default: '' },
     buyerBankDetails: { type: String, default: '' },
     sellerBankDetails: { type: String, default: '' },
-    
-    // ✅ حقول جديدة لدعم البيع الجزئي
-    isPartial: { type: Boolean, default: false },           // هل هذه الصفقة جزئية؟
-    originalOfferAmount: { type: Number, default: null },   // المبلغ الأصلي للعرض (للمقارنة)
-    
+    isPartialTrade: { type: Boolean, default: false },   // هل هي صفقة جزئية (جديد)
     status: { 
         type: String, 
         enum: ['pending', 'paid', 'released', 'disputed', 'completed', 'cancelled'], 
@@ -193,7 +192,7 @@ const tradeSchema = new mongoose.Schema({
     completedAt: { type: Date, default: null }
 });
 
-// ========== نماذج الإيداع والسحب ==========
+// ========== نموذج طلبات الإيداع ==========
 const depositRequestSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
     amount: { type: Number, required: true },
@@ -208,6 +207,7 @@ const depositRequestSchema = new mongoose.Schema({
     completedAt: { type: Date, default: null }
 });
 
+// ========== نموذج طلبات السحب ==========
 const withdrawRequestSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
     amount: { type: Number, required: true },
@@ -217,6 +217,7 @@ const withdrawRequestSchema = new mongoose.Schema({
     status: { type: String, enum: ['pending', 'approved', 'rejected', 'completed'], default: 'pending' },
     transactionHash: { type: String, default: '' },
     fee: { type: Number, default: 0 },
+    networkFee: { type: Number, default: 0 },            // رسوم الشبكة (جديد)
     twoFACode: { type: String, default: '' },
     twoFAVerified: { type: Boolean, default: false },
     approvedBy: { type: Number, default: null },
@@ -247,8 +248,7 @@ const dailyStatsSchema = new mongoose.Schema({
     totalReferralCommissions: { type: Number, default: 0 },
     activeOffers: { type: Number, default: 0 },
     pendingKyc: { type: Number, default: 0 },
-    securityAlerts: { type: Number, default: 0 },
-    partialTrades: { type: Number, default: 0 }  // ✅ عدد الصفقات الجزئية اليوم
+    securityAlerts: { type: Number, default: 0 }
 });
 
 // ========== نماذج الدردشة والتذكير ==========
@@ -290,13 +290,12 @@ p2pOfferSchema.index({ type: 1 });
 p2pOfferSchema.index({ currency: 1 });
 p2pOfferSchema.index({ price: 1 });
 p2pOfferSchema.index({ createdAt: -1 });
-p2pOfferSchema.index({ remainingAmount: 1 });  // ✅ فهرس للبحث عن العروض التي لديها مبلغ متبقي
+p2pOfferSchema.index({ remainingAmount: 1 });  // فهرس جديد للعروض الجزئية
 
 tradeSchema.index({ buyerId: 1 });
 tradeSchema.index({ sellerId: 1 });
 tradeSchema.index({ status: 1 });
 tradeSchema.index({ createdAt: -1 });
-tradeSchema.index({ isPartial: 1 });  // ✅ فهرس للبحث عن الصفقات الجزئية
 
 walletSchema.index({ userId: 1 });
 walletSchema.index({ usdBalance: 1 });
@@ -318,7 +317,6 @@ auditLogSchema.index({ timestamp: -1 });
 
 dailyStatsSchema.index({ date: 1 });
 
-// فهارس الدردشة
 chatMessageSchema.index({ tradeId: 1 });
 chatMessageSchema.index({ createdAt: -1 });
 chatMessageSchema.index({ senderId: 1 });
@@ -341,8 +339,6 @@ const DailyStats = mongoose.model('DailyStats', dailyStatsSchema);
 const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 const Report = mongoose.model('Report', reportSchema);
 const Blacklist = mongoose.model('Blacklist', blacklistSchema);
-
-// النماذج الجديدة
 const ChatMessage = mongoose.model('ChatMessage', chatMessageSchema);
 const Reminder = mongoose.model('Reminder', reminderSchema);
 
