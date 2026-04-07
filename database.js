@@ -388,7 +388,6 @@ class Database {
             if (referrerId && referrerId !== userId) {
                 validReferrer = await User.findOne({ userId: referrerId });
                 if (validReferrer && !validReferrer.isBanned && !validReferrer.isLocked) {
-                    // فقط زيادة عدد المدعوين، بدون مكافأة 5 دولار
                     await User.updateOne({ userId: referrerId }, { 
                         $inc: { referralCount: 1 },
                         $push: { referrals: { userId: userId, joinedAt: new Date(), totalCommission: 0, earned: 0 } }
@@ -553,11 +552,11 @@ class Database {
     }
 
     async getUserOffersHistory(userId, limit = 20) {
-        return await P2pOffer.find({ userId }).sort({ createdAt: -1 }).limit(limit).select('type currency fiatAmount price status createdAt completedAt');
+        return await P2pOffer.find({ userId }).sort({ createdAt: -1 }).limit(limit).select('type currency fiatAmount price status createdAt completedAt remainingAmount');
     }
 
     async getUserTradesHistory(userId, limit = 20) {
-        const trades = await Trade.find({ $or: [{ buyerId: userId }, { sellerId: userId }] }).sort({ createdAt: -1 }).limit(limit).select('amount currency price status createdAt completedAt paidAt buyerId sellerId fee totalUsd');
+        const trades = await Trade.find({ $or: [{ buyerId: userId }, { sellerId: userId }] }).sort({ createdAt: -1 }).limit(limit).select('amount currency price status createdAt completedAt paidAt buyerId sellerId fee totalUsd isPartial');
         for (const trade of trades) {
             const otherId = trade.buyerId === userId ? trade.sellerId : trade.buyerId;
             const otherUser = await User.findOne({ userId: otherId }).select('firstName username');
@@ -587,6 +586,7 @@ class Database {
         return { totalOffers, avgPrice: parseFloat(avgPrice), mostActiveCurrency, totalTraders, totalVolume: totalVolume[0]?.total || 0 };
     }
 
+    // ========== إنشاء عرض مع دعم البيع بالتجزئة ==========
     async createOffer(userId, type, currency, fiatAmount, price, paymentMethod, paymentDetails, bankName, bankAccountNumber, bankAccountName, minAmount, maxAmount) {
         const user = await this.getUser(userId);
         if (!user) return { success: false, message: 'المستخدم غير موجود' };
@@ -597,17 +597,33 @@ class Database {
         const wallet = await this.getUserWallet(userId);
         const usdValue = fiatAmount / price;
         if (type === 'sell' && wallet.usdBalance < usdValue) return { success: false, message: `❌ رصيد غير كافٍ! لديك ${wallet.usdBalance.toFixed(2)} USD` };
-        const offer = await P2pOffer.create({ userId, type, currency, fiatAmount, price, paymentMethod, paymentDetails, bankName, bankAccountNumber, bankAccountName, minAmount: minAmount || 10, maxAmount: maxAmount || 100000 });
+        
+        // إنشاء العرض مع remainingAmount
+        const offer = await P2pOffer.create({ 
+            userId, type, currency, 
+            fiatAmount, 
+            remainingAmount: fiatAmount,  // الكمية المتبقية للبيع بالتجزئة
+            price, paymentMethod, paymentDetails, 
+            bankName, bankAccountNumber, bankAccountName, 
+            minAmount: minAmount || 10, 
+            maxAmount: maxAmount || 100000 
+        });
+        
         await this.updateDailyStats('activeOffers', 1);
         await this.addAuditLog(userId, 'create_offer', { offerId: offer._id, type, currency, amount: fiatAmount }, '', '');
         await this.updateLastSeen(userId);
         return { success: true, offerId: offer._id, message: `✅ تم إنشاء عرض ${type === 'sell' ? 'بيع' : 'شراء'}!` };
     }
 
+    // ========== جلب العروض مع remainingAmount ==========
     async getOffers(type = null, currency = null, sortBy = 'price', order = 'asc', limit = 50, offset = 0) {
         const query = { status: 'active' };
         if (type) query.type = type;
         if (currency && currency !== '') query.currency = currency;
+        // للبيع: نعرض فقط العروض التي لديها كمية متبقية > 0
+        if (type === 'sell') {
+            query.remainingAmount = { $gt: 0 };
+        }
         const sort = {};
         sort[sortBy] = order === 'asc' ? 1 : -1;
         const offers = await P2pOffer.find(query).sort(sort).skip(offset).limit(limit).lean();
@@ -636,17 +652,29 @@ class Database {
             if (user?.rating > 4.5) badges.push('🏅 ممتاز');
             if (user?.isOnline) badges.push('🟢 متصل');
             return {
-                ...offer, username: user?.username, firstName: user?.firstName, rating: user?.rating || 5.0,
-                completedTrades: user?.completedTrades || 0, successRate: user?.successRate || 100,
-                isVerified: user?.isVerified || false, isMerchant: user?.isMerchant || false,
-                isOnline: user?.isOnline || false, onlineStatus: user?.onlineStatus || 'غير معروف',
-                trustBadge, badges: badges.join(' '), minAmount: offer.minAmount || 10, maxAmount: offer.maxAmount || 100000
+                ...offer, 
+                username: user?.username, 
+                firstName: user?.firstName, 
+                rating: user?.rating || 5.0,
+                completedTrades: user?.completedTrades || 0, 
+                successRate: user?.successRate || 100,
+                isVerified: user?.isVerified || false, 
+                isMerchant: user?.isMerchant || false,
+                isOnline: user?.isOnline || false, 
+                onlineStatus: user?.onlineStatus || 'غير معروف',
+                trustBadge, 
+                badges: badges.join(' '), 
+                minAmount: offer.minAmount || 10, 
+                maxAmount: offer.maxAmount || 100000,
+                remainingAmount: offer.remainingAmount || offer.fiatAmount
             };
         });
         return { offers: results, total };
     }
 
-    async getUserOffers(userId) { return await P2pOffer.find({ userId, status: 'active' }).sort({ createdAt: -1 }).lean(); }
+    async getUserOffers(userId) { 
+        return await P2pOffer.find({ userId, status: 'active' }).sort({ createdAt: -1 }).lean(); 
+    }
 
     async cancelOffer(offerId, userId) {
         const offer = await P2pOffer.findOne({ _id: offerId, userId, status: 'active' });
@@ -658,54 +686,108 @@ class Database {
         return { success: true, message: '✅ تم إلغاء العرض' };
     }
 
-    async startTrade(offerId, buyerId) {
+    // ========== بدء صفقة مع دعم البيع بالتجزئة (Partial Fill) ==========
+    async startTrade(offerId, buyerId, requestedAmount = null) {
         const offer = await P2pOffer.findOne({ _id: offerId, status: 'active' });
         if (!offer) return { success: false, message: 'العرض غير موجود' };
         if (offer.userId === buyerId) return { success: false, message: 'لا يمكنك شراء عرضك الخاص' };
+        
+        // تحديد المبلغ المطلوب شراؤه
+        let buyAmount = requestedAmount || offer.fiatAmount;
+        
+        // التحقق من الحدود
+        if (buyAmount < offer.minAmount) {
+            return { success: false, message: `⚠️ الحد الأدنى للشراء هو ${offer.minAmount} ${offer.currency}` };
+        }
+        if (buyAmount > offer.maxAmount) {
+            return { success: false, message: `⚠️ الحد الأقصى للشراء هو ${offer.maxAmount} ${offer.currency}` };
+        }
+        if (buyAmount > offer.remainingAmount) {
+            return { success: false, message: `⚠️ الكمية المتبقية هي ${offer.remainingAmount} ${offer.currency} فقط` };
+        }
+        
         const buyerBanCheck = await this.isUserBannedOrLocked(buyerId);
         if (buyerBanCheck.banned) return { success: false, message: buyerBanCheck.reason };
         const sellerBanCheck = await this.isUserBannedOrLocked(offer.userId);
         if (sellerBanCheck.banned) return { success: false, message: 'البائع محظور' };
+        
         const buyer = await this.getUser(buyerId);
         if (!buyer.isVerified) return { success: false, message: '⚠️ حسابك غير موثق!' };
         const seller = await this.getUser(offer.userId);
         if (!seller.isVerified) return { success: false, message: '⚠️ البائع غير موثق!' };
-        const totalUsd = offer.fiatAmount / offer.price;
+        
+        const totalUsd = buyAmount / offer.price;
         const limitCheck = await this.checkUserLimits(buyerId, totalUsd);
         if (!limitCheck.allowed) return { success: false, message: limitCheck.reason };
         
-        // ✅ رسوم المنصة ثابتة 0.05 دولار (وليس نسبة مئوية)
+        // رسوم المنصة ثابتة 0.05 دولار
         const fee = this.platformTradeFee;
         
         if (offer.type === 'sell') {
             const sellerWallet = await this.getUserWallet(offer.userId);
+            // التحقق من رصيد البائع للكمية المطلوبة فقط
             if (sellerWallet.usdBalance < totalUsd) {
                 await P2pOffer.updateOne({ _id: offerId }, { status: 'cancelled' });
                 return { success: false, message: 'البائع ليس لديه رصيد كافٍ' };
             }
         }
+        
+        // حساب المبلغ الجديد المتبقي
+        const newRemainingAmount = offer.remainingAmount - buyAmount;
+        const isPartial = newRemainingAmount > 0;
+        
+        // إنشاء الصفقة
         const trade = await Trade.create({
-            offerId, buyerId, sellerId: offer.userId, currency: offer.currency, amount: offer.fiatAmount,
-            price: offer.price, totalUsd, fee, paymentMethod: offer.paymentMethod,
+            offerId, buyerId, sellerId: offer.userId, currency: offer.currency,
+            amount: buyAmount,  // المبلغ المطلوب فقط
+            price: offer.price,
+            totalUsd, fee,
+            paymentMethod: offer.paymentMethod,
             buyerBankDetails: `${buyer.bankName || ''} - ${buyer.bankAccountNumber || ''} - ${buyer.bankAccountName || ''}`,
             sellerBankDetails: `${offer.bankName || ''} - ${offer.bankAccountNumber || ''} - ${offer.bankAccountName || ''}`,
-            status: 'pending'
+            status: 'pending',
+            isPartial: isPartial
         });
-        await P2pOffer.updateOne({ _id: offerId }, { status: 'pending', counterpartyId: buyerId });
-        await this.addAuditLog(buyerId, 'start_trade', { tradeId: trade._id, offerId, amount: totalUsd }, '', '');
+        
+        // تحديث الكمية المتبقية من العرض
+        if (newRemainingAmount > 0) {
+            // العرض لا يزال موجوداً مع الكمية المتبقية
+            await P2pOffer.updateOne({ _id: offerId }, { 
+                remainingAmount: newRemainingAmount,
+                status: 'active'  // يبقى نشطاً
+            });
+        } else {
+            // العرض اكتمل بالكامل
+            await P2pOffer.updateOne({ _id: offerId }, { 
+                remainingAmount: 0,
+                status: 'completed' 
+            });
+            await this.updateDailyStats('activeOffers', -1);
+        }
+        
+        await this.addAuditLog(buyerId, 'start_trade', { 
+            tradeId: trade._id, offerId, 
+            amount: buyAmount, 
+            remainingAmount: newRemainingAmount 
+        });
         await this.updateLastSeen(buyerId);
         
         // إرسال رسالة نظام في الدردشة عند بدء الصفقة
-        await this.sendSystemMessage(trade._id, buyerId, offer.userId, `🔄 تم بدء الصفقة! المبلغ: ${offer.fiatAmount} ${offer.currency} (${totalUsd.toFixed(2)} USD) - رسوم المنصة: ${fee} $`);
+        await this.sendSystemMessage(trade._id, buyerId, offer.userId, 
+            `🔄 تم بدء الصفقة!\n💰 المبلغ: ${buyAmount} ${offer.currency} (${totalUsd.toFixed(2)} USD)\n💸 رسوم المنصة: ${fee} $\n📦 المتبقي من العرض: ${newRemainingAmount} ${offer.currency}`
+        );
         
         // تفعيل التذكير للصفقة
         await this.activateTradeReminder(trade._id);
         
         return {
-            success: true, tradeId: trade._id,
+            success: true, 
+            tradeId: trade._id,
             sellerPaymentDetails: offer.type === 'sell' ? offer.paymentDetails : '',
             totalUsd, fee,
-            message: `🔄 تم بدء الصفقة!\n💰 المبلغ: ${offer.fiatAmount} ${offer.currency}\n💵 القيمة: ${totalUsd.toFixed(2)} USD\n💸 رسوم المنصة: ${fee} $`
+            remainingAmount: newRemainingAmount,
+            isPartial: isPartial,
+            message: `🔄 تم بدء الصفقة!\n💰 المبلغ: ${buyAmount} ${offer.currency}\n💵 القيمة: ${totalUsd.toFixed(2)} USD\n💸 رسوم المنصة: ${fee} $\n📦 المتبقي من العرض: ${newRemainingAmount} ${offer.currency}`
         };
     }
 
@@ -824,31 +906,38 @@ class Database {
         }
     }
 
+    // ========== تحرير العملة مع دعم البيع بالتجزئة ==========
     async releaseCrystals(tradeId, sellerId, twoFACode = null, ip = '', userAgent = '') {
         const trade = await Trade.findOne({ _id: tradeId, sellerId, status: 'paid' });
         if (!trade) return { success: false, message: 'الصفقة غير موجودة' };
+        
         const seller = await User.findOne({ userId: sellerId });
         const buyer = await User.findOne({ userId: trade.buyerId });
         await this.updateLastSeen(sellerId);
+        
         const needs2FA = this.checkIfNeeds2FA(seller, trade.totalUsd);
         if (needs2FA && seller.twoFAEnabled) {
             if (!twoFACode) return { success: false, message: `🔐 مطلوب رمز 2FA لتحرير ${trade.totalUsd.toFixed(2)} USD` };
             const verified = await this.verify2FACode(sellerId, twoFACode);
             if (!verified) return { success: false, message: '❌ رمز التحقق غير صحيح' };
         }
+        
         const timeSincePaid = Date.now() - new Date(trade.paidAt).getTime();
         let requiredDelay = 0;
         if (trade.totalUsd > 5000) requiredDelay = 60 * 60 * 1000;
         else if (trade.totalUsd > 1000) requiredDelay = 30 * 60 * 1000;
         else if (seller.completedTrades < 10) requiredDelay = 15 * 60 * 1000;
+        
         if (requiredDelay > 0 && timeSincePaid < requiredDelay) {
             const remainingMinutes = Math.ceil((requiredDelay - timeSincePaid) / 60000);
             return { success: false, message: `⚠️ مهلة أمان: سيتم التحرير خلال ${remainingMinutes} دقيقة` };
         }
+        
         const sellerWallet = await this.getUserWallet(sellerId);
         if (trade.offerId) {
             const offer = await P2pOffer.findById(trade.offerId);
             if (offer && offer.type === 'sell') {
+                // خصم المبلغ الفعلي فقط من رصيد البائع (وليس العرض كاملاً)
                 if (sellerWallet.usdBalance < trade.totalUsd) {
                     await Trade.updateOne({ _id: tradeId }, { status: 'disputed' });
                     return { success: false, message: '⚠️ رصيد البائع غير كافٍ! تم فتح نزاع' };
@@ -857,16 +946,26 @@ class Database {
                 await Wallet.updateOne({ userId: trade.buyerId }, { $inc: { usdBalance: trade.totalUsd - trade.fee } });
             }
         }
+        
         await Wallet.updateOne({ userId: 0 }, { $inc: { usdBalance: trade.fee } });
         if (buyer && buyer.referrerId) await this.addReferralCommission(buyer.referrerId, trade.buyerId, trade.totalUsd, trade.fee);
+        
         await Trade.updateOne({ _id: tradeId }, { status: 'completed', releasedAt: new Date(), completedAt: new Date() });
-        await P2pOffer.updateOne({ _id: trade.offerId }, { status: 'completed' });
+        
+        // تحديث العرض إذا كان موجوداً ولم يكتمل
+        if (trade.offerId) {
+            const offer = await P2pOffer.findById(trade.offerId);
+            if (offer && offer.remainingAmount > 0) {
+                // العرض لا يزال نشطاً مع الكمية المتبقية
+                await P2pOffer.updateOne({ _id: trade.offerId }, { status: 'active' });
+            }
+        }
+        
         await User.updateOne({ userId: sellerId }, { $inc: { completedTrades: 1, totalTraded: trade.totalUsd } });
         await User.updateOne({ userId: trade.buyerId }, { $inc: { completedTrades: 1, totalTraded: trade.totalUsd } });
         await this.updateDailyStats('totalTrades', 1);
         await this.updateDailyStats('totalVolume', trade.totalUsd);
         await this.updateDailyStats('totalCommission', trade.fee);
-        await this.updateDailyStats('activeOffers', -1);
         await this.addAuditLog(sellerId, 'release_crystals', { tradeId, amount: trade.totalUsd }, ip, userAgent);
         
         // إرسال رسالة نظام في الدردشة عند تحرير العملة
@@ -875,14 +974,32 @@ class Database {
         // إلغاء التذكير
         await Reminder.updateOne({ tradeId }, { isActive: false });
         
-        return { success: true, buyerId: trade.buyerId, message: `✅ تم تحرير العملة بنجاح!` };
+        return { success: true, buyerId: trade.buyerId, message: `✅ تم تحرير ${trade.amount} ${trade.currency} بنجاح!` };
     }
 
     async cancelPendingTrade(tradeId, userId) {
         const trade = await Trade.findOne({ _id: tradeId, $or: [{ buyerId: userId }, { sellerId: userId }], status: 'pending' });
         if (!trade) return { success: false, message: 'لا يمكن إلغاء هذه الصفقة' };
+        
+        // استعادة الكمية المحجوزة من العرض إذا كان عرض بيع
+        if (trade.offerId) {
+            const offer = await P2pOffer.findById(trade.offerId);
+            if (offer && offer.status === 'active') {
+                // إعادة الكمية المحجوزة
+                const newRemaining = offer.remainingAmount + trade.amount;
+                await P2pOffer.updateOne({ _id: trade.offerId }, { 
+                    remainingAmount: newRemaining,
+                    status: 'active'
+                });
+            } else if (offer && offer.status === 'pending') {
+                await P2pOffer.updateOne({ _id: trade.offerId }, { 
+                    status: 'active',
+                    counterpartyId: null
+                });
+            }
+        }
+        
         await Trade.updateOne({ _id: tradeId }, { status: 'cancelled' });
-        if (trade.offerId) await P2pOffer.updateOne({ _id: trade.offerId }, { status: 'active', counterpartyId: null });
         await User.updateOne({ userId: trade.buyerId }, { $inc: { failedTrades: 1 } });
         await User.updateOne({ userId: trade.sellerId }, { $inc: { failedTrades: 1 } });
         await this.addAuditLog(userId, 'cancel_trade', { tradeId }, '', '');
@@ -980,7 +1097,6 @@ class Database {
 
     // ========== الإيداع ==========
     async requestDeposit(userId, amount, currency, network) {
-        // ✅ الحد الأدنى للإيداع 1 دولار
         if (amount < 1) {
             return { success: false, message: '⚠️ الحد الأدنى للإيداع هو 1 دولار' };
         }
@@ -1025,7 +1141,6 @@ class Database {
             return { success: false, message: `❌ رصيد غير كافٍ! لديك ${wallet.usdBalance.toFixed(2)} USD` };
         }
         
-        // ✅ الحد الأدنى للسحب 5 دولار
         if (amount < 5) {
             return { success: false, message: '⚠️ الحد الأدنى للسحب هو 5 دولار' };
         }
@@ -1042,22 +1157,15 @@ class Database {
             }
         }
         
-        // ✅ رسوم المنصة ثابتة 0.05 دولار
         const platformFee = this.platformWithdrawFee;
-        
-        // ✅ رسوم الشبكة حسب الشبكة المختارة (تتغير حسب السوق)
         const networkFee = this.getNetworkFee(network);
-        
-        // إجمالي الرسوم = رسوم المنصة + رسوم الشبكة
         const totalFees = platformFee + networkFee;
         const totalDeduct = amount + totalFees;
         
-        // التحقق من أن الرصيد يكفي لتغطية المبلغ + الرسوم
         if (wallet.usdBalance < totalDeduct) {
             return { success: false, message: `❌ رصيد غير كافٍ للرسوم! تحتاج ${totalDeduct.toFixed(2)} USD (المبلغ ${amount} + رسوم ${totalFees.toFixed(2)})` };
         }
         
-        // المبالغ الكبيرة (فوق 1000) تحتاج موافقة إدارية
         if (amount > 1000) {
             const request = await WithdrawRequest.create({ 
                 userId, amount, currency, network, address, 
@@ -1081,7 +1189,6 @@ class Database {
             };
         }
         
-        // المبالغ الصغيرة (5 - 1000) تتم تلقائياً
         const request = await WithdrawRequest.create({ 
             userId, amount, currency, network, address, 
             fee: platformFee, networkFee: networkFee, 
@@ -1089,7 +1196,6 @@ class Database {
             status: 'completed' 
         });
         
-        // خصم المبلغ + رسوم المنصة + رسوم الشبكة
         await Wallet.updateOne({ userId }, { $inc: { usdBalance: -totalDeduct } });
         await this.addAuditLog(userId, 'request_withdraw', { amount, address, networkFee, platformFee }, '', '');
         await this.updateLastSeen(userId);
@@ -1119,7 +1225,6 @@ class Database {
             approvedBy: adminId 
         });
         
-        // خصم المبلغ + الرسوم (إذا لم تكن خصمت سابقاً)
         const totalFees = request.fee + (request.networkFee || 0);
         const totalDeduct = request.amount + totalFees;
         await Wallet.updateOne({ userId: request.userId }, { $inc: { usdBalance: -totalDeduct } });
