@@ -142,19 +142,28 @@ const p2pOfferSchema = new mongoose.Schema({
     userId: { type: Number, required: true, index: true },
     type: { type: String, enum: ['buy', 'sell'], required: true },
     currency: { type: String, required: true },
-    fiatAmount: { type: Number, required: true },
+    fiatAmount: { type: Number, required: true },           // الكمية الأصلية للعرض
+    remainingAmount: { type: Number, required: true },      // الكمية المتبقية للبيع (لنظام البيع بالتجزئة)
     price: { type: Number, required: true },
     paymentMethod: { type: String, required: true },
     paymentDetails: { type: String, default: '' },
     bankName: { type: String, default: '' },
     bankAccountNumber: { type: String, default: '' },
     bankAccountName: { type: String, default: '' },
-    minAmount: { type: Number, default: 10 },
-    maxAmount: { type: Number, default: 100000 },
+    minAmount: { type: Number, default: 10 },               // الحد الأدنى للشراء
+    maxAmount: { type: Number, default: 100000 },           // الحد الأقصى للشراء
     status: { type: String, enum: ['active', 'pending', 'completed', 'cancelled'], default: 'active' },
     counterpartyId: { type: Number, default: null },
     createdAt: { type: Date, default: Date.now },
     completedAt: { type: Date, default: null }
+});
+
+// إضافة pre-save middleware لتعيين remainingAmount تلقائياً عند الإنشاء
+p2pOfferSchema.pre('save', function(next) {
+    if (this.isNew && this.type === 'sell') {
+        this.remainingAmount = this.fiatAmount;
+    }
+    next();
 });
 
 // ========== نموذج الصفقات ==========
@@ -163,7 +172,7 @@ const tradeSchema = new mongoose.Schema({
     buyerId: { type: Number, required: true },
     sellerId: { type: Number, required: true },
     currency: { type: String, required: true },
-    amount: { type: Number, required: true },
+    amount: { type: Number, required: true },               // المبلغ المشترى فعلياً (قد يكون جزءاً من العرض)
     price: { type: Number, required: true },
     totalUsd: { type: Number, required: true },
     fee: { type: Number, required: true },
@@ -176,6 +185,7 @@ const tradeSchema = new mongoose.Schema({
         enum: ['pending', 'paid', 'released', 'disputed', 'completed', 'cancelled'], 
         default: 'pending' 
     },
+    isPartial: { type: Boolean, default: false },           // هل هذه الصفقة جزء من عرض أكبر
     disputeReason: { type: String, default: '' },
     disputeOpenedBy: { type: Number, default: null },
     signature: { type: String, default: '' },
@@ -210,7 +220,8 @@ const withdrawRequestSchema = new mongoose.Schema({
     address: { type: String, required: true },
     status: { type: String, enum: ['pending', 'approved', 'rejected', 'completed'], default: 'pending' },
     transactionHash: { type: String, default: '' },
-    fee: { type: Number, default: 0 },
+    fee: { type: Number, default: 0 },                      // رسوم المنصة
+    networkFee: { type: Number, default: 0 },               // رسوم الشبكة
     twoFACode: { type: String, default: '' },
     twoFAVerified: { type: Boolean, default: false },
     approvedBy: { type: Number, default: null },
@@ -244,7 +255,7 @@ const dailyStatsSchema = new mongoose.Schema({
     securityAlerts: { type: Number, default: 0 }
 });
 
-// ========== نماذج الدردشة والتذكير (الجديدة) ==========
+// ========== نماذج الدردشة والتذكير ==========
 
 // نموذج رسائل الدردشة
 const chatMessageSchema = new mongoose.Schema({
@@ -283,11 +294,13 @@ p2pOfferSchema.index({ type: 1 });
 p2pOfferSchema.index({ currency: 1 });
 p2pOfferSchema.index({ price: 1 });
 p2pOfferSchema.index({ createdAt: -1 });
+p2pOfferSchema.index({ remainingAmount: 1 });  // فهرس للعروض التي لا تزال متبقية
 
 tradeSchema.index({ buyerId: 1 });
 tradeSchema.index({ sellerId: 1 });
 tradeSchema.index({ status: 1 });
 tradeSchema.index({ createdAt: -1 });
+tradeSchema.index({ isPartial: 1 });  // فهرس للصفقات الجزئية
 
 walletSchema.index({ userId: 1 });
 walletSchema.index({ usdBalance: 1 });
@@ -309,11 +322,12 @@ auditLogSchema.index({ timestamp: -1 });
 
 dailyStatsSchema.index({ date: 1 });
 
-// فهارس الدردشة الجديدة
+// فهارس الدردشة
 chatMessageSchema.index({ tradeId: 1 });
 chatMessageSchema.index({ createdAt: -1 });
 chatMessageSchema.index({ senderId: 1 });
 chatMessageSchema.index({ receiverId: 1 });
+chatMessageSchema.index({ isRead: 1 });
 
 reminderSchema.index({ tradeId: 1 });
 reminderSchema.index({ nextReminderAt: 1 });
@@ -332,8 +346,6 @@ const DailyStats = mongoose.model('DailyStats', dailyStatsSchema);
 const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 const Report = mongoose.model('Report', reportSchema);
 const Blacklist = mongoose.model('Blacklist', blacklistSchema);
-
-// النماذج الجديدة
 const ChatMessage = mongoose.model('ChatMessage', chatMessageSchema);
 const Reminder = mongoose.model('Reminder', reminderSchema);
 
@@ -351,6 +363,6 @@ module.exports = {
     AuditLog,
     Report,
     Blacklist,
-    ChatMessage,   // <-- نموذج الدردشة
-    Reminder       // <-- نموذج التذكير
+    ChatMessage,
+    Reminder
 };
