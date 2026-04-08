@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const crypto = require('crypto');
-const { ethers } = require('ethers');
+const { ethers, JsonRpcProvider } = require('ethers');
 const { Connection, Keypair, LAMPORTS_PER_SOL } = require('@solana/web3.js');
 const { AptosAccount } = require('aptos');
 const CryptoJS = require('crypto-js');
@@ -47,7 +47,7 @@ class NetworkFeeManager {
             console.log('✅ Fees updated from Coingecko');
         }
         
-        // المصدر 2: RPC مباشر (Ethereum, Polygon, BSC)
+        // المصدر 2: RPC مباشر (تم إصلاح مشكلة JsonRpcProvider)
         const rpcFees = await this.fetchFromRPC();
         if (rpcFees) {
             this.fees = { ...this.fees, ...rpcFees };
@@ -76,15 +76,13 @@ class NetworkFeeManager {
     // المصدر 1: Coingecko API - مجاني تماماً
     async fetchFromCoingecko() {
         try {
-            // جلب أسعار العملات
             const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum%2Cbinancecoin%2Cmatic-network%2Csolana%2Ctron&vs_currencies=usd');
             if (!priceRes.ok) return null;
             
             const prices = await priceRes.json();
             
-            // جلب رسوم الغاز (تقديرية)
             const gasRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum-gas&vs_currencies=usd');
-            let ethGasGwei = 25; // قيمة افتراضية
+            let ethGasGwei = 25;
             
             if (gasRes.ok) {
                 const gasData = await gasRes.json();
@@ -93,29 +91,17 @@ class NetworkFeeManager {
                 }
             }
             
-            // حساب الرسوم
             const ethPrice = prices.ethereum?.usd || 3000;
             const bnbPrice = prices.binancecoin?.usd || 600;
             const maticPrice = prices['matic-network']?.usd || 0.80;
             const solPrice = prices.solana?.usd || 150;
             const tronPrice = prices.tron?.usd || 0.10;
             
-            // رسوم ERC-20: GasPrice * 21000 / 1e9 * ETH Price
             const erc20Fee = Math.min(50, Math.max(5, (ethGasGwei * 21000) / 1e9 * ethPrice));
-            
-            // رسوم BNB: ~0.0003 BNB
             const bnbFee = Math.min(1.0, Math.max(0.10, 0.0003 * bnbPrice));
-            
-            // رسوم Polygon: ~0.001 MATIC
             const polygonFee = Math.min(0.50, Math.max(0.05, 0.001 * maticPrice));
-            
-            // رسوم Solana: ~0.0001 SOL
             const solanaFee = Math.min(0.10, Math.max(0.01, 0.0001 * solPrice));
-            
-            // رسوم TRC-20: ~30 TRX
             const trc20Fee = Math.min(5.0, Math.max(1.5, 30 * tronPrice));
-            
-            // Aptos - قيمة ثابتة نسبياً
             const aptosFee = 0.05;
             
             return {
@@ -133,18 +119,17 @@ class NetworkFeeManager {
         }
     }
     
-    // المصدر 2: RPC مباشر (للغاز الحقيقي)
+    // المصدر 2: RPC مباشر (تم إصلاح مشكلة JsonRpcProvider)
     async fetchFromRPC() {
         try {
             const results = {};
             
             // 1. Ethereum RPC (Cloudflare - مجاني)
             try {
-                const ethProvider = new ethers.JsonRpcProvider('https://cloudflare-eth.com');
+                const ethProvider = new JsonRpcProvider('https://cloudflare-eth.com');
                 const ethFeeData = await ethProvider.getFeeData();
                 const ethGasGwei = Number(ethFeeData.gasPrice) / 1e9;
                 
-                // جلب سعر ETH من Coingecko
                 const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
                 const ethPrice = priceRes.ok ? (await priceRes.json()).ethereum?.usd : 3000;
                 
@@ -156,7 +141,7 @@ class NetworkFeeManager {
             
             // 2. Polygon RPC
             try {
-                const polygonProvider = new ethers.JsonRpcProvider('https://polygon-rpc.com');
+                const polygonProvider = new JsonRpcProvider('https://polygon-rpc.com');
                 const polygonFeeData = await polygonProvider.getFeeData();
                 const polygonGasGwei = Number(polygonFeeData.gasPrice) / 1e9;
                 
@@ -171,7 +156,7 @@ class NetworkFeeManager {
             
             // 3. BSC RPC
             try {
-                const bscProvider = new ethers.JsonRpcProvider('https://bsc-dataseed.binance.org/');
+                const bscProvider = new JsonRpcProvider('https://bsc-dataseed.binance.org/');
                 const bscFeeData = await bscProvider.getFeeData();
                 const bscGasGwei = Number(bscFeeData.gasPrice) / 1e9;
                 
@@ -224,19 +209,14 @@ class NetworkFeeManager {
     
     // التحديث التلقائي
     startAutoUpdate() {
-        // تحديث فوري بعد 5 ثواني من بدء التشغيل
         setTimeout(() => this.updateFees(), 5000);
-        
-        // تحديث دوري كل ساعة
         setInterval(() => this.updateFees(), this.updateInterval);
     }
     
-    // الحصول على رسوم الشبكة
     getFee(network) {
         const fee = this.fees[network];
         if (!fee) return 0.10;
         
-        // تحديد حد أقصى للرسوم حسب الشبكة (حماية للمستخدم)
         const maxFees = {
             bnb: 1.0,
             polygon: 0.50,
@@ -262,18 +242,15 @@ class NetworkFeeManager {
         return parseFloat(finalFee.toFixed(4));
     }
     
-    // الحصول على آخر تحديث
     getLastUpdate() {
         return this.lastUpdate;
     }
     
-    // الحصول على جميع الرسوم
     getAllFees() {
         return { ...this.fees };
     }
 }
 
-// ========== إنشاء مدير رسوم الشبكة ==========
 const networkFeeManager = new NetworkFeeManager();
 
 class Database {
@@ -281,10 +258,9 @@ class Database {
         this.connected = false;
         this.encryptionKey = process.env.ENCRYPTION_KEY || 'default_key_32_bytes_long';
         
-        // ✅ رسوم المنصة الثابتة
-        this.platformWithdrawFee = 0.05;      // 0.05 دولار ثابت للسحب
-        this.platformTradeFee = 0.05;         // 0.05 دولار ثابت لكل صفقة P2P
-        this.referralCommissionRate = 10;     // 10% من رسوم المنصة
+        this.platformWithdrawFee = 0.05;
+        this.platformTradeFee = 0.05;
+        this.referralCommissionRate = 10;
         
         this.release2FAThreshold = 100;
         this.release2FAForAll = true;
@@ -296,7 +272,7 @@ class Database {
             aptos: process.env.COMMISSION_WALLET_APTOS || '0xf0713a00655788d44218e42b71343be9f18d96533d322c28ce9830dcf9022468'
         };
         
-        // ========== دعم أكثر من 50 عملة (تم التوسيع) ==========
+        // ========== دعم أكثر من 50 عملة ==========
         this.supportedCurrencies = process.env.SUPPORTED_CURRENCIES 
             ? process.env.SUPPORTED_CURRENCIES.split(',') 
             : [
@@ -323,7 +299,6 @@ class Database {
                 'Sudanese French Bank', 'United Capital Bank'
             ];
         
-        // ربط النماذج للاستخدام المباشر
         this.User = User;
         this.Wallet = Wallet;
         this.P2pOffer = P2pOffer;
@@ -332,8 +307,6 @@ class Database {
         this.Reminder = Reminder;
     }
 
-    // ========== دوال رسوم الشبكة (باستخدام NetworkFeeManager) ==========
-    
     async updateNetworkFees() {
         await networkFeeManager.updateFees();
     }
@@ -374,8 +347,6 @@ class Database {
             });
             this.connected = true;
             console.log('✅ MongoDB connected');
-            
-            // بدء تحديث رسوم الشبكة بعد الاتصال بقاعدة البيانات
             setTimeout(() => this.updateNetworkFees(), 3000);
         } catch (error) {
             console.error('❌ MongoDB error:', error);
@@ -703,7 +674,6 @@ class Database {
     
     async getReferralData(userId) {
         const user = await User.findOne({ userId });
-        // تم تعديل رابط الإحالة إلى اسم البوت الصحيح @my_edu_199311_bot
         const BOT_USERNAME = 'my_edu_199311_bot';
         if (!user) return { 
             referralCount: 0, 
@@ -812,17 +782,14 @@ class Database {
         return { totalOffers, avgPrice: parseFloat(avgPrice), mostActiveCurrency, totalTraders, totalVolume: totalVolume[0]?.total || 0 };
     }
 
-    // ========== التحقق من صحة العملة المدعومة ==========
     isCurrencySupported(currency) {
         return this.supportedCurrencies.includes(currency);
     }
 
-    // ========== إنشاء عرض مع دعم البيع بالتجزئة ==========
     async createOffer(userId, type, currency, fiatAmount, price, paymentMethod, paymentDetails, bankName, bankAccountNumber, bankAccountName, minAmount, maxAmount) {
         const user = await this.getUser(userId);
         if (!user) return { success: false, message: 'المستخدم غير موجود' };
         
-        // التحقق من صحة العملة
         if (!this.isCurrencySupported(currency)) {
             return { success: false, message: `❌ عملة غير مدعومة. العملات المدعومة: ${this.supportedCurrencies.slice(0, 20).join(', ')}... (${this.supportedCurrencies.length} عملة)` };
         }
@@ -851,7 +818,6 @@ class Database {
         return { success: true, offerId: offer._id, message: `✅ تم إنشاء عرض ${type === 'sell' ? 'بيع' : 'شراء'}!` };
     }
 
-    // ========== جلب العروض مع remainingAmount ==========
     async getOffers(type = null, currency = null, sortBy = 'price', order = 'asc', limit = 50, offset = 0) {
         const query = { status: 'active' };
         if (type) query.type = type;
@@ -921,7 +887,6 @@ class Database {
         return { success: true, message: '✅ تم إلغاء العرض' };
     }
 
-    // ========== بدء صفقة مع دعم البيع بالتجزئة (Partial Fill) ==========
     async startTrade(offerId, buyerId, requestedAmount = null) {
         const offer = await P2pOffer.findOne({ _id: offerId, status: 'active' });
         if (!offer) return { success: false, message: 'العرض غير موجود' };
@@ -1122,7 +1087,6 @@ class Database {
         }
     }
 
-    // ========== تحرير العملة ==========
     async releaseCrystals(tradeId, sellerId, twoFACode = null, ip = '', userAgent = '') {
         const trade = await Trade.findOne({ _id: tradeId, sellerId, status: 'paid' });
         if (!trade) return { success: false, message: 'الصفقة غير موجودة' };
@@ -1244,8 +1208,6 @@ class Database {
         return { success: true, message: `⭐ تم التقييم! ${rating}/5` };
     }
 
-    // ========== دوال الدردشة ==========
-    
     async sendMessage(tradeId, senderId, receiverId, message, imageFileId = null) {
         const chatMessage = await ChatMessage.create({
             tradeId, senderId, receiverId, message,
@@ -1301,7 +1263,6 @@ class Database {
         );
     }
 
-    // ========== الإيداع ==========
     async requestDeposit(userId, amount, currency, network) {
         if (amount < 1) {
             return { success: false, message: '⚠️ الحد الأدنى للإيداع هو 1 دولار' };
@@ -1340,7 +1301,6 @@ class Database {
         return { success: true, message: `✅ تم إضافة ${request.amount} USD إلى رصيدك` };
     }
 
-    // ========== السحب مع رسوم الشبكة المحدثة ==========
     async requestWithdraw(userId, amount, currency, network, address, twoFACode = null) {
         const wallet = await this.getUserWallet(userId);
         if (wallet.usdBalance < amount) {
@@ -1387,7 +1347,7 @@ class Database {
                 message: `✅ *تم استلام طلب السحب #${request._id.toString().slice(-6)}*\n\n` +
                          `💰 *المبلغ:* ${amount} USD\n` +
                          `🏢 *رسوم المنصة:* ${platformFee} $\n` +
-                         `🌐 *رسوم الشبكة (${network.toUpperCase()}):* ${networkFee} $\n` +
+                         `🌐 *رسوم الشبكة (${network.toUpperCase()}):* ${networkFee.toFixed(4)} $\n` +
                          `📊 *إجمالي الرسوم:* ${totalFees.toFixed(4)} $\n` +
                          `💎 *الإجمالي المخصوم:* ${totalDeduct.toFixed(4)} $\n` +
                          `📤 *العنوان:* \`${address}\`\n\n` +
@@ -1440,7 +1400,6 @@ class Database {
         return { success: true, message: `✅ تمت الموافقة على سحب ${request.amount} USD` };
     }
 
-    // ========== الإحصائيات ==========
     async getLeaderboard(limit = 15) {
         return await User.find({}).sort({ totalTraded: -1 }).limit(limit).select('userId username firstName totalTraded completedTrades rating isVerified isMerchant').lean();
     }
