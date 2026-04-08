@@ -503,7 +503,7 @@ const server = app.listen(PORT, '0.0.0.0', () => console.log(`🌐 Web server on
 // ========== إعداد بوت التلجرام ==========
 const { Telegraf: TelegrafBot } = require('telegraf');
 bot = new TelegrafBot(process.env.BOT_TOKEN);
-
+bot.use(session());
 // تصدير البوت للاستخدام في database.js
 module.exports.bot = bot;
 
