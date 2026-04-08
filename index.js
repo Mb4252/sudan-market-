@@ -1,5 +1,5 @@
 require('dotenv').config();
-const cors = require('cors');
+// لا تستخدم cors نهائياً
 const { Telegraf, Markup } = require('telegraf');
 const db = require('./database');
 const express = require('express');
@@ -11,19 +11,21 @@ const fetch = require('node-fetch');
 
 // ========== إعداد خادم الويب ==========
 const app = express();
-app.use(cors());
 const PORT = process.env.PORT || 10000;
 
-const upload = multer({ storage: multer.memoryStorage() });
-
-const limiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 60,
-    message: { success: false, message: '⚠️ الكثير من الطلبات، يرجى الانتظار قليلاً' },
-    skip: (req) => {
-        const userId = req.body?.user_id;
-        return userId && ADMIN_IDS.includes(parseInt(userId));
+// ========== بديل CORS مدمج (بدون مكتبة خارجية) ==========
+app.use((req, res, next) => {
+    // السماح لجميع المواقع بالاتصال
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, user_id');
+    res.header('Access-Control-Allow-Credentials', true);
+    
+    // معالجة طلبات OPTIONS (preflight)
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
     }
+    next();
 });
 
 app.use(limiter);
