@@ -20,7 +20,6 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, user_id');
     res.header('Access-Control-Allow-Credentials', true);
-    
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200);
     }
@@ -104,21 +103,6 @@ const SUPPORTED_CURRENCIES = process.env.SUPPORTED_CURRENCIES
         'KES', 'GHS', 'TND', 'DZD', 'MAD', 'LYD', 'LBP', 'SYP', 'YER', 'AFN',
         'BDT', 'BND', 'HKD', 'IDR', 'ILS', 'KHR', 'LAK', 'LKR', 'MMK', 'MNT',
         'NPR', 'PHP', 'SGD', 'THB', 'TWD', 'UAH', 'VND'
-    ];
-
-const PAYMENT_METHODS = process.env.PAYMENT_METHODS 
-    ? process.env.PAYMENT_METHODS.split(',') 
-    : ['bank_transfer', 'paypal', 'visa', 'mastercard', 'fawry', 'instapay', 'vodafone_cash', 'orange_cash'];
-
-const SUDAN_BANKS = process.env.SUDAN_BANKS 
-    ? process.env.SUDAN_BANKS.split(',') 
-    : [
-        'Bank of Khartoum', 'Blue Nile Mashreq Bank', 'Al Salam Bank', 'Agricultural Bank',
-        'Al Baraka Bank', 'Al Nilein Bank', 'Al Shamal Islamic Bank', 'Animal Resources Bank',
-        'Bank of Sudan', 'Byblos Bank', 'Egyptian Sudanese Bank', 'Industrial Development Bank',
-        'National Bank of Abu Dhabi', 'National Bank of Egypt', 'National Bank of Sudan',
-        'Omdurman National Bank', 'Qatar National Bank', 'Saudi Sudanese Bank',
-        'Sudanese French Bank', 'United Capital Bank'
     ];
 
 let bot;
@@ -679,7 +663,7 @@ bot.launch().then(() => {
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
-// ========== باقي أزرار البوت (مختصرة) ==========
+// ========== أزرار البوت المختصرة ==========
 bot.action('back_to_menu', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const stats = await db.getUserStats(ctx.from.id);
@@ -745,7 +729,6 @@ bot.action('kyc_menu', rateLimitMiddleware, async (ctx) => {
     await ctx.editMessageText(`🆔 *توثيق الهوية*\n\n⚠️ حساب غير موثق\n📝 أرسل /kyc [الاسم] [رقم الجواز] [الرقم الوطني] [رقم الهاتف]`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'back_to_menu')]]) });
 });
 
-// أزرار إضافية مختصرة...
 bot.action('my_trades', rateLimitMiddleware, async (ctx) => {
     await ctx.answerCbQuery();
     const stats = await db.getUserStats(ctx.from.id);
