@@ -47,7 +47,7 @@ class NetworkFeeManager {
             console.log('✅ Fees updated from Coingecko');
         }
         
-        // المصدر 2: RPC مباشر (تم إصلاح مشكلة JsonRpcProvider)
+        // المصدر 2: RPC مباشر (باستخدام روابط مجانية محدثة)
         const rpcFees = await this.fetchFromRPC();
         if (rpcFees) {
             this.fees = { ...this.fees, ...rpcFees };
@@ -119,14 +119,14 @@ class NetworkFeeManager {
         }
     }
     
-    // المصدر 2: RPC مباشر (تم إصلاح مشكلة JsonRpcProvider)
+    // المصدر 2: RPC مباشر (باستخدام روابط مجانية محدثة)
     async fetchFromRPC() {
         try {
             const results = {};
             
-            // 1. Ethereum RPC (Cloudflare - مجاني)
+            // 1. Ethereum RPC (باستخدام llamaRPC - مجاني وسريع)
             try {
-                const ethProvider = new JsonRpcProvider('https://cloudflare-eth.com');
+                const ethProvider = new JsonRpcProvider('https://eth.llamarpc.com');
                 const ethFeeData = await ethProvider.getFeeData();
                 const ethGasGwei = Number(ethFeeData.gasPrice) / 1e9;
                 
@@ -135,13 +135,13 @@ class NetworkFeeManager {
                 
                 const erc20Fee = (ethGasGwei * 21000) / 1e9 * ethPrice;
                 results.erc20 = Math.min(50, Math.max(5, erc20Fee));
-                console.log(`RPC ETH gas: ${ethGasGwei} Gwei = ~${results.erc20.toFixed(4)} USD`);
+                console.log(`✅ RPC ETH gas: ${ethGasGwei} Gwei = ~${results.erc20.toFixed(4)} USD`);
                 
-            } catch(e) { console.log('ETH RPC failed:', e.message); }
+            } catch(e) { console.log('⚠️ ETH RPC failed, using fallback:', e.message); }
             
-            // 2. Polygon RPC
+            // 2. Polygon RPC (باستخدام llamaRPC - مجاني)
             try {
-                const polygonProvider = new JsonRpcProvider('https://polygon-rpc.com');
+                const polygonProvider = new JsonRpcProvider('https://polygon.llamarpc.com');
                 const polygonFeeData = await polygonProvider.getFeeData();
                 const polygonGasGwei = Number(polygonFeeData.gasPrice) / 1e9;
                 
@@ -150,11 +150,11 @@ class NetworkFeeManager {
                 
                 const polygonFee = (polygonGasGwei * 50000) / 1e9 * maticPrice;
                 results.polygon = Math.min(0.50, Math.max(0.05, polygonFee));
-                console.log(`RPC Polygon gas: ${polygonGasGwei} Gwei = ~${results.polygon.toFixed(4)} USD`);
+                console.log(`✅ RPC Polygon gas: ${polygonGasGwei} Gwei = ~${results.polygon.toFixed(4)} USD`);
                 
-            } catch(e) { console.log('Polygon RPC failed:', e.message); }
+            } catch(e) { console.log('⚠️ Polygon RPC failed, using fallback:', e.message); }
             
-            // 3. BSC RPC
+            // 3. BSC RPC (يبقى كما هو لأنه يعمل)
             try {
                 const bscProvider = new JsonRpcProvider('https://bsc-dataseed.binance.org/');
                 const bscFeeData = await bscProvider.getFeeData();
@@ -165,14 +165,14 @@ class NetworkFeeManager {
                 
                 const bnbFee = (bscGasGwei * 21000) / 1e9 * bnbPrice;
                 results.bnb = Math.min(1.0, Math.max(0.10, bnbFee));
-                console.log(`RPC BSC gas: ${bscGasGwei} Gwei = ~${results.bnb.toFixed(4)} USD`);
+                console.log(`✅ RPC BSC gas: ${bscGasGwei} Gwei = ~${results.bnb.toFixed(4)} USD`);
                 
-            } catch(e) { console.log('BSC RPC failed:', e.message); }
+            } catch(e) { console.log('⚠️ BSC RPC failed:', e.message); }
             
             return results;
             
         } catch (error) {
-            console.log('RPC fetch error:', error.message);
+            console.log('⚠️ RPC fetch error:', error.message);
             return null;
         }
     }
@@ -272,16 +272,14 @@ class Database {
             aptos: process.env.COMMISSION_WALLET_APTOS || '0xf0713a00655788d44218e42b71343be9f18d96533d322c28ce9830dcf9022468'
         };
         
-        // ========== دعم أكثر من 50 عملة ==========
+        // دعم أكثر من 50 عملة
         this.supportedCurrencies = process.env.SUPPORTED_CURRENCIES 
             ? process.env.SUPPORTED_CURRENCIES.split(',') 
             : [
                 'USD', 'EUR', 'GBP', 'SAR', 'AED', 'EGP', 'SDG', 'IQD', 'JOD', 'KWD', 
-                'QAR', 'BHD', 'OMR', 'TRY', 'INR', 'PKR', 'CNY', 'JPY', 'CAD', 'AUD',
+                'QAR', 'BHR', 'OMR', 'TRY', 'INR', 'PKR', 'CNY', 'JPY', 'CAD', 'AUD',
                 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'RUB', 'ZAR', 'MXN', 'BRL', 'NGN',
-                'KES', 'GHS', 'TND', 'DZD', 'MAD', 'LYD', 'LBP', 'SYP', 'YER', 'AFN',
-                'BDT', 'BND', 'HKD', 'IDR', 'ILS', 'KHR', 'LAK', 'LKR', 'MMK',
-                'MNT', 'NPR', 'PHP', 'SGD', 'THB', 'TWD', 'UAH', 'VND'
+                'KES', 'GHS', 'TND', 'DZD', 'MAD', 'LYD', 'LBP', 'SYP', 'YER', 'AFN'
             ];
         
         this.paymentMethods = process.env.PAYMENT_METHODS 
