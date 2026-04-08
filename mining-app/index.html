@@ -190,6 +190,12 @@
             color: #4caf50;
         }
 
+        .remaining-amount {
+            font-size: 12px;
+            color: #ff9800;
+            margin: 5px 0;
+        }
+
         .verified-icon {
             background: #4caf50;
             color: white;
@@ -586,6 +592,41 @@
             margin: 10px 0;
             font-size: 13px;
         }
+        .partial-input-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        .partial-input {
+            flex: 2;
+            padding: 8px;
+            border-radius: 8px;
+            border: none;
+            background: rgba(255,255,255,0.9);
+        }
+        .partial-btn {
+            flex: 1;
+            padding: 8px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .progress-bar {
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            height: 8px;
+            margin: 8px 0;
+            overflow: hidden;
+        }
+        .progress-fill {
+            background: #4caf50;
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.3s;
+        }
 
         @media (max-width: 480px) {
             .tab-button { font-size: 11px; padding: 8px; }
@@ -593,6 +634,7 @@
             .referral-stat-value { font-size: 22px; }
             .limit-inputs { flex-direction: column; }
             .message { max-width: 90%; }
+            .partial-input-group { flex-direction: column; }
         }
     </style>
 </head>
@@ -626,7 +668,7 @@
             <button class="tab-button" onclick="switchTab('instructions')">📖 تعليمات</button>
         </div>
 
-        <!-- سوق التداول -->
+        <!-- سوق التداول - مع دعم البيع بالتجزئة -->
         <div id="market-tab" class="tab-content active">
             <div class="card">
                 <div class="warning-box" style="background:rgba(76,175,80,0.2); border-color:#4caf50">
@@ -639,22 +681,15 @@
                     </select>
                     <select id="marketCurrency" class="currency-select" onchange="resetAndLoadMarket()" style="flex:1">
                         <option value="">جميع العملات</option>
-                        <option value="USD">🇺🇸 دولار أمريكي</option>
+                        <option value="USD">🇺🇸 دولار</option>
                         <option value="EUR">🇪🇺 يورو</option>
-                        <option value="GBP">🇬🇧 جنيه إسترليني</option>
-                        <option value="SAR">🇸🇦 ريال سعودي</option>
-                        <option value="AED">🇦🇪 درهم إماراتي</option>
-                        <option value="EGP">🇪🇬 جنيه مصري</option>
-                        <option value="SDG">🇸🇩 جنيه سوداني</option>
-                        <option value="IQD">🇮🇶 دينار عراقي</option>
-                        <option value="JOD">🇯🇴 دينار أردني</option>
-                        <option value="KWD">🇰🇼 دينار كويتي</option>
-                        <option value="QAR">🇶🇦 ريال قطري</option>
-                        <option value="BHD">🇧🇭 دينار بحريني</option>
-                        <option value="OMR">🇴🇲 ريال عماني</option>
-                        <option value="TRY">🇹🇷 ليرة تركية</option>
-                        <option value="INR">🇮🇳 روبية هندية</option>
-                        <option value="PKR">🇵🇰 روبية باكستانية</option>
+                        <option value="GBP">🇬🇧 جنيه</option>
+                        <option value="SAR">🇸🇦 ريال</option>
+                        <option value="AED">🇦🇪 درهم</option>
+                        <option value="EGP">🇪🇬 جنيه</option>
+                        <option value="SDG">🇸🇩 جنيه</option>
+                        <option value="IQD">🇮🇶 دينار</option>
+                        <option value="TRY">🇹🇷 ليرة</option>
                     </select>
                 </div>
                 <div id="marketStats" style="background:rgba(0,0,0,0.3); padding:10px; border-radius:10px; margin-bottom:10px; text-align:center; font-size:12px">
@@ -664,7 +699,7 @@
             </div>
         </div>
 
-        <!-- إنشاء عرض مع جميع العملات المدعومة -->
+        <!-- إنشاء عرض -->
         <div id="create-tab" class="tab-content">
             <div class="card">
                 <h3 style="color:white; margin-bottom:15px">➕ إنشاء عرض جديد</h3>
@@ -675,32 +710,16 @@
                     <option value="sell">🟢 بيع</option>
                     <option value="buy">🔴 شراء</option>
                 </select>
-                
-                <!-- قائمة العملات الكاملة (جميع الدول المدعومة) -->
                 <select id="offerCurrency" class="currency-select">
-                    <option value="USD">🇺🇸 دولار أمريكي (USD)</option>
-                    <option value="EUR">🇪🇺 يورو (EUR)</option>
-                    <option value="GBP">🇬🇧 جنيه إسترليني (GBP)</option>
-                    <option value="SAR">🇸🇦 ريال سعودي (SAR)</option>
-                    <option value="AED">🇦🇪 درهم إماراتي (AED)</option>
-                    <option value="EGP">🇪🇬 جنيه مصري (EGP)</option>
-                    <option value="SDG">🇸🇩 جنيه سوداني (SDG)</option>
-                    <option value="IQD">🇮🇶 دينار عراقي (IQD)</option>
-                    <option value="JOD">🇯🇴 دينار أردني (JOD)</option>
-                    <option value="KWD">🇰🇼 دينار كويتي (KWD)</option>
-                    <option value="QAR">🇶🇦 ريال قطري (QAR)</option>
-                    <option value="BHD">🇧🇭 دينار بحريني (BHD)</option>
-                    <option value="OMR">🇴🇲 ريال عماني (OMR)</option>
-                    <option value="TRY">🇹🇷 ليرة تركية (TRY)</option>
-                    <option value="INR">🇮🇳 روبية هندية (INR)</option>
-                    <option value="PKR">🇵🇰 روبية باكستانية (PKR)</option>
+                    <option value="USD">🇺🇸 دولار</option>
+                    <option value="EUR">🇪🇺 يورو</option>
+                    <option value="SDG">🇸🇩 جنيه</option>
                 </select>
-                
-                <input type="number" id="offerAmount" placeholder="المبلغ" class="trade-input">
-                <input type="number" id="offerPrice" placeholder="السعر" class="trade-input">
+                <input type="number" id="offerAmount" placeholder="المبلغ الإجمالي للعرض" class="trade-input">
+                <input type="number" id="offerPrice" placeholder="السعر (مثلاً: 560 يعني 1 دولار = 560 عملة)" class="trade-input">
                 <div class="limit-inputs">
-                    <input type="number" id="offerMinAmount" placeholder="الحد الأدنى" class="trade-input" style="margin:0">
-                    <input type="number" id="offerMaxAmount" placeholder="الحد الأقصى" class="trade-input" style="margin:0">
+                    <input type="number" id="offerMinAmount" placeholder="الحد الأدنى للشراء" class="trade-input" style="margin:0">
+                    <input type="number" id="offerMaxAmount" placeholder="الحد الأقصى للشراء" class="trade-input" style="margin:0">
                 </div>
                 <select id="offerPaymentMethod" class="currency-select">
                     <option value="bank_transfer">🏦 تحويل بنكي</option>
@@ -713,6 +732,9 @@
                 </div>
                 <textarea id="offerDetails" placeholder="تفاصيل إضافية" class="trade-input" rows="2"></textarea>
                 <button class="trade-btn" onclick="createOffer()">✅ إنشاء العرض</button>
+                <div class="info-box" style="margin-top:15px">
+                    📌 <strong>ملاحظة:</strong> عروض البيع تدعم نظام البيع بالتجزئة - يمكن للمشترين شراء جزء من العرض حسب الحدود التي تحددها.
+                </div>
             </div>
         </div>
 
@@ -875,7 +897,7 @@
                 <div class="info-box"><h4>🌐 الشبكات المدعومة</h4><p>🟡 BNB (BEP-20) عمولة ~0.1$<br>🟣 POLYGON عمولة ~0.05$<br>🟢 SOLANA عمولة ~0.01$<br>🔷 APTOS عمولة ~0.02$</p></div>
                 <div class="info-box"><h4>💬 الدردشة</h4><p>يمكنك الدردشة مع البائع/المشتري مباشرة من خلال تبويب "صفقاتي" ← اضغط على زر "💬 دردشة"</p></div>
                 <div class="info-box"><h4>💰 رسوم السحب</h4><p>• رسوم المنصة: 0.05 $ (ثابتة)<br>• رسوم الشبكة: حسب الشبكة المختارة (تتغير حسب السوق)</p></div>
-                <div class="info-box"><h4>💱 العملات المدعومة</h4><p>USD, EUR, GBP, SAR, AED, EGP, SDG, IQD, JOD, KWD, QAR, BHD, OMR, TRY, INR, PKR</p></div>
+                <div class="info-box"><h4>🛒 البيع بالتجزئة (Partial Fill)</h4><p>• يمكنك شراء جزء من العرض حسب الحدود التي يحددها البائع<br>• أدخل المبلغ الذي تريد شراءه في حقل "المبلغ المطلوب"<br>• سيتم خصم المبلغ المطلوب فقط من رصيد البائع</p></div>
             </div>
         </div>
     </div>
@@ -896,7 +918,7 @@
         let chatInterval = null;
         let currentNetworkFee = 0.10;
         const API_URL = window.location.origin;
-        const BOT_USERNAME = 'my_edu_199311_bot';  // تم التعديل لاسم البوت الخاص بك
+        const BOT_USERNAME = 'YourBotUsername';
         const PLATFORM_WITHDRAW_FEE = 0.05;
         
         const sudanBanks = ["Bank of Khartoum", "Blue Nile Mashreq Bank", "Al Salam Bank", "Agricultural Bank", "Al Baraka Bank", "Al Nilein Bank"];
@@ -970,6 +992,7 @@
             } catch(e) { console.error(e); }
         }
         
+        // ========== عرض السوق مع دعم البيع بالتجزئة ==========
         async function loadMarketFast(page = 1) {
             currentPage = page;
             const type = document.getElementById('marketType').value;
@@ -993,19 +1016,46 @@
                 
                 let html = '';
                 for (const o of offers) {
-                    html += `
-                        <div class="offer-card ${type === 'sell' ? 'offer-sell' : 'offer-buy'}">
-                            <div class="offer-header">
-                                <div class="offer-user">👤 ${o.firstName || o.username} ${o.isVerified ? '✅' : ''} ${o.isOnline ? '🟢' : '⚫'}</div>
-                                <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
+                    const remaining = o.remainingAmount || o.fiatAmount;
+                    const remainingPercent = (remaining / o.fiatAmount) * 100;
+                    const isSell = type === 'sell';
+                    
+                    if (isSell) {
+                        // عروض البيع - تدعم البيع بالتجزئة
+                        html += `
+                            <div class="offer-card offer-sell">
+                                <div class="offer-header">
+                                    <div class="offer-user">👤 ${o.firstName || o.username} ${o.isVerified ? '✅' : ''} ${o.isOnline ? '🟢' : '⚫'}</div>
+                                    <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
+                                </div>
+                                <div class="offer-amount">💰 ${remaining.toFixed(2)} / ${o.fiatAmount.toFixed(2)} ${o.currency}</div>
+                                <div class="progress-bar"><div class="progress-fill" style="width: ${remainingPercent}%"></div></div>
+                                <div class="offer-price">📊 ${o.price.toFixed(2)} ${o.currency}/USD</div>
+                                <div class="offer-details">💵 القيمة: ${(remaining / o.price).toFixed(2)} USD</div>
+                                <div class="offer-details">📊 الحدود: ${o.minAmount || 10} - ${o.maxAmount || 100000} ${o.currency}</div>
+                                <div class="remaining-amount">📦 المتبقي: ${(remaining / o.price).toFixed(2)} USD</div>
+                                <div class="partial-input-group">
+                                    <input type="number" id="amount_${o._id}" class="partial-input" placeholder="المبلغ المطلوب (${o.minAmount || 10}-${Math.min(o.maxAmount, remaining)} ${o.currency})" step="any">
+                                    <button class="partial-btn" onclick="startTradePartial('${o._id}', document.getElementById('amount_${o._id}').value)">✅ شراء</button>
+                                </div>
                             </div>
-                            <div class="offer-amount">💰 ${o.fiatAmount.toFixed(2)} ${o.currency}</div>
-                            <div class="offer-price">📊 ${o.price.toFixed(2)} ${o.currency}/USD</div>
-                            <div class="offer-details">💵 ${(o.fiatAmount / o.price).toFixed(2)} USD</div>
-                            <div class="offer-details">📊 الحدود: ${o.minAmount || 10} - ${o.maxAmount || 100000}</div>
-                            <button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button>
-                        </div>
-                    `;
+                        `;
+                    } else {
+                        // عروض الشراء
+                        html += `
+                            <div class="offer-card offer-buy">
+                                <div class="offer-header">
+                                    <div class="offer-user">👤 ${o.firstName || o.username} ${o.isVerified ? '✅' : ''} ${o.isOnline ? '🟢' : '⚫'}</div>
+                                    <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
+                                </div>
+                                <div class="offer-amount">💰 ${o.fiatAmount.toFixed(2)} ${o.currency}</div>
+                                <div class="offer-price">📊 ${o.price.toFixed(2)} ${o.currency}/USD</div>
+                                <div class="offer-details">💵 ${(o.fiatAmount / o.price).toFixed(2)} USD</div>
+                                <div class="offer-details">📊 الحدود: ${o.minAmount || 10} - ${o.maxAmount || 100000}</div>
+                                <button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button>
+                            </div>
+                        `;
+                    }
                 }
                 
                 if (totalOffers > limit) {
@@ -1039,18 +1089,42 @@
                 html = html.replace('<div class="pagination-buttons">', '');
                 
                 for (const o of offers) {
-                    html += `
-                        <div class="offer-card ${type === 'sell' ? 'offer-sell' : 'offer-buy'}">
-                            <div class="offer-header">
-                                <div class="offer-user">👤 ${o.firstName || o.username} ${o.isVerified ? '✅' : ''} ${o.isOnline ? '🟢' : '⚫'}</div>
-                                <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
+                    const remaining = o.remainingAmount || o.fiatAmount;
+                    const remainingPercent = (remaining / o.fiatAmount) * 100;
+                    const isSell = type === 'sell';
+                    
+                    if (isSell) {
+                        html += `
+                            <div class="offer-card offer-sell">
+                                <div class="offer-header">
+                                    <div class="offer-user">👤 ${o.firstName || o.username} ${o.isVerified ? '✅' : ''} ${o.isOnline ? '🟢' : '⚫'}</div>
+                                    <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
+                                </div>
+                                <div class="offer-amount">💰 ${remaining.toFixed(2)} / ${o.fiatAmount.toFixed(2)} ${o.currency}</div>
+                                <div class="progress-bar"><div class="progress-fill" style="width: ${remainingPercent}%"></div></div>
+                                <div class="offer-price">📊 ${o.price.toFixed(2)} ${o.currency}/USD</div>
+                                <div class="offer-details">💵 القيمة: ${(remaining / o.price).toFixed(2)} USD</div>
+                                <div class="offer-details">📊 الحدود: ${o.minAmount || 10} - ${o.maxAmount || 100000} ${o.currency}</div>
+                                <div class="partial-input-group">
+                                    <input type="number" id="amount_${o._id}" class="partial-input" placeholder="المبلغ المطلوب (${o.minAmount || 10}-${Math.min(o.maxAmount, remaining)} ${o.currency})" step="any">
+                                    <button class="partial-btn" onclick="startTradePartial('${o._id}', document.getElementById('amount_${o._id}').value)">✅ شراء</button>
+                                </div>
                             </div>
-                            <div class="offer-amount">💰 ${o.fiatAmount.toFixed(2)} ${o.currency}</div>
-                            <div class="offer-price">📊 ${o.price.toFixed(2)} ${o.currency}/USD</div>
-                            <div class="offer-details">💵 ${(o.fiatAmount / o.price).toFixed(2)} USD</div>
-                            <button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button>
-                        </div>
-                    `;
+                        `;
+                    } else {
+                        html += `
+                            <div class="offer-card offer-buy">
+                                <div class="offer-header">
+                                    <div class="offer-user">👤 ${o.firstName || o.username} ${o.isVerified ? '✅' : ''} ${o.isOnline ? '🟢' : '⚫'}</div>
+                                    <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
+                                </div>
+                                <div class="offer-amount">💰 ${o.fiatAmount.toFixed(2)} ${o.currency}</div>
+                                <div class="offer-price">📊 ${o.price.toFixed(2)} ${o.currency}/USD</div>
+                                <div class="offer-details">💵 ${(o.fiatAmount / o.price).toFixed(2)} USD</div>
+                                <button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button>
+                            </div>
+                        `;
+                    }
                 }
                 
                 document.getElementById('offersList').innerHTML = html;
@@ -1069,6 +1143,59 @@
                 const stats = await res.json();
                 document.getElementById('marketStats').innerHTML = `📋 ${stats.totalOffers || 0} عرض | 💰 متوسط: ${stats.avgPrice || 0} USD | 👥 ${stats.totalTraders || 0} متداول`;
             } catch(e) { console.error(e); }
+        }
+        
+        // ========== دوال البيع بالتجزئة (Partial Fill) ==========
+        
+        async function startTradePartial(offerId, amount) {
+            if (!amount || parseFloat(amount) <= 0) {
+                tg.showAlert('⚠️ يرجى إدخال المبلغ المطلوب');
+                return;
+            }
+            
+            const amountNum = parseFloat(amount);
+            if (isNaN(amountNum) || amountNum <= 0) {
+                tg.showAlert('⚠️ يرجى إدخال مبلغ صحيح');
+                return;
+            }
+            
+            tg.showAlert('🔄 جاري بدء الصفقة...');
+            
+            try {
+                const res = await fetch(`${API_URL}/api/trade/start-partial`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        user_id: tg.initDataUnsafe.user.id, 
+                        offer_id: offerId,
+                        amount: amountNum
+                    })
+                });
+                const result = await res.json();
+                tg.showAlert(result.message);
+                if (result.success) {
+                    setTimeout(() => loadMyTrades(), 1000);
+                    loadMarketFast(1);
+                }
+            } catch(e) {
+                console.error('Partial trade error:', e);
+                tg.showAlert('❌ حدث خطأ، حاول مرة أخرى');
+            }
+        }
+        
+        async function startTrade(offerId) {
+            if (!userData.isVerified) { tg.showAlert('⚠️ يرجى توثيق حسابك'); switchTab('kyc'); return; }
+            
+            tg.showAlert('🔄 جاري بدء الصفقة...');
+            
+            const res = await fetch(`${API_URL}/api/trade/start`, { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId }) 
+            });
+            const result = await res.json();
+            tg.showAlert(result.message);
+            if (result.success) setTimeout(() => loadMyTrades(), 1000);
         }
         
         // ========== دوال الدردشة ==========
@@ -1236,7 +1363,7 @@
                             <div class="offer-amount">💰 ${t.amount} ${t.currency}</div>
                             <div class="offer-details">📊 الحالة: ${statusText}</div>
                             <div class="offer-details">👤 الطرف الآخر: ${partnerName}</div>
-                            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                            <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
                                 <button class="trade-chat-btn" onclick="openChat('${t._id}', ${partnerId}, '${partnerName}')">💬 دردشة</button>
                                 ${t.status === 'pending' ? `<button class="cancel-btn" onclick="cancelTrade('${t._id}')">❌ إلغاء</button>` : ''}
                                 ${t.status === 'paid' && t.sellerId === uid ? `<button class="trade-btn" onclick="releaseCrystals('${t._id}')">🔓 تحرير</button>` : ''}
@@ -1416,7 +1543,7 @@
                 const offers = await res.json();
                 const container = document.getElementById('myOffersList');
                 if (!offers.length) { container.innerHTML = '<div class="loading">لا توجد عروض</div>'; return; }
-                container.innerHTML = offers.map(o => `<div class="offer-card"><div class="offer-amount">💰 ${o.fiatAmount} ${o.currency}</div><div class="offer-price">📊 ${o.price}</div><button class="cancel-btn" onclick="cancelOffer('${o._id}')">❌ إلغاء</button></div>`).join('');
+                container.innerHTML = offers.map(o => `<div class="offer-card"><div class="offer-amount">💰 ${o.remainingAmount || o.fiatAmount} / ${o.fiatAmount} ${o.currency}</div><div class="offer-price">📊 ${o.price}</div><div class="offer-details">📦 متبقي: ${((o.remainingAmount || o.fiatAmount) / o.price).toFixed(2)} USD</div><button class="cancel-btn" onclick="cancelOffer('${o._id}')">❌ إلغاء</button></div>`).join('');
             } catch(e) { console.error(e); }
         }
         
@@ -1500,22 +1627,22 @@
             const accountNumber = document.getElementById('offerAccountNumber').value;
             const accountName = document.getElementById('offerAccountName').value;
             const details = document.getElementById('offerDetails').value;
+            
             if (!fiatAmount || fiatAmount <= 0) return tg.showAlert('أدخل المبلغ');
             if (!price || price <= 0) return tg.showAlert('أدخل السعر');
             if (minAmount >= maxAmount) return tg.showAlert('الحد الأدنى أقل من الأقصى');
-            const body = { user_id: tg.initDataUnsafe.user.id, type, currency, fiatAmount, price, paymentMethod, paymentDetails: details, bankName, bankAccountNumber: accountNumber, bankAccountName: accountName, minAmount, maxAmount };
+            if (minAmount > fiatAmount) return tg.showAlert('الحد الأدنى لا يمكن أن يزيد عن إجمالي العرض');
+            
+            const body = { 
+                user_id: tg.initDataUnsafe.user.id, type, currency, 
+                fiatAmount, price, paymentMethod, paymentDetails: details, 
+                bankName, bankAccountNumber: accountNumber, bankAccountName: accountName, 
+                minAmount, maxAmount 
+            };
             const res = await fetch(`${API_URL}/api/offer/create`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             const result = await res.json();
             tg.showAlert(result.message);
             if (result.success) switchTab('market');
-        }
-        
-        async function startTrade(offerId) {
-            if (!userData.isVerified) { tg.showAlert('⚠️ يرجى توثيق حسابك'); switchTab('kyc'); return; }
-            const res = await fetch(`${API_URL}/api/trade/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId }) });
-            const result = await res.json();
-            tg.showAlert(result.message);
-            if (result.success) setTimeout(() => loadMyTrades(), 1000);
         }
         
         async function deposit() {
