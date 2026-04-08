@@ -1463,6 +1463,6 @@ bot.launch().then(() => {
     console.log('🌍 Currencies Supported: ' + SUPPORTED_CURRENCIES.length + ' currencies');
     console.log('🌐 Current Network Fees:', cachedNetworkFees);
 });
-
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+bot.launch({ dropPendingUpdates: true }).then(() => {
+    console.log('🚀 P2P Exchange Bot running');
+});
