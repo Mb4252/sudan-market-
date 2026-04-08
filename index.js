@@ -1,4 +1,5 @@
 require('dotenv').config();
+const cors = require('cors');
 const { Telegraf, Markup } = require('telegraf');
 const db = require('./database');
 const express = require('express');
