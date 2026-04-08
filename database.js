@@ -120,61 +120,9 @@ class NetworkFeeManager {
     }
     
     // المصدر 2: RPC مباشر (باستخدام روابط مجانية محدثة)
-    async fetchFromRPC() {
-        try {
-            const results = {};
-            
-            // 1. Ethereum RPC (باستخدام llamaRPC - مجاني وسريع)
-            try {
-                const ethProvider = new JsonRpcProvider('https://eth.llamarpc.com');
-                const ethFeeData = await ethProvider.getFeeData();
-                const ethGasGwei = Number(ethFeeData.gasPrice) / 1e9;
-                
-                const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
-                const ethPrice = priceRes.ok ? (await priceRes.json()).ethereum?.usd : 3000;
-                
-                const erc20Fee = (ethGasGwei * 21000) / 1e9 * ethPrice;
-                results.erc20 = Math.min(50, Math.max(5, erc20Fee));
-                console.log(`✅ RPC ETH gas: ${ethGasGwei} Gwei = ~${results.erc20.toFixed(4)} USD`);
-                
-            } catch(e) { console.log('⚠️ ETH RPC failed, using fallback:', e.message); }
-            
-            // 2. Polygon RPC (باستخدام llamaRPC - مجاني)
-            try {
-                const polygonProvider = new JsonRpcProvider('https://polygon.llamarpc.com');
-                const polygonFeeData = await polygonProvider.getFeeData();
-                const polygonGasGwei = Number(polygonFeeData.gasPrice) / 1e9;
-                
-                const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=matic-network&vs_currencies=usd');
-                const maticPrice = priceRes.ok ? (await priceRes.json())['matic-network']?.usd : 0.80;
-                
-                const polygonFee = (polygonGasGwei * 50000) / 1e9 * maticPrice;
-                results.polygon = Math.min(0.50, Math.max(0.05, polygonFee));
-                console.log(`✅ RPC Polygon gas: ${polygonGasGwei} Gwei = ~${results.polygon.toFixed(4)} USD`);
-                
-            } catch(e) { console.log('⚠️ Polygon RPC failed, using fallback:', e.message); }
-            
-            // 3. BSC RPC (يبقى كما هو لأنه يعمل)
-            try {
-                const bscProvider = new JsonRpcProvider('https://bsc-dataseed.binance.org/');
-                const bscFeeData = await bscProvider.getFeeData();
-                const bscGasGwei = Number(bscFeeData.gasPrice) / 1e9;
-                
-                const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd');
-                const bnbPrice = priceRes.ok ? (await priceRes.json()).binancecoin?.usd : 600;
-                
-                const bnbFee = (bscGasGwei * 21000) / 1e9 * bnbPrice;
-                results.bnb = Math.min(1.0, Math.max(0.10, bnbFee));
-                console.log(`✅ RPC BSC gas: ${bscGasGwei} Gwei = ~${results.bnb.toFixed(4)} USD`);
-                
-            } catch(e) { console.log('⚠️ BSC RPC failed:', e.message); }
-            
-            return results;
-            
-        } catch (error) {
-            console.log('⚠️ RPC fetch error:', error.message);
-            return null;
-        }
+      async fetchFromRPC() {
+        // تم تعطيل الاتصال المباشر بعقد البلوكشين نهائياً لتجنب حظر Cloudflare للسيرفر
+        return null;
     }
     
     // المصدر 3: حساب مبسط بناءً على أسعار العملات
