@@ -296,9 +296,17 @@ class Database {
             aptos: process.env.COMMISSION_WALLET_APTOS || '0xf0713a00655788d44218e42b71343be9f18d96533d322c28ce9830dcf9022468'
         };
         
+        // ========== دعم أكثر من 50 عملة (تم التوسيع) ==========
         this.supportedCurrencies = process.env.SUPPORTED_CURRENCIES 
             ? process.env.SUPPORTED_CURRENCIES.split(',') 
-            : ['USD', 'EUR', 'GBP', 'SAR', 'AED', 'EGP', 'SDG', 'IQD', 'JOD', 'KWD', 'QAR', 'BHD', 'OMR', 'TRY', 'INR', 'PKR'];
+            : [
+                'USD', 'EUR', 'GBP', 'SAR', 'AED', 'EGP', 'SDG', 'IQD', 'JOD', 'KWD', 
+                'QAR', 'BHD', 'OMR', 'TRY', 'INR', 'PKR', 'CNY', 'JPY', 'CAD', 'AUD',
+                'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'RUB', 'ZAR', 'MXN', 'BRL', 'NGN',
+                'KES', 'GHS', 'TND', 'DZD', 'MAD', 'LYD', 'LBP', 'SYP', 'YER', 'AFN',
+                'BDT', 'BND', 'HKD', 'IDR', 'ILS', 'KHR', 'LAK', 'LKR', 'MMK',
+                'MNT', 'NPR', 'PHP', 'SGD', 'THB', 'TWD', 'UAH', 'VND'
+            ];
         
         this.paymentMethods = process.env.PAYMENT_METHODS 
             ? process.env.PAYMENT_METHODS.split(',') 
@@ -695,7 +703,15 @@ class Database {
     
     async getReferralData(userId) {
         const user = await User.findOne({ userId });
-        if (!user) return { referralCount: 0, referralEarnings: 0, referralCommissionRate: this.referralCommissionRate, referrals: [], referralLink: `https://t.me/YourBotUsername?start=${userId}` };
+        // تم تعديل رابط الإحالة إلى اسم البوت الصحيح @my_edu_199311_bot
+        const BOT_USERNAME = 'my_edu_199311_bot';
+        if (!user) return { 
+            referralCount: 0, 
+            referralEarnings: 0, 
+            referralCommissionRate: this.referralCommissionRate, 
+            referrals: [], 
+            referralLink: `https://t.me/${BOT_USERNAME}?start=${userId}`
+        };
         const referralsWithDetails = [];
         for (const ref of (user.referrals || [])) {
             const referredUser = await User.findOne({ userId: ref.userId }).select('firstName username completedTrades');
@@ -710,7 +726,7 @@ class Database {
             referralEarnings: user.referralEarnings || 0,
             referralCommissionRate: user.referralCommissionRate || this.referralCommissionRate,
             referrals: referralsWithDetails,
-            referralLink: `https://t.me/YourBotUsername?start=${userId}`
+            referralLink: `https://t.me/${BOT_USERNAME}?start=${userId}`
         };
     }
 
@@ -796,10 +812,21 @@ class Database {
         return { totalOffers, avgPrice: parseFloat(avgPrice), mostActiveCurrency, totalTraders, totalVolume: totalVolume[0]?.total || 0 };
     }
 
+    // ========== التحقق من صحة العملة المدعومة ==========
+    isCurrencySupported(currency) {
+        return this.supportedCurrencies.includes(currency);
+    }
+
     // ========== إنشاء عرض مع دعم البيع بالتجزئة ==========
     async createOffer(userId, type, currency, fiatAmount, price, paymentMethod, paymentDetails, bankName, bankAccountNumber, bankAccountName, minAmount, maxAmount) {
         const user = await this.getUser(userId);
         if (!user) return { success: false, message: 'المستخدم غير موجود' };
+        
+        // التحقق من صحة العملة
+        if (!this.isCurrencySupported(currency)) {
+            return { success: false, message: `❌ عملة غير مدعومة. العملات المدعومة: ${this.supportedCurrencies.slice(0, 20).join(', ')}... (${this.supportedCurrencies.length} عملة)` };
+        }
+        
         const banCheck = await this.isUserBannedOrLocked(userId);
         if (banCheck.banned) return { success: false, message: banCheck.reason };
         if (banCheck.locked) return { success: false, message: banCheck.reason };
@@ -1361,8 +1388,8 @@ class Database {
                          `💰 *المبلغ:* ${amount} USD\n` +
                          `🏢 *رسوم المنصة:* ${platformFee} $\n` +
                          `🌐 *رسوم الشبكة (${network.toUpperCase()}):* ${networkFee} $\n` +
-                         `📊 *إجمالي الرسوم:* ${totalFees.toFixed(2)} $\n` +
-                         `💎 *الإجمالي المخصوم:* ${totalDeduct.toFixed(2)} $\n` +
+                         `📊 *إجمالي الرسوم:* ${totalFees.toFixed(4)} $\n` +
+                         `💎 *الإجمالي المخصوم:* ${totalDeduct.toFixed(4)} $\n` +
                          `📤 *العنوان:* \`${address}\`\n\n` +
                          `⏳ *سيتم مراجعة الطلب من قبل الإدارة خلال 24 ساعة*`
             };
@@ -1385,9 +1412,9 @@ class Database {
             message: `✅ *تم سحب ${amount} USD بنجاح!*\n\n` +
                      `💰 *المبلغ:* ${amount} USD\n` +
                      `🏢 *رسوم المنصة:* ${platformFee} $\n` +
-                     `🌐 *رسوم الشبكة (${network.toUpperCase()}):* ${networkFee} $\n` +
-                     `📊 *إجمالي الرسوم:* ${totalFees.toFixed(2)} $\n` +
-                     `💎 *الإجمالي المخصوم:* ${totalDeduct.toFixed(2)} $\n` +
+                     `🌐 *رسوم الشبكة (${network.toUpperCase()}):* ${networkFee.toFixed(4)} $\n` +
+                     `📊 *إجمالي الرسوم:* ${totalFees.toFixed(4)} $\n` +
+                     `💎 *الإجمالي المخصوم:* ${totalDeduct.toFixed(4)} $\n` +
                      `📤 *العنوان:* \`${address}\`\n\n` +
                      `📋 *رقم الطلب:* #${request._id.toString().slice(-6)}`
         };
