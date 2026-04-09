@@ -1,4 +1,4 @@
-الرابعconst mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 // ========== نموذج المحفظة ==========
 const walletSchema = new mongoose.Schema({
