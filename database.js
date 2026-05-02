@@ -133,13 +133,14 @@ class NetworkFeeManager {
         }
     }
     
-    // المصدر 2: RPC مباشر (للغاز الحقيقي)
+    // المصدر 2: RPC مباشر (للغاز الحقيقي) - تم التعديل هنا
     async fetchFromRPC() {
         try {
             const results = {};
             
             // 1. Ethereum RPC (Cloudflare - مجاني)
             try {
+                // ✅ التصحيح لـ ethers v6
                 const ethProvider = new ethers.JsonRpcProvider('https://cloudflare-eth.com');
                 const ethFeeData = await ethProvider.getFeeData();
                 const ethGasGwei = Number(ethFeeData.gasPrice) / 1e9;
