@@ -20,7 +20,12 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const WEBAPP_URL = process.env.WEBAPP_URL || `https://${process.env.RENDER_EXTERNAL_URL || 'localhost'}`;
+// تحديد روابط المنصة
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL ? `https://${process.env.RENDER_EXTERNAL_URL}` : null;
+const WEBAPP_URL = process.env.WEBAPP_URL || RENDER_URL || `http://localhost:${PORT}`;
+// الدومين الذي سيستخدم للـ Webhook (يجب أن يكون HTTPS)
+const WEBHOOK_DOMAIN = RENDER_URL || WEBAPP_URL; 
+
 const ADMIN_IDS = (process.env.ADMIN_IDS || '6701743450,8181305474').split(',').map(Number);
 const BOT_USERNAME = process.env.BOT_USERNAME || 'crystal_exchange_bot';
 
@@ -104,7 +109,7 @@ app.post('/api/2fa/disable', async (req, res) => res.json(await db.disable2FA(pa
 // سيرفر الملفات الثابتة
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/terms', (req, res) => res.sendFile(path.join(__dirname, 'public', 'terms.html')));
-app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date(), supply: 5000000, price: await db.getMarketPrice() }));
+app.get('/health', async (req, res) => res.json({ status: 'ok', timestamp: new Date(), supply: 5000000, price: await db.getMarketPrice() }));
 
 // ========== إعداد بوت التلجرام ==========
 const bot = new Telegraf(process.env.BOT_TOKEN);
@@ -112,181 +117,218 @@ module.exports.bot = bot;
 
 // ========== أوامر البوت ==========
 bot.start(async (ctx) => {
-    const user = ctx.from;
-    const referrer = ctx.startPayload ? parseInt(ctx.startPayload) : null;
-    
-    await db.registerUser(user.id, user.username, user.first_name, '', '', '', 'SD', '', referrer, 'ar', ctx.message?.chat?.id, ctx.message?.from?.is_bot ? 'Bot' : 'User');
-    
-    await ctx.reply(
-        `💎 *CRYSTAL Exchange* 💎\n\n` +
-        `✨ *مرحباً بك في منصة تداول عملة الكريستال!*\n\n` +
-        `👤 *المستخدم:* ${user.first_name}\n\n` +
-        `📊 *إجمالي العرض:* 5,000,000 CRYSTAL\n` +
-        `💰 *السعر الحالي:* ${await db.getMarketPrice()} USDT\n` +
-        `📈 *24h تغير:* جاري التحميل...\n\n` +
-        `🚀 *اضغط على الزر أدناه لبدء التداول*`,
-        {
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([
-                [Markup.button.webApp('💎 فتح منصة التداول', WEBAPP_URL)],
-                [Markup.button.url('📜 الشروط والأحكام', `${WEBAPP_URL}/terms`)]
-            ])
-        }
-    );
+    try {
+        const user = ctx.from;
+        const referrer = ctx.startPayload ? parseInt(ctx.startPayload) : null;
+        
+        await db.registerUser(user.id, user.username, user.first_name, '', '', '', 'SD', '', referrer, 'ar', ctx.message?.chat?.id, ctx.message?.from?.is_bot ? 'Bot' : 'User');
+        
+        let price = "جارِ التحميل...";
+        try { price = await db.getMarketPrice(); } catch(e) { console.error('Price error:', e); }
+
+        await ctx.reply(
+            `💎 *CRYSTAL Exchange* 💎\n\n` +
+            `✨ *مرحباً بك في منصة تداول عملة الكريستال!*\n\n` +
+            `👤 *المستخدم:* ${user.first_name}\n\n` +
+            `📊 *إجمالي العرض:* 5,000,000 CRYSTAL\n` +
+            `💰 *السعر الحالي:* ${price} USDT\n` +
+            `📈 *24h تغير:* جاري التحميل...\n\n` +
+            `🚀 *اضغط على الزر أدناه لبدء التداول*`,
+            {
+                parse_mode: 'Markdown',
+                ...Markup.inlineKeyboard([[Markup.button.webApp('💎 فتح منصة التداول', WEBAPP_URL)],[Markup.button.url('📜 الشروط والأحكام', `${WEBAPP_URL}/terms`)]
+                ])
+            }
+        );
+    } catch (error) {
+        console.error("❌ Error in /start:", error);
+        ctx.reply("⚠️ حدث خطأ أثناء التسجيل، يرجى المحاولة لاحقاً.").catch(()=>{"Ignore"});
+    }
 });
 
 bot.command('price', async (ctx) => {
-    const price = await db.getMarketPrice();
-    await ctx.reply(`💎 *سعر CRYSTAL الحالي:* ${price} USDT\n📊 *1 CRYSTAL = ${(price * 500).toFixed(2)} حبة*`, { parse_mode: 'Markdown' });
+    try {
+        const price = await db.getMarketPrice();
+        await ctx.reply(`💎 *سعر CRYSTAL الحالي:* ${price} USDT\n📊 *1 CRYSTAL = ${(price * 500).toFixed(2)} حبة*`, { parse_mode: 'Markdown' });
+    } catch (error) {
+        ctx.reply("⚠️ لا يمكن جلب السعر حالياً.");
+    }
 });
 
 bot.command('balance', async (ctx) => {
-    const stats = await db.getUserStats(ctx.from.id);
-    await ctx.reply(`💰 *رصيدك*\n💎 CRYSTAL: ${stats.crystalBalance?.toFixed(2) || 0}\n💵 USDT: ${stats.usdtBalance?.toFixed(2) || 0}`, { parse_mode: 'Markdown' });
+    try {
+        const stats = await db.getUserStats(ctx.from.id);
+        await ctx.reply(`💰 *رصيدك*\n💎 CRYSTAL: ${stats.crystalBalance?.toFixed(2) || 0}\n💵 USDT: ${stats.usdtBalance?.toFixed(2) || 0}`, { parse_mode: 'Markdown' });
+    } catch (error) {
+        ctx.reply("⚠️ حدث خطأ في جلب الرصيد.");
+    }
 });
 
 bot.command('stats', async (ctx) => {
-    const stats = await db.getMarketStats();
-    await ctx.reply(
-        `📊 *إحصائيات السوق*\n\n` +
-        `💎 *سعر CRYSTAL:* ${stats.price} USDT\n` +
-        `📈 *التغير 24h:* ${stats.change24h?.toFixed(2) || 0}%\n` +
-        `📊 *حجم التداول 24h:* ${stats.volume24h?.toFixed(2) || 0} CRYSTAL\n` +
-        `📈 *أعلى سعر 24h:* ${stats.high24h} USDT\n` +
-        `📉 *أدنى سعر 24h:* ${stats.low24h} USDT\n\n` +
-        `🟢 *طلبات الشراء:* ${stats.buyOrders}\n` +
-        `🔴 *طلبات البيع:* ${stats.sellOrders}\n` +
-        `🔄 *إجمالي الصفقات:* ${stats.totalTrades}`,
-        { parse_mode: 'Markdown' }
-    );
+    try {
+        const stats = await db.getMarketStats();
+        await ctx.reply(
+            `📊 *إحصائيات السوق*\n\n` +
+            `💎 *سعر CRYSTAL:* ${stats.price} USDT\n` +
+            `📈 *التغير 24h:* ${stats.change24h?.toFixed(2) || 0}%\n` +
+            `📊 *حجم التداول 24h:* ${stats.volume24h?.toFixed(2) || 0} CRYSTAL\n` +
+            `📈 *أعلى سعر 24h:* ${stats.high24h} USDT\n` +
+            `📉 *أدنى سعر 24h:* ${stats.low24h} USDT\n\n` +
+            `🟢 *طلبات الشراء:* ${stats.buyOrders}\n` +
+            `🔴 *طلبات البيع:* ${stats.sellOrders}\n` +
+            `🔄 *إجمالي الصفقات:* ${stats.totalTrades}`,
+            { parse_mode: 'Markdown' }
+        );
+    } catch (error) {
+        ctx.reply("⚠️ حدث خطأ في جلب إحصائيات السوق.");
+    }
 });
 
 bot.command('admin', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.reply('⛔ للأدمن فقط');
     await ctx.reply('👑 *لوحة تحكم الأدمن*', {
         parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-            [Markup.button.callback('🆔 طلبات التوثيق', 'pending_kyc')],
-            [Markup.button.callback('💰 طلبات السحب', 'pending_withdraws')],
-            [Markup.button.callback('📤 طلبات الإيداع', 'pending_deposits')],
-            [Markup.button.callback('📊 إحصائيات', 'global_stats')],
-            [Markup.button.webApp('💎 فتح المنصة', WEBAPP_URL)]
+        ...Markup.inlineKeyboard([[Markup.button.callback('🆔 طلبات التوثيق', 'pending_kyc')],[Markup.button.callback('💰 طلبات السحب', 'pending_withdraws')],[Markup.button.callback('📤 طلبات الإيداع', 'pending_deposits')],[Markup.button.callback('📊 إحصائيات', 'global_stats')],[Markup.button.webApp('💎 فتح المنصة', WEBAPP_URL)]
         ])
     });
 });
 
 // أزرار الأدمن
 bot.action('pending_kyc', async (ctx) => {
-    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
-    const pending = await db.getPendingKycRequests();
-    if (!pending.length) return ctx.editMessageText('📭 لا توجد طلبات');
-    let text = '🆔 *طلبات التوثيق*\n\n';
-    for (const req of pending) {
-        text += `📋 ${req._id.toString().slice(-8)} | 👤 ${req.fullName}\n`;
-    }
-    await ctx.editMessageText(text, { parse_mode: 'Markdown' });
+    try {
+        if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
+        const pending = await db.getPendingKycRequests();
+        if (!pending.length) return ctx.editMessageText('📭 لا توجد طلبات');
+        let text = '🆔 *طلبات التوثيق*\n\n';
+        for (const req of pending) {
+            text += `📋 ${req._id.toString().slice(-8)} | 👤 ${req.fullName}\n`;
+        }
+        await ctx.editMessageText(text, { parse_mode: 'Markdown' });
+    } catch(e) { console.error(e); }
 });
 
 bot.action('pending_withdraws', async (ctx) => {
-    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
-    const pending = await db.getPendingWithdraws();
-    if (!pending.length) return ctx.editMessageText('📭 لا توجد طلبات سحب');
-    let text = '💰 *طلبات السحب*\n\n';
-    for (const req of pending) {
-        text += `🆔 ${req._id.toString().slice(-8)} | 👤 ${req.userId} | 💰 ${req.amount} USDT\n`;
-    }
-    await ctx.editMessageText(text, { parse_mode: 'Markdown' });
+    try {
+        if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
+        const pending = await db.getPendingWithdraws();
+        if (!pending.length) return ctx.editMessageText('📭 لا توجد طلبات سحب');
+        let text = '💰 *طلبات السحب*\n\n';
+        for (const req of pending) {
+            text += `🆔 ${req._id.toString().slice(-8)} | 👤 ${req.userId} | 💰 ${req.amount} USDT\n`;
+        }
+        await ctx.editMessageText(text, { parse_mode: 'Markdown' });
+    } catch(e) { console.error(e); }
 });
 
 bot.action('pending_deposits', async (ctx) => {
-    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
-    const pending = await db.getPendingDeposits();
-    if (!pending.length) return ctx.editMessageText('📭 لا توجد طلبات إيداع');
-    let text = '📤 *طلبات الإيداع*\n\n';
-    for (const req of pending) {
-        text += `🆔 ${req._id.toString().slice(-8)} | 👤 ${req.userId} | 💰 ${req.amount} USDT\n`;
-    }
-    await ctx.editMessageText(text, { parse_mode: 'Markdown' });
+    try {
+        if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
+        const pending = await db.getPendingDeposits();
+        if (!pending.length) return ctx.editMessageText('📭 لا توجد طلبات إيداع');
+        let text = '📤 *طلبات الإيداع*\n\n';
+        for (const req of pending) {
+            text += `🆔 ${req._id.toString().slice(-8)} | 👤 ${req.userId} | 💰 ${req.amount} USDT\n`;
+        }
+        await ctx.editMessageText(text, { parse_mode: 'Markdown' });
+    } catch(e) { console.error(e); }
 });
 
 bot.action('global_stats', async (ctx) => {
-    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
-    const stats = await db.getMarketStats();
-    await ctx.editMessageText(
-        `📊 *إحصائيات المنصة*\n\n` +
-        `💎 *سعر CRYSTAL:* ${stats.price} USDT\n` +
-        `🟢 طلبات شراء: ${stats.buyOrders}\n` +
-        `🔴 طلبات بيع: ${stats.sellOrders}\n` +
-        `🔄 إجمالي الصفقات: ${stats.totalTrades}\n` +
-        `💰 إجمالي الحجم: ${stats.totalVolume?.toFixed(2)} USDT`,
-        { parse_mode: 'Markdown' }
-    );
+    try {
+        if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
+        const stats = await db.getMarketStats();
+        await ctx.editMessageText(
+            `📊 *إحصائيات المنصة*\n\n` +
+            `💎 *سعر CRYSTAL:* ${stats.price} USDT\n` +
+            `🟢 طلبات شراء: ${stats.buyOrders}\n` +
+            `🔴 طلبات بيع: ${stats.sellOrders}\n` +
+            `🔄 إجمالي الصفقات: ${stats.totalTrades}\n` +
+            `💰 إجمالي الحجم: ${stats.totalVolume?.toFixed(2)} USDT`,
+            { parse_mode: 'Markdown' }
+        );
+    } catch(e) { console.error(e); }
 });
 
 // أوامر التداول عبر البوت
 bot.command('buy', async (ctx) => {
-    const args = ctx.message.text.split(' ');
-    if (args.length < 3) return ctx.reply('❌ /buy [السعر] [الكمية]\nمثال: /buy 0.002 1000');
-    const price = parseFloat(args[1]);
-    const amount = parseFloat(args[2]);
-    const result = await db.createOrder(ctx.from.id, 'buy', price, amount);
-    await ctx.reply(result.message);
+    try {
+        const args = ctx.message.text.split(' ');
+        if (args.length < 3) return ctx.reply('❌ /buy[السعر] [الكمية]\nمثال: /buy 0.002 1000');
+        const price = parseFloat(args[1]);
+        const amount = parseFloat(args[2]);
+        const result = await db.createOrder(ctx.from.id, 'buy', price, amount);
+        await ctx.reply(result.message);
+    } catch (e) { ctx.reply("⚠️ خطأ أثناء إنشاء الطلب."); }
 });
 
 bot.command('sell', async (ctx) => {
-    const args = ctx.message.text.split(' ');
-    if (args.length < 3) return ctx.reply('❌ /sell [السعر] [الكمية]\nمثال: /sell 0.003 500');
-    const price = parseFloat(args[1]);
-    const amount = parseFloat(args[2]);
-    const result = await db.createOrder(ctx.from.id, 'sell', price, amount);
-    await ctx.reply(result.message);
+    try {
+        const args = ctx.message.text.split(' ');
+        if (args.length < 3) return ctx.reply('❌ /sell [السعر] [الكمية]\nمثال: /sell 0.003 500');
+        const price = parseFloat(args[1]);
+        const amount = parseFloat(args[2]);
+        const result = await db.createOrder(ctx.from.id, 'sell', price, amount);
+        await ctx.reply(result.message);
+    } catch (e) { ctx.reply("⚠️ خطأ أثناء إنشاء الطلب."); }
 });
 
 bot.command('cancel', async (ctx) => {
-    const orderId = ctx.message.text.split(' ')[1];
-    if (!orderId) return ctx.reply('❌ /cancel [رقم الطلب]');
-    const result = await db.cancelOrder(orderId, ctx.from.id);
-    await ctx.reply(result.message);
+    try {
+        const orderId = ctx.message.text.split(' ')[1];
+        if (!orderId) return ctx.reply('❌ /cancel[رقم الطلب]');
+        const result = await db.cancelOrder(orderId, ctx.from.id);
+        await ctx.reply(result.message);
+    } catch (e) { ctx.reply("⚠️ خطأ أثناء الإلغاء."); }
 });
 
 bot.command('orders', async (ctx) => {
-    const buys = await db.getActiveOrders('buy', 10);
-    const sells = await db.getActiveOrders('sell', 10);
-    let text = '📊 *طلبات الشراء*\n';
-    for (const o of buys.slice(0, 5)) {
-        text += `💰 ${o.price} USDT | 📦 ${o.amount.toFixed(2)} CRYSTAL\n`;
-    }
-    text += '\n📊 *طلبات البيع*\n';
-    for (const o of sells.slice(0, 5)) {
-        text += `💰 ${o.price} USDT | 📦 ${o.amount.toFixed(2)} CRYSTAL\n`;
-    }
-    await ctx.reply(text, { parse_mode: 'Markdown' });
+    try {
+        const buys = await db.getActiveOrders('buy', 10);
+        const sells = await db.getActiveOrders('sell', 10);
+        let text = '📊 *طلبات الشراء*\n';
+        for (const o of buys.slice(0, 5)) {
+            text += `💰 ${o.price} USDT | 📦 ${o.amount.toFixed(2)} CRYSTAL\n`;
+        }
+        text += '\n📊 *طلبات البيع*\n';
+        for (const o of sells.slice(0, 5)) {
+            text += `💰 ${o.price} USDT | 📦 ${o.amount.toFixed(2)} CRYSTAL\n`;
+        }
+        await ctx.reply(text, { parse_mode: 'Markdown' });
+    } catch (e) { ctx.reply("⚠️ خطأ في عرض الطلبات."); }
 });
 
-// ========== تشغيل الخادم ==========
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🌐 Web server on port ${PORT}`);
-    console.log(`🌐 WebApp URL: ${WEBAPP_URL}`);
-});
-
-// ========== تشغيل البوت ==========
+// ========== تشغيل الخادم والبوت (بنظام Webhook) ==========
 (async () => {
     try {
+        // 1. الاتصال بقاعدة البيانات
         await db.connect();
         console.log('✅ Database connected');
         
-        await bot.telegram.deleteWebhook();
-        console.log('✅ Webhook deleted');
-        
+        // 2. إعداد الـ Webhook الخاص بتيليجرام (يجب أن يعمل قبل app.listen)
+        if (WEBHOOK_DOMAIN && WEBHOOK_DOMAIN.includes('https')) {
+            app.use(await bot.createWebhook({ domain: WEBHOOK_DOMAIN }));
+            console.log(`✅ Webhook configured for domain: ${WEBHOOK_DOMAIN}`);
+        } else {
+            // في حالة الاختبار المحلي بدون HTTPS، نستخدم Polling
+            console.log('⚠️ Running in Long Polling mode (No HTTPS domain found)');
+            bot.launch();
+        }
+
+        // 3. جلب معلومات البوت للتأكد من عمله
         const botInfo = await bot.telegram.getMe();
         console.log(`✅ Bot @${botInfo.username} is ready`);
         
-        bot.launch();
-        console.log('🚀 Bot launched successfully');
+        // 4. تشغيل الخادم
+        const server = app.listen(PORT, '0.0.0.0', () => {
+            console.log(`🌐 Web server listening on port ${PORT}`);
+            console.log(`🌐 WebApp URL: ${WEBAPP_URL}`);
+        });
+
+        // 5. إغلاق آمن
+        process.once('SIGINT', () => { server.close(); });
+        process.once('SIGTERM', () => { server.close(); });
+
     } catch (error) {
-        console.error('❌ Bot error:', error.message);
+        console.error('❌ Error during startup:', error.message);
     }
 })();
-
-process.once('SIGINT', () => { bot.stop('SIGINT'); server.close(); });
-process.once('SIGTERM', () => { bot.stop('SIGTERM'); server.close(); });
