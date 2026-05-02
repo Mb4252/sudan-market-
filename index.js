@@ -296,61 +296,40 @@ bot.command('orders', async (ctx) => {
         await ctx.reply(text, { parse_mode: 'Markdown' });
     } catch (e) { ctx.reply("⚠️ خطأ في عرض الطلبات."); }
 })
-// ========== تشغيل الخادم والبوت (نظام Webhook الاحترافي) ==========
+// ========== تشغيل الخادم والبوت (النظام النهائي المضمون) ==========
 (async () => {
     try {
         // 1. الاتصال بقاعدة البيانات
-        try {
-            await db.connect();
-            console.log('✅ Database connected');
-        } catch (dbErr) {
-            console.error('❌ فشل الاتصال بقاعدة بيانات MongoDB:', dbErr.message);
-        }
-        
-        // 2. معالجة رابط الويب هوك (لتجنب تكرار https)
-        let domain = process.env.RENDER_EXTERNAL_URL || process.env.WEBAPP_URL;
-        let WEBHOOK_DOMAIN = null;
-        
-        if (domain) {
-            // تنظيف الرابط والتأكد من أنه يبدأ بـ https:// مرة واحدة فقط
-            domain = domain.replace(/^https?:\/\//, ''); 
-            WEBHOOK_DOMAIN = `https://${domain}`;
-        }
+        await db.connect();
+        console.log('✅ Database connected');
 
-        // 3. إعداد الـ Webhook الخاص بتيليجرام
-        if (WEBHOOK_DOMAIN) {
-            const webhookPath = `/telegraf-webhook`; // مسار مخفي لاستقبال الرسائل
-            
-            // إخبار Express باستقبال الرسائل عبر هذا المسار
-            app.use(bot.webhookCallback(webhookPath));
-            
-            // إخبار تيليجرام بإرسال التحديثات إلى هذا الرابط
-            await bot.telegram.setWebhook(`${WEBHOOK_DOMAIN}${webhookPath}`);
-            console.log(`✅ Webhook is SET to: ${WEBHOOK_DOMAIN}${webhookPath}`);
-        } else {
-            console.log('⚠️ لم يتم العثور على رابط HTTPS، سيتم تشغيل البوت بنظام Polling');
-            await bot.telegram.deleteWebhook();
-            bot.launch();
-        }
+        // 2. إعداد روابط الـ Webhook
+        // نستخدم الرابط الخاص بك في Render مباشرة
+        const DOMAIN = `https://sdm-security-bot.onrender.com`;
+        const SECRET_PATH = `/telegraf-webhook`;
+        const WEBHOOK_URL = `${DOMAIN}${SECRET_PATH}`;
 
-        // 4. جلب معلومات البوت للتأكد من عمل التوكن
-        try {
-            const botInfo = await bot.telegram.getMe();
-            console.log(`✅ Bot @${botInfo.username} is connected and ready!`);
-        } catch (botErr) {
-            console.error('❌ خطأ في توكن التلجرام:', botErr.message);
-        }
-        
-        // 5. تشغيل خادم الويب
+        // 3. إخبار التلجرام بإرسال أي رسالة (مثل /start) إلى هذا الرابط
+        await bot.telegram.setWebhook(WEBHOOK_URL);
+        console.log(`✅ Webhook is SET to: ${WEBHOOK_URL}`);
+
+        // 4. تهيئة مسار استقبال الرسائل في Express (يجب أن يكون قبل app.listen)
+        app.use(bot.webhookCallback(SECRET_PATH));
+
+        // 5. التأكد من عمل البوت
+        const botInfo = await bot.telegram.getMe();
+        console.log(`✅ Bot @${botInfo.username} is ready to receive messages!`);
+
+        // 6. تشغيل السيرفر (Express)
         const server = app.listen(PORT, '0.0.0.0', () => {
-            console.log(`🌐 Web server listening on port ${PORT}`);
+            console.log(`🌐 Web server is running on port ${PORT}`);
         });
 
-        // 6. إغلاق آمن
+        // 7. إغلاق آمن عند توقف السيرفر
         process.once('SIGINT', () => { server.close(); });
         process.once('SIGTERM', () => { server.close(); });
 
     } catch (error) {
-        console.error('❌ حدث خطأ فادح أثناء تشغيل النظام:', error.message);
+        console.error('❌ خطأ أثناء التشغيل:', error);
     }
 })();
