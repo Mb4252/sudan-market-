@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 // ========== نموذج المحفظة ==========
 const walletSchema = new mongoose.Schema({
     userId: { type: Number, required: true, unique: true },
+    usdtBalance: { type: Number, default: 0 },      // رصيد USDT
+    crystalBalance: { type: Number, default: 0 },   // رصيد عملة CRYSTAL
     bnbAddress: { type: String, unique: true, sparse: true },
     bnbEncryptedPrivateKey: { type: String },
     polygonAddress: { type: String, unique: true, sparse: true },
@@ -11,7 +13,6 @@ const walletSchema = new mongoose.Schema({
     solanaEncryptedPrivateKey: { type: String },
     aptosAddress: { type: String, unique: true, sparse: true },
     aptosEncryptedPrivateKey: { type: String },
-    usdBalance: { type: Number, default: 0 },
     walletSignature: { type: String, required: true, unique: true },
     createdAt: { type: Date, default: Date.now },
     lastUpdated: { type: Date, default: Date.now }
@@ -55,7 +56,7 @@ const userSchema = new mongoose.Schema({
     bankAccountNumber: { type: String, default: '' },
     bankAccountName: { type: String, default: '' },
     isVerified: { type: Boolean, default: false },
-    isMerchant: { type: Boolean, default: false },
+    isAdmin: { type: Boolean, default: false },
     
     // الأمان
     isLocked: { type: Boolean, default: false },
@@ -69,8 +70,6 @@ const userSchema = new mongoose.Schema({
     twoFAEnabled: { type: Boolean, default: false },
     twoFASecret: { type: String, default: '' },
     twoFABackupCodes: { type: Array, default: [] },
-    require2FAForRelease: { type: Boolean, default: true },
-    release2FAThreshold: { type: Number, default: 100 },
     
     // الإحالات
     referrerId: { type: Number, default: null },
@@ -84,124 +83,74 @@ const userSchema = new mongoose.Schema({
         earned: { type: Number, default: 0 }
     }],
     
-    // نشاط التاجر
+    // نشاط المتداول
     lastSeen: { type: Date, default: Date.now },
     isOnline: { type: Boolean, default: false },
-    totalDelays: { type: Number, default: 0 },
-    totalDelayMinutes: { type: Number, default: 0 },
-    isFlagged: { type: Boolean, default: false },
-    flagReason: { type: String, default: '' },
-    
-    // إحصائيات التداول
-    usdBalance: { type: Number, default: 0 },
-    totalTraded: { type: Number, default: 0 },
+    totalTrades: { type: Number, default: 0 },
+    totalVolume: { type: Number, default: 0 },
     totalProfit: { type: Number, default: 0 },
     rating: { type: Number, default: 5.0 },
-    completedTrades: { type: Number, default: 0 },
-    failedTrades: { type: Number, default: 0 },
-    successRate: { type: Number, default: 100 },
-    dailyTrades: [{ date: { type: String }, amount: { type: Number }, timestamp: { type: Date, default: Date.now } }],
+    
     walletId: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet' },
     lastLoginIp: { type: String, default: '' },
     loginAttempts: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now }
 });
 
-// ========== نماذج السجلات ==========
-const auditLogSchema = new mongoose.Schema({
-    userId: { type: Number, required: true },
-    action: { type: String, required: true },
-    details: { type: Object, default: {} },
-    ip: { type: String, default: '' },
-    userAgent: { type: String, default: '' },
-    timestamp: { type: Date, default: Date.now }
-});
-
-const reportSchema = new mongoose.Schema({
-    reporterId: { type: Number, required: true },
-    reportedId: { type: Number, required: true },
-    reason: { type: String, required: true },
-    evidence: { type: String, default: '' },
-    status: { type: String, enum: ['pending', 'reviewed', 'resolved', 'rejected'], default: 'pending' },
-    resolvedBy: { type: Number, default: null },
-    resolution: { type: String, default: '' },
+// ========== نموذج طلبات البيع والشراء (Order Book) ==========
+const orderSchema = new mongoose.Schema({
+    userId: { type: Number, required: true, index: true },
+    type: { type: String, enum: ['buy', 'sell'], required: true },
+    price: { type: Number, required: true },        // السعر بـ USDT
+    amount: { type: Number, required: true },       // كمية CRYSTAL
+    originalAmount: { type: Number, required: true }, // الكمية الأصلية
+    totalUsdt: { type: Number, required: true },    // الإجمالي بـ USDT
+    status: { type: String, enum: ['open', 'partial', 'completed', 'cancelled'], default: 'open' },
+    isAdminOrder: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now },
-    resolvedAt: { type: Date, default: null }
+    completedAt: { type: Date, default: null }
 });
 
-const blacklistSchema = new mongoose.Schema({
-    address: { type: String, required: true, unique: true },
-    type: { type: String, enum: ['wallet', 'user', 'ip'], default: 'wallet' },
-    reason: { type: String, required: true },
-    addedBy: { type: Number, required: true },
+// ========== نموذج الصفقات المنفذة ==========
+const tradeSchema = new mongoose.Schema({
+    buyerId: { type: Number, required: true },
+    sellerId: { type: Number, required: true },
+    buyOrderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
+    sellOrderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
+    price: { type: Number, required: true },
+    amount: { type: Number, required: true },
+    totalUsdt: { type: Number, required: true },
+    fee: { type: Number, default: 0.001 },  // 0.1% رسوم
     createdAt: { type: Date, default: Date.now }
 });
 
-// ========== نموذج عروض P2P ==========
-const p2pOfferSchema = new mongoose.Schema({
-    userId: { type: Number, required: true, index: true },
-    type: { type: String, enum: ['buy', 'sell'], required: true },
-    currency: { type: String, required: true },
-    fiatAmount: { type: Number, required: true },           // الكمية الأصلية للعرض
-    remainingAmount: { type: Number, required: true },      // الكمية المتبقية للبيع (لنظام البيع بالتجزئة)
-    price: { type: Number, required: true },
-    paymentMethod: { type: String, required: true },
-    paymentDetails: { type: String, default: '' },
-    bankName: { type: String, default: '' },
-    bankAccountNumber: { type: String, default: '' },
-    bankAccountName: { type: String, default: '' },
-    minAmount: { type: Number, default: 10 },               // الحد الأدنى للشراء
-    maxAmount: { type: Number, default: 100000 },           // الحد الأقصى للشراء
-    status: { type: String, enum: ['active', 'pending', 'completed', 'cancelled'], default: 'active' },
-    counterpartyId: { type: Number, default: null },
-    createdAt: { type: Date, default: Date.now },
-    completedAt: { type: Date, default: null }
+// ========== نموذج الشموع (Candlesticks) ==========
+const candlestickSchema = new mongoose.Schema({
+    timeframe: { type: String, enum: ['1m', '5m', '15m', '1h', '4h', '1d'], required: true },
+    open: { type: Number, required: true },
+    high: { type: Number, required: true },
+    low: { type: Number, required: true },
+    close: { type: Number, required: true },
+    volume: { type: Number, default: 0 },
+    timestamp: { type: Date, required: true, index: true }
 });
 
-// إضافة pre-save middleware لتعيين remainingAmount تلقائياً عند الإنشاء
-p2pOfferSchema.pre('save', function(next) {
-    if (this.isNew && this.type === 'sell') {
-        this.remainingAmount = this.fiatAmount;
-    }
-    next();
-});
-
-// ========== نموذج الصفقات ==========
-const tradeSchema = new mongoose.Schema({
-    offerId: { type: mongoose.Schema.Types.ObjectId, ref: 'P2pOffer' },
-    buyerId: { type: Number, required: true },
-    sellerId: { type: Number, required: true },
-    currency: { type: String, required: true },
-    amount: { type: Number, required: true },               // المبلغ المشترى فعلياً (قد يكون جزءاً من العرض)
+// ========== نموذج السعر السوقي الحالي ==========
+const marketPriceSchema = new mongoose.Schema({
+    symbol: { type: String, default: 'CRYSTAL/USDT' },
     price: { type: Number, required: true },
-    totalUsd: { type: Number, required: true },
-    fee: { type: Number, required: true },
-    paymentMethod: { type: String, required: true },
-    paymentProof: { type: String, default: '' },
-    buyerBankDetails: { type: String, default: '' },
-    sellerBankDetails: { type: String, default: '' },
-    status: { 
-        type: String, 
-        enum: ['pending', 'paid', 'released', 'disputed', 'completed', 'cancelled'], 
-        default: 'pending' 
-    },
-    isPartial: { type: Boolean, default: false },           // هل هذه الصفقة جزء من عرض أكبر
-    disputeReason: { type: String, default: '' },
-    disputeOpenedBy: { type: Number, default: null },
-    signature: { type: String, default: '' },
-    signedBy: { type: Number, default: null },
-    signedAt: { type: Date, default: null },
-    createdAt: { type: Date, default: Date.now },
-    paidAt: { type: Date, default: null },
-    releasedAt: { type: Date, default: null },
-    completedAt: { type: Date, default: null }
+    change24h: { type: Number, default: 0 },
+    volume24h: { type: Number, default: 0 },
+    high24h: { type: Number, default: 0 },
+    low24h: { type: Number, default: 0 },
+    lastUpdated: { type: Date, default: Date.now }
 });
 
 // ========== نماذج الإيداع والسحب ==========
 const depositRequestSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
     amount: { type: Number, required: true },
-    currency: { type: String, required: true },
+    currency: { type: String, default: 'USDT' },
     network: { type: String, required: true },
     address: { type: String, required: true },
     transactionHash: { type: String, default: '' },
@@ -215,32 +164,29 @@ const depositRequestSchema = new mongoose.Schema({
 const withdrawRequestSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
     amount: { type: Number, required: true },
-    currency: { type: String, required: true },
+    currency: { type: String, default: 'USDT' },
     network: { type: String, required: true },
     address: { type: String, required: true },
     status: { type: String, enum: ['pending', 'approved', 'rejected', 'completed'], default: 'pending' },
     transactionHash: { type: String, default: '' },
-    fee: { type: Number, default: 0 },                      // رسوم المنصة
-    networkFee: { type: Number, default: 0 },               // رسوم الشبكة
-    twoFACode: { type: String, default: '' },
+    fee: { type: Number, default: 0 },
+    networkFee: { type: Number, default: 0 },
     twoFAVerified: { type: Boolean, default: false },
     approvedBy: { type: Number, default: null },
     approvedAt: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now }
 });
 
-// ========== نموذج التقييمات ==========
-const reviewSchema = new mongoose.Schema({
-    tradeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Trade', required: true },
-    reviewerId: { type: Number, required: true },
-    targetId: { type: Number, required: true },
-    rating: { type: Number, required: true, min: 1, max: 5 },
-    comment: { type: String, default: '' },
-    verified: { type: Boolean, default: false },
-    createdAt: { type: Date, default: Date.now }
+// ========== نماذج السجلات ==========
+const auditLogSchema = new mongoose.Schema({
+    userId: { type: Number, required: true },
+    action: { type: String, required: true },
+    details: { type: Object, default: {} },
+    ip: { type: String, default: '' },
+    userAgent: { type: String, default: '' },
+    timestamp: { type: Date, default: Date.now }
 });
 
-// ========== نموذج الإحصائيات اليومية ==========
 const dailyStatsSchema = new mongoose.Schema({
     date: { type: String, required: true, unique: true },
     totalUsers: { type: Number, default: 0 },
@@ -250,119 +196,46 @@ const dailyStatsSchema = new mongoose.Schema({
     totalVolume: { type: Number, default: 0 },
     totalCommission: { type: Number, default: 0 },
     totalReferralCommissions: { type: Number, default: 0 },
-    activeOffers: { type: Number, default: 0 },
-    pendingKyc: { type: Number, default: 0 },
-    securityAlerts: { type: Number, default: 0 }
+    avgPrice: { type: Number, default: 0 },
+    highPrice: { type: Number, default: 0 },
+    lowPrice: { type: Number, default: 0 }
 });
 
-// ========== نماذج الدردشة والتذكير ==========
-
-// نموذج رسائل الدردشة
+// ========== نموذج الدردشة ==========
 const chatMessageSchema = new mongoose.Schema({
-    tradeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Trade', required: true, index: true },
+    chatType: { type: String, enum: ['global', 'trade'], default: 'global' },
     senderId: { type: Number, required: true },
-    receiverId: { type: Number, required: true },
+    receiverId: { type: Number, default: null },
     message: { type: String, default: '' },
-    messageType: { type: String, enum: ['text', 'image', 'system', 'reminder'], default: 'text' },
-    imageFileId: { type: String, default: '' },  // file_id من تلجرام للصور
+    messageType: { type: String, enum: ['text', 'image', 'system'], default: 'text' },
+    imageFileId: { type: String, default: '' },
     isRead: { type: Boolean, default: false },
-    readAt: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now }
 });
 
-// نموذج تذكير الصفقات
-const reminderSchema = new mongoose.Schema({
-    tradeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Trade', required: true, unique: true },
-    lastReminderAt: { type: Date, default: null },
-    reminderCount: { type: Number, default: 0 },
-    nextReminderAt: { type: Date, default: null },
-    isActive: { type: Boolean, default: true },
-    lastMessageId: { type: String, default: '' }  // لتحديث الرسالة بدلاً من إرسال رسالة جديدة
-});
-
-// ========== إنشاء الفهارس (Indexes) ==========
+// ========== إنشاء الفهارس ==========
 userSchema.index({ userId: 1 });
-userSchema.index({ username: 1 });
-userSchema.index({ isVerified: 1 });
-userSchema.index({ completedTrades: -1 });
-userSchema.index({ rating: -1 });
-userSchema.index({ lastSeen: -1 });
-
-p2pOfferSchema.index({ userId: 1 });
-p2pOfferSchema.index({ status: 1 });
-p2pOfferSchema.index({ type: 1 });
-p2pOfferSchema.index({ currency: 1 });
-p2pOfferSchema.index({ price: 1 });
-p2pOfferSchema.index({ createdAt: -1 });
-p2pOfferSchema.index({ remainingAmount: 1 });  // فهرس للعروض التي لا تزال متبقية
-
-tradeSchema.index({ buyerId: 1 });
-tradeSchema.index({ sellerId: 1 });
-tradeSchema.index({ status: 1 });
+orderSchema.index({ type: 1, price: 1, status: 1 });
+orderSchema.index({ userId: 1, status: 1 });
 tradeSchema.index({ createdAt: -1 });
-tradeSchema.index({ isPartial: 1 });  // فهرس للصفقات الجزئية
-
-walletSchema.index({ userId: 1 });
-walletSchema.index({ usdBalance: 1 });
-
-kycRequestSchema.index({ userId: 1 });
-kycRequestSchema.index({ status: 1 });
-
-depositRequestSchema.index({ userId: 1 });
-depositRequestSchema.index({ status: 1 });
-
-withdrawRequestSchema.index({ userId: 1 });
-withdrawRequestSchema.index({ status: 1 });
-
-reviewSchema.index({ targetId: 1 });
-reviewSchema.index({ tradeId: 1 });
-
-auditLogSchema.index({ userId: 1 });
-auditLogSchema.index({ timestamp: -1 });
-
-dailyStatsSchema.index({ date: 1 });
-
-// فهارس الدردشة
-chatMessageSchema.index({ tradeId: 1 });
-chatMessageSchema.index({ createdAt: -1 });
-chatMessageSchema.index({ senderId: 1 });
-chatMessageSchema.index({ receiverId: 1 });
-chatMessageSchema.index({ isRead: 1 });
-
-reminderSchema.index({ tradeId: 1 });
-reminderSchema.index({ nextReminderAt: 1 });
-reminderSchema.index({ isActive: 1 });
+candlestickSchema.index({ timeframe: 1, timestamp: 1 });
+marketPriceSchema.index({ symbol: 1 });
 
 // ========== إنشاء النماذج ==========
 const User = mongoose.model('User', userSchema);
 const Wallet = mongoose.model('Wallet', walletSchema);
 const KycRequest = mongoose.model('KycRequest', kycRequestSchema);
-const P2pOffer = mongoose.model('P2pOffer', p2pOfferSchema);
+const Order = mongoose.model('Order', orderSchema);
 const Trade = mongoose.model('Trade', tradeSchema);
+const Candlestick = mongoose.model('Candlestick', candlestickSchema);
+const MarketPrice = mongoose.model('MarketPrice', marketPriceSchema);
 const DepositRequest = mongoose.model('DepositRequest', depositRequestSchema);
 const WithdrawRequest = mongoose.model('WithdrawRequest', withdrawRequestSchema);
-const Review = mongoose.model('Review', reviewSchema);
-const DailyStats = mongoose.model('DailyStats', dailyStatsSchema);
 const AuditLog = mongoose.model('AuditLog', auditLogSchema);
-const Report = mongoose.model('Report', reportSchema);
-const Blacklist = mongoose.model('Blacklist', blacklistSchema);
+const DailyStats = mongoose.model('DailyStats', dailyStatsSchema);
 const ChatMessage = mongoose.model('ChatMessage', chatMessageSchema);
-const Reminder = mongoose.model('Reminder', reminderSchema);
 
-// ========== تصدير جميع النماذج ==========
 module.exports = { 
-    User, 
-    Wallet, 
-    KycRequest, 
-    P2pOffer, 
-    Trade, 
-    DepositRequest, 
-    WithdrawRequest, 
-    Review, 
-    DailyStats,
-    AuditLog,
-    Report,
-    Blacklist,
-    ChatMessage,
-    Reminder
+    User, Wallet, KycRequest, Order, Trade, Candlestick, MarketPrice,
+    DepositRequest, WithdrawRequest, AuditLog, DailyStats, ChatMessage
 };
