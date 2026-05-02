@@ -295,40 +295,62 @@ bot.command('orders', async (ctx) => {
         }
         await ctx.reply(text, { parse_mode: 'Markdown' });
     } catch (e) { ctx.reply("⚠️ خطأ في عرض الطلبات."); }
-});
-
-// ========== تشغيل الخادم والبوت (بنظام Webhook) ==========
+})
+// ========== تشغيل الخادم والبوت (نظام Webhook الاحترافي) ==========
 (async () => {
     try {
         // 1. الاتصال بقاعدة البيانات
-        await db.connect();
-        console.log('✅ Database connected');
+        try {
+            await db.connect();
+            console.log('✅ Database connected');
+        } catch (dbErr) {
+            console.error('❌ فشل الاتصال بقاعدة بيانات MongoDB:', dbErr.message);
+        }
         
-        // 2. إعداد الـ Webhook الخاص بتيليجرام (يجب أن يعمل قبل app.listen)
-        if (WEBHOOK_DOMAIN && WEBHOOK_DOMAIN.includes('https')) {
-            app.use(await bot.createWebhook({ domain: WEBHOOK_DOMAIN }));
-            console.log(`✅ Webhook configured for domain: ${WEBHOOK_DOMAIN}`);
+        // 2. معالجة رابط الويب هوك (لتجنب تكرار https)
+        let domain = process.env.RENDER_EXTERNAL_URL || process.env.WEBAPP_URL;
+        let WEBHOOK_DOMAIN = null;
+        
+        if (domain) {
+            // تنظيف الرابط والتأكد من أنه يبدأ بـ https:// مرة واحدة فقط
+            domain = domain.replace(/^https?:\/\//, ''); 
+            WEBHOOK_DOMAIN = `https://${domain}`;
+        }
+
+        // 3. إعداد الـ Webhook الخاص بتيليجرام
+        if (WEBHOOK_DOMAIN) {
+            const webhookPath = `/telegraf-webhook`; // مسار مخفي لاستقبال الرسائل
+            
+            // إخبار Express باستقبال الرسائل عبر هذا المسار
+            app.use(bot.webhookCallback(webhookPath));
+            
+            // إخبار تيليجرام بإرسال التحديثات إلى هذا الرابط
+            await bot.telegram.setWebhook(`${WEBHOOK_DOMAIN}${webhookPath}`);
+            console.log(`✅ Webhook is SET to: ${WEBHOOK_DOMAIN}${webhookPath}`);
         } else {
-            // في حالة الاختبار المحلي بدون HTTPS، نستخدم Polling
-            console.log('⚠️ Running in Long Polling mode (No HTTPS domain found)');
+            console.log('⚠️ لم يتم العثور على رابط HTTPS، سيتم تشغيل البوت بنظام Polling');
+            await bot.telegram.deleteWebhook();
             bot.launch();
         }
 
-        // 3. جلب معلومات البوت للتأكد من عمله
-        const botInfo = await bot.telegram.getMe();
-        console.log(`✅ Bot @${botInfo.username} is ready`);
+        // 4. جلب معلومات البوت للتأكد من عمل التوكن
+        try {
+            const botInfo = await bot.telegram.getMe();
+            console.log(`✅ Bot @${botInfo.username} is connected and ready!`);
+        } catch (botErr) {
+            console.error('❌ خطأ في توكن التلجرام:', botErr.message);
+        }
         
-        // 4. تشغيل الخادم
+        // 5. تشغيل خادم الويب
         const server = app.listen(PORT, '0.0.0.0', () => {
             console.log(`🌐 Web server listening on port ${PORT}`);
-            console.log(`🌐 WebApp URL: ${WEBAPP_URL}`);
         });
 
-        // 5. إغلاق آمن
+        // 6. إغلاق آمن
         process.once('SIGINT', () => { server.close(); });
         process.once('SIGTERM', () => { server.close(); });
 
     } catch (error) {
-        console.error('❌ Error during startup:', error.message);
+        console.error('❌ حدث خطأ فادح أثناء تشغيل النظام:', error.message);
     }
 })();
