@@ -8,275 +8,6 @@ const speakeasy = require('speakeasy');
 const qrcode = require('qrcode');
 const { User, Wallet, KycRequest, P2pOffer, Trade, DepositRequest, WithdrawRequest, Review, DailyStats, AuditLog, Report, Blacklist, ChatMessage, Reminder } = require('./models');
 
-// ========== مدير رسوم الشبكة (بدون API Key) ==========
-class NetworkFeeManager {
-    constructor() {
-        // القيم الافتراضية (آمنة ومعقولة)
-        this.fees = {
-            bnb: 0.15,      // BEP-20 - ~0.15 دولار
-            polygon: 0.10,  // Polygon - ~0.10 دولار
-            solana: 0.02,   // Solana - ~0.02 دولار
-            aptos: 0.05,    // Aptos - ~0.05 دولار
-            trc20: 3.00,    // TRC-20 (Tron) - ~3 دولار
-            erc20: 15.00    // ERC-20 (Ethereum) - ~15 دولار
-        };
-        
-        this.lastUpdate = null;
-        this.updateInterval = 3600000; // كل ساعة
-        this.isUpdating = false;
-        
-        // بدء التحديث التلقائي
-        this.startAutoUpdate();
-    }
-
-    // ========== تحديث الرسوم من مصادر مفتوحة ==========
-    
-    async updateFees() {
-        if (this.isUpdating) return;
-        this.isUpdating = true;
-        
-        console.log('🔄 Updating network fees from open sources...');
-        
-        let updated = false;
-        
-        // المصدر 1: Coingecko API (مجاني، لا يحتاج مفتاح)
-        const coingeckoFees = await this.fetchFromCoingecko();
-        if (coingeckoFees) {
-            this.fees = { ...this.fees, ...coingeckoFees };
-            updated = true;
-            console.log('✅ Fees updated from Coingecko');
-        }
-        
-        // المصدر 2: RPC مباشر (Ethereum, Polygon, BSC)
-        const rpcFees = await this.fetchFromRPC();
-        if (rpcFees) {
-            this.fees = { ...this.fees, ...rpcFees };
-            updated = true;
-            console.log('✅ Fees updated from RPC nodes');
-        }
-        
-        // المصدر 3: مصادر احتياطية (أسعار العملات)
-        const priceBasedFees = await this.fetchPriceBasedFees();
-        if (priceBasedFees) {
-            this.fees = { ...this.fees, ...priceBasedFees };
-            updated = true;
-            console.log('✅ Fees updated from price-based calculation');
-        }
-        
-        if (updated) {
-            this.lastUpdate = new Date();
-            console.log('📊 Current network fees:', this.fees);
-        } else {
-            console.log('⚠️ Using cached network fees (all sources failed)');
-        }
-        
-        this.isUpdating = false;
-    }
-    
-    // المصدر 1: Coingecko API - مجاني تماماً
-    async fetchFromCoingecko() {
-        try {
-            // جلب أسعار العملات
-            const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum%2Cbinancecoin%2Cmatic-network%2Csolana%2Ctron&vs_currencies=usd');
-            if (!priceRes.ok) return null;
-            
-            const prices = await priceRes.json();
-            
-            // جلب رسوم الغاز (تقديرية)
-            const gasRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum-gas&vs_currencies=usd');
-            let ethGasGwei = 25; // قيمة افتراضية
-            
-            if (gasRes.ok) {
-                const gasData = await gasRes.json();
-                if (gasData['ethereum-gas']?.usd) {
-                    ethGasGwei = gasData['ethereum-gas'].usd;
-                }
-            }
-            
-            // حساب الرسوم
-            const ethPrice = prices.ethereum?.usd || 3000;
-            const bnbPrice = prices.binancecoin?.usd || 600;
-            const maticPrice = prices['matic-network']?.usd || 0.80;
-            const solPrice = prices.solana?.usd || 150;
-            const tronPrice = prices.tron?.usd || 0.10;
-            
-            // رسوم ERC-20: GasPrice * 21000 / 1e9 * ETH Price
-            const erc20Fee = Math.min(50, Math.max(5, (ethGasGwei * 21000) / 1e9 * ethPrice));
-            
-            // رسوم BNB: ~0.0003 BNB
-            const bnbFee = Math.min(1.0, Math.max(0.10, 0.0003 * bnbPrice));
-            
-            // رسوم Polygon: ~0.001 MATIC
-            const polygonFee = Math.min(0.50, Math.max(0.05, 0.001 * maticPrice));
-            
-            // رسوم Solana: ~0.0001 SOL
-            const solanaFee = Math.min(0.10, Math.max(0.01, 0.0001 * solPrice));
-            
-            // رسوم TRC-20: ~30 TRX
-            const trc20Fee = Math.min(5.0, Math.max(1.5, 30 * tronPrice));
-            
-            // Aptos - قيمة ثابتة نسبياً
-            const aptosFee = 0.05;
-            
-            return {
-                erc20: parseFloat(erc20Fee.toFixed(4)),
-                bnb: parseFloat(bnbFee.toFixed(4)),
-                polygon: parseFloat(polygonFee.toFixed(4)),
-                solana: parseFloat(solanaFee.toFixed(4)),
-                trc20: parseFloat(trc20Fee.toFixed(4)),
-                aptos: aptosFee
-            };
-            
-        } catch (error) {
-            console.log('Coingecko fetch error:', error.message);
-            return null;
-        }
-    }
-    
-    // المصدر 2: RPC مباشر (للغاز الحقيقي) - تم التعديل هنا
-    async fetchFromRPC() {
-        try {
-            const results = {};
-            
-            // 1. Ethereum RPC (Cloudflare - مجاني)
-            try {
-                // ✅ التصحيح لـ ethers v6
-                const ethProvider = new ethers.JsonRpcProvider('https://cloudflare-eth.com');
-                const ethFeeData = await ethProvider.getFeeData();
-                const ethGasGwei = Number(ethFeeData.gasPrice) / 1e9;
-                
-                // جلب سعر ETH من Coingecko
-                const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
-                const ethPrice = priceRes.ok ? (await priceRes.json()).ethereum?.usd : 3000;
-                
-                const erc20Fee = (ethGasGwei * 21000) / 1e9 * ethPrice;
-                results.erc20 = Math.min(50, Math.max(5, erc20Fee));
-                console.log(`RPC ETH gas: ${ethGasGwei} Gwei = ~${results.erc20.toFixed(4)} USD`);
-                
-            } catch(e) { console.log('ETH RPC failed:', e.message); }
-            
-            // 2. Polygon RPC
-            try {
-                const polygonProvider = new ethers.JsonRpcProvider('https://polygon-rpc.com');
-                const polygonFeeData = await polygonProvider.getFeeData();
-                const polygonGasGwei = Number(polygonFeeData.gasPrice) / 1e9;
-                
-                const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=matic-network&vs_currencies=usd');
-                const maticPrice = priceRes.ok ? (await priceRes.json())['matic-network']?.usd : 0.80;
-                
-                const polygonFee = (polygonGasGwei * 50000) / 1e9 * maticPrice;
-                results.polygon = Math.min(0.50, Math.max(0.05, polygonFee));
-                console.log(`RPC Polygon gas: ${polygonGasGwei} Gwei = ~${results.polygon.toFixed(4)} USD`);
-                
-            } catch(e) { console.log('Polygon RPC failed:', e.message); }
-            
-            // 3. BSC RPC
-            try {
-                const bscProvider = new ethers.JsonRpcProvider('https://bsc-dataseed.binance.org/');
-                const bscFeeData = await bscProvider.getFeeData();
-                const bscGasGwei = Number(bscFeeData.gasPrice) / 1e9;
-                
-                const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd');
-                const bnbPrice = priceRes.ok ? (await priceRes.json()).binancecoin?.usd : 600;
-                
-                const bnbFee = (bscGasGwei * 21000) / 1e9 * bnbPrice;
-                results.bnb = Math.min(1.0, Math.max(0.10, bnbFee));
-                console.log(`RPC BSC gas: ${bscGasGwei} Gwei = ~${results.bnb.toFixed(4)} USD`);
-                
-            } catch(e) { console.log('BSC RPC failed:', e.message); }
-            
-            return results;
-            
-        } catch (error) {
-            console.log('RPC fetch error:', error.message);
-            return null;
-        }
-    }
-    
-    // المصدر 3: حساب مبسط بناءً على أسعار العملات
-    async fetchPriceBasedFees() {
-        try {
-            const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum%2Cbinancecoin%2Cmatic-network%2Csolana%2Ctron%2Captos&vs_currencies=usd');
-            if (!priceRes.ok) return null;
-            
-            const prices = await priceRes.json();
-            
-            const ethPrice = prices.ethereum?.usd || 3000;
-            const bnbPrice = prices.binancecoin?.usd || 600;
-            const maticPrice = prices['matic-network']?.usd || 0.80;
-            const solPrice = prices.solana?.usd || 150;
-            const tronPrice = prices.tron?.usd || 0.10;
-            const aptosPrice = prices.aptos?.usd || 8;
-            
-            return {
-                erc20: Math.min(50, Math.max(5, 0.0005 * ethPrice)),
-                bnb: Math.min(1.0, Math.max(0.10, 0.0003 * bnbPrice)),
-                polygon: Math.min(0.50, Math.max(0.05, 0.0002 * maticPrice)),
-                solana: Math.min(0.10, Math.max(0.01, 0.0001 * solPrice)),
-                trc20: Math.min(5.0, Math.max(1.5, 30 * tronPrice)),
-                aptos: Math.min(0.10, Math.max(0.02, 0.008 * aptosPrice))
-            };
-            
-        } catch (error) {
-            console.log('Price-based fetch error:', error.message);
-            return null;
-        }
-    }
-    
-    // التحديث التلقائي
-    startAutoUpdate() {
-        // تحديث فوري بعد 5 ثواني من بدء التشغيل
-        setTimeout(() => this.updateFees(), 5000);
-        
-        // تحديث دوري كل ساعة
-        setInterval(() => this.updateFees(), this.updateInterval);
-    }
-    
-    // الحصول على رسوم الشبكة
-    getFee(network) {
-        const fee = this.fees[network];
-        if (!fee) return 0.10;
-        
-        // تحديد حد أقصى للرسوم حسب الشبكة (حماية للمستخدم)
-        const maxFees = {
-            bnb: 1.0,
-            polygon: 0.50,
-            solana: 0.10,
-            aptos: 0.10,
-            trc20: 5.0,
-            erc20: 50.0
-        };
-        
-        const minFees = {
-            bnb: 0.10,
-            polygon: 0.05,
-            solana: 0.01,
-            aptos: 0.02,
-            trc20: 1.5,
-            erc20: 5.0
-        };
-        
-        let finalFee = fee;
-        if (maxFees[network] && finalFee > maxFees[network]) finalFee = maxFees[network];
-        if (minFees[network] && finalFee < minFees[network]) finalFee = minFees[network];
-        
-        return parseFloat(finalFee.toFixed(4));
-    }
-    
-    // الحصول على آخر تحديث
-    getLastUpdate() {
-        return this.lastUpdate;
-    }
-    
-    // الحصول على جميع الرسوم
-    getAllFees() {
-        return { ...this.fees };
-    }
-}
-
-// ========== إنشاء مدير رسوم الشبكة ==========
-const networkFeeManager = new NetworkFeeManager();
-
 class Database {
     constructor() {
         this.connected = false;
@@ -316,6 +47,18 @@ class Database {
                 'Sudanese French Bank', 'United Capital Bank'
             ];
         
+        // ✅ رسوم الشبكة (سيتم تحديثها كل ساعة)
+        this.networkFees = {
+            bnb: 0.10,      // BEP-20
+            polygon: 0.05,  // Polygon
+            solana: 0.01,   // Solana
+            aptos: 0.02,    // Aptos
+            trc20: 0.80,    // TRC-20 (Tron)
+            erc20: 8.00     // ERC-20 (Ethereum)
+        };
+        
+        this.lastNetworkFeeUpdate = null;
+        
         // ربط النماذج للاستخدام المباشر
         this.User = User;
         this.Wallet = Wallet;
@@ -323,23 +66,72 @@ class Database {
         this.Trade = Trade;
         this.ChatMessage = ChatMessage;
         this.Reminder = Reminder;
+        
+        // بدء تحديث رسوم الشبكة
+        this.startNetworkFeeUpdater();
     }
 
-    // ========== دوال رسوم الشبكة (باستخدام NetworkFeeManager) ==========
+    // ========== دوال رسوم الشبكة ==========
     
     async updateNetworkFees() {
-        await networkFeeManager.updateFees();
+        try {
+            // 1. لشبكة BNB (BSC)
+            try {
+                const bscRes = await fetch('https://api.bscscan.com/api?module=gastracker&action=gasoracle&apikey=YourApiKey');
+                const bscData = await bscRes.json();
+                if (bscData.status === '1') {
+                    const bscGasGwei = parseFloat(bscData.result.SafeGasPrice);
+                    this.networkFees.bnb = (bscGasGwei * 0.0005).toFixed(4);
+                }
+            } catch(e) { console.log('BSC fee update failed:', e.message); }
+            
+            // 2. لشبكة Polygon
+            try {
+                const polygonRes = await fetch('https://api.polygonscan.com/api?module=gastracker&action=gasoracle&apikey=YourApiKey');
+                const polygonData = await polygonRes.json();
+                if (polygonData.status === '1') {
+                    const polygonGasGwei = parseFloat(polygonData.result.SafeGasPrice);
+                    this.networkFees.polygon = (polygonGasGwei * 0.0003).toFixed(4);
+                }
+            } catch(e) { console.log('Polygon fee update failed:', e.message); }
+            
+            // 3. لشبكة Ethereum
+            try {
+                const ethRes = await fetch('https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey=YourApiKey');
+                const ethData = await ethRes.json();
+                if (ethData.status === '1') {
+                    const ethGasGwei = parseFloat(ethData.result.SafeGasPrice);
+                    this.networkFees.erc20 = ((ethGasGwei * 21000) / 1e9).toFixed(2);
+                }
+            } catch(e) { console.log('ETH fee update failed:', e.message); }
+            
+            this.lastNetworkFeeUpdate = new Date();
+            console.log('✅ Network fees updated:', this.networkFees);
+            
+        } catch (error) {
+            console.error('Failed to update network fees:', error);
+        }
+    }
+    
+    startNetworkFeeUpdater() {
+        // تحديث فوري عند بدء التشغيل
+        this.updateNetworkFees();
+        // تحديث كل ساعة
+        setInterval(async () => {
+            await this.updateNetworkFees();
+        }, 3600000);
     }
     
     getNetworkFee(network) {
-        return networkFeeManager.getFee(network);
-    }
-    
-    getNetworkFeesInfo() {
-        return {
-            fees: networkFeeManager.getAllFees(),
-            lastUpdate: networkFeeManager.getLastUpdate()
+        const fees = {
+            'bnb': this.networkFees.bnb,
+            'polygon': this.networkFees.polygon,
+            'solana': this.networkFees.solana,
+            'aptos': this.networkFees.aptos,
+            'trc20': this.networkFees.trc20,
+            'erc20': this.networkFees.erc20
         };
+        return parseFloat(fees[network]) || 0.10;
     }
 
     generateSignature(data) {
@@ -367,9 +159,6 @@ class Database {
             });
             this.connected = true;
             console.log('✅ MongoDB connected');
-            
-            // بدء تحديث رسوم الشبكة بعد الاتصال بقاعدة البيانات
-            setTimeout(() => this.updateNetworkFees(), 3000);
         } catch (error) {
             console.error('❌ MongoDB error:', error);
             throw error;
@@ -809,10 +598,11 @@ class Database {
         const usdValue = fiatAmount / price;
         if (type === 'sell' && wallet.usdBalance < usdValue) return { success: false, message: `❌ رصيد غير كافٍ! لديك ${wallet.usdBalance.toFixed(2)} USD` };
         
+        // إنشاء العرض مع remainingAmount
         const offer = await P2pOffer.create({ 
             userId, type, currency, 
             fiatAmount, 
-            remainingAmount: fiatAmount,
+            remainingAmount: fiatAmount,  // الكمية المتبقية للبيع بالتجزئة
             price, paymentMethod, paymentDetails, 
             bankName, bankAccountNumber, bankAccountName, 
             minAmount: minAmount || 10, 
@@ -830,6 +620,7 @@ class Database {
         const query = { status: 'active' };
         if (type) query.type = type;
         if (currency && currency !== '') query.currency = currency;
+        // للبيع: نعرض فقط العروض التي لديها كمية متبقية > 0
         if (type === 'sell') {
             query.remainingAmount = { $gt: 0 };
         }
@@ -901,8 +692,10 @@ class Database {
         if (!offer) return { success: false, message: 'العرض غير موجود' };
         if (offer.userId === buyerId) return { success: false, message: 'لا يمكنك شراء عرضك الخاص' };
         
+        // تحديد المبلغ المطلوب شراؤه
         let buyAmount = requestedAmount || offer.fiatAmount;
         
+        // التحقق من الحدود
         if (buyAmount < offer.minAmount) {
             return { success: false, message: `⚠️ الحد الأدنى للشراء هو ${offer.minAmount} ${offer.currency}` };
         }
@@ -927,22 +720,26 @@ class Database {
         const limitCheck = await this.checkUserLimits(buyerId, totalUsd);
         if (!limitCheck.allowed) return { success: false, message: limitCheck.reason };
         
+        // رسوم المنصة ثابتة 0.05 دولار
         const fee = this.platformTradeFee;
         
         if (offer.type === 'sell') {
             const sellerWallet = await this.getUserWallet(offer.userId);
+            // التحقق من رصيد البائع للكمية المطلوبة فقط
             if (sellerWallet.usdBalance < totalUsd) {
                 await P2pOffer.updateOne({ _id: offerId }, { status: 'cancelled' });
                 return { success: false, message: 'البائع ليس لديه رصيد كافٍ' };
             }
         }
         
+        // حساب المبلغ الجديد المتبقي
         const newRemainingAmount = offer.remainingAmount - buyAmount;
         const isPartial = newRemainingAmount > 0;
         
+        // إنشاء الصفقة
         const trade = await Trade.create({
             offerId, buyerId, sellerId: offer.userId, currency: offer.currency,
-            amount: buyAmount,
+            amount: buyAmount,  // المبلغ المطلوب فقط
             price: offer.price,
             totalUsd, fee,
             paymentMethod: offer.paymentMethod,
@@ -952,12 +749,15 @@ class Database {
             isPartial: isPartial
         });
         
+        // تحديث الكمية المتبقية من العرض
         if (newRemainingAmount > 0) {
+            // العرض لا يزال موجوداً مع الكمية المتبقية
             await P2pOffer.updateOne({ _id: offerId }, { 
                 remainingAmount: newRemainingAmount,
-                status: 'active'
+                status: 'active'  // يبقى نشطاً
             });
         } else {
+            // العرض اكتمل بالكامل
             await P2pOffer.updateOne({ _id: offerId }, { 
                 remainingAmount: 0,
                 status: 'completed' 
@@ -972,10 +772,12 @@ class Database {
         });
         await this.updateLastSeen(buyerId);
         
+        // إرسال رسالة نظام في الدردشة عند بدء الصفقة
         await this.sendSystemMessage(trade._id, buyerId, offer.userId, 
             `🔄 تم بدء الصفقة!\n💰 المبلغ: ${buyAmount} ${offer.currency} (${totalUsd.toFixed(2)} USD)\n💸 رسوم المنصة: ${fee} $\n📦 المتبقي من العرض: ${newRemainingAmount} ${offer.currency}`
         );
         
+        // تفعيل التذكير للصفقة
         await this.activateTradeReminder(trade._id);
         
         return {
@@ -1001,22 +803,27 @@ class Database {
         await this.addAuditLog(buyerId, 'confirm_payment', { tradeId, proofImage }, '', '');
         await this.updateLastSeen(buyerId);
         
+        // إرسال رسالة نظام في الدردشة عند تأكيد الدفع
         await this.sendSystemMessage(tradeId, buyerId, trade.sellerId, `✅ تم تأكيد الدفع! رابط الإثبات: ${proofImage}`);
         
+        // بدء جدولة التذكير
         this.scheduleReleaseReminder(tradeId);
         
         return { success: true, sellerId: trade.sellerId, message: `✅ تم استلام إثبات الدفع!` };
     }
 
     async scheduleReleaseReminder(tradeId) {
+        // جدولة التذكير بعد 15 دقيقة
         setTimeout(async () => {
             await this.sendReminderMessage(tradeId);
         }, 15 * 60 * 1000);
         
+        // جدولة التذكير الثاني بعد 30 دقيقة
         setTimeout(async () => {
             await this.sendSecondReminderMessage(tradeId);
         }, 30 * 60 * 1000);
         
+        // تحرير تلقائي بعد 24 ساعة
         setTimeout(async () => {
             await this.autoReleaseAfterDelay(tradeId);
         }, 24 * 60 * 60 * 1000);
@@ -1026,11 +833,14 @@ class Database {
         const trade = await Trade.findById(tradeId);
         if (!trade || trade.status !== 'paid') return;
         
+        // تحديث عداد التذكير
         await this.updateReminderCount(tradeId);
         
+        // إرسال رسالة تذكير في الدردشة
         await this.sendSystemMessage(tradeId, trade.sellerId, trade.buyerId, 
             `⏰ *تذكير!* مضى 15 دقيقة على تأكيد الدفع.\n🔓 يرجى تحرير العملة باستخدام الأمر:\n/release_crystals ${tradeId}`);
         
+        // إرسال إشعار للبائع عبر البوت
         const bot = require('./server').bot;
         if (bot) {
             await bot.telegram.sendMessage(trade.sellerId,
@@ -1096,7 +906,7 @@ class Database {
         }
     }
 
-    // ========== تحرير العملة ==========
+    // ========== تحرير العملة مع دعم البيع بالتجزئة ==========
     async releaseCrystals(tradeId, sellerId, twoFACode = null, ip = '', userAgent = '') {
         const trade = await Trade.findOne({ _id: tradeId, sellerId, status: 'paid' });
         if (!trade) return { success: false, message: 'الصفقة غير موجودة' };
@@ -1127,6 +937,7 @@ class Database {
         if (trade.offerId) {
             const offer = await P2pOffer.findById(trade.offerId);
             if (offer && offer.type === 'sell') {
+                // خصم المبلغ الفعلي فقط من رصيد البائع (وليس العرض كاملاً)
                 if (sellerWallet.usdBalance < trade.totalUsd) {
                     await Trade.updateOne({ _id: tradeId }, { status: 'disputed' });
                     return { success: false, message: '⚠️ رصيد البائع غير كافٍ! تم فتح نزاع' };
@@ -1141,9 +952,11 @@ class Database {
         
         await Trade.updateOne({ _id: tradeId }, { status: 'completed', releasedAt: new Date(), completedAt: new Date() });
         
+        // تحديث العرض إذا كان موجوداً ولم يكتمل
         if (trade.offerId) {
             const offer = await P2pOffer.findById(trade.offerId);
             if (offer && offer.remainingAmount > 0) {
+                // العرض لا يزال نشطاً مع الكمية المتبقية
                 await P2pOffer.updateOne({ _id: trade.offerId }, { status: 'active' });
             }
         }
@@ -1155,8 +968,10 @@ class Database {
         await this.updateDailyStats('totalCommission', trade.fee);
         await this.addAuditLog(sellerId, 'release_crystals', { tradeId, amount: trade.totalUsd }, ip, userAgent);
         
+        // إرسال رسالة نظام في الدردشة عند تحرير العملة
         await this.sendSystemMessage(tradeId, sellerId, trade.buyerId, `✅ *تم تحرير العملة بنجاح!* المبلغ: ${trade.amount} ${trade.currency}`);
         
+        // إلغاء التذكير
         await Reminder.updateOne({ tradeId }, { isActive: false });
         
         return { success: true, buyerId: trade.buyerId, message: `✅ تم تحرير ${trade.amount} ${trade.currency} بنجاح!` };
@@ -1166,9 +981,11 @@ class Database {
         const trade = await Trade.findOne({ _id: tradeId, $or: [{ buyerId: userId }, { sellerId: userId }], status: 'pending' });
         if (!trade) return { success: false, message: 'لا يمكن إلغاء هذه الصفقة' };
         
+        // استعادة الكمية المحجوزة من العرض إذا كان عرض بيع
         if (trade.offerId) {
             const offer = await P2pOffer.findById(trade.offerId);
             if (offer && offer.status === 'active') {
+                // إعادة الكمية المحجوزة
                 const newRemaining = offer.remainingAmount + trade.amount;
                 await P2pOffer.updateOne({ _id: trade.offerId }, { 
                     remainingAmount: newRemaining,
@@ -1187,6 +1004,7 @@ class Database {
         await User.updateOne({ userId: trade.sellerId }, { $inc: { failedTrades: 1 } });
         await this.addAuditLog(userId, 'cancel_trade', { tradeId }, '', '');
         
+        // إرسال رسالة نظام في الدردشة عند إلغاء الصفقة
         await this.sendSystemMessage(tradeId, userId, trade.buyerId === userId ? trade.sellerId : trade.buyerId, `❌ تم إلغاء الصفقة.`);
         
         await Reminder.updateOne({ tradeId }, { isActive: false });
@@ -1199,6 +1017,7 @@ class Database {
         await Trade.updateOne({ _id: tradeId }, { status: 'disputed', disputeReason: reason, disputeOpenedBy: userId });
         await this.addAuditLog(userId, 'open_dispute', { tradeId, reason }, '', '');
         
+        // إرسال رسالة نظام في الدردشة عند فتح نزاع
         await this.sendSystemMessage(tradeId, userId, trade.buyerId === userId ? trade.sellerId : trade.buyerId, `⚠️ تم فتح نزاع!\nالسبب: ${reason}`);
         
         return { success: true, message: `⚠️ تم فتح نزاع! سيتم مراجعته خلال 24 ساعة` };
@@ -1250,6 +1069,7 @@ class Database {
             .limit(limit)
             .sort({ createdAt: 1 });
         
+        // تحديث حالة القراءة للرسائل المرسلة للمستخدم
         await ChatMessage.updateMany(
             { tradeId, receiverId: userId, isRead: false },
             { $set: { isRead: true, readAt: new Date() } }
@@ -1314,7 +1134,7 @@ class Database {
         return { success: true, message: `✅ تم إضافة ${request.amount} USD إلى رصيدك` };
     }
 
-    // ========== السحب مع رسوم الشبكة المحدثة ==========
+    // ========== السحب مع رسوم الشبكة ==========
     async requestWithdraw(userId, amount, currency, network, address, twoFACode = null) {
         const wallet = await this.getUserWallet(userId);
         if (wallet.usdBalance < amount) {
