@@ -8,10 +8,10 @@ const multer = require('multer');
 const cors = require('cors');
 
 // ==========================================
-// 1. الإعدادات الأساسية
+// 1. الإعدادات الأساسية والثوابت
 // ==========================================
 const PORT = process.env.PORT || 10000;
-const DOMAIN = 'https://sdm-security-bot.onrender.com';
+const DOMAIN = 'https://sdm-security-bot.onrender.com'; // رابط منصتك الثابت
 const WEBHOOK_PATH = '/telegraf-webhook';
 const WEBHOOK_URL = `${DOMAIN}${WEBHOOK_PATH}`;
 const WEBAPP_URL = process.env.WEBAPP_URL || DOMAIN;
@@ -20,28 +20,27 @@ const ADMIN_IDS = (process.env.ADMIN_IDS || '6701743450,8181305474').split(',').
 function isAdmin(userId) { return ADMIN_IDS.includes(parseInt(userId)); }
 
 // ==========================================
-// 2. إعداد بوت التلجرام
+// 2. إعداد خادم الويب (Express) والبوت
 // ==========================================
 const bot = new Telegraf(process.env.BOT_TOKEN);
 module.exports.bot = bot;
 
-// ==========================================
-// 3. إعداد خادم الويب (Express) والـ Webhook
-// ==========================================
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// 🔴 هذا السطر يربط التلجرام بالسيرفر مباشرة لاستقبال الرسائل
+// 🔴 الأهم: مسار الـ Webhook لاستقبال رسائل التلجرام فوراً (يجب أن يكون هنا)
 app.use(bot.webhookCallback(WEBHOOK_PATH));
 
+// إعدادات الحماية
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ==========================================
-// 4. مسارات API 
+// 3. مسارات API للمنصة (الخاصة بك)
 // ==========================================
+
 app.get('/api/market/price', async (req, res) => res.json({ price: await db.getMarketPrice() }));
 app.get('/api/market/stats', async (req, res) => res.json(await db.getMarketStats()));
 app.get('/api/market/candles/:timeframe', async (req, res) => res.json(await db.getCandlesticks(req.params.timeframe, parseInt(req.query.limit) || 100)));
@@ -118,7 +117,7 @@ app.get('/terms', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ter
 app.get('/health', async (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
 // ==========================================
-// 5. أوامر البوت
+// 4. أوامر بوت التلجرام
 // ==========================================
 bot.start(async (ctx) => {
     try {
@@ -162,8 +161,18 @@ bot.command('balance', async (ctx) => {
     } catch (e) {}
 });
 
+bot.command('admin', async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return ctx.reply('⛔ للأدمن فقط');
+    await ctx.reply('👑 *لوحة تحكم الأدمن*', {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([[Markup.button.callback('🆔 طلبات التوثيق', 'pending_kyc')],[Markup.button.callback('💰 طلبات السحب', 'pending_withdraws')],[Markup.button.callback('📤 طلبات الإيداع', 'pending_deposits')],[Markup.button.callback('📊 إحصائيات', 'global_stats')],
+            [Markup.button.webApp('💎 فتح المنصة', WEBAPP_URL)]
+        ])
+    });
+});
+
 // ==========================================
-// 6. تشغيل النظام
+// 5. التشغيل النهائي للسيرفر
 // ==========================================
 (async () => {
     try {
@@ -171,11 +180,11 @@ bot.command('balance', async (ctx) => {
         await db.connect();
         console.log('✅ DATABASE CONNECTED SUCCESSFULLY');
 
-        // 2. ربط الويب هوك بتلجرام
+        // 2. إخبار تيليجرام برابط الويب هوك الخاص بنا
         await bot.telegram.setWebhook(WEBHOOK_URL);
         console.log(`🚀 WEBHOOK SET TO: ${WEBHOOK_URL}`);
 
-        // 3. تشغيل سيرفر الويب
+        // 3. تشغيل خادم الويب
         const server = app.listen(PORT, '0.0.0.0', () => {
             console.log(`🚀 SERVER RUNNING ON PORT ${PORT}`);
         });
