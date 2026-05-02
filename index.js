@@ -6,13 +6,12 @@ const path = require('path');
 const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const cors = require('cors');
-const fetch = require('node-fetch');
 
 // ==========================================
 // 1. الإعدادات الأساسية
 // ==========================================
 const PORT = process.env.PORT || 10000;
-const DOMAIN = 'https://sdm-security-bot.onrender.com'; // رابط منصتك
+const DOMAIN = 'https://sdm-security-bot.onrender.com';
 const WEBHOOK_PATH = '/telegraf-webhook';
 const WEBHOOK_URL = `${DOMAIN}${WEBHOOK_PATH}`;
 const WEBAPP_URL = process.env.WEBAPP_URL || DOMAIN;
@@ -32,25 +31,21 @@ module.exports.bot = bot;
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// 🔴 الأهم: استقبال رسائل التلجرام (Webhook) قبل أي مسارات أخرى!
+// 🔴 هذا السطر يربط التلجرام بالسيرفر مباشرة لاستقبال الرسائل
 app.use(bot.webhookCallback(WEBHOOK_PATH));
 
-// إعدادات الحماية والبيانات
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ==========================================
-// 4. مسارات API (Routes)
+// 4. مسارات API 
 // ==========================================
-
-// عامة
 app.get('/api/market/price', async (req, res) => res.json({ price: await db.getMarketPrice() }));
 app.get('/api/market/stats', async (req, res) => res.json(await db.getMarketStats()));
 app.get('/api/market/candles/:timeframe', async (req, res) => res.json(await db.getCandlesticks(req.params.timeframe, parseInt(req.query.limit) || 100)));
 
-// الأوامر
 app.get('/api/orders', async (req, res) => res.json(await db.getActiveOrders(req.query.type, parseInt(req.query.limit) || 50)));
 app.get('/api/orders/:userId', async (req, res) => res.json(await db.getUserOrders(parseInt(req.params.userId))));
 app.post('/api/order/create', async (req, res) => {
@@ -60,12 +55,9 @@ app.post('/api/order/create', async (req, res) => {
     } catch(e) { res.status(500).json({error: e.message}) }
 });
 app.post('/api/order/cancel', async (req, res) => {
-    try {
-        res.json(await db.cancelOrder(req.body.order_id, parseInt(req.body.user_id)));
-    } catch(e) { res.status(500).json({error: e.message}) }
+    try { res.json(await db.cancelOrder(req.body.order_id, parseInt(req.body.user_id))); } catch(e) { res.status(500).json({error: e.message}) }
 });
 
-// المستخدم
 app.get('/api/user/:userId', async (req, res) => res.json(await db.getUserStats(parseInt(req.params.userId))));
 app.post('/api/register', async (req, res) => {
     try {
@@ -75,7 +67,6 @@ app.post('/api/register', async (req, res) => {
 });
 app.get('/api/user/trades/:userId', async (req, res) => res.json(await db.getUserTradeHistory(parseInt(req.params.userId), 50)));
 
-// المحفظة
 app.get('/api/wallet/:userId', async (req, res) => {
     try {
         const w = await db.getUserWallet(parseInt(req.params.userId));
@@ -85,7 +76,6 @@ app.get('/api/wallet/:userId', async (req, res) => {
 app.post('/api/deposit', async (req, res) => res.json(await db.requestDeposit(parseInt(req.body.user_id), parseFloat(req.body.amount), 'USDT', req.body.network)));
 app.post('/api/withdraw', async (req, res) => res.json(await db.requestWithdraw(parseInt(req.body.user_id), parseFloat(req.body.amount), 'USDT', req.body.network, req.body.address, req.body.twofa_code)));
 
-// KYC
 app.get('/api/kyc/status/:userId', async (req, res) => res.json(await db.getKycStatus(parseInt(req.params.userId))));
 app.post('/api/kyc/submit', upload.fields([{ name: 'passportPhoto' }, { name: 'personalPhoto' }]), async (req, res) => {
     try {
@@ -103,7 +93,6 @@ app.post('/api/kyc/submit', upload.fields([{ name: 'passportPhoto' }, { name: 'p
     } catch(e) { res.status(500).json({error: e.message}) }
 });
 
-// الإحالات والدردشة وغيرها
 app.get('/api/user/referral/:userId', async (req, res) => res.json(await db.getReferralData(parseInt(req.params.userId))));
 app.post('/api/referral/transfer', async (req, res) => res.json(await db.transferReferralEarningsToWallet(parseInt(req.body.user_id))));
 
@@ -150,8 +139,7 @@ bot.start(async (ctx) => {
             `🚀 *اضغط على الزر أدناه لبدء التداول*`,
             {
                 parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard([
-                    [Markup.button.webApp('💎 فتح منصة التداول', WEBAPP_URL)],[Markup.button.url('📜 الشروط والأحكام', `${WEBAPP_URL}/terms`)]
+                ...Markup.inlineKeyboard([[Markup.button.webApp('💎 فتح منصة التداول', WEBAPP_URL)],[Markup.button.url('📜 الشروط والأحكام', `${WEBAPP_URL}/terms`)]
                 ])
             }
         );
@@ -181,7 +169,6 @@ bot.command('balance', async (ctx) => {
     try {
         // 1. الاتصال بقاعدة البيانات
         await db.connect();
-        // لن يتم ترجمة هذه الجملة لأنها جديدة
         console.log('✅ DATABASE CONNECTED SUCCESSFULLY');
 
         // 2. ربط الويب هوك بتلجرام
