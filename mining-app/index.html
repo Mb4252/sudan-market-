@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>P2P Exchange - منصة التداول</title>
+    <title>💎 CRYSTAL Exchange - منصة تداول العملة الرقمية</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * {
             margin: 0;
@@ -14,7 +15,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            background: linear-gradient(135deg, #0a0a2a 0%, #1a1a3e 100%);
             min-height: 100vh;
             padding: 20px;
         }
@@ -51,6 +52,26 @@
             margin-top: 5px;
         }
 
+        .price-card {
+            background: linear-gradient(135deg, #1a1a3e 0%, #2a2a4e 100%);
+            text-align: center;
+            padding: 15px;
+        }
+
+        .current-price {
+            font-size: 36px;
+            font-weight: bold;
+            color: #4caf50;
+        }
+
+        .price-change {
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .price-change.positive { color: #4caf50; }
+        .price-change.negative { color: #f44336; }
+
         .verified-badge {
             background: #4caf50;
             color: white;
@@ -71,53 +92,30 @@
             margin-top: 5px;
         }
 
-        .pending-badge {
+        .admin-badge {
             background: #ff9800;
             color: white;
             border-radius: 20px;
-            padding: 4px 12px;
-            font-size: 12px;
-            display: inline-block;
-            margin-top: 5px;
-        }
-
-        .online-badge {
-            background: #4caf50;
-            color: white;
-            border-radius: 20px;
             padding: 2px 8px;
             font-size: 10px;
-            display: inline-flex;
-            align-items: center;
-            gap: 3px;
-        }
-
-        .offline-badge {
-            background: #666;
-            color: white;
-            border-radius: 20px;
-            padding: 2px 8px;
-            font-size: 10px;
-            display: inline-flex;
-            align-items: center;
-            gap: 3px;
+            margin-left: 5px;
         }
 
         .tab-buttons {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             margin-bottom: 20px;
             flex-wrap: wrap;
         }
 
         .tab-button {
             flex: 1;
-            padding: 12px;
+            padding: 10px;
             background: rgba(255, 255, 255, 0.1);
             border: none;
             border-radius: 10px;
             color: white;
-            font-size: 14px;
+            font-size: 12px;
             cursor: pointer;
             transition: all 0.3s;
         }
@@ -135,24 +133,23 @@
             display: block;
         }
 
-        .offer-card {
+        .order-card {
             background: rgba(255, 255, 255, 0.1);
             border-radius: 12px;
             padding: 12px;
             margin-bottom: 10px;
             border-right: 3px solid;
-            transition: all 0.2s;
         }
 
-        .offer-sell {
-            border-right-color: #4CAF50;
+        .order-buy {
+            border-right-color: #4caf50;
         }
 
-        .offer-buy {
+        .order-sell {
             border-right-color: #f44336;
         }
 
-        .offer-header {
+        .order-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -160,7 +157,7 @@
             flex-wrap: wrap;
         }
 
-        .offer-user {
+        .order-user {
             font-weight: bold;
             display: flex;
             align-items: center;
@@ -168,43 +165,23 @@
             flex-wrap: wrap;
         }
 
-        .offer-rating {
-            font-size: 12px;
-            color: #ffc107;
-        }
-
-        .offer-amount {
+        .order-price {
             font-size: 18px;
             font-weight: bold;
-            margin: 8px 0;
-        }
-
-        .offer-details {
-            font-size: 12px;
-            color: #aaa;
             margin: 5px 0;
         }
 
-        .offer-price {
+        .order-amount {
             font-size: 14px;
+            color: #aaa;
+        }
+
+        .order-total {
+            font-size: 12px;
             color: #4caf50;
         }
 
-        .remaining-amount {
-            font-size: 12px;
-            color: #ff9800;
-            margin: 5px 0;
-        }
-
-        .verified-icon {
-            background: #4caf50;
-            color: white;
-            border-radius: 12px;
-            padding: 2px 8px;
-            font-size: 10px;
-        }
-
-        .trade-input, .offer-input, .bank-input, .kyc-input {
+        .trade-input, .select-input {
             width: 100%;
             padding: 12px;
             border: none;
@@ -215,7 +192,7 @@
         }
 
         .trade-btn {
-            background: #4CAF50;
+            background: #4caf50;
             color: white;
             border: none;
             padding: 12px;
@@ -235,27 +212,15 @@
             background: #666;
         }
 
-        .copy-btn {
+        .refresh-btn {
             background: #2196F3;
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 10px;
             border-radius: 8px;
             cursor: pointer;
-            margin-top: 10px;
-            margin-right: 5px;
-        }
-
-        .refresh-btn {
-            background: #4caf50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            margin-bottom: 15px;
+            margin: 10px 0;
             width: 100%;
-            font-size: 14px;
         }
 
         .address-box {
@@ -275,16 +240,6 @@
             color: #aaa;
         }
 
-        .currency-select {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 10px;
-            margin: 10px 0;
-            background: rgba(255, 255, 255, 0.9);
-            font-size: 14px;
-        }
-
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -300,42 +255,74 @@
         }
 
         .stat-value {
-            font-size: 24px;
+            font-size: 20px;
             font-weight: bold;
             color: #4caf50;
         }
 
         .stat-label {
-            font-size: 12px;
+            font-size: 11px;
             color: #aaa;
             margin-top: 5px;
         }
 
-        .leader-item {
+        .order-book {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            gap: 10px;
+            margin: 15px 0;
         }
 
-        .leader-rank {
-            font-weight: bold;
-            width: 40px;
-        }
-
-        .leader-name {
+        .order-book-col {
             flex: 1;
         }
 
-        .leader-trades {
-            color: #4caf50;
+        .order-book-title {
+            text-align: center;
+            padding: 8px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            border-radius: 8px;
         }
 
-        .leader-rating {
-            color: #ffc107;
-            width: 60px;
-            text-align: right;
+        .order-book-title.buy { background: rgba(76, 175, 80, 0.2); color: #4caf50; }
+        .order-book-title.sell { background: rgba(244, 67, 54, 0.2); color: #f44336; }
+
+        .order-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px;
+            font-size: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .order-row .price { color: #4caf50; }
+        .order-row.sell .price { color: #f44336; }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 15px 0;
+        }
+
+        .timeframe-buttons {
+            display: flex;
+            gap: 8px;
+            margin: 10px 0;
+            flex-wrap: wrap;
+        }
+
+        .timeframe-btn {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            padding: 6px 12px;
+            border-radius: 15px;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .timeframe-btn.active {
+            background: #667eea;
         }
 
         .language-selector {
@@ -349,35 +336,14 @@
             background: rgba(255, 255, 255, 0.2);
             color: white;
             border: none;
-            padding: 8px 20px;
+            padding: 8px 16px;
             border-radius: 20px;
             cursor: pointer;
+            font-size: 12px;
         }
 
         .lang-btn.active {
             background: #667eea;
-        }
-
-        .kyc-status-card {
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 15px;
-            text-align: center;
-        }
-
-        .info-box {
-            background: rgba(33, 150, 243, 0.15);
-            border: 1px solid #2196F3;
-            border-radius: 12px;
-            padding: 15px;
-            margin: 15px 0;
-            text-align: right;
-        }
-
-        .info-box h4 {
-            color: #2196F3;
-            margin-bottom: 10px;
         }
 
         .warning-box {
@@ -390,201 +356,15 @@
             font-size: 12px;
         }
 
-        .referral-stats-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin: 15px 0;
-        }
-
-        .referral-stat-card {
-            background: rgba(76, 175, 80, 0.2);
+        .info-box {
+            background: rgba(33, 150, 243, 0.15);
+            border: 1px solid #2196F3;
             border-radius: 12px;
             padding: 15px;
-            text-align: center;
-            border: 1px solid #4caf50;
+            margin: 15px 0;
+            text-align: right;
         }
 
-        .referral-stat-value {
-            font-size: 28px;
-            font-weight: bold;
-            color: #4caf50;
-        }
-
-        .referral-stat-label {
-            font-size: 11px;
-            color: #ccc;
-            margin-top: 5px;
-        }
-
-        .pagination-buttons {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-            justify-content: center;
-        }
-        .pagination-buttons button {
-            background: #2196F3;
-            padding: 8px 20px;
-            font-size: 14px;
-        }
-        .pagination-buttons button:disabled {
-            opacity: 0.5;
-        }
-
-        .limit-inputs {
-            display: flex;
-            gap: 10px;
-            margin: 10px 0;
-        }
-        .limit-inputs input {
-            flex: 1;
-        }
-
-        /* ========== أنماط الدردشة ========== */
-        .chat-container {
-            display: flex;
-            flex-direction: column;
-            height: 70vh;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 15px;
-            overflow: hidden;
-        }
-        .chat-header {
-            background: rgba(0, 0, 0, 0.5);
-            padding: 15px;
-            text-align: center;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        .chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        .message {
-            max-width: 80%;
-            padding: 10px 12px;
-            border-radius: 15px;
-            word-wrap: break-word;
-        }
-        .message-sent {
-            background: #2196F3;
-            color: white;
-            align-self: flex-end;
-            border-bottom-right-radius: 5px;
-        }
-        .message-received {
-            background: rgba(255, 255, 255, 0.15);
-            color: white;
-            align-self: flex-start;
-            border-bottom-left-radius: 5px;
-        }
-        .message-system {
-            background: rgba(255, 152, 0, 0.2);
-            color: #ff9800;
-            text-align: center;
-            align-self: center;
-            font-size: 12px;
-            max-width: 90%;
-        }
-        .message-image {
-            max-width: 200px;
-            border-radius: 10px;
-            cursor: pointer;
-        }
-        .message-time {
-            font-size: 10px;
-            opacity: 0.7;
-            margin-top: 5px;
-            text-align: left;
-        }
-        .chat-input-area {
-            display: flex;
-            gap: 10px;
-            padding: 15px;
-            background: rgba(0, 0, 0, 0.5);
-            border-top: 1px solid rgba(255,255,255,0.1);
-        }
-        .chat-input {
-            flex: 1;
-            padding: 12px;
-            border: none;
-            border-radius: 25px;
-            background: rgba(255,255,255,0.9);
-            font-size: 14px;
-        }
-        .chat-send-btn {
-            background: #4caf50;
-            border: none;
-            width: 45px;
-            height: 45px;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 20px;
-        }
-        .chat-image-btn {
-            background: #2196F3;
-            border: none;
-            width: 45px;
-            height: 45px;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 20px;
-        }
-        .unread-badge {
-            background: #f44336;
-            color: white;
-            border-radius: 10px;
-            padding: 2px 6px;
-            font-size: 10px;
-            margin-left: 5px;
-        }
-        .trade-chat-btn {
-            background: #2196F3;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 15px;
-            cursor: pointer;
-            font-size: 11px;
-            margin-left: 10px;
-        }
-        .back-to-trades {
-            background: #666;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 20px;
-            cursor: pointer;
-            margin-bottom: 10px;
-            font-size: 12px;
-        }
-        .chat-loading {
-            text-align: center;
-            padding: 20px;
-            color: #aaa;
-        }
-        .image-preview-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.9);
-            z-index: 10000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer;
-        }
-        .image-preview-img {
-            max-width: 90%;
-            max-height: 90%;
-            border-radius: 10px;
-        }
         .fee-breakdown {
             background: rgba(0,0,0,0.3);
             border-radius: 10px;
@@ -592,222 +372,198 @@
             margin: 10px 0;
             font-size: 13px;
         }
-        .partial-input-group {
+
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            padding: 15px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 15px;
+            margin-bottom: 10px;
+        }
+
+        .message {
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            border-radius: 15px;
+            max-width: 85%;
+        }
+
+        .message-sent {
+            background: #2196F3;
+            color: white;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+
+        .message-received {
+            background: rgba(255,255,255,0.15);
+            color: white;
+        }
+
+        .chat-input-area {
             display: flex;
             gap: 10px;
-            margin-top: 10px;
-            flex-wrap: wrap;
         }
-        .partial-input {
-            flex: 2;
-            padding: 8px;
-            border-radius: 8px;
-            border: none;
-            background: rgba(255,255,255,0.9);
-        }
-        .partial-btn {
+
+        .chat-input {
             flex: 1;
-            padding: 8px;
-            background: #4caf50;
-            color: white;
+            padding: 12px;
             border: none;
-            border-radius: 8px;
-            cursor: pointer;
-        }
-        .progress-bar {
-            background: rgba(255,255,255,0.2);
-            border-radius: 10px;
-            height: 8px;
-            margin: 8px 0;
-            overflow: hidden;
-        }
-        .progress-fill {
-            background: #4caf50;
-            height: 100%;
-            border-radius: 10px;
-            transition: width 0.3s;
+            border-radius: 25px;
+            background: rgba(255,255,255,0.9);
         }
 
         @media (max-width: 480px) {
-            .tab-button { font-size: 11px; padding: 8px; }
-            .stat-value { font-size: 18px; }
-            .referral-stat-value { font-size: 22px; }
-            .limit-inputs { flex-direction: column; }
-            .message { max-width: 90%; }
-            .partial-input-group { flex-direction: column; }
+            .tab-button { font-size: 10px; padding: 8px; }
+            .stat-value { font-size: 16px; }
+            .current-price { font-size: 28px; }
+            .order-book-col { font-size: 11px; }
         }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- بطاقة الرصيد -->
         <div class="card balance-card">
-            <h2>💰 P2P Exchange</h2>
-            <div class="balance-amount" id="usdBalance">0</div>
-            <div class="price-info">⭐ التقييم: <span id="userRating">5.0</span>/5 | ✅ <span id="completedTrades">0</span> صفقة</div>
+            <h2>💎 CRYSTAL Exchange</h2>
+            <div class="balance-amount" id="crystalBalance">0</div>
+            <div class="price-info">💵 USDT: <span id="usdtBalance">0</span> | ⭐ <span id="userRating">5.0</span>/5</div>
             <div id="verificationStatus"></div>
-            <div id="onlineStatus" style="font-size:12px; margin-top:8px"></div>
+            <div id="adminBadge"></div>
         </div>
 
+        <!-- بطاقة السعر -->
+        <div class="card price-card">
+            <div class="current-price" id="currentPrice">0.0020</div>
+            <div class="price-change" id="priceChange">📈 0.00%</div>
+            <div class="price-info">📊 حجم 24h: <span id="volume24h">0</span> CRYSTAL | 💰 أعلى: <span id="high24h">0</span> | 📉 أدنى: <span id="low24h">0</span></div>
+        </div>
+
+        <!-- اختيار اللغة -->
         <div class="language-selector">
             <button class="lang-btn active" onclick="setLanguage('ar')">🇸🇦 العربية</button>
             <button class="lang-btn" onclick="setLanguage('en')">🇬🇧 English</button>
         </div>
 
+        <!-- أزرار التبويبات -->
         <div class="tab-buttons">
-            <button class="tab-button active" onclick="switchTab('market')">📊 السوق</button>
-            <button class="tab-button" onclick="switchTab('create')">➕ عرض</button>
-            <button class="tab-button" onclick="switchTab('my')">📋 عروضي</button>
-            <button class="tab-button" onclick="switchTab('trades')">🔄 صفقاتي</button>
+            <button class="tab-button active" onclick="switchTab('trade')">💎 تداول</button>
+            <button class="tab-button" onclick="switchTab('orders')">📋 طلباتي</button>
             <button class="tab-button" onclick="switchTab('history')">📜 تاريخي</button>
             <button class="tab-button" onclick="switchTab('wallet')">💼 محفظتي</button>
             <button class="tab-button" onclick="switchTab('kyc')">🆔 توثيق</button>
-            <button class="tab-button" onclick="switchTab('leaderboard')">🏆 المتصدرين</button>
-            <button class="tab-button" onclick="switchTab('bank')">🏦 بياناتي</button>
             <button class="tab-button" onclick="switchTab('referral')">🎁 إحالاتي</button>
-            <button class="tab-button" onclick="switchTab('security')">🔐 الأمان</button>
+            <button class="tab-button" onclick="switchTab('chat')">💬 الدردشة</button>
             <button class="tab-button" onclick="switchTab('instructions')">📖 تعليمات</button>
         </div>
 
-        <!-- سوق التداول - مع دعم البيع بالتجزئة -->
-        <div id="market-tab" class="tab-content active">
+        <!-- تبويب التداول -->
+        <div id="trade-tab" class="tab-content active">
             <div class="card">
-                <div class="warning-box" style="background:rgba(76,175,80,0.2); border-color:#4caf50">
-                    🔐 نظام الضمان - العملات محتجزة حتى تأكيد الدفع
+                <div class="warning-box">
+                    💎 سعر الافتتاح: 500 حبة = 1 USDT | إجمالي العرض: 5,000,000 CRYSTAL
                 </div>
-                <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
-                    <select id="marketType" class="currency-select" onchange="resetAndLoadMarket()" style="flex:1">
-                        <option value="sell">🟢 عروض البيع</option>
-                        <option value="buy">🔴 عروض الشراء</option>
-                    </select>
-                    <select id="marketCurrency" class="currency-select" onchange="resetAndLoadMarket()" style="flex:1">
-                        <option value="">جميع العملات</option>
-                        <option value="USD">🇺🇸 دولار</option>
-                        <option value="EUR">🇪🇺 يورو</option>
-                        <option value="GBP">🇬🇧 جنيه</option>
-                        <option value="SAR">🇸🇦 ريال</option>
-                        <option value="AED">🇦🇪 درهم</option>
-                        <option value="EGP">🇪🇬 جنيه</option>
-                        <option value="SDG">🇸🇩 جنيه</option>
-                        <option value="IQD">🇮🇶 دينار</option>
-                        <option value="TRY">🇹🇷 ليرة</option>
-                    </select>
-                </div>
-                <div id="marketStats" style="background:rgba(0,0,0,0.3); padding:10px; border-radius:10px; margin-bottom:10px; text-align:center; font-size:12px">
-                    📊 جاري تحميل الإحصائيات...
-                </div>
-                <div id="offersList"><div class="loading">🔄 جاري تحميل العروض...</div></div>
-            </div>
-        </div>
 
-        <!-- إنشاء عرض -->
-        <div id="create-tab" class="tab-content">
-            <div class="card">
-                <h3 style="color:white; margin-bottom:15px">➕ إنشاء عرض جديد</h3>
-                <div id="createWarning" style="display:none; background:#f44336; padding:10px; border-radius:10px; margin-bottom:15px; color:white; text-align:center;">
-                    ⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً.
+                <!-- الشموع -->
+                <div class="chart-container">
+                    <canvas id="priceChart"></canvas>
                 </div>
-                <select id="offerType" class="currency-select">
-                    <option value="sell">🟢 بيع</option>
-                    <option value="buy">🔴 شراء</option>
-                </select>
-                <select id="offerCurrency" class="currency-select">
-                    <option value="USD">🇺🇸 دولار</option>
-                    <option value="EUR">🇪🇺 يورو</option>
-                    <option value="SDG">🇸🇩 جنيه</option>
-                </select>
-                <input type="number" id="offerAmount" placeholder="المبلغ الإجمالي للعرض" class="trade-input">
-                <input type="number" id="offerPrice" placeholder="السعر (مثلاً: 560 يعني 1 دولار = 560 عملة)" class="trade-input">
-                <div class="limit-inputs">
-                    <input type="number" id="offerMinAmount" placeholder="الحد الأدنى للشراء" class="trade-input" style="margin:0">
-                    <input type="number" id="offerMaxAmount" placeholder="الحد الأقصى للشراء" class="trade-input" style="margin:0">
+                <div class="timeframe-buttons">
+                    <button class="timeframe-btn active" onclick="setTimeframe('1m')">1 دقيقة</button>
+                    <button class="timeframe-btn" onclick="setTimeframe('5m')">5 دقائق</button>
+                    <button class="timeframe-btn" onclick="setTimeframe('15m')">15 دقيقة</button>
+                    <button class="timeframe-btn" onclick="setTimeframe('1h')">1 ساعة</button>
                 </div>
-                <select id="offerPaymentMethod" class="currency-select">
-                    <option value="bank_transfer">🏦 تحويل بنكي</option>
-                    <option value="paypal">💳 باي بال</option>
-                </select>
-                <div id="bankFields" style="display: none;">
-                    <select id="offerBank" class="currency-select"><option value="">اختر البنك</option></select>
-                    <input type="text" id="offerAccountNumber" placeholder="رقم الحساب" class="trade-input">
-                    <input type="text" id="offerAccountName" placeholder="اسم الحساب" class="trade-input">
-                </div>
-                <textarea id="offerDetails" placeholder="تفاصيل إضافية" class="trade-input" rows="2"></textarea>
-                <button class="trade-btn" onclick="createOffer()">✅ إنشاء العرض</button>
-                <div class="info-box" style="margin-top:15px">
-                    📌 <strong>ملاحظة:</strong> عروض البيع تدعم نظام البيع بالتجزئة - يمكن للمشترين شراء جزء من العرض حسب الحدود التي تحددها.
-                </div>
-            </div>
-        </div>
 
-        <!-- عروضي -->
-        <div id="my-tab" class="tab-content">
-            <div class="card"><h3 style="color:white">📋 عروضي</h3><div id="myOffersList"><div class="loading">جاري التحميل...</div></div></div>
-        </div>
-
-        <!-- صفقاتي مع زر دردشة -->
-        <div id="trades-tab" class="tab-content">
-            <div class="card">
-                <h3 style="color:white">🔄 صفقاتي</h3>
-                <div id="myTradesList"><div class="loading">جاري التحميل...</div></div>
-            </div>
-        </div>
-
-        <!-- شاشة الدردشة -->
-        <div id="chat-tab" class="tab-content">
-            <div class="card" style="padding: 0; overflow: hidden;">
-                <div style="padding: 15px; background: rgba(0,0,0,0.3); display: flex; align-items: center; gap: 10px;">
-                    <button class="back-to-trades" onclick="switchTab('trades')">← رجوع</button>
-                    <div style="flex:1; text-align: center;">
-                        <strong id="chatPartnerName">الدردشة</strong>
-                        <div style="font-size: 11px; color: #aaa;" id="chatTradeId"></div>
+                <!-- سجل الطلبات (Order Book) -->
+                <div class="order-book">
+                    <div class="order-book-col">
+                        <div class="order-book-title buy">🟢 طلبات الشراء</div>
+                        <div id="buyOrdersList">
+                            <div class="loading">جاري التحميل...</div>
+                        </div>
+                    </div>
+                    <div class="order-book-col">
+                        <div class="order-book-title sell">🔴 طلبات البيع</div>
+                        <div id="sellOrdersList">
+                            <div class="loading">جاري التحميل...</div>
+                        </div>
                     </div>
                 </div>
-                <div id="chatMessagesContainer" class="chat-messages" style="height: 60vh;">
-                    <div class="chat-loading">🔄 جاري تحميل الرسائل...</div>
-                </div>
-                <div class="chat-input-area">
-                    <input type="text" id="chatInput" class="chat-input" placeholder="اكتب رسالتك...">
-                    <input type="file" id="chatImageInput" accept="image/*" style="display:none">
-                    <button class="chat-image-btn" onclick="document.getElementById('chatImageInput').click()">📷</button>
-                    <button class="chat-send-btn" onclick="sendChatMessage()">📤</button>
+
+                <!-- إنشاء طلب -->
+                <div style="margin-top: 20px;">
+                    <h3 style="color:white; margin-bottom:10px">➕ إنشاء طلب تداول</h3>
+                    <div id="tradeWarning" style="display:none; background:#f44336; padding:10px; border-radius:10px; margin-bottom:15px; color:white; text-align:center;">
+                        ⚠️ حسابك غير موثق! يرجى توثيق حسابك أولاً.
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <select id="orderType" class="select-input" style="flex:1">
+                            <option value="buy">🟢 شراء CRYSTAL</option>
+                            <option value="sell">🔴 بيع CRYSTAL</option>
+                        </select>
+                    </div>
+                    <input type="number" id="orderPrice" placeholder="السعر (USDT) - مثال: 0.0020" class="trade-input" step="0.0001">
+                    <input type="number" id="orderAmount" placeholder="الكمية (CRYSTAL)" class="trade-input" step="any">
+                    <div class="info-box" style="font-size:12px; padding:10px">
+                        💰 الإجمالي: <strong id="orderTotal">0</strong> USDT<br>
+                        💸 رسوم التداول: <strong id="orderFee">0</strong> USDT (0.1%)
+                    </div>
+                    <button class="trade-btn" onclick="createOrder()" id="createOrderBtn">✅ إنشاء طلب</button>
                 </div>
             </div>
         </div>
 
-        <!-- تاريخي -->
-        <div id="history-tab" class="tab-content">
-            <div class="card"><h3 style="color:white">📜 سجل عروضي</h3><div id="offersHistory"><div class="loading">جاري التحميل...</div></div>
-            <h3 style="color:white; margin-top:20px">🔄 سجل صفقاتي</h3><div id="tradesHistory"><div class="loading">جاري التحميل...</div></div>
-            <button class="refresh-btn" onclick="loadHistory()">🔄 تحديث</button></div>
+        <!-- تبويب طلباتي -->
+        <div id="orders-tab" class="tab-content">
+            <div class="card">
+                <h3 style="color:white">📋 طلباتي النشطة</h3>
+                <button class="refresh-btn" onclick="loadMyOrders()">🔄 تحديث</button>
+                <div id="myOrdersList"><div class="loading">جاري التحميل...</div></div>
+            </div>
         </div>
 
-        <!-- محفظتي مع تفصيل الرسوم -->
+        <!-- تبويب تاريخي -->
+        <div id="history-tab" class="tab-content">
+            <div class="card">
+                <h3 style="color:white">📜 سجل صفقاتي</h3>
+                <button class="refresh-btn" onclick="loadTradeHistory()">🔄 تحديث</button>
+                <div id="tradeHistoryList"><div class="loading">جاري التحميل...</div></div>
+            </div>
+        </div>
+
+        <!-- تبويب المحفظة -->
         <div id="wallet-tab" class="tab-content">
             <div class="card">
                 <h3 style="color:white">💼 محفظتي</h3>
-                <div id="walletInfo"><div class="loading">جاري التحميل...</div></div>
-                <div class="warning-box" style="margin-top:15px">⚠️ تأكد من الشبكة قبل الإرسال - الإرسال الخاطئ يؤدي لفقدان الأموال</div>
+                <div class="stats-grid">
+                    <div class="stat-card"><div class="stat-value" id="walletCrystal">0</div><div class="stat-label">💎 CRYSTAL</div></div>
+                    <div class="stat-card"><div class="stat-value" id="walletUsdt">0</div><div class="stat-label">💵 USDT</div></div>
+                </div>
                 
-                <!-- تفصيل الرسوم للمستخدم -->
                 <div class="fee-breakdown">
                     <strong>💰 تفصيل رسوم السحب:</strong><br>
-                    • 🏢 رسوم المنصة: <strong>0.05 $</strong> (ثابتة)<br>
-                    • 🌐 رسوم الشبكة: <strong id="networkFeeAmount">جاري التحميل...</strong> (تتغير حسب السوق)<br>
-                    • 📊 إجمالي الرسوم: <strong id="totalFeeAmount">-</strong>
+                    • 🏢 رسوم المنصة: <strong>0.05 USDT</strong> (ثابتة)<br>
+                    • 🌐 رسوم الشبكة: <strong id="networkFeeAmount">جاري التحميل...</strong><br>
+                    • 💎 رسوم التداول: <strong>0.1%</strong>
                 </div>
 
                 <div style="margin-top:15px">
-                    <h4 style="color:white">💰 إيداع وسحب</h4>
-                    <select id="walletNetwork" class="currency-select" onchange="updateNetworkFee()">
-                        <option value="bnb">🟡 BNB (BEP-20) - رسوم الشبكة: ~0.10 $</option>
-                        <option value="polygon">🟣 POLYGON (MATIC) - رسوم الشبكة: ~0.05 $</option>
-                        <option value="solana">🟢 SOLANA (SOL) - رسوم الشبكة: ~0.01 $</option>
-                        <option value="aptos">🔷 APTOS (APT) - رسوم الشبكة: ~0.02 $</option>
-                        <option value="trc20">💠 TRC-20 (Tron) - رسوم الشبكة: ~0.80 $</option>
-                        <option value="erc20">⬜ ERC-20 (Ethereum) - رسوم الشبكة: ~5-15 $ (الأغلى)</option>
+                    <h4 style="color:white">💰 إيداع USDT</h4>
+                    <select id="walletNetwork" class="select-input" onchange="updateNetworkFee()">
+                        <option value="bnb">🟡 BNB (BEP-20)</option>
+                        <option value="polygon">🟣 POLYGON</option>
+                        <option value="solana">🟢 SOLANA</option>
+                        <option value="aptos">🔷 APTOS</option>
+                        <option value="trc20">💠 TRC-20 (Tron)</option>
+                        <option value="erc20">⬜ ERC-20 (Ethereum)</option>
                     </select>
-                    <input type="number" id="depositAmount" placeholder="المبلغ بالدولار" class="trade-input">
+                    <input type="number" id="depositAmount" placeholder="المبلغ بـ USDT" class="trade-input">
                     <button class="trade-btn" onclick="deposit()">📤 إيداع</button>
-                    <input type="number" id="withdrawAmount" placeholder="المبلغ بالدولار" class="trade-input" oninput="updateTotalFee()">
+                    
+                    <h4 style="color:white; margin-top:15px">💸 سحب USDT</h4>
+                    <input type="number" id="withdrawAmount" placeholder="المبلغ بـ USDT" class="trade-input" oninput="updateTotalFee()">
                     <input type="text" id="withdrawAddress" placeholder="عنوان المحفظة المستلم" class="trade-input">
                     <input type="text" id="withdraw2FA" placeholder="رمز 2FA" class="trade-input">
                     <button class="trade-btn sell-btn" onclick="withdraw()">💸 سحب</button>
@@ -815,89 +571,66 @@
             </div>
         </div>
 
-        <!-- KYC -->
+        <!-- تبويب KYC -->
         <div id="kyc-tab" class="tab-content">
             <div class="card">
                 <h3 style="color:white">🆔 توثيق الهوية</h3>
-                <button class="refresh-btn" onclick="refreshKyc()">🔄 تحديث</button>
-                <div id="kycStatus" class="kyc-status-card"><div class="loading">جاري التحميل...</div></div>
+                <div id="kycStatus" class="loading">جاري التحميل...</div>
                 <div id="kycForm" style="display:none">
-                    <input type="text" id="kycFullName" placeholder="الاسم الكامل" class="kyc-input">
-                    <input type="text" id="kycPassport" placeholder="رقم الجواز" class="kyc-input">
-                    <input type="text" id="kycNationalId" placeholder="الرقم الوطني" class="kyc-input">
-                    <input type="tel" id="kycPhone" placeholder="رقم الهاتف" class="kyc-input">
-                    <select id="kycBank" class="currency-select"><option value="">اختر البنك</option></select>
-                    <input type="text" id="kycAccountNumber" placeholder="رقم الحساب" class="kyc-input">
-                    <input type="text" id="kycAccountName" placeholder="اسم الحساب" class="kyc-input">
+                    <input type="text" id="kycFullName" placeholder="الاسم الكامل" class="trade-input">
+                    <input type="text" id="kycPassport" placeholder="رقم الجواز" class="trade-input">
+                    <input type="text" id="kycNationalId" placeholder="الرقم الوطني" class="trade-input">
+                    <input type="tel" id="kycPhone" placeholder="رقم الهاتف" class="trade-input">
+                    <input type="text" id="kycBankName" placeholder="اسم البنك" class="trade-input">
+                    <input type="text" id="kycAccountNumber" placeholder="رقم الحساب" class="trade-input">
+                    <input type="text" id="kycAccountName" placeholder="اسم الحساب" class="trade-input">
                     <div class="photo-upload" onclick="document.getElementById('passportPhoto').click()">📄 رفع صورة الجواز</div>
                     <input type="file" id="passportPhoto" accept="image/*" style="display:none" onchange="previewPassport(event)">
                     <div id="passportPreview"></div>
                     <div class="photo-upload" onclick="document.getElementById('personalPhoto').click()">📸 رفع الصورة الشخصية</div>
                     <input type="file" id="personalPhoto" accept="image/*" style="display:none" onchange="previewPersonal(event)">
                     <div id="personalPreview"></div>
-                    <button class="kyc-btn" onclick="submitKyc()" style="background:#2196F3; color:white; padding:12px; width:100%; border:none; border-radius:10px; margin-top:10px">📤 إرسال الطلب</button>
+                    <button class="trade-btn" onclick="submitKyc()" style="background:#2196F3">📤 إرسال الطلب</button>
                 </div>
             </div>
         </div>
 
-        <!-- المتصدرين -->
-        <div id="leaderboard-tab" class="tab-content">
-            <div class="card"><h3 style="color:white">🏆 المتصدرين</h3><div id="leaderboardList"><div class="loading">جاري التحميل...</div></div></div>
-        </div>
-
-        <!-- بيانات البنك -->
-        <div id="bank-tab" class="tab-content">
-            <div class="card">
-                <h3 style="color:white">🏦 بياناتي البنكية</h3>
-                <div id="bankInfo"><div class="loading">جاري التحميل...</div></div>
-                <select id="bankName" class="currency-select"><option value="">اختر البنك</option></select>
-                <input type="text" id="accountNumber" placeholder="رقم الحساب" class="trade-input">
-                <input type="text" id="accountName" placeholder="اسم الحساب" class="trade-input">
-                <button class="trade-btn" onclick="updateBank()">💾 حفظ</button>
-            </div>
-        </div>
-
-        <!-- الإحالات -->
+        <!-- تبويب الإحالات -->
         <div id="referral-tab" class="tab-content">
             <div class="card">
                 <h3 style="color:white">🎁 برنامج الإحالات</h3>
-                <div class="referral-stats-grid">
-                    <div class="referral-stat-card"><div class="referral-stat-value" id="referralCount">0</div><div class="referral-stat-label">👥 المدعوين</div></div>
-                    <div class="referral-stat-card"><div class="referral-stat-value" id="referralEarnings">0</div><div class="referral-stat-label">💰 رصيد الإحالات</div></div>
-                    <div class="referral-stat-card"><div class="referral-stat-value">10%</div><div class="referral-stat-label">نسبة العمولة</div></div>
+                <div class="stats-grid">
+                    <div class="stat-card"><div class="stat-value" id="referralCount">0</div><div class="stat-label">👥 المدعوين</div></div>
+                    <div class="stat-card"><div class="stat-value" id="referralEarnings">0</div><div class="stat-label">💰 العمولات</div></div>
                 </div>
-                <div class="address-box" id="referralLink" style="text-align:center"></div>
+                <div class="address-box" id="referralLink"></div>
                 <button class="copy-btn" onclick="copyReferralLink()">📋 نسخ الرابط</button>
-                <div id="referralStats" style="margin-top:15px"></div>
-                <button class="trade-btn" onclick="transferReferral()" style="background:#2196F3">💸 تحويل الرصيد للمحفظة</button>
+                <button class="trade-btn" onclick="transferReferral()" style="background:#2196F3; margin-top:10px">💸 تحويل للمحفظة</button>
             </div>
         </div>
 
-        <!-- الأمان -->
-        <div id="security-tab" class="tab-content">
+        <!-- تبويب الدردشة -->
+        <div id="chat-tab" class="tab-content">
             <div class="card">
-                <h3 style="color:white">🔐 الأمان</h3>
-                <div id="securityInfo"></div>
-                <button class="trade-btn" onclick="setup2FA()" id="enable2faBtn">🔐 تفعيل 2FA</button>
-                <div id="twofaQR" style="display:none"></div>
-                <input type="text" id="twofaCode" placeholder="📱 رمز 2FA" class="trade-input" style="display:none">
-                <button class="trade-btn" onclick="verify2FA()" id="verify2faBtn" style="display:none">✅ تأكيد</button>
-                <button class="sell-btn" onclick="disable2FA()" id="disable2faBtn" style="display:none">❌ تعطيل 2FA</button>
-                <div class="warning-box" style="margin-top:15px">⚠️ فعّل 2FA لحماية حسابك، احفظ المفتاح السري</div>
+                <h3 style="color:white">💬 الدردشة العامة</h3>
+                <div id="chatMessages" class="chat-messages"></div>
+                <div class="chat-input-area">
+                    <input type="text" id="chatMessage" class="chat-input" placeholder="اكتب رسالتك...">
+                    <button class="trade-btn" onclick="sendChatMessage()" style="width:auto; padding:12px 20px">📤</button>
+                </div>
             </div>
         </div>
 
-        <!-- التعليمات -->
+        <!-- تبويب التعليمات -->
         <div id="instructions-tab" class="tab-content">
             <div class="card">
                 <h3 style="color:white">📖 دليل المستخدم</h3>
-                <div class="info-box"><h4>📥 الإيداع</h4><p>انسخ عنوان محفظتك من تبويب "محفظتي" ← أرسل العملة ← سيظهر الرصيد تلقائياً</p></div>
-                <div class="info-box"><h4>📤 السحب</h4><p>أدخل المبلغ وعنوان المحفظة ← اختر الشبكة ← أدخل رمز 2FA ← انتظر الموافقة</p></div>
-                <div class="warning-box">⚠️ تأكد من الشبكة - الإرسال على شبكة خاطئة يؤدي لفقدان الأموال</div>
-                <div class="info-box"><h4>🌐 الشبكات المدعومة</h4><p>🟡 BNB (BEP-20) عمولة ~0.1$<br>🟣 POLYGON عمولة ~0.05$<br>🟢 SOLANA عمولة ~0.01$<br>🔷 APTOS عمولة ~0.02$</p></div>
-                <div class="info-box"><h4>💬 الدردشة</h4><p>يمكنك الدردشة مع البائع/المشتري مباشرة من خلال تبويب "صفقاتي" ← اضغط على زر "💬 دردشة"</p></div>
-                <div class="info-box"><h4>💰 رسوم السحب</h4><p>• رسوم المنصة: 0.05 $ (ثابتة)<br>• رسوم الشبكة: حسب الشبكة المختارة (تتغير حسب السوق)</p></div>
-                <div class="info-box"><h4>🛒 البيع بالتجزئة (Partial Fill)</h4><p>• يمكنك شراء جزء من العرض حسب الحدود التي يحددها البائع<br>• أدخل المبلغ الذي تريد شراءه في حقل "المبلغ المطلوب"<br>• سيتم خصم المبلغ المطلوب فقط من رصيد البائع</p></div>
+                <div class="info-box"><h4>💎 ما هي عملة CRYSTAL؟</h4><p>عملة رقمية بإجمالي عرض 5,000,000 حبة، سعر الافتتاح 500 حبة = 1 USDT</p></div>
+                <div class="info-box"><h4>📊 كيف يعمل التداول؟</h4><p>يمكنك وضع طلب شراء أو بيع بالسعر الذي تريده، يتم تنفيذ الطلب تلقائياً عند تطابق الأسعار</p></div>
+                <div class="info-box"><h4>💰 رسوم التداول</h4><p>0.1% من قيمة الصفقة (تذهب للمنصة وللإحالات)</p></div>
+                <div class="info-box"><h4>📥 الإيداع</h4><p>انسخ عنوان محفظتك وأرسل USDT على الشبكة المناسبة</p></div>
+                <div class="info-box"><h4>📤 السحب</h4><p>الحد الأدنى 5 USDT، رسم المنصة 0.05 USDT + رسوم الشبكة</p></div>
+                <div class="warning-box">⚠️ تأكد من الشبكة قبل الإيداع - الإرسال على شبكة خاطئة يؤدي لفقدان الأموال</div>
             </div>
         </div>
     </div>
@@ -908,466 +641,231 @@
         tg.ready();
         
         let currentLanguage = 'ar';
-        let userData = {};
-        let passportPhotoFile = null;
-        let personalPhotoFile = null;
-        let currentPage = 1;
-        let totalOffers = 0;
-        let currentChatTradeId = null;
-        let currentChatPartnerId = null;
-        let chatInterval = null;
-        let currentNetworkFee = 0.10;
+        let currentTimeframe = '1m';
+        let priceChart = null;
+        let updateInterval = null;
+        
         const API_URL = window.location.origin;
-        const BOT_USERNAME = 'YourBotUsername';
+        const BOT_USERNAME = 'crystal_exchange_bot';
         const PLATFORM_WITHDRAW_FEE = 0.05;
         
-        const sudanBanks = ["Bank of Khartoum", "Blue Nile Mashreq Bank", "Al Salam Bank", "Agricultural Bank", "Al Baraka Bank", "Al Nilein Bank"];
+        let networkFees = { bnb: 0.15, polygon: 0.10, solana: 0.02, aptos: 0.05, trc20: 3.00, erc20: 15.00 };
+        let currentNetworkFee = 0.15;
         
-        const networkFees = {
-            bnb: 0.10,
-            polygon: 0.05,
-            solana: 0.01,
-            aptos: 0.02,
-            trc20: 0.80,
-            erc20: 8.00
-        };
-        
-        // ========== دوال رسوم الشبكة ==========
-        async function updateNetworkFee() {
-            const network = document.getElementById('walletNetwork').value;
-            try {
-                const res = await fetch(`${API_URL}/api/network-fee/${network}`);
-                const data = await res.json();
-                if (data.success) {
-                    currentNetworkFee = data.fee;
-                    document.getElementById('networkFeeAmount').innerHTML = `<strong>${currentNetworkFee} $</strong>`;
-                    updateTotalFee();
-                } else {
-                    document.getElementById('networkFeeAmount').innerHTML = `<strong>${networkFees[network] || 0.10} $</strong>`;
-                    currentNetworkFee = networkFees[network] || 0.10;
-                    updateTotalFee();
-                }
-            } catch(e) {
-                currentNetworkFee = networkFees[network] || 0.10;
-                document.getElementById('networkFeeAmount').innerHTML = `<strong>${currentNetworkFee} $</strong>`;
-                updateTotalFee();
-            }
-        }
-        
-        function updateTotalFee() {
-            const amount = parseFloat(document.getElementById('withdrawAmount').value) || 0;
-            if (amount > 0) {
-                const totalFee = currentNetworkFee + PLATFORM_WITHDRAW_FEE;
-                document.getElementById('totalFeeAmount').innerHTML = `<strong>${totalFee.toFixed(2)} $</strong>`;
-            } else {
-                document.getElementById('totalFeeAmount').innerHTML = `<strong>-</strong>`;
-            }
-        }
-        
-        // ========== التحميل السريع ==========
-        function showCachedBalance() {
-            const cached = localStorage.getItem('cachedBalance');
-            if (cached) document.getElementById('usdBalance').textContent = cached;
-        }
-        
-        async function loadBasicData() {
+        // ========== دوال أساسية ==========
+        async function loadUserData() {
             try {
                 const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/user/light/${uid}`);
+                const res = await fetch(`${API_URL}/api/user/${uid}`);
                 const data = await res.json();
-                userData = data;
-                document.getElementById('usdBalance').textContent = data.usdBalance?.toFixed(2) || '0';
-                localStorage.setItem('cachedBalance', data.usdBalance?.toFixed(2) || '0');
-                document.getElementById('userRating').textContent = data.rating?.toFixed(1) || '5.0';
-                document.getElementById('completedTrades').textContent = data.completedTrades || '0';
-                
-                const verificationDiv = document.getElementById('verificationStatus');
-                if (data.isVerified) {
-                    verificationDiv.innerHTML = '<div class="verified-badge">✅ حساب موثق</div>';
-                    document.getElementById('createWarning').style.display = 'none';
-                } else {
-                    verificationDiv.innerHTML = '<div class="unverified-badge">⚠️ حساب غير موثق</div>';
-                    document.getElementById('createWarning').style.display = 'block';
+                if (data) {
+                    document.getElementById('crystalBalance').textContent = data.crystalBalance?.toFixed(2) || '0';
+                    document.getElementById('usdtBalance').textContent = data.usdtBalance?.toFixed(2) || '0';
+                    document.getElementById('userRating').textContent = data.rating?.toFixed(1) || '5.0';
+                    document.getElementById('walletCrystal').textContent = data.crystalBalance?.toFixed(2) || '0';
+                    document.getElementById('walletUsdt').textContent = data.usdtBalance?.toFixed(2) || '0';
+                    
+                    const verificationDiv = document.getElementById('verificationStatus');
+                    if (data.isVerified) {
+                        verificationDiv.innerHTML = '<div class="verified-badge">✅ حساب موثق</div>';
+                        document.getElementById('tradeWarning').style.display = 'none';
+                    } else {
+                        verificationDiv.innerHTML = '<div class="unverified-badge">⚠️ حساب غير موثق</div>';
+                        document.getElementById('tradeWarning').style.display = 'block';
+                    }
+                    
+                    if (data.isAdmin) {
+                        document.getElementById('adminBadge').innerHTML = '<div class="admin-badge">👑 أدمن</div>';
+                    }
                 }
             } catch(e) { console.error(e); }
         }
         
-        // ========== عرض السوق مع دعم البيع بالتجزئة ==========
-        async function loadMarketFast(page = 1) {
-            currentPage = page;
-            const type = document.getElementById('marketType').value;
-            const currency = document.getElementById('marketCurrency').value;
-            const limit = 5;
-            const offset = (page - 1) * limit;
-            
-            const container = document.getElementById('offersList');
-            container.innerHTML = '<div class="loading">🔄 جاري تحميل العروض...</div>';
-            
-            try {
-                const res = await fetch(`${API_URL}/api/offers?type=${type}&currency=${currency}&sortBy=price&order=asc&limit=${limit}&offset=${offset}`);
-                const result = await res.json();
-                const offers = result.offers || result;
-                totalOffers = result.total || offers.length;
-                
-                if (!offers || offers.length === 0) {
-                    container.innerHTML = '<div class="loading">📭 لا توجد عروض</div>';
-                    return;
-                }
-                
-                let html = '';
-                for (const o of offers) {
-                    const remaining = o.remainingAmount || o.fiatAmount;
-                    const remainingPercent = (remaining / o.fiatAmount) * 100;
-                    const isSell = type === 'sell';
-                    
-                    if (isSell) {
-                        // عروض البيع - تدعم البيع بالتجزئة
-                        html += `
-                            <div class="offer-card offer-sell">
-                                <div class="offer-header">
-                                    <div class="offer-user">👤 ${o.firstName || o.username} ${o.isVerified ? '✅' : ''} ${o.isOnline ? '🟢' : '⚫'}</div>
-                                    <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
-                                </div>
-                                <div class="offer-amount">💰 ${remaining.toFixed(2)} / ${o.fiatAmount.toFixed(2)} ${o.currency}</div>
-                                <div class="progress-bar"><div class="progress-fill" style="width: ${remainingPercent}%"></div></div>
-                                <div class="offer-price">📊 ${o.price.toFixed(2)} ${o.currency}/USD</div>
-                                <div class="offer-details">💵 القيمة: ${(remaining / o.price).toFixed(2)} USD</div>
-                                <div class="offer-details">📊 الحدود: ${o.minAmount || 10} - ${o.maxAmount || 100000} ${o.currency}</div>
-                                <div class="remaining-amount">📦 المتبقي: ${(remaining / o.price).toFixed(2)} USD</div>
-                                <div class="partial-input-group">
-                                    <input type="number" id="amount_${o._id}" class="partial-input" placeholder="المبلغ المطلوب (${o.minAmount || 10}-${Math.min(o.maxAmount, remaining)} ${o.currency})" step="any">
-                                    <button class="partial-btn" onclick="startTradePartial('${o._id}', document.getElementById('amount_${o._id}').value)">✅ شراء</button>
-                                </div>
-                            </div>
-                        `;
-                    } else {
-                        // عروض الشراء
-                        html += `
-                            <div class="offer-card offer-buy">
-                                <div class="offer-header">
-                                    <div class="offer-user">👤 ${o.firstName || o.username} ${o.isVerified ? '✅' : ''} ${o.isOnline ? '🟢' : '⚫'}</div>
-                                    <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
-                                </div>
-                                <div class="offer-amount">💰 ${o.fiatAmount.toFixed(2)} ${o.currency}</div>
-                                <div class="offer-price">📊 ${o.price.toFixed(2)} ${o.currency}/USD</div>
-                                <div class="offer-details">💵 ${(o.fiatAmount / o.price).toFixed(2)} USD</div>
-                                <div class="offer-details">📊 الحدود: ${o.minAmount || 10} - ${o.maxAmount || 100000}</div>
-                                <button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button>
-                            </div>
-                        `;
-                    }
-                }
-                
-                if (totalOffers > limit) {
-                    html += `<div class="pagination-buttons">
-                        <button class="copy-btn" onclick="loadMoreOffers()">📥 تحميل المزيد (${totalOffers - limit} متبقي)</button>
-                    </div>`;
-                }
-                
-                container.innerHTML = html;
-            } catch(e) {
-                console.error(e);
-                container.innerHTML = '<div class="loading">❌ خطأ، <span onclick="loadMarketFast(1)" style="color:#4caf50">إعادة المحاولة</span></div>';
-            }
-        }
-        
-        async function loadMoreOffers() {
-            const type = document.getElementById('marketType').value;
-            const currency = document.getElementById('marketCurrency').value;
-            const limit = 10;
-            const offset = currentPage * limit;
-            
-            const btn = document.querySelector('.pagination-buttons button');
-            if (btn) btn.textContent = '🔄 جاري التحميل...';
-            
-            try {
-                const res = await fetch(`${API_URL}/api/offers?type=${type}&currency=${currency}&sortBy=price&order=asc&limit=${limit}&offset=${offset}`);
-                const result = await res.json();
-                const offers = result.offers || result;
-                
-                let html = document.getElementById('offersList').innerHTML;
-                html = html.replace('<div class="pagination-buttons">', '');
-                
-                for (const o of offers) {
-                    const remaining = o.remainingAmount || o.fiatAmount;
-                    const remainingPercent = (remaining / o.fiatAmount) * 100;
-                    const isSell = type === 'sell';
-                    
-                    if (isSell) {
-                        html += `
-                            <div class="offer-card offer-sell">
-                                <div class="offer-header">
-                                    <div class="offer-user">👤 ${o.firstName || o.username} ${o.isVerified ? '✅' : ''} ${o.isOnline ? '🟢' : '⚫'}</div>
-                                    <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
-                                </div>
-                                <div class="offer-amount">💰 ${remaining.toFixed(2)} / ${o.fiatAmount.toFixed(2)} ${o.currency}</div>
-                                <div class="progress-bar"><div class="progress-fill" style="width: ${remainingPercent}%"></div></div>
-                                <div class="offer-price">📊 ${o.price.toFixed(2)} ${o.currency}/USD</div>
-                                <div class="offer-details">💵 القيمة: ${(remaining / o.price).toFixed(2)} USD</div>
-                                <div class="offer-details">📊 الحدود: ${o.minAmount || 10} - ${o.maxAmount || 100000} ${o.currency}</div>
-                                <div class="partial-input-group">
-                                    <input type="number" id="amount_${o._id}" class="partial-input" placeholder="المبلغ المطلوب (${o.minAmount || 10}-${Math.min(o.maxAmount, remaining)} ${o.currency})" step="any">
-                                    <button class="partial-btn" onclick="startTradePartial('${o._id}', document.getElementById('amount_${o._id}').value)">✅ شراء</button>
-                                </div>
-                            </div>
-                        `;
-                    } else {
-                        html += `
-                            <div class="offer-card offer-buy">
-                                <div class="offer-header">
-                                    <div class="offer-user">👤 ${o.firstName || o.username} ${o.isVerified ? '✅' : ''} ${o.isOnline ? '🟢' : '⚫'}</div>
-                                    <div class="offer-rating">⭐ ${o.rating?.toFixed(1) || '5.0'}</div>
-                                </div>
-                                <div class="offer-amount">💰 ${o.fiatAmount.toFixed(2)} ${o.currency}</div>
-                                <div class="offer-price">📊 ${o.price.toFixed(2)} ${o.currency}/USD</div>
-                                <div class="offer-details">💵 ${(o.fiatAmount / o.price).toFixed(2)} USD</div>
-                                <button class="copy-btn" onclick="startTrade('${o._id}')">✅ بدء الصفقة</button>
-                            </div>
-                        `;
-                    }
-                }
-                
-                document.getElementById('offersList').innerHTML = html;
-                currentPage++;
-            } catch(e) {
-                console.error(e);
-                if (btn) btn.textContent = '📥 تحميل المزيد';
-            }
-        }
-        
-        function resetAndLoadMarket() { currentPage = 1; loadMarketFast(1); }
-        
-        async function loadMarketStats() {
+        async function loadMarketData() {
             try {
                 const res = await fetch(`${API_URL}/api/market/stats`);
-                const stats = await res.json();
-                document.getElementById('marketStats').innerHTML = `📋 ${stats.totalOffers || 0} عرض | 💰 متوسط: ${stats.avgPrice || 0} USD | 👥 ${stats.totalTraders || 0} متداول`;
+                const data = await res.json();
+                document.getElementById('currentPrice').textContent = data.price?.toFixed(4) || '0.0020';
+                document.getElementById('volume24h').textContent = data.volume24h?.toFixed(0) || '0';
+                document.getElementById('high24h').textContent = data.high24h?.toFixed(4) || '0';
+                document.getElementById('low24h').textContent = data.low24h?.toFixed(4) || '0';
+                
+                const change = data.change24h || 0;
+                const changeElem = document.getElementById('priceChange');
+                if (change >= 0) {
+                    changeElem.innerHTML = `📈 +${change.toFixed(2)}%`;
+                    changeElem.className = 'price-change positive';
+                } else {
+                    changeElem.innerHTML = `📉 ${change.toFixed(2)}%`;
+                    changeElem.className = 'price-change negative';
+                }
             } catch(e) { console.error(e); }
         }
         
-        // ========== دوال البيع بالتجزئة (Partial Fill) ==========
+        async function loadOrderBook() {
+            try {
+                // طلبات الشراء
+                const buyRes = await fetch(`${API_URL}/api/orders?type=buy&limit=20`);
+                const buyOrders = await buyRes.json();
+                let buyHtml = '';
+                for (const o of (buyOrders.orders || buyOrders).slice(0, 10)) {
+                    buyHtml += `
+                        <div class="order-row">
+                            <span class="price">💰 ${o.price.toFixed(4)} USDT</span>
+                            <span>📦 ${o.amount.toFixed(2)}</span>
+                            <span>💵 ${(o.price * o.amount).toFixed(2)}</span>
+                        </div>
+                    `;
+                }
+                document.getElementById('buyOrdersList').innerHTML = buyHtml || '<div class="loading">لا توجد طلبات شراء</div>';
+                
+                // طلبات البيع
+                const sellRes = await fetch(`${API_URL}/api/orders?type=sell&limit=20`);
+                const sellOrders = await sellRes.json();
+                let sellHtml = '';
+                for (const o of (sellOrders.orders || sellOrders).slice(0, 10)) {
+                    sellHtml += `
+                        <div class="order-row sell">
+                            <span class="price">💰 ${o.price.toFixed(4)} USDT</span>
+                            <span>📦 ${o.amount.toFixed(2)}</span>
+                            <span>💵 ${(o.price * o.amount).toFixed(2)}</span>
+                        </div>
+                    `;
+                }
+                document.getElementById('sellOrdersList').innerHTML = sellHtml || '<div class="loading">لا توجد طلبات بيع</div>';
+                
+            } catch(e) { console.error(e); }
+        }
         
-        async function startTradePartial(offerId, amount) {
-            if (!amount || parseFloat(amount) <= 0) {
-                tg.showAlert('⚠️ يرجى إدخال المبلغ المطلوب');
-                return;
-            }
+        async function loadChart() {
+            try {
+                const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=100`);
+                const candles = await res.json();
+                
+                const labels = candles.map(c => new Date(c.timestamp).toLocaleTimeString());
+                const prices = candles.map(c => c.close);
+                
+                if (priceChart) {
+                    priceChart.destroy();
+                }
+                
+                const ctx = document.getElementById('priceChart').getContext('2d');
+                priceChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'سعر CRYSTAL (USDT)',
+                            data: prices,
+                            borderColor: '#4caf50',
+                            backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                            fill: true,
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: 'white' } }
+                        },
+                        scales: {
+                            y: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: 'white' } },
+                            x: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: 'white', rotation: 45, maxRotation: 45 }
+                            }
+                        }
+                    }
+                });
+            } catch(e) { console.error(e); }
+        }
+        
+        // ========== التداول ==========
+        function updateOrderTotal() {
+            const price = parseFloat(document.getElementById('orderPrice').value) || 0;
+            const amount = parseFloat(document.getElementById('orderAmount').value) || 0;
+            const total = price * amount;
+            const fee = total * 0.001;
+            document.getElementById('orderTotal').textContent = total.toFixed(4);
+            document.getElementById('orderFee').textContent = fee.toFixed(4);
+        }
+        
+        document.getElementById('orderPrice').addEventListener('input', updateOrderTotal);
+        document.getElementById('orderAmount').addEventListener('input', updateOrderTotal);
+        
+        async function createOrder() {
+            const type = document.getElementById('orderType').value;
+            const price = parseFloat(document.getElementById('orderPrice').value);
+            const amount = parseFloat(document.getElementById('orderAmount').value);
             
-            const amountNum = parseFloat(amount);
-            if (isNaN(amountNum) || amountNum <= 0) {
-                tg.showAlert('⚠️ يرجى إدخال مبلغ صحيح');
-                return;
-            }
+            if (!price || price <= 0) { tg.showAlert('⚠️ أدخل السعر'); return; }
+            if (!amount || amount <= 0) { tg.showAlert('⚠️ أدخل الكمية'); return; }
             
-            tg.showAlert('🔄 جاري بدء الصفقة...');
+            tg.showAlert('🔄 جاري إنشاء الطلب...');
             
             try {
-                const res = await fetch(`${API_URL}/api/trade/start-partial`, {
+                const res = await fetch(`${API_URL}/api/order/create`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        user_id: tg.initDataUnsafe.user.id, 
-                        offer_id: offerId,
-                        amount: amountNum
+                    body: JSON.stringify({
+                        user_id: tg.initDataUnsafe.user.id,
+                        type: type,
+                        price: price,
+                        amount: amount
                     })
                 });
                 const result = await res.json();
                 tg.showAlert(result.message);
                 if (result.success) {
-                    setTimeout(() => loadMyTrades(), 1000);
-                    loadMarketFast(1);
+                    document.getElementById('orderPrice').value = '';
+                    document.getElementById('orderAmount').value = '';
+                    loadMyOrders();
+                    loadOrderBook();
+                    loadUserData();
                 }
-            } catch(e) {
-                console.error('Partial trade error:', e);
-                tg.showAlert('❌ حدث خطأ، حاول مرة أخرى');
-            }
+            } catch(e) { tg.showAlert('❌ خطأ'); }
         }
         
-        async function startTrade(offerId) {
-            if (!userData.isVerified) { tg.showAlert('⚠️ يرجى توثيق حسابك'); switchTab('kyc'); return; }
-            
-            tg.showAlert('🔄 جاري بدء الصفقة...');
-            
-            const res = await fetch(`${API_URL}/api/trade/start`, { 
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId }) 
-            });
-            const result = await res.json();
-            tg.showAlert(result.message);
-            if (result.success) setTimeout(() => loadMyTrades(), 1000);
-        }
-        
-        // ========== دوال الدردشة ==========
-        
-        async function openChat(tradeId, partnerId, partnerName) {
-            currentChatTradeId = tradeId;
-            currentChatPartnerId = partnerId;
-            
-            document.getElementById('chatPartnerName').innerHTML = partnerName || 'محادثة';
-            document.getElementById('chatTradeId').innerHTML = `الصفقة #${tradeId.slice(-8)}`;
-            
-            await loadChatMessages();
-            
-            if (chatInterval) clearInterval(chatInterval);
-            chatInterval = setInterval(loadChatMessages, 5000);
-            
-            switchTab('chat');
-        }
-        
-        async function loadChatMessages() {
-            if (!currentChatTradeId) return;
-            
-            const container = document.getElementById('chatMessagesContainer');
-            const uid = tg.initDataUnsafe.user.id;
-            
+        async function cancelOrder(orderId) {
+            tg.showAlert('🔄 جاري الإلغاء...');
             try {
-                const res = await fetch(`${API_URL}/api/chat/${currentChatTradeId}/${uid}`);
-                const data = await res.json();
-                
-                if (!data.success || !data.messages) {
-                    container.innerHTML = '<div class="chat-loading">لا توجد رسائل</div>';
-                    return;
-                }
-                
-                let html = '';
-                for (const msg of data.messages) {
-                    const time = new Date(msg.createdAt).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' });
-                    const isSent = msg.senderId == uid;
-                    
-                    if (msg.messageType === 'system') {
-                        html += `<div class="message message-system">🔄 ${msg.message}<div class="message-time">${time}</div></div>`;
-                    } else if (msg.messageType === 'image') {
-                        html += `
-                            <div class="message ${isSent ? 'message-sent' : 'message-received'}">
-                                <img src="https://api.telegram.org/file/bot${BOT_TOKEN}/${msg.imageFileId}" class="message-image" onclick="showImagePreview(this.src)" style="max-width:150px; border-radius:10px; cursor:pointer">
-                                <div class="message-time">${time}</div>
-                            </div>
-                        `;
-                    } else {
-                        html += `
-                            <div class="message ${isSent ? 'message-sent' : 'message-received'}">
-                                ${escapeHtml(msg.message)}
-                                <div class="message-time">${time}</div>
-                            </div>
-                        `;
-                    }
-                }
-                
-                if (html === '') html = '<div class="chat-loading">لا توجد رسائل، ابدأ المحادثة</div>';
-                container.innerHTML = html;
-                container.scrollTop = container.scrollHeight;
-                
-                await fetch(`${API_URL}/api/chat/read`, {
+                const res = await fetch(`${API_URL}/api/order/cancel`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tradeId: currentChatTradeId, userId: uid })
-                });
-                
-            } catch(e) {
-                console.error('Load messages error:', e);
-                container.innerHTML = '<div class="chat-loading">❌ خطأ في تحميل الرسائل</div>';
-            }
-        }
-        
-        async function sendChatMessage() {
-            const input = document.getElementById('chatInput');
-            const message = input.value.trim();
-            if (!message) return;
-            
-            const uid = tg.initDataUnsafe.user.id;
-            
-            try {
-                const res = await fetch(`${API_URL}/api/chat/send`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        tradeId: currentChatTradeId,
-                        senderId: uid,
-                        receiverId: currentChatPartnerId,
-                        message: message
-                    })
-                });
-                
-                const result = await res.json();
-                if (result.success) {
-                    input.value = '';
-                    await loadChatMessages();
-                } else {
-                    tg.showAlert('❌ فشل إرسال الرسالة');
-                }
-            } catch(e) {
-                console.error('Send error:', e);
-                tg.showAlert('❌ خطأ في الإرسال');
-            }
-        }
-        
-        async function sendChatImage(file) {
-            const uid = tg.initDataUnsafe.user.id;
-            const formData = new FormData();
-            formData.append('tradeId', currentChatTradeId);
-            formData.append('senderId', uid);
-            formData.append('receiverId', currentChatPartnerId);
-            formData.append('image', file);
-            formData.append('message', '📸 صورة');
-            
-            try {
-                const res = await fetch(`${API_URL}/api/chat/send-image`, {
-                    method: 'POST',
-                    body: formData
+                    body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, order_id: orderId })
                 });
                 const result = await res.json();
+                tg.showAlert(result.message);
                 if (result.success) {
-                    await loadChatMessages();
-                } else {
-                    tg.showAlert('❌ فشل رفع الصورة');
+                    loadMyOrders();
+                    loadOrderBook();
                 }
-            } catch(e) {
-                console.error('Send image error:', e);
-                tg.showAlert('❌ خطأ في رفع الصورة');
-            }
+            } catch(e) { tg.showAlert('❌ خطأ'); }
         }
         
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
-        function showImagePreview(src) {
-            const div = document.createElement('div');
-            div.className = 'image-preview-container';
-            div.onclick = function() { this.remove(); };
-            div.innerHTML = `<img src="${src}" class="image-preview-img">`;
-            document.body.appendChild(div);
-        }
-        
-        // ========== باقي الدوال ==========
-        
-        async function loadMyTrades() {
+        async function loadMyOrders() {
             try {
                 const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/user/trades/${uid}`);
-                const trades = await res.json();
-                const container = document.getElementById('myTradesList');
-                if (!trades.length) { container.innerHTML = '<div class="loading">لا توجد صفقات</div>'; return; }
-                
+                const res = await fetch(`${API_URL}/api/orders/${uid}`);
+                const orders = await res.json();
+                const container = document.getElementById('myOrdersList');
+                if (!orders.length) {
+                    container.innerHTML = '<div class="loading">لا توجد طلبات نشطة</div>';
+                    return;
+                }
                 let html = '';
-                for (const t of trades) {
-                    const partnerId = t.buyerId === uid ? t.sellerId : t.buyerId;
-                    const partnerName = t.otherParty || (t.buyerId === uid ? 'البائع' : 'المشتري');
-                    const statusText = t.status === 'pending' ? '⏳ معلقة' : t.status === 'paid' ? '✅ تم الدفع' : t.status === 'completed' ? '✔️ مكتملة' : '❌ ملغية';
-                    
+                for (const o of orders) {
+                    const typeText = o.type === 'buy' ? '🟢 شراء' : '🔴 بيع';
+                    const statusText = o.status === 'open' ? '⏳ نشط' : o.status === 'partial' ? '🔄 جزئي' : '✅ منفذ';
                     html += `
-                        <div class="offer-card">
-                            <div class="offer-amount">💰 ${t.amount} ${t.currency}</div>
-                            <div class="offer-details">📊 الحالة: ${statusText}</div>
-                            <div class="offer-details">👤 الطرف الآخر: ${partnerName}</div>
-                            <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
-                                <button class="trade-chat-btn" onclick="openChat('${t._id}', ${partnerId}, '${partnerName}')">💬 دردشة</button>
-                                ${t.status === 'pending' ? `<button class="cancel-btn" onclick="cancelTrade('${t._id}')">❌ إلغاء</button>` : ''}
-                                ${t.status === 'paid' && t.sellerId === uid ? `<button class="trade-btn" onclick="releaseCrystals('${t._id}')">🔓 تحرير</button>` : ''}
+                        <div class="order-card ${o.type === 'buy' ? 'order-buy' : 'order-sell'}">
+                            <div class="order-header">
+                                <div class="order-user">${typeText}</div>
+                                <div>${statusText}</div>
                             </div>
+                            <div class="order-price">💰 ${o.price.toFixed(4)} USDT</div>
+                            <div class="order-amount">📦 الكمية: ${o.amount.toFixed(2)} / ${o.originalAmount.toFixed(2)} CRYSTAL</div>
+                            <div class="order-total">💵 الإجمالي: ${(o.price * o.originalAmount).toFixed(2)} USDT</div>
+                            ${o.status === 'open' ? `<button class="cancel-btn" style="margin-top:10px" onclick="cancelOrder('${o._id}')">❌ إلغاء الطلب</button>` : ''}
                         </div>
                     `;
                 }
@@ -1375,284 +873,67 @@
             } catch(e) { console.error(e); }
         }
         
-        async function loadReferralInfo() {
+        async function loadTradeHistory() {
             try {
                 const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/user/referral/${uid}`);
-                const data = await res.json();
-                document.getElementById('referralLink').innerHTML = `🔗 رابطك:<br><code>https://t.me/${BOT_USERNAME}?start=${uid}</code>`;
-                document.getElementById('referralCount').textContent = data.referralCount || 0;
-                document.getElementById('referralEarnings').textContent = (data.referralEarnings || 0).toFixed(2);
-                if (data.referrals?.length) {
-                    let html = '<h4 style="margin-top:15px; color:white">📋 المدعوين:</h4>';
-                    for (const ref of data.referrals.slice(0, 5)) {
-                        html += `<div class="history-item">👤 ${ref.name || ref.userId} | 💰 ${(ref.earned || 0).toFixed(2)} USD</div>`;
-                    }
-                    document.getElementById('referralStats').innerHTML = html;
-                } else {
-                    document.getElementById('referralStats').innerHTML = '<div class="loading">📭 لا يوجد مدعوين</div>';
+                const res = await fetch(`${API_URL}/api/user/trades/${uid}`);
+                const trades = await res.json();
+                const container = document.getElementById('tradeHistoryList');
+                if (!trades.length) {
+                    container.innerHTML = '<div class="loading">لا توجد صفقات</div>';
+                    return;
                 }
+                let html = '';
+                for (const t of trades) {
+                    const type = t.buyerId === uid ? '🟢 شراء' : '🔴 بيع';
+                    html += `
+                        <div class="order-card ${t.buyerId === uid ? 'order-buy' : 'order-sell'}">
+                            <div class="order-header">
+                                <div class="order-user">${type}</div>
+                                <div>${new Date(t.createdAt).toLocaleString()}</div>
+                            </div>
+                            <div class="order-price">💰 ${t.price.toFixed(4)} USDT</div>
+                            <div class="order-amount">📦 الكمية: ${t.amount.toFixed(2)} CRYSTAL</div>
+                            <div class="order-total">💵 الإجمالي: ${t.totalUsdt.toFixed(2)} USDT</div>
+                        </div>
+                    `;
+                }
+                container.innerHTML = html;
             } catch(e) { console.error(e); }
         }
         
-        async function transferReferral() {
-            tg.showAlert('🔄 جاري التحويل...');
-            const res = await fetch(`${API_URL}/api/referral/transfer`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
-            });
-            const result = await res.json();
-            tg.showAlert(result.message);
-            if (result.success) { loadReferralInfo(); loadBasicData(); loadWallet(); }
+        // ========== المحفظة ==========
+        async function updateNetworkFee() {
+            const network = document.getElementById('walletNetwork').value;
+            currentNetworkFee = networkFees[network] || 0.15;
+            document.getElementById('networkFeeAmount').innerHTML = `<strong>${currentNetworkFee} USDT</strong>`;
+            updateTotalFee();
         }
         
-        function copyReferralLink() {
-            const text = document.getElementById('referralLink').innerText;
-            const link = text.replace('🔗 رابطك:', '').trim();
-            navigator.clipboard.writeText(link);
-            tg.showAlert('✅ تم نسخ الرابط');
-        }
-        
-        async function loadSecurityInfo() {
-            try {
-                const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/user/security/${uid}`);
-                const data = await res.json();
-                document.getElementById('securityInfo').innerHTML = `<div class="stats-grid"><div class="stat-card"><div class="stat-value">${data.twoFAEnabled ? '✅ مفعل' : '❌ غير مفعل'}</div><div class="stat-label">2FA</div></div><div class="stat-card"><div class="stat-value">${data.completedTrades || 0}</div><div class="stat-label">صفقات</div></div></div>`;
-                if (data.twoFAEnabled) {
-                    document.getElementById('enable2faBtn').style.display = 'none';
-                    document.getElementById('disable2faBtn').style.display = 'block';
-                } else {
-                    document.getElementById('enable2faBtn').style.display = 'block';
-                    document.getElementById('disable2faBtn').style.display = 'none';
-                }
-            } catch(e) { console.error(e); }
-        }
-        
-        async function setup2FA() {
-            tg.showAlert('🔄 جاري التجهيز...');
-            const res = await fetch(`${API_URL}/api/2fa/generate`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
-            });
-            const data = await res.json();
-            if (data.success) {
-                document.getElementById('twofaQR').innerHTML = `<div style="background:rgba(0,0,0,0.5); padding:15px; border-radius:10px; text-align:center"><div>المفتاح: <strong>${data.secret}</strong></div><img src="${data.qrCode}" style="max-width:200px; margin:10px"><div class="warning-box">ادخل الرقم أدناه</div></div>`;
-                document.getElementById('twofaQR').style.display = 'block';
-                document.getElementById('enable2faBtn').style.display = 'none';
-                document.getElementById('twofaCode').style.display = 'block';
-                document.getElementById('verify2faBtn').style.display = 'block';
-                tg.showAlert('✅ امسح الرمز باستخدام Google Authenticator');
-            } else { tg.showAlert(data.message); }
-        }
-        
-        async function verify2FA() {
-            const code = document.getElementById('twofaCode').value;
-            if (!code) { tg.showAlert('أدخل الرقم'); return; }
-            const res = await fetch(`${API_URL}/api/2fa/enable`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, code })
-            });
-            const data = await res.json();
-            tg.showAlert(data.message);
-            if (data.success) {
-                document.getElementById('twofaQR').style.display = 'none';
-                document.getElementById('twofaCode').style.display = 'none';
-                document.getElementById('verify2faBtn').style.display = 'none';
-                document.getElementById('disable2faBtn').style.display = 'block';
-                loadSecurityInfo();
+        function updateTotalFee() {
+            const amount = parseFloat(document.getElementById('withdrawAmount').value) || 0;
+            if (amount > 0) {
+                const totalFee = currentNetworkFee + PLATFORM_WITHDRAW_FEE;
+                document.getElementById('totalFeeAmount').innerHTML = `<strong>${totalFee.toFixed(2)} USDT</strong>`;
             }
-        }
-        
-        async function disable2FA() {
-            const code = prompt('أدخل رمز 2FA:');
-            if (!code) return;
-            const res = await fetch(`${API_URL}/api/2fa/disable`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, code })
-            });
-            const data = await res.json();
-            tg.showAlert(data.message);
-            if (data.success) loadSecurityInfo();
-        }
-        
-        async function refreshKyc() { await loadKycStatus(); await loadBasicData(); }
-        
-        async function loadKycStatus() {
-            try {
-                const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/kyc/status/${uid}`);
-                const data = await res.json();
-                const container = document.getElementById('kycStatus');
-                const form = document.getElementById('kycForm');
-                if (userData.isVerified) {
-                    container.innerHTML = '<div class="kyc-status-card" style="border-color:#4caf50"><div style="font-size:48px">✅</div><h3>حساب موثق</h3></div>';
-                    form.style.display = 'none';
-                } else if (data.status === 'pending') {
-                    container.innerHTML = '<div class="kyc-status-card" style="border-color:#ff9800"><div style="font-size:48px">⏳</div><h3>قيد المراجعة</h3></div>';
-                    form.style.display = 'none';
-                } else if (data.status === 'rejected') {
-                    container.innerHTML = `<div class="kyc-status-card" style="border-color:#f44336"><div style="font-size:48px">❌</div><h3>تم الرفض</h3><p>${data.rejectionReason || ''}</p></div>`;
-                    form.style.display = 'none';
-                } else {
-                    container.innerHTML = '<div class="kyc-status-card"><div style="font-size:48px">🆔</div><h3>حساب غير موثق</h3></div>';
-                    form.style.display = 'block';
-                }
-                const bankSelect = document.getElementById('kycBank');
-                bankSelect.innerHTML = '<option value="">اختر البنك</option>' + sudanBanks.map(b => `<option value="${b}">${b}</option>`).join('');
-            } catch(e) { console.error(e); }
-        }
-        
-        function previewPassport(e) {
-            const file = e.target.files[0];
-            if (file) { passportPhotoFile = file; const reader = new FileReader(); reader.onload = (e) => { document.getElementById('passportPreview').innerHTML = `<img src="${e.target.result}" style="max-width:100%; border-radius:8px; margin-top:10px">`; }; reader.readAsDataURL(file); }
-        }
-        
-        function previewPersonal(e) {
-            const file = e.target.files[0];
-            if (file) { personalPhotoFile = file; const reader = new FileReader(); reader.onload = (e) => { document.getElementById('personalPreview').innerHTML = `<img src="${e.target.result}" style="max-width:100%; border-radius:8px; margin-top:10px">`; }; reader.readAsDataURL(file); }
-        }
-        
-        async function submitKyc() {
-            const fullName = document.getElementById('kycFullName').value;
-            const passportNumber = document.getElementById('kycPassport').value;
-            const nationalId = document.getElementById('kycNationalId').value;
-            const phoneNumber = document.getElementById('kycPhone').value;
-            const bankName = document.getElementById('kycBank').value;
-            const accountNumber = document.getElementById('kycAccountNumber').value;
-            const accountName = document.getElementById('kycAccountName').value;
-            if (!fullName || !passportNumber || !nationalId || !phoneNumber || !bankName || !accountNumber || !accountName) { tg.showAlert('املأ جميع الحقول'); return; }
-            if (!passportPhotoFile || !personalPhotoFile) { tg.showAlert('ارفع الصور'); return; }
-            tg.showAlert('جاري الإرسال...');
-            const formData = new FormData();
-            formData.append('user_id', tg.initDataUnsafe.user.id);
-            formData.append('fullName', fullName); formData.append('passportNumber', passportNumber); formData.append('nationalId', nationalId);
-            formData.append('phoneNumber', phoneNumber); formData.append('email', ''); formData.append('country', 'SD'); formData.append('city', '');
-            formData.append('bankName', bankName); formData.append('bankAccountNumber', accountNumber); formData.append('bankAccountName', accountName);
-            formData.append('passportPhoto', passportPhotoFile); formData.append('personalPhoto', personalPhotoFile);
-            const res = await fetch(`${API_URL}/api/kyc/submit`, { method: 'POST', body: formData });
-            const result = await res.json();
-            tg.showAlert(result.message);
-            if (result.success) { await loadKycStatus(); await loadBasicData(); }
-        }
-        
-        async function loadMyOffers() {
-            try {
-                const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/user/offers/${uid}`);
-                const offers = await res.json();
-                const container = document.getElementById('myOffersList');
-                if (!offers.length) { container.innerHTML = '<div class="loading">لا توجد عروض</div>'; return; }
-                container.innerHTML = offers.map(o => `<div class="offer-card"><div class="offer-amount">💰 ${o.remainingAmount || o.fiatAmount} / ${o.fiatAmount} ${o.currency}</div><div class="offer-price">📊 ${o.price}</div><div class="offer-details">📦 متبقي: ${((o.remainingAmount || o.fiatAmount) / o.price).toFixed(2)} USD</div><button class="cancel-btn" onclick="cancelOffer('${o._id}')">❌ إلغاء</button></div>`).join('');
-            } catch(e) { console.error(e); }
-        }
-        
-        async function loadHistory() {
-            try {
-                const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/user/history/${uid}`);
-                const data = await res.json();
-                document.getElementById('offersHistory').innerHTML = (data.offers?.length ? data.offers.map(o => `<div class="history-item">${o.type === 'sell' ? '🟢 بيع' : '🔴 شراء'} ${o.fiatAmount} ${o.currency}</div>`).join('') : '<div class="loading">لا توجد عروض</div>');
-                document.getElementById('tradesHistory').innerHTML = (data.trades?.length ? data.trades.map(t => `<div class="history-item">${t.role} ${t.amount} ${t.currency}</div>`).join('') : '<div class="loading">لا توجد صفقات</div>');
-            } catch(e) { console.error(e); }
-        }
-        
-        async function cancelOffer(offerId) {
-            tg.showAlert('جاري الإلغاء...');
-            const res = await fetch(`${API_URL}/api/offer/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, offer_id: offerId }) });
-            const result = await res.json();
-            tg.showAlert(result.message);
-            if (result.success) loadMyOffers();
-        }
-        
-        async function cancelTrade(tradeId) {
-            tg.showAlert('جاري الإلغاء...');
-            const res = await fetch(`${API_URL}/api/trade/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, trade_id: tradeId }) });
-            const result = await res.json();
-            tg.showAlert(result.message);
-            if (result.success) loadMyTrades();
-        }
-        
-        async function releaseCrystals(tradeId) {
-            tg.showAlert('جاري التحرير...');
-            const res = await fetch(`${API_URL}/api/trade/release`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, trade_id: tradeId }) });
-            const result = await res.json();
-            tg.showAlert(result.message);
-            if (result.success) loadMyTrades();
-        }
-        
-        async function loadWallet() {
-            try {
-                const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/wallet/${uid}`);
-                const data = await res.json();
-                document.getElementById('walletInfo').innerHTML = `<div class="stat-card"><div class="stat-value">${data.usdBalance?.toFixed(2) || 0} USD</div></div><div class="address-box">🟡 BNB: ${data.addresses?.bnb || ''}</div><div class="address-box">🟣 POLYGON: ${data.addresses?.polygon || ''}</div><div class="address-box">🟢 SOLANA: ${data.addresses?.solana || ''}</div><div class="address-box">🔷 APTOS: ${data.addresses?.aptos || ''}</div>`;
-            } catch(e) { console.error(e); }
-        }
-        
-        async function loadLeaderboard() {
-            try {
-                const res = await fetch(`${API_URL}/api/leaderboard`);
-                const leaders = await res.json();
-                const container = document.getElementById('leaderboardList');
-                if (!leaders.length) { container.innerHTML = '<div class="loading">لا يوجد متصدرين</div>'; return; }
-                container.innerHTML = leaders.map((l, i) => `<div class="leader-item"><div class="leader-rank">${i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`}</div><div class="leader-name">${l.name}</div><div class="leader-trades">💰 ${l.trades?.toFixed(0) || 0}</div><div class="leader-rating">⭐ ${l.rating?.toFixed(1) || '5.0'}</div></div>`).join('');
-            } catch(e) { console.error(e); }
-        }
-        
-        async function loadBankInfo() {
-            try {
-                const uid = tg.initDataUnsafe.user.id;
-                const res = await fetch(`${API_URL}/api/user/${uid}`);
-                const user = await res.json();
-                document.getElementById('bankInfo').innerHTML = `<div class="stat-card"><div class="stat-value">${user.bankName || 'غير محدد'}</div><div class="stat-label">البنك</div></div>`;
-                const bankSelect = document.getElementById('bankName');
-                bankSelect.innerHTML = '<option value="">اختر البنك</option>' + sudanBanks.map(b => `<option value="${b}">${b}</option>`).join('');
-                if (user.bankName) bankSelect.value = user.bankName;
-                document.getElementById('accountNumber').value = user.bankAccountNumber || '';
-                document.getElementById('accountName').value = user.bankAccountName || '';
-            } catch(e) { console.error(e); }
-        }
-        
-        async function createOffer() {
-            if (!userData.isVerified) { tg.showAlert('⚠️ يرجى توثيق حسابك'); switchTab('kyc'); return; }
-            const type = document.getElementById('offerType').value;
-            const currency = document.getElementById('offerCurrency').value;
-            const fiatAmount = parseFloat(document.getElementById('offerAmount').value);
-            const price = parseFloat(document.getElementById('offerPrice').value);
-            const minAmount = parseFloat(document.getElementById('offerMinAmount').value) || 10;
-            const maxAmount = parseFloat(document.getElementById('offerMaxAmount').value) || 100000;
-            const paymentMethod = document.getElementById('offerPaymentMethod').value;
-            const bankName = document.getElementById('offerBank').value;
-            const accountNumber = document.getElementById('offerAccountNumber').value;
-            const accountName = document.getElementById('offerAccountName').value;
-            const details = document.getElementById('offerDetails').value;
-            
-            if (!fiatAmount || fiatAmount <= 0) return tg.showAlert('أدخل المبلغ');
-            if (!price || price <= 0) return tg.showAlert('أدخل السعر');
-            if (minAmount >= maxAmount) return tg.showAlert('الحد الأدنى أقل من الأقصى');
-            if (minAmount > fiatAmount) return tg.showAlert('الحد الأدنى لا يمكن أن يزيد عن إجمالي العرض');
-            
-            const body = { 
-                user_id: tg.initDataUnsafe.user.id, type, currency, 
-                fiatAmount, price, paymentMethod, paymentDetails: details, 
-                bankName, bankAccountNumber: accountNumber, bankAccountName: accountName, 
-                minAmount, maxAmount 
-            };
-            const res = await fetch(`${API_URL}/api/offer/create`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-            const result = await res.json();
-            tg.showAlert(result.message);
-            if (result.success) switchTab('market');
         }
         
         async function deposit() {
             const amount = parseFloat(document.getElementById('depositAmount').value);
             const network = document.getElementById('walletNetwork').value;
-            if (!amount || amount <= 0) return tg.showAlert('أدخل المبلغ');
-            if (amount < 1) return tg.showAlert('⚠️ الحد الأدنى للإيداع هو 1 دولار');
-            const res = await fetch(`${API_URL}/api/deposit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USD', network }) });
+            if (!amount || amount < 1) { tg.showAlert('⚠️ الحد الأدنى للإيداع هو 1 USDT'); return; }
+            
+            tg.showAlert('🔄 جاري إنشاء عنوان الإيداع...');
+            const res = await fetch(`${API_URL}/api/deposit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, network })
+            });
             const result = await res.json();
             tg.showAlert(result.message);
+            if (result.address) {
+                tg.showAlert(`📤 عنوان الإيداع:\n${result.address}`);
+            }
         }
         
         async function withdraw() {
@@ -1661,50 +942,183 @@
             const address = document.getElementById('withdrawAddress').value;
             const twoFACode = document.getElementById('withdraw2FA').value;
             
-            if (!amount || amount <= 0) return tg.showAlert('أدخل المبلغ');
-            if (amount < 5) return tg.showAlert('⚠️ الحد الأدنى للسحب هو 5 دولار');
-            if (!address) return tg.showAlert('أدخل عنوان المحفظة');
+            if (!amount || amount < 5) { tg.showAlert('⚠️ الحد الأدنى للسحب هو 5 USDT'); return; }
+            if (!address) { tg.showAlert('⚠️ أدخل عنوان المحفظة'); return; }
             
-            const feeRes = await fetch(`${API_URL}/api/network-fee/${network}`);
-            const feeData = await feeRes.json();
-            const networkFee = feeData.success ? feeData.fee : (networkFees[network] || 0.10);
-            const platformFee = PLATFORM_WITHDRAW_FEE;
-            const totalFees = networkFee + platformFee;
-            const totalDeduct = amount + totalFees;
+            const totalFee = currentNetworkFee + PLATFORM_WITHDRAW_FEE;
+            const confirmMsg = `💰 تأكيد السحب\n\nالمبلغ: ${amount} USDT\nرسوم الشبكة: ${currentNetworkFee} USDT\nرسوم المنصة: ${PLATFORM_WITHDRAW_FEE} USDT\nالإجمالي المخصوم: ${(amount + totalFee).toFixed(2)} USDT\n\nهل تريد المتابعة؟`;
             
-            const confirmMsg = `💰 *تأكيد عملية السحب*\n\n` +
-                `💵 *المبلغ المطلوب:* ${amount} USD\n` +
-                `🌐 *الشبكة:* ${network.toUpperCase()}\n` +
-                `📤 *العنوان:* ${address}\n\n` +
-                `💸 *رسوم الشبكة:* ${networkFee} $\n` +
-                `🏢 *رسوم المنصة:* ${platformFee} $\n` +
-                `📊 *إجمالي الرسوم:* ${totalFees.toFixed(2)} $\n` +
-                `💎 *الإجمالي المخصوم:* ${totalDeduct.toFixed(2)} $\n\n` +
-                `⚠️ *ملاحظة:* أنت المسؤول عن دفع رسوم الشبكة\n` +
-                `✅ *هل تريد المتابعة؟*`;
+            if (!confirm(confirmMsg)) return;
             
-            const confirmed = confirm(confirmMsg);
-            if (!confirmed) return;
-            
-            const res = await fetch(`${API_URL}/api/withdraw`, { 
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, currency: 'USD', network, address, twofa_code: twoFACode }) 
+            tg.showAlert('🔄 جاري معالجة الطلب...');
+            const res = await fetch(`${API_URL}/api/withdraw`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, amount, network, address, twofa_code: twoFACode })
             });
             const result = await res.json();
             tg.showAlert(result.message);
-            if (result.success) { loadBasicData(); loadWallet(); }
+            if (result.success) { loadUserData(); }
         }
         
-        async function updateBank() {
-            const bankName = document.getElementById('bankName').value;
-            const accountNumber = document.getElementById('accountNumber').value;
-            const accountName = document.getElementById('accountName').value;
-            if (!bankName || !accountNumber || !accountName) return tg.showAlert('املأ الحقول');
-            const res = await fetch(`${API_URL}/api/update_bank`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id, bankName, accountNumber, accountName }) });
-            await res.json();
-            tg.showAlert('✅ تم التحديث');
-            loadBankInfo();
+        // ========== KYC ==========
+        let passportPhotoFile = null;
+        let personalPhotoFile = null;
+        
+        async function loadKycStatus() {
+            try {
+                const uid = tg.initDataUnsafe.user.id;
+                const res = await fetch(`${API_URL}/api/kyc/status/${uid}`);
+                const data = await res.json();
+                const container = document.getElementById('kycStatus');
+                const form = document.getElementById('kycForm');
+                
+                if (data.status === 'approved') {
+                    container.innerHTML = '<div class="verified-badge" style="font-size:16px">✅ حساب موثق</div>';
+                    form.style.display = 'none';
+                } else if (data.status === 'pending') {
+                    container.innerHTML = '<div class="pending-badge" style="font-size:16px">⏳ قيد المراجعة</div>';
+                    form.style.display = 'none';
+                } else {
+                    container.innerHTML = '<div class="unverified-badge" style="font-size:16px">⚠️ حساب غير موثق</div>';
+                    form.style.display = 'block';
+                }
+            } catch(e) { console.error(e); }
+        }
+        
+        function previewPassport(e) {
+            const file = e.target.files[0];
+            if (file) {
+                passportPhotoFile = file;
+                const reader = new FileReader();
+                reader.onload = (e) => { document.getElementById('passportPreview').innerHTML = `<img src="${e.target.result}" style="max-width:100%; border-radius:8px; margin-top:10px">`; };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        function previewPersonal(e) {
+            const file = e.target.files[0];
+            if (file) {
+                personalPhotoFile = file;
+                const reader = new FileReader();
+                reader.onload = (e) => { document.getElementById('personalPreview').innerHTML = `<img src="${e.target.result}" style="max-width:100%; border-radius:8px; margin-top:10px">`; };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        async function submitKyc() {
+            const fullName = document.getElementById('kycFullName').value;
+            const passportNumber = document.getElementById('kycPassport').value;
+            const nationalId = document.getElementById('kycNationalId').value;
+            const phoneNumber = document.getElementById('kycPhone').value;
+            const bankName = document.getElementById('kycBankName').value;
+            const accountNumber = document.getElementById('kycAccountNumber').value;
+            const accountName = document.getElementById('kycAccountName').value;
+            
+            if (!fullName || !passportNumber || !nationalId || !phoneNumber) {
+                tg.showAlert('⚠️ املأ جميع الحقول'); return;
+            }
+            if (!passportPhotoFile || !personalPhotoFile) {
+                tg.showAlert('⚠️ ارفع الصور المطلوبة'); return;
+            }
+            
+            tg.showAlert('🔄 جاري الإرسال...');
+            const formData = new FormData();
+            formData.append('user_id', tg.initDataUnsafe.user.id);
+            formData.append('fullName', fullName);
+            formData.append('passportNumber', passportNumber);
+            formData.append('nationalId', nationalId);
+            formData.append('phoneNumber', phoneNumber);
+            formData.append('email', '');
+            formData.append('country', 'SD');
+            formData.append('city', '');
+            formData.append('bankName', bankName);
+            formData.append('bankAccountNumber', accountNumber);
+            formData.append('bankAccountName', accountName);
+            formData.append('passportPhoto', passportPhotoFile);
+            formData.append('personalPhoto', personalPhotoFile);
+            
+            const res = await fetch(`${API_URL}/api/kyc/submit`, { method: 'POST', body: formData });
+            const result = await res.json();
+            tg.showAlert(result.message);
+            if (result.success) { loadKycStatus(); loadUserData(); }
+        }
+        
+        // ========== الإحالات ==========
+        async function loadReferralData() {
+            try {
+                const uid = tg.initDataUnsafe.user.id;
+                const res = await fetch(`${API_URL}/api/user/referral/${uid}`);
+                const data = await res.json();
+                document.getElementById('referralCount').textContent = data.referralCount || 0;
+                document.getElementById('referralEarnings').textContent = (data.referralEarnings || 0).toFixed(2);
+                document.getElementById('referralLink').innerHTML = `🔗 رابط الإحالة:<br><code>https://t.me/${BOT_USERNAME}?start=${uid}</code>`;
+            } catch(e) { console.error(e); }
+        }
+        
+        function copyReferralLink() {
+            const text = document.getElementById('referralLink').innerText;
+            const link = text.replace('🔗 رابط الإحالة:', '').trim();
+            navigator.clipboard.writeText(link);
+            tg.showAlert('✅ تم نسخ الرابط');
+        }
+        
+        async function transferReferral() {
+            tg.showAlert('🔄 جاري التحويل...');
+            const res = await fetch(`${API_URL}/api/referral/transfer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: tg.initDataUnsafe.user.id })
+            });
+            const result = await res.json();
+            tg.showAlert(result.message);
+            if (result.success) { loadReferralData(); loadUserData(); }
+        }
+        
+        // ========== الدردشة ==========
+        async function loadChatMessages() {
+            try {
+                const res = await fetch(`${API_URL}/api/chat/global`);
+                const messages = await res.json();
+                const container = document.getElementById('chatMessages');
+                let html = '';
+                for (const msg of messages) {
+                    const isSent = msg.senderId == tg.initDataUnsafe.user.id;
+                    const time = new Date(msg.createdAt).toLocaleTimeString();
+                    html += `
+                        <div class="message ${isSent ? 'message-sent' : 'message-received'}" style="${isSent ? 'margin-left:auto' : ''}">
+                            <strong>${msg.senderId == tg.initDataUnsafe.user.id ? 'أنت' : 'مستخدم'}:</strong><br>
+                            ${msg.message}
+                            <div style="font-size:10px; opacity:0.7">${time}</div>
+                        </div>
+                    `;
+                }
+                container.innerHTML = html || '<div class="loading">لا توجد رسائل</div>';
+                container.scrollTop = container.scrollHeight;
+            } catch(e) { console.error(e); }
+        }
+        
+        async function sendChatMessage() {
+            const message = document.getElementById('chatMessage').value.trim();
+            if (!message) return;
+            
+            const res = await fetch(`${API_URL}/api/chat/send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ senderId: tg.initDataUnsafe.user.id, message })
+            });
+            if (res.ok) {
+                document.getElementById('chatMessage').value = '';
+                loadChatMessages();
+            }
+        }
+        
+        // ========== الإعدادات ==========
+        function setTimeframe(tf) {
+            currentTimeframe = tf;
+            document.querySelectorAll('.timeframe-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            loadChart();
         }
         
         function setLanguage(lang) {
@@ -1720,47 +1134,40 @@
             document.getElementById(`${tab}-tab`).classList.add('active');
             if (event && event.target) event.target.classList.add('active');
             
-            if (tab === 'market') { loadMarketFast(currentPage); loadMarketStats(); }
-            if (tab === 'my') loadMyOffers();
-            if (tab === 'trades') loadMyTrades();
-            if (tab === 'history') loadHistory();
-            if (tab === 'wallet') { loadWallet(); updateNetworkFee(); }
+            if (tab === 'trade') { loadOrderBook(); loadChart(); loadMarketData(); }
+            if (tab === 'orders') loadMyOrders();
+            if (tab === 'history') loadTradeHistory();
+            if (tab === 'wallet') updateNetworkFee();
             if (tab === 'kyc') loadKycStatus();
-            if (tab === 'leaderboard') loadLeaderboard();
-            if (tab === 'bank') loadBankInfo();
-            if (tab === 'referral') loadReferralInfo();
-            if (tab === 'security') loadSecurityInfo();
-            
-            if (tab !== 'chat' && chatInterval) {
-                clearInterval(chatInterval);
-                chatInterval = null;
-            }
+            if (tab === 'referral') loadReferralData();
+            if (tab === 'chat') loadChatMessages();
         }
         
-        document.getElementById('offerPaymentMethod').addEventListener('change', function() {
-            document.getElementById('bankFields').style.display = this.value === 'bank_transfer' ? 'block' : 'none';
-        });
+        // ========== تحديث دوري ==========
+        function startAutoUpdate() {
+            if (updateInterval) clearInterval(updateInterval);
+            updateInterval = setInterval(() => {
+                if (document.getElementById('trade-tab').classList.contains('active')) {
+                    loadMarketData();
+                    loadOrderBook();
+                }
+                if (document.getElementById('wallet-tab').classList.contains('active')) {
+                    loadUserData();
+                }
+            }, 10000);
+        }
         
-        document.getElementById('chatImageInput').addEventListener('change', function(e) {
-            if (e.target.files && e.target.files[0]) {
-                sendChatImage(e.target.files[0]);
-                e.target.value = '';
-            }
-        });
-        
-        document.getElementById('chatInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') sendChatMessage();
-        });
-        
-        // بدء التشغيل
-        showCachedBalance();
-        loadBasicData();
-        loadMarketFast(1);
-        loadMarketStats();
+        // ========== بدء التشغيل ==========
+        loadUserData();
+        loadMarketData();
+        loadOrderBook();
+        loadChart();
         loadKycStatus();
+        loadReferralData();
         updateNetworkFee();
+        startAutoUpdate();
         
-        tg.MainButton.setText("🚀 فتح البوت");
+        tg.MainButton.setText("💎 فتح التداول");
         tg.MainButton.onClick(() => tg.close());
         tg.MainButton.show();
     </script>
