@@ -14,45 +14,30 @@ class Database {
         this.encryptionKey = process.env.ENCRYPTION_KEY || 'default_key_32_bytes_long';
         
         // إعدادات عملة CRYSTAL
-        this.totalCrystalSupply = 5000000;  // 5 مليون حبة
-        this.openingPrice = 500;             // 500 حبة = 1 USDT (سعر الافتتاح 0.002 USDT)
-        this.tradingFee = 0.001;             // 0.1% رسوم تداول
+        this.totalCrystalSupply = 5000000;
+        this.openingPrice = 500;
+        this.tradingFee = 0.001;
+        this.platformWithdrawFee = 0.05;
+        this.referralCommissionRate = 10;
         
-        // رسوم المنصة
-        this.platformWithdrawFee = 0.05;     // 0.05 دولار للسحب
-        this.referralCommissionRate = 10;     // 10%
-        
-        // رسوم الشبكة
         this.networkFees = {
             bnb: 0.15, polygon: 0.10, solana: 0.02, aptos: 0.05, trc20: 3.00, erc20: 15.00
         };
         
-        // ربط النماذج
-        this.User = User;
-        this.Wallet = Wallet;
-        this.Order = Order;
-        this.Trade = Trade;
-        this.Candlestick = Candlestick;
-        this.MarketPrice = MarketPrice;
-        this.ChatMessage = ChatMessage;
-        
-        // تهيئة السعر السوقي الافتتاحي
-        this.initMarketPrice();
+        this.matchTimeout = 10000; // 10 ثواني حد أقصى للمطابقة
     }
 
-    async initMarketPrice() {
-        const existing = await MarketPrice.findOne({ symbol: 'CRYSTAL/USDT' });
-        if (!existing) {
-            await MarketPrice.create({
-                symbol: 'CRYSTAL/USDT',
-                price: 0.002,  // 500 حبة = 1 USDT → 1 حبة = 0.002 USDT
-                change24h: 0,
-                volume24h: 0,
-                high24h: 0.002,
-                low24h: 0.002,
-                lastUpdated: new Date()
-            });
-            console.log('✅ Market price initialized: 1 CRYSTAL = 0.002 USDT');
+    // ========== وظائف مساعدة ==========
+    
+    async safeDbOperation(operation, fallback = null, timeoutMs = 15000) {
+        try {
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Database operation timeout')), timeoutMs)
+            );
+            return await Promise.race([operation, timeoutPromise]);
+        } catch (error) {
+            console.error('⚠️ Database operation error:', error.message);
+            return fallback !== null ? fallback : { success: false, message: '❌ حدث خطأ، الرجاء المحاولة مرة أخرى' };
         }
     }
 
@@ -73,6 +58,8 @@ class Database {
         return bytes.toString(CryptoJS.enc.Utf8);
     }
 
+    // ========== الاتصال بقاعدة البيانات ==========
+    
     async connect() {
         if (this.connected) return;
         try {
@@ -81,67 +68,288 @@ class Database {
                 serverSelectionTimeoutMS: 30000,
                 socketTimeoutMS: 45000,
                 connectTimeoutMS: 30000,
-                family: 4
+                family: 4,
+                maxPoolSize: 10,
+                minPoolSize: 2
             });
             this.connected = true;
-            console.log('✅ MongoDB connected');
+            console.log('✅ MongoDB connected successfully');
+            
+            // تهيئة السعر السوقي
             await this.initMarketPrice();
+            
+            // إنشاء الفهارس المهمة
+            await this.createIndexes();
+            
         } catch (error) {
-            console.error('❌ MongoDB error:', error);
+            console.error('❌ MongoDB connection error:', error);
             throw error;
         }
     }
 
-    async addAuditLog(userId, action, details = {}, ip = '', userAgent = '') {
+    async createIndexes() {
         try {
-            await AuditLog.create({ userId, action, details, ip, userAgent, timestamp: new Date() });
-        } catch (e) { console.error('Audit log error:', e); }
+            await User.collection.createIndex({ userId: 1 }, { unique: true });
+            await Wallet.collection.createIndex({ userId: 1 }, { unique: true });
+            await Order.collection.createIndex({ status: 1, type: 1, price: 1 });
+            await Order.collection.createIndex({ userId: 1, status: 1 });
+            await Trade.collection.createIndex({ createdAt: -1 });
+            await ChatMessage.collection.createIndex({ chatType: 1, createdAt: -1 });
+            console.log('✅ Database indexes created');
+        } catch (e) {
+            console.log('⚠️ Index creation warning:', e.message);
+        }
     }
 
-    async updateLastSeen(userId) {
-        await User.updateOne({ userId }, { lastSeen: new Date(), isOnline: true });
-        setTimeout(async () => {
-            const user = await User.findOne({ userId });
-            if (user && Date.now() - new Date(user.lastSeen).getTime() > 5 * 60 * 1000) {
-                await User.updateOne({ userId }, { isOnline: false });
+    async initMarketPrice() {
+        try {
+            const existing = await MarketPrice.findOne({ symbol: 'CRYSTAL/USDT' });
+            if (!existing) {
+                await MarketPrice.create({
+                    symbol: 'CRYSTAL/USDT',
+                    price: 0.002,
+                    change24h: 0,
+                    volume24h: 0,
+                    high24h: 0.002,
+                    low24h: 0.002,
+                    lastUpdated: new Date()
+                });
+                console.log('✅ Market price initialized: 1 CRYSTAL = 0.002 USDT');
             }
-        }, 5 * 60 * 1000);
+        } catch (e) {
+            console.error('⚠️ Market price init error:', e.message);
+        }
+    }
+
+    // ========== سجلات التدقيق ==========
+    
+    async addAuditLog(userId, action, details = {}, ip = '', userAgent = '') {
+        try {
+            await AuditLog.create({ 
+                userId, action, details, ip, userAgent, timestamp: new Date() 
+            });
+        } catch (e) {
+            // تجاهل أخطاء سجل التدقيق - لا تؤثر على العمليات الرئيسية
+        }
+    }
+
+    // ========== إدارة المستخدمين ==========
+    
+    async updateLastSeen(userId) {
+        try {
+            await User.updateOne({ userId }, { 
+                lastSeen: new Date(), 
+                isOnline: true 
+            });
+        } catch (e) {
+            // تجاهل الخطأ
+        }
     }
 
     async isUserBannedOrLocked(userId) {
-        const user = await User.findOne({ userId });
-        if (!user) return { banned: false, locked: false };
-        if (user.isBanned) return { banned: true, reason: user.banReason || 'تم حظر حسابك نهائياً' };
-        if (user.isLocked) return { locked: true, reason: 'حسابك مقفل مؤقتاً' };
-        return { banned: false, locked: false };
+        try {
+            const user = await User.findOne({ userId });
+            if (!user) return { banned: false, locked: false };
+            if (user.isBanned) return { 
+                banned: true, 
+                reason: user.banReason || 'تم حظر حسابك نهائياً' 
+            };
+            if (user.isLocked) return { 
+                locked: true, 
+                reason: 'حسابك مقفل مؤقتاً' 
+            };
+            return { banned: false, locked: false };
+        } catch (e) {
+            return { banned: false, locked: false };
+        }
     }
 
+    async registerUser(userId, username, firstName, lastName, phone, email, country, city, referrerId = null, language = 'ar', ip = '', userAgent = '') {
+        return this.safeDbOperation(async () => {
+            await this.connect();
+            
+            let user = await User.findOne({ userId });
+            if (!user) {
+                const wallet = await this.getUserWallet(userId);
+                
+                // معالجة الإحالة
+                let validReferrer = null;
+                if (referrerId && referrerId !== userId) {
+                    validReferrer = await User.findOne({ userId: referrerId });
+                    if (validReferrer && !validReferrer.isBanned && !validReferrer.isLocked) {
+                        await User.updateOne(
+                            { userId: referrerId }, 
+                            { 
+                                $inc: { referralCount: 1 },
+                                $push: { 
+                                    referrals: { 
+                                        userId: userId, 
+                                        joinedAt: new Date(), 
+                                        totalCommission: 0, 
+                                        earned: 0 
+                                    } 
+                                }
+                            }
+                        );
+                    }
+                }
+                
+                // أول مستخدمين يصبحون أدمن
+                const userCount = await User.countDocuments();
+                const isFirstUser = userCount === 0;
+                
+                user = await User.create({
+                    userId,
+                    username: username || '',
+                    firstName: firstName || '',
+                    lastName: lastName || '',
+                    phoneNumber: phone || '',
+                    email: email || '',
+                    country: country || 'SD',
+                    city: city || '',
+                    language,
+                    walletId: wallet._id,
+                    referrerId: validReferrer ? referrerId : null,
+                    isAdmin: isFirstUser || [6701743450, 8181305474].includes(userId),
+                    isVerified: false,
+                    lastSeen: new Date(),
+                    isOnline: true,
+                    lastLoginIp: ip,
+                    twoFAEnabled: false,
+                    twoFASecret: '',
+                    twoFABackupCodes: [],
+                    referralCount: 0,
+                    referralEarnings: 0,
+                    referralCommissionRate: this.referralCommissionRate,
+                    referrals: [],
+                    totalTrades: 0,
+                    totalVolume: 0,
+                    totalProfit: 0
+                });
+                
+                // هدية ترحيبية 1000 CRYSTAL
+                await Wallet.updateOne(
+                    { userId }, 
+                    { $inc: { crystalBalance: 1000 } }
+                );
+                
+                // تحديث الإحصائيات
+                await this.updateDailyStats('totalUsers', 1);
+                await this.updateDailyStats('newUsers', 1);
+                
+                // سجل تدقيق
+                this.addAuditLog(userId, 'register', { referrer: referrerId }, ip, userAgent).catch(() => {});
+                
+                return { 
+                    success: true, 
+                    isNew: true, 
+                    referrer: validReferrer,
+                    message: '✅ تم إنشاء حسابك بنجاح! +1000 CRYSTAL هدية ترحيبية'
+                };
+            }
+            
+            // تحديث آخر ظهور
+            await User.updateOne(
+                { userId }, 
+                { lastSeen: new Date(), isOnline: true, lastLoginIp: ip }
+            );
+            
+            return { success: true, isNew: false, message: '👋 أهلاً بعودتك!' };
+            
+        }, { success: false, message: '❌ حدث خطأ في التسجيل، الرجاء المحاولة مرة أخرى' });
+    }
+
+    async getUser(userId) {
+        try {
+            return await User.findOne({ userId });
+        } catch (e) {
+            return null;
+        }
+    }
+    
+    async getUserStats(userId) {
+        try {
+            const user = await this.getUser(userId);
+            if (!user) return null;
+            
+            const wallet = await this.getUserWallet(userId);
+            const openOrders = await Order.countDocuments({ userId, status: 'open' });
+            
+            return {
+                ...user.toObject(),
+                usdtBalance: wallet.usdtBalance,
+                crystalBalance: wallet.crystalBalance,
+                openOrders,
+                totalTrades: user.totalTrades || 0,
+                totalVolume: user.totalVolume || 0,
+                referralEarnings: user.referralEarnings || 0,
+                referralCount: user.referralCount || 0
+            };
+        } catch (e) {
+            console.error('getUserStats error:', e.message);
+            return null;
+        }
+    }
+
+    // ========== نظام 2FA ==========
+    
     async generate2FASecret(userId) {
         try {
             const user = await User.findOne({ userId });
             if (!user) return { success: false, message: 'المستخدم غير موجود' };
+            
             const secret = speakeasy.generateSecret({ length: 20 });
             const encryptedSecret = this.encryptPrivateKey(secret.base32);
+            
             const backupCodes = [];
             for (let i = 0; i < 5; i++) {
-                backupCodes.push(this.encryptPrivateKey(crypto.randomBytes(4).toString('hex').toUpperCase()));
+                backupCodes.push(crypto.randomBytes(4).toString('hex').toUpperCase());
             }
-            await User.updateOne({ userId }, { twoFASecret: encryptedSecret, twoFABackupCodes: backupCodes });
-            const otpauthURL = speakeasy.otpauthURL({ secret: secret.ascii, label: `CRYSTAL Exchange (${userId})`, issuer: 'CRYSTAL Exchange' });
+            const encryptedBackupCodes = backupCodes.map(c => this.encryptPrivateKey(c));
+            
+            await User.updateOne(
+                { userId }, 
+                { twoFASecret: encryptedSecret, twoFABackupCodes: encryptedBackupCodes }
+            );
+            
+            const otpauthURL = speakeasy.otpauthURL({
+                secret: secret.ascii,
+                label: `CRYSTAL Exchange (${userId})`,
+                issuer: 'CRYSTAL Exchange'
+            });
+            
             const qrCode = await qrcode.toDataURL(otpauthURL);
-            return { success: true, qrCode, backupCodes: backupCodes.map(c => this.decryptPrivateKey(c)), secret: secret.base32 };
+            
+            return { 
+                success: true, 
+                qrCode, 
+                backupCodes: backupCodes,
+                secret: secret.base32 
+            };
         } catch (error) {
-            return { success: false, message: 'خطأ في الخادم' };
+            return { success: false, message: 'خطأ في إنشاء رمز 2FA' };
         }
     }
 
     async enable2FA(userId, code) {
         try {
             const user = await User.findOne({ userId });
-            if (!user || !user.twoFASecret) return { success: false, message: 'لم يتم إنشاء رمز 2FA' };
+            if (!user || !user.twoFASecret) {
+                return { success: false, message: 'لم يتم إنشاء رمز 2FA بعد' };
+            }
+            
             const decryptedSecret = this.decryptPrivateKey(user.twoFASecret);
-            const verified = speakeasy.totp.verify({ secret: decryptedSecret, encoding: 'base32', token: code, window: 2 });
-            if (!verified) return { success: false, message: '❌ رمز التحقق غير صحيح' };
+            const verified = speakeasy.totp.verify({
+                secret: decryptedSecret,
+                encoding: 'base32',
+                token: code,
+                window: 2
+            });
+            
+            if (!verified) {
+                return { success: false, message: '❌ رمز التحقق غير صحيح' };
+            }
+            
             await User.updateOne({ userId }, { twoFAEnabled: true });
             return { success: true, message: '✅ تم تفعيل التحقق بخطوتين' };
         } catch (error) {
@@ -153,12 +361,26 @@ class Database {
         try {
             const user = await User.findOne({ userId });
             if (!user) return { success: false, message: 'المستخدم غير موجود' };
+            
             if (user.twoFAEnabled && user.twoFASecret) {
                 const decryptedSecret = this.decryptPrivateKey(user.twoFASecret);
-                const verified = speakeasy.totp.verify({ secret: decryptedSecret, encoding: 'base32', token: code, window: 2 });
-                if (!verified) return { success: false, message: '❌ رمز التحقق غير صحيح' };
+                const verified = speakeasy.totp.verify({
+                    secret: decryptedSecret,
+                    encoding: 'base32',
+                    token: code,
+                    window: 2
+                });
+                
+                if (!verified) {
+                    return { success: false, message: '❌ رمز التحقق غير صحيح' };
+                }
             }
-            await User.updateOne({ userId }, { twoFAEnabled: false, twoFASecret: '', twoFABackupCodes: [] });
+            
+            await User.updateOne(
+                { userId }, 
+                { twoFAEnabled: false, twoFASecret: '', twoFABackupCodes: [] }
+            );
+            
             return { success: true, message: '✅ تم تعطيل التحقق بخطوتين' };
         } catch (error) {
             return { success: false, message: 'خطأ في الخادم' };
@@ -166,331 +388,395 @@ class Database {
     }
 
     async verify2FACode(userId, code) {
-        const user = await User.findOne({ userId });
-        if (!user || !user.twoFAEnabled) return false;
-        const decryptedSecret = this.decryptPrivateKey(user.twoFASecret);
-        return speakeasy.totp.verify({ secret: decryptedSecret, encoding: 'base32', token: code, window: 2 });
+        try {
+            const user = await User.findOne({ userId });
+            if (!user || !user.twoFAEnabled) return true; // إذا لم يكن مفعلاً، نسمح بالمرور
+            
+            const decryptedSecret = this.decryptPrivateKey(user.twoFASecret);
+            return speakeasy.totp.verify({
+                secret: decryptedSecret,
+                encoding: 'base32',
+                token: code,
+                window: 2
+            });
+        } catch (e) {
+            return false;
+        }
     }
 
+    // ========== إنشاء المحافظ ==========
+    
     async createBnbWallet() {
         const wallet = ethers.Wallet.createRandom();
-        return { address: wallet.address, encryptedPrivateKey: this.encryptPrivateKey(wallet.privateKey) };
+        return { 
+            address: wallet.address, 
+            encryptedPrivateKey: this.encryptPrivateKey(wallet.privateKey) 
+        };
     }
     
     async createPolygonWallet() {
         const wallet = ethers.Wallet.createRandom();
-        return { address: wallet.address, encryptedPrivateKey: this.encryptPrivateKey(wallet.privateKey) };
+        return { 
+            address: wallet.address, 
+            encryptedPrivateKey: this.encryptPrivateKey(wallet.privateKey) 
+        };
     }
     
     async createSolanaWallet() {
         const keypair = Keypair.generate();
-        return { address: keypair.publicKey.toString(), encryptedPrivateKey: this.encryptPrivateKey(JSON.stringify(Array.from(keypair.secretKey))) };
+        return { 
+            address: keypair.publicKey.toString(), 
+            encryptedPrivateKey: this.encryptPrivateKey(
+                JSON.stringify(Array.from(keypair.secretKey))
+            ) 
+        };
     }
     
     async createAptosWallet() {
         const account = new AptosAccount();
-        return { address: account.address().hex(), encryptedPrivateKey: this.encryptPrivateKey(account.toPrivateKeyObject().privateKeyHex) };
+        return { 
+            address: account.address().hex(), 
+            encryptedPrivateKey: this.encryptPrivateKey(
+                account.toPrivateKeyObject().privateKeyHex
+            ) 
+        };
     }
 
     async getUserWallet(userId) {
-        let wallet = await Wallet.findOne({ userId });
-        if (!wallet) {
-            const [bnb, polygon, solana, aptos] = await Promise.all([
-                this.createBnbWallet(), this.createPolygonWallet(), this.createSolanaWallet(), this.createAptosWallet()
-            ]);
-            wallet = await Wallet.create({
-                userId,
-                usdtBalance: 0,
-                crystalBalance: 0,
-                bnbAddress: bnb.address,
-                bnbEncryptedPrivateKey: bnb.encryptedPrivateKey,
-                polygonAddress: polygon.address,
-                polygonEncryptedPrivateKey: polygon.encryptedPrivateKey,
-                solanaAddress: solana.address,
-                solanaEncryptedPrivateKey: solana.encryptedPrivateKey,
-                aptosAddress: aptos.address,
-                aptosEncryptedPrivateKey: aptos.encryptedPrivateKey,
-                walletSignature: this.generateSignature(`wallet-${userId}`)
-            });
-        }
-        return wallet;
-    }
-
-    async registerUser(userId, username, firstName, lastName, phone, email, country, city, referrerId = null, language = 'ar', ip = '', userAgent = '') {
-        await this.connect();
-        
-        let user = await User.findOne({ userId });
-        if (!user) {
-            const wallet = await this.getUserWallet(userId);
-            
-            let validReferrer = null;
-            if (referrerId && referrerId !== userId) {
-                validReferrer = await User.findOne({ userId: referrerId });
-                if (validReferrer && !validReferrer.isBanned && !validReferrer.isLocked) {
-                    await User.updateOne({ userId: referrerId }, { 
-                        $inc: { referralCount: 1 },
-                        $push: { referrals: { userId: userId, joinedAt: new Date(), totalCommission: 0, earned: 0 } }
-                    });
-                }
+        try {
+            let wallet = await Wallet.findOne({ userId });
+            if (!wallet) {
+                const [bnb, polygon, solana, aptos] = await Promise.all([
+                    this.createBnbWallet(),
+                    this.createPolygonWallet(),
+                    this.createSolanaWallet(),
+                    this.createAptosWallet()
+                ]);
+                
+                wallet = await Wallet.create({
+                    userId,
+                    usdtBalance: 0,
+                    crystalBalance: 0,
+                    bnbAddress: bnb.address,
+                    bnbEncryptedPrivateKey: bnb.encryptedPrivateKey,
+                    polygonAddress: polygon.address,
+                    polygonEncryptedPrivateKey: polygon.encryptedPrivateKey,
+                    solanaAddress: solana.address,
+                    solanaEncryptedPrivateKey: solana.encryptedPrivateKey,
+                    aptosAddress: aptos.address,
+                    aptosEncryptedPrivateKey: aptos.encryptedPrivateKey,
+                    walletSignature: this.generateSignature(`wallet-${userId}`)
+                });
             }
-            
-            // التحقق من الأدمن (أول مستخدم يصبح أدمن)
-            const isFirstUser = (await User.countDocuments()) === 0;
-            
-            user = await User.create({
-                userId, username: username || '', firstName: firstName || '', lastName: lastName || '',
-                phoneNumber: phone || '', email: email || '', country: country || 'SD', city: city || '',
-                language, walletId: wallet._id, referrerId: validReferrer ? referrerId : null,
-                isAdmin: isFirstUser || [6701743450, 8181305474].includes(userId),
-                isVerified: false, lastSeen: new Date(), isOnline: true, lastLoginIp: ip,
-                twoFAEnabled: false, twoFASecret: '', twoFABackupCodes: [],
-                referralCount: 0, referralEarnings: 0, referralCommissionRate: this.referralCommissionRate, referrals: []
-            });
-            
-            // إضافة 1000 CRYSTAL كهدية ترحيبية للمستخدم الجديد
-            await Wallet.updateOne({ userId }, { $inc: { crystalBalance: 1000 } });
-            
-            // ✅ تعديل مهم: إصلاح خطأ updateDailyStats
-            await this.updateDailyStats('totalUsers', 1);
-            await this.updateDailyStats('newUsers', 1);
-            await this.addAuditLog(userId, 'register', { referrer: referrerId }, ip, userAgent);
-            return { success: true, isNew: true, referrer: validReferrer };
+            return wallet;
+        } catch (e) {
+            console.error('getUserWallet error:', e.message);
+            throw e;
         }
-        
-        await User.updateOne({ userId }, { lastSeen: new Date(), isOnline: true, lastLoginIp: ip });
-        return { success: true, isNew: false };
     }
 
-    async getUser(userId) { return await User.findOne({ userId }); }
-    
-    async getUserStats(userId) {
-        const user = await this.getUser(userId);
-        if (!user) return null;
-        const wallet = await this.getUserWallet(userId);
-        const openOrders = await Order.countDocuments({ userId, status: 'open' });
-        const totalTrades = user.totalTrades || 0;
-        const winRate = totalTrades > 0 ? (user.totalProfit > 0 ? (user.totalProfit / Math.abs(user.totalProfit)) * 100 : 0) : 0;
-        
-        return {
-            ...user.toObject(),
-            usdtBalance: wallet.usdtBalance,
-            crystalBalance: wallet.crystalBalance,
-            openOrders,
-            totalTrades,
-            winRate: winRate.toFixed(1),
-            referralEarnings: user.referralEarnings || 0,
-            referralCount: user.referralCount || 0
-        };
-    }
-
-    // ========== نظام التداول (Order Book) ==========
+    // ========== نظام التداول ==========
     
     async getMarketPrice() {
-        const price = await MarketPrice.findOne({ symbol: 'CRYSTAL/USDT' });
-        return price ? price.price : 0.002;
+        try {
+            const price = await MarketPrice.findOne({ symbol: 'CRYSTAL/USDT' });
+            return price ? price.price : 0.002;
+        } catch (e) {
+            return 0.002;
+        }
     }
 
     async updateMarketPrice(newPrice, volume) {
-        const price = await MarketPrice.findOne({ symbol: 'CRYSTAL/USDT' });
-        if (!price) return;
-        
-        const update = {
-            price: newPrice,
-            volume24h: (price.volume24h || 0) + volume,
-            high24h: Math.max(price.high24h || newPrice, newPrice),
-            low24h: Math.min(price.low24h || newPrice, newPrice),
-            lastUpdated: new Date()
-        };
-        
-        // حساب التغير اليومي
-        const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        const dayAgoPrice = await this.getPriceAtTime(dayAgo);
-        if (dayAgoPrice) {
-            update.change24h = ((newPrice - dayAgoPrice) / dayAgoPrice) * 100;
+        try {
+            const price = await MarketPrice.findOne({ symbol: 'CRYSTAL/USDT' });
+            if (!price) return;
+            
+            const update = {
+                price: newPrice,
+                volume24h: (price.volume24h || 0) + volume,
+                high24h: Math.max(price.high24h || newPrice, newPrice),
+                low24h: Math.min(price.low24h || newPrice, newPrice),
+                lastUpdated: new Date()
+            };
+            
+            // حساب التغير اليومي
+            const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const dayAgoPrice = await this.getPriceAtTime(dayAgo);
+            if (dayAgoPrice && dayAgoPrice > 0) {
+                update.change24h = ((newPrice - dayAgoPrice) / dayAgoPrice) * 100;
+            }
+            
+            await MarketPrice.updateOne({ symbol: 'CRYSTAL/USDT' }, update);
+            
+            // إضافة شمعة
+            this.addCandlestick(newPrice, volume).catch(() => {});
+            
+        } catch (e) {
+            console.error('updateMarketPrice error:', e.message);
         }
-        
-        await MarketPrice.updateOne({ symbol: 'CRYSTAL/USDT' }, update);
-        
-        // إضافة شمعة جديدة حسب الوقت
-        await this.addCandlestick(newPrice, volume);
     }
     
     async getPriceAtTime(timestamp) {
-        const candle = await Candlestick.findOne({ timeframe: '1h', timestamp: { $lte: timestamp } }).sort({ timestamp: -1 });
-        return candle ? candle.close : null;
+        try {
+            const candle = await Candlestick.findOne({ 
+                timeframe: '1h', 
+                timestamp: { $lte: timestamp } 
+            }).sort({ timestamp: -1 });
+            return candle ? candle.close : null;
+        } catch (e) {
+            return null;
+        }
     }
     
     async addCandlestick(price, volume) {
-        const timeframes = ['1m', '5m', '15m', '1h'];
-        const now = new Date();
-        
-        for (const tf of timeframes) {
-            let interval = 60 * 1000;
-            if (tf === '5m') interval = 5 * 60 * 1000;
-            if (tf === '15m') interval = 15 * 60 * 1000;
-            if (tf === '1h') interval = 60 * 60 * 1000;
+        try {
+            const timeframes = ['1m', '5m', '15m', '1h'];
+            const now = new Date();
             
-            const currentSlot = Math.floor(now.getTime() / interval) * interval;
-            const candleTime = new Date(currentSlot);
-            
-            let candle = await Candlestick.findOne({ timeframe: tf, timestamp: candleTime });
-            
-            if (!candle) {
-                candle = await Candlestick.create({
-                    timeframe: tf,
-                    timestamp: candleTime,
-                    open: price,
-                    high: price,
-                    low: price,
-                    close: price,
-                    volume: volume
+            for (const tf of timeframes) {
+                let interval = 60 * 1000; // 1m default
+                if (tf === '5m') interval = 5 * 60 * 1000;
+                if (tf === '15m') interval = 15 * 60 * 1000;
+                if (tf === '1h') interval = 60 * 60 * 1000;
+                
+                const currentSlot = Math.floor(now.getTime() / interval) * interval;
+                const candleTime = new Date(currentSlot);
+                
+                let candle = await Candlestick.findOne({ 
+                    timeframe: tf, 
+                    timestamp: candleTime 
                 });
-            } else {
-                candle.high = Math.max(candle.high, price);
-                candle.low = Math.min(candle.low, price);
-                candle.close = price;
-                candle.volume += volume;
-                await candle.save();
+                
+                if (!candle) {
+                    await Candlestick.create({
+                        timeframe: tf,
+                        timestamp: candleTime,
+                        open: price,
+                        high: price,
+                        low: price,
+                        close: price,
+                        volume: volume
+                    });
+                } else {
+                    candle.high = Math.max(candle.high, price);
+                    candle.low = Math.min(candle.low, price);
+                    candle.close = price;
+                    candle.volume += volume;
+                    await candle.save();
+                }
             }
+        } catch (e) {
+            // تجاهل أخطاء الشموع
         }
     }
     
     async getCandlesticks(timeframe, limit = 100) {
-        return await Candlestick.find({ timeframe })
-            .sort({ timestamp: -1 })
-            .limit(limit)
-            .sort({ timestamp: 1 });
+        try {
+            return await Candlestick.find({ timeframe })
+                .sort({ timestamp: -1 })
+                .limit(limit)
+                .sort({ timestamp: 1 });
+        } catch (e) {
+            return [];
+        }
     }
     
-    // ========== إنشاء أمر بيع/شراء ==========
+    // ========== إنشاء أمر ==========
+    
     async createOrder(userId, type, price, amount) {
-        const user = await this.getUser(userId);
-        if (!user) return { success: false, message: 'المستخدم غير موجود' };
-        
-        const banCheck = await this.isUserBannedOrLocked(userId);
-        if (banCheck.banned) return { success: false, message: banCheck.reason };
-        
-        if (!user.isVerified) return { success: false, message: '⚠️ يرجى توثيق حسابك أولاً' };
-        
-        if (price <= 0 || amount <= 0) return { success: false, message: '⚠️ السعر والكمية يجب أن تكون أكبر من 0' };
-        
-        const totalUsdt = price * amount;
-        const wallet = await this.getUserWallet(userId);
-        
-        if (type === 'sell') {
-            if (wallet.crystalBalance < amount) {
-                return { success: false, message: `❌ رصيد غير كافٍ! لديك ${wallet.crystalBalance.toFixed(2)} CRYSTAL` };
+        return this.safeDbOperation(async () => {
+            const user = await this.getUser(userId);
+            if (!user) return { success: false, message: '⚠️ المستخدم غير موجود' };
+            
+            const banCheck = await this.isUserBannedOrLocked(userId);
+            if (banCheck.banned) return { success: false, message: banCheck.reason };
+            if (banCheck.locked) return { success: false, message: banCheck.reason };
+            
+            if (!user.isVerified) {
+                return { success: false, message: '⚠️ يرجى توثيق حسابك أولاً للتمكن من التداول' };
             }
-        } else if (type === 'buy') {
-            if (wallet.usdtBalance < totalUsdt) {
-                return { success: false, message: `❌ رصيد غير كافٍ! لديك ${wallet.usdtBalance.toFixed(2)} USDT` };
+            
+            if (price <= 0 || amount <= 0) {
+                return { success: false, message: '⚠️ السعر والكمية يجب أن تكون أكبر من 0' };
             }
-            // تجميد المبلغ عند الشراء
-            await Wallet.updateOne({ userId }, { $inc: { usdtBalance: -totalUsdt } });
-        }
-        
-        const order = await Order.create({
-            userId, type, price, amount, originalAmount: amount, totalUsdt,
-            status: 'open', isAdminOrder: user.isAdmin || false
-        });
-        
-        await this.addAuditLog(userId, 'create_order', { orderId: order._id, type, price, amount });
-        
-        // محاولة مطابقة الطلب فوراً
-        await this.matchOrders(order);
-        
-        return { success: true, orderId: order._id, message: `✅ تم إنشاء أمر ${type === 'buy' ? 'شراء' : 'بيع'} بنجاح` };
+            
+            if (amount < 1) {
+                return { success: false, message: '⚠️ الحد الأدنى للكمية هو 1 CRYSTAL' };
+            }
+            
+            const totalUsdt = price * amount;
+            const wallet = await this.getUserWallet(userId);
+            
+            if (type === 'sell') {
+                if (wallet.crystalBalance < amount) {
+                    return { 
+                        success: false, 
+                        message: `❌ رصيد غير كافٍ! لديك ${wallet.crystalBalance.toFixed(2)} CRYSTAL` 
+                    };
+                }
+                // تجميد الكمية المباعة
+                await Wallet.updateOne(
+                    { userId }, 
+                    { $inc: { crystalBalance: -amount } }
+                );
+            } else if (type === 'buy') {
+                const fee = totalUsdt * this.tradingFee;
+                const totalNeeded = totalUsdt + fee;
+                
+                if (wallet.usdtBalance < totalNeeded) {
+                    return { 
+                        success: false, 
+                        message: `❌ رصيد غير كافٍ! تحتاج ${totalNeeded.toFixed(4)} USDT (السعر + الرسوم)` 
+                    };
+                }
+                // تجميد المبلغ
+                await Wallet.updateOne(
+                    { userId }, 
+                    { $inc: { usdtBalance: -totalNeeded } }
+                );
+            }
+            
+            const order = await Order.create({
+                userId,
+                type,
+                price,
+                amount,
+                originalAmount: amount,
+                totalUsdt,
+                status: 'open',
+                isAdminOrder: user.isAdmin || false,
+                createdAt: new Date()
+            });
+            
+            // محاولة مطابقة سريعة مع timeout
+            try {
+                const matchPromise = this.matchOrders(order);
+                const timeoutPromise = new Promise(resolve => 
+                    setTimeout(() => resolve(0), this.matchTimeout)
+                );
+                await Promise.race([matchPromise, timeoutPromise]);
+            } catch (matchError) {
+                console.log('Match warning:', matchError.message);
+            }
+            
+            this.addAuditLog(userId, 'create_order', { 
+                orderId: order._id, type, price, amount 
+            }).catch(() => {});
+            
+            return { 
+                success: true, 
+                orderId: order._id, 
+                message: `✅ تم إنشاء أمر ${type === 'buy' ? 'شراء' : 'بيع'} ${amount} CRYSTAL بسعر ${price} USDT` 
+            };
+            
+        }, { success: false, message: '❌ حدث خطأ في إنشاء الطلب، الرجاء المحاولة مرة أخرى' });
     }
     
     // ========== مطابقة الأوامر ==========
+    
     async matchOrders(newOrder) {
         let remainingAmount = newOrder.amount;
         let totalExecuted = 0;
+        let matchedOrders = [];
         
-        // البحث عن أوامر معاكسة
-        const oppositeType = newOrder.type === 'buy' ? 'sell' : 'buy';
-        let query = {
-            type: oppositeType,
-            status: 'open',
-            price: newOrder.type === 'buy' ? { $lte: newOrder.price } : { $gte: newOrder.price }
-        };
-        
-        const matchingOrders = await Order.find(query).sort({ price: newOrder.type === 'buy' ? 1 : -1, createdAt: 1 });
-        
-        for (const matchOrder of matchingOrders) {
-            if (remainingAmount <= 0) break;
+        try {
+            const oppositeType = newOrder.type === 'buy' ? 'sell' : 'buy';
+            let query = {
+                type: oppositeType,
+                status: 'open',
+                userId: { $ne: newOrder.userId } // لا تطابق مع نفس المستخدم
+            };
             
-            const executeAmount = Math.min(remainingAmount, matchOrder.amount);
-            const executePrice = matchOrder.price;
-            const executeTotal = executeAmount * executePrice;
-            
-            // تنفيذ الصفقة
-            await this.executeTrade(newOrder, matchOrder, executeAmount, executePrice);
-            
-            // تحديث الكميات المتبقية
-            remainingAmount -= executeAmount;
-            totalExecuted += executeAmount;
-            
-            // تحديث الطلب الأصلي
-            if (remainingAmount <= 0) {
-                await Order.updateOne({ _id: newOrder._id }, { 
-                    status: 'completed', 
-                    amount: newOrder.originalAmount - totalExecuted,
-                    completedAt: new Date()
-                });
+            if (newOrder.type === 'buy') {
+                query.price = { $lte: newOrder.price };
             } else {
-                await Order.updateOne({ _id: newOrder._id }, { 
-                    status: 'partial',
-                    amount: remainingAmount
-                });
+                query.price = { $gte: newOrder.price };
             }
             
-            // تحديث الطلب المطابق
-            const matchRemaining = matchOrder.amount - executeAmount;
-            if (matchRemaining <= 0) {
-                await Order.updateOne({ _id: matchOrder._id }, { 
-                    status: 'completed', 
-                    amount: 0,
-                    completedAt: new Date()
-                });
-            } else {
-                await Order.updateOne({ _id: matchOrder._id }, { 
-                    status: 'partial',
-                    amount: matchRemaining
-                });
+            // جلب أفضل 20 أمر مطابق فقط لتجنب التعليق
+            const matchingOrders = await Order.find(query)
+                .sort({ price: newOrder.type === 'buy' ? 1 : -1, createdAt: 1 })
+                .limit(20);
+            
+            for (const matchOrder of matchingOrders) {
+                if (remainingAmount <= 0) break;
+                
+                const executeAmount = Math.min(remainingAmount, matchOrder.amount);
+                const executePrice = matchOrder.price;
+                
+                try {
+                    await this.executeTrade(
+                        newOrder.type === 'buy' ? newOrder : matchOrder,
+                        newOrder.type === 'buy' ? matchOrder : newOrder,
+                        executeAmount,
+                        executePrice
+                    );
+                    
+                    remainingAmount -= executeAmount;
+                    totalExecuted += executeAmount;
+                    matchedOrders.push(matchOrder._id);
+                    
+                } catch (tradeError) {
+                    console.error('Trade execution error:', tradeError.message);
+                    continue; // تخطي هذا الطلب والمتابعة مع التالي
+                }
             }
+            
+            // تحديث حالة الطلب الأصلي
+            if (totalExecuted > 0) {
+                const newStatus = remainingAmount <= 0.0001 ? 'completed' : 'partial';
+                await Order.updateOne(
+                    { _id: newOrder._id },
+                    { 
+                        status: newStatus,
+                        amount: Math.max(0, remainingAmount),
+                        completedAt: newStatus === 'completed' ? new Date() : null
+                    }
+                );
+                
+                // تحديث السعر السوقي
+                const lastPrice = matchingOrders[0]?.price || newOrder.price;
+                await this.updateMarketPrice(lastPrice, totalExecuted);
+            }
+            
+            return totalExecuted;
+            
+        } catch (error) {
+            console.error('matchOrders error:', error.message);
+            return totalExecuted;
         }
-        
-        // تحديث السعر السوقي
-        if (totalExecuted > 0) {
-            const lastPrice = newOrder.type === 'buy' ? newOrder.price : matchingOrders[0]?.price || newOrder.price;
-            await this.updateMarketPrice(lastPrice, totalExecuted);
-        }
-        
-        return totalExecuted;
     }
     
     async executeTrade(buyOrder, sellOrder, amount, price) {
         const totalUsdt = amount * price;
         const fee = totalUsdt * this.tradingFee;
+        const netUsdt = totalUsdt - fee;
         
-        // الحصول على المحافظ
-        const buyerWallet = await this.getUserWallet(buyOrder.userId);
-        const sellerWallet = await this.getUserWallet(sellOrder.userId);
+        // تحويل الأرصدة
+        // المشتري: يحصل على CRYSTAL (تم تجميد USDT مسبقاً)
+        await Wallet.updateOne(
+            { userId: buyOrder.userId },
+            { $inc: { crystalBalance: amount } }
+        );
         
-        // تنفيذ التحويلات
-        // البائع: يخسر CRYSTAL ويكسب USDT
-        await Wallet.updateOne({ userId: sellOrder.userId }, { 
-            $inc: { crystalBalance: -amount, usdtBalance: totalUsdt - fee }
-        });
+        // البائع: يحصل على USDT
+        await Wallet.updateOne(
+            { userId: sellOrder.userId },
+            { $inc: { usdtBalance: netUsdt } }
+        );
         
-        // المشتري: يكسب CRYSTAL (الـ USDT مجمد مسبقاً)
-        await Wallet.updateOne({ userId: buyOrder.userId }, { 
-            $inc: { crystalBalance: amount }
-        });
-        
-        // رسوم المنصة
-        await Wallet.updateOne({ userId: 0 }, { $inc: { usdtBalance: fee } });
+        // إرجاع الرسوم الزائدة للمشتري (إذا كان أمر شراء)
+        if (buyOrder.type === 'buy') {
+            const buyTotal = buyOrder.price * amount;
+            const buyFee = buyTotal * this.tradingFee;
+            const refund = (buyOrder.price - price) * amount;
+            if (refund > 0) {
+                await Wallet.updateOne(
+                    { userId: buyOrder.userId },
+                    { $inc: { usdtBalance: refund } }
+                );
+            }
+        }
         
         // تسجيل الصفقة
         await Trade.create({
@@ -501,286 +787,730 @@ class Database {
             price: price,
             amount: amount,
             totalUsdt: totalUsdt,
-            fee: fee
+            fee: fee,
+            createdAt: new Date()
         });
         
+        // تحديث الأوامر
+        const buyRemaining = buyOrder.amount - amount;
+        const sellRemaining = sellOrder.amount - amount;
+        
+        if (buyRemaining <= 0.0001) {
+            await Order.updateOne(
+                { _id: buyOrder._id },
+                { status: 'completed', amount: 0, completedAt: new Date() }
+            );
+        } else {
+            await Order.updateOne(
+                { _id: buyOrder._id },
+                { status: 'partial', amount: buyRemaining }
+            );
+        }
+        
+        if (sellRemaining <= 0.0001) {
+            await Order.updateOne(
+                { _id: sellOrder._id },
+                { status: 'completed', amount: 0, completedAt: new Date() }
+            );
+        } else {
+            await Order.updateOne(
+                { _id: sellOrder._id },
+                { status: 'partial', amount: sellRemaining }
+            );
+        }
+        
         // تحديث إحصائيات المستخدمين
-        await User.updateOne({ userId: buyOrder.userId }, { $inc: { totalTrades: 1, totalVolume: totalUsdt } });
-        await User.updateOne({ userId: sellOrder.userId }, { $inc: { totalTrades: 1, totalVolume: totalUsdt } });
+        await User.updateOne(
+            { userId: buyOrder.userId },
+            { $inc: { totalTrades: 1, totalVolume: totalUsdt } }
+        );
+        await User.updateOne(
+            { userId: sellOrder.userId },
+            { $inc: { totalTrades: 1, totalVolume: totalUsdt } }
+        );
         
-        await this.updateDailyStats('totalTrades', 1);
-        await this.updateDailyStats('totalVolume', totalUsdt);
-        await this.updateDailyStats('totalCommission', fee);
+        // تحديث الإحصائيات اليومية
+        this.updateDailyStats('totalTrades', 1).catch(() => {});
+        this.updateDailyStats('totalVolume', totalUsdt).catch(() => {});
+        this.updateDailyStats('totalCommission', fee).catch(() => {});
         
-        this.addAuditLog(buyOrder.userId, 'trade_executed', { tradeType: 'buy', amount, price, totalUsdt });
-        this.addAuditLog(sellOrder.userId, 'trade_executed', { tradeType: 'sell', amount, price, totalUsdt });
+        // إشعارات البوت - استخدام global.botInstance
+        this.sendTradeNotification(buyOrder.userId, 'buy', amount, price).catch(() => {});
+        this.sendTradeNotification(sellOrder.userId, 'sell', amount, price).catch(() => {});
         
-        // إرسال إشعار
-        const bot = require('./server').bot;
-        if (bot) {
-            bot.telegram.sendMessage(buyOrder.userId, `✅ تم تنفيذ صفقة شراء: ${amount} CRYSTAL بسعر ${price} USDT`);
-            bot.telegram.sendMessage(sellOrder.userId, `✅ تم تنفيذ صفقة بيع: ${amount} CRYSTAL بسعر ${price} USDT`);
+        // سجلات التدقيق
+        this.addAuditLog(buyOrder.userId, 'trade_executed', {
+            type: 'buy', amount, price, totalUsdt
+        }).catch(() => {});
+        this.addAuditLog(sellOrder.userId, 'trade_executed', {
+            type: 'sell', amount, price, totalUsdt
+        }).catch(() => {});
+    }
+    
+    async sendTradeNotification(userId, type, amount, price) {
+        try {
+            if (global.botInstance) {
+                const message = type === 'buy' 
+                    ? `✅ تم شراء ${amount.toFixed(2)} CRYSTAL بسعر ${price} USDT`
+                    : `✅ تم بيع ${amount.toFixed(2)} CRYSTAL بسعر ${price} USDT`;
+                    
+                await global.botInstance.telegram.sendMessage(userId, message);
+            }
+        } catch (e) {
+            // تجاهل أخطاء الإشعارات
         }
     }
     
     // ========== إلغاء الطلب ==========
+    
     async cancelOrder(orderId, userId) {
-        const order = await Order.findOne({ _id: orderId, userId, status: 'open' });
-        if (!order) return { success: false, message: 'الطلب غير موجود أو تم تنفيذه بالفعل' };
-        
-        // إعادة المبلغ المجمد عند إلغاء طلب شراء
-        if (order.type === 'buy') {
-            await Wallet.updateOne({ userId }, { $inc: { usdtBalance: order.totalUsdt } });
-        }
-        
-        await Order.updateOne({ _id: orderId }, { status: 'cancelled' });
-        await this.addAuditLog(userId, 'cancel_order', { orderId });
-        
-        return { success: true, message: '✅ تم إلغاء الطلب' };
+        return this.safeDbOperation(async () => {
+            const order = await Order.findOne({ 
+                _id: orderId, 
+                userId: userId,
+                status: { $in: ['open', 'partial'] }
+            });
+            
+            if (!order) {
+                return { success: false, message: '⚠️ الطلب غير موجود أو تم تنفيذه بالكامل' };
+            }
+            
+            // إرجاع الأموال المجمدة
+            if (order.type === 'buy') {
+                const refundAmount = order.amount * order.price;
+                const feeRefund = refundAmount * this.tradingFee;
+                await Wallet.updateOne(
+                    { userId },
+                    { $inc: { usdtBalance: refundAmount + feeRefund } }
+                );
+            } else if (order.type === 'sell') {
+                await Wallet.updateOne(
+                    { userId },
+                    { $inc: { crystalBalance: order.amount } }
+                );
+            }
+            
+            await Order.updateOne(
+                { _id: orderId },
+                { status: 'cancelled', cancelledAt: new Date() }
+            );
+            
+            this.addAuditLog(userId, 'cancel_order', { orderId }).catch(() => {});
+            
+            return { success: true, message: '✅ تم إلغاء الطلب بنجاح' };
+            
+        }, { success: false, message: '❌ حدث خطأ في إلغاء الطلب' });
     }
     
-    // ========== جلب الأوامر النشطة ==========
+    // ========== جلب الأوامر ==========
+    
     async getActiveOrders(type = null, limit = 50) {
-        const query = { status: 'open' };
-        if (type) query.type = type;
-        
-        const orders = await Order.find(query)
-            .sort({ price: type === 'buy' ? -1 : 1 })
-            .limit(limit)
-            .lean();
-        
-        // جلب أسماء المستخدمين
-        const users = await User.find({ userId: { $in: orders.map(o => o.userId) } });
-        const userMap = {};
-        users.forEach(u => userMap[u.userId] = u);
-        
-        return orders.map(order => ({
-            ...order,
-            username: userMap[order.userId]?.firstName || userMap[order.userId]?.username || `مستخدم ${order.userId}`,
-            isAdmin: userMap[order.userId]?.isAdmin || false
-        }));
+        try {
+            const query = { status: { $in: ['open', 'partial'] } };
+            if (type) query.type = type;
+            
+            const orders = await Order.find(query)
+                .sort({ price: type === 'buy' ? -1 : 1, createdAt: -1 })
+                .limit(Math.min(limit, 100))
+                .lean();
+            
+            // تجميع الأوامر حسب السعر
+            const aggregatedOrders = [];
+            const priceMap = new Map();
+            
+            for (const order of orders) {
+                const key = `${order.price}_${order.type}`;
+                if (priceMap.has(key)) {
+                    const existing = priceMap.get(key);
+                    existing.amount += order.amount;
+                    existing.totalUsdt += order.totalUsdt;
+                    existing.orderCount++;
+                } else {
+                    priceMap.set(key, {
+                        ...order,
+                        orderCount: 1
+                    });
+                    aggregatedOrders.push(priceMap.get(key));
+                }
+            }
+            
+            return aggregatedOrders.slice(0, limit);
+            
+        } catch (e) {
+            console.error('getActiveOrders error:', e.message);
+            return [];
+        }
     }
     
     async getUserOrders(userId) {
-        return await Order.find({ userId, status: 'open' }).sort({ createdAt: -1 });
+        try {
+            return await Order.find({ 
+                userId, 
+                status: { $in: ['open', 'partial'] } 
+            }).sort({ createdAt: -1 }).limit(50);
+        } catch (e) {
+            return [];
+        }
     }
     
     async getUserTradeHistory(userId, limit = 50) {
-        return await Trade.find({
-            $or: [{ buyerId: userId }, { sellerId: userId }]
-        }).sort({ createdAt: -1 }).limit(limit);
+        try {
+            return await Trade.find({
+                $or: [{ buyerId: userId }, { sellerId: userId }]
+            }).sort({ createdAt: -1 }).limit(Math.min(limit, 100));
+        } catch (e) {
+            return [];
+        }
     }
     
     // ========== الإيداع والسحب ==========
+    
     async requestDeposit(userId, amount, currency, network) {
-        if (amount < 1) return { success: false, message: '⚠️ الحد الأدنى للإيداع هو 1 دولار' };
-        
-        const wallet = await this.getUserWallet(userId);
-        let address;
-        switch(network) {
-            case 'bnb': address = wallet.bnbAddress; break;
-            case 'polygon': address = wallet.polygonAddress; break;
-            case 'solana': address = wallet.solanaAddress; break;
-            case 'aptos': address = wallet.aptosAddress; break;
-            default: return { success: false, message: 'شبكة غير مدعومة' };
+        try {
+            if (amount < 1) {
+                return { success: false, message: '⚠️ الحد الأدنى للإيداع هو 1 USDT' };
+            }
+            
+            const wallet = await this.getUserWallet(userId);
+            let address;
+            
+            switch(network) {
+                case 'bnb': address = wallet.bnbAddress; break;
+                case 'polygon': address = wallet.polygonAddress; break;
+                case 'solana': address = wallet.solanaAddress; break;
+                case 'aptos': address = wallet.aptosAddress; break;
+                default: return { success: false, message: '⚠️ شبكة غير مدعومة' };
+            }
+            
+            const request = await DepositRequest.create({
+                userId,
+                amount,
+                currency: 'USDT',
+                network,
+                address,
+                status: 'pending',
+                createdAt: new Date()
+            });
+            
+            return { 
+                success: true, 
+                requestId: request._id, 
+                address, 
+                message: `📤 يرجى إرسال ${amount} USDT عبر شبكة ${network} إلى العنوان:\n\`${address}\`` 
+            };
+            
+        } catch (e) {
+            return { success: false, message: '❌ حدث خطأ في طلب الإيداع' };
         }
-        
-        const request = await DepositRequest.create({ userId, amount, currency: 'USDT', network, address });
-        return { success: true, requestId: request._id, address, message: `📤 طلب إيداع ${amount} USDT\n🌐 الشبكة: ${network}\n📤 العنوان: ${address}` };
     }
 
     async confirmDeposit(requestId, transactionHash, adminId) {
-        const request = await DepositRequest.findOne({ _id: requestId, status: 'pending' });
-        if (!request) return { success: false, message: 'الطلب غير موجود' };
-        
-        await DepositRequest.updateOne({ _id: requestId }, { status: 'completed', transactionHash, completedAt: new Date(), verifiedBy: adminId });
-        await Wallet.updateOne({ userId: request.userId }, { $inc: { usdtBalance: request.amount } });
-        return { success: true, message: `✅ تم إضافة ${request.amount} USDT إلى رصيدك` };
+        try {
+            const request = await DepositRequest.findOne({ 
+                _id: requestId, 
+                status: 'pending' 
+            });
+            
+            if (!request) {
+                return { success: false, message: 'الطلب غير موجود' };
+            }
+            
+            await DepositRequest.updateOne(
+                { _id: requestId },
+                { 
+                    status: 'completed', 
+                    transactionHash, 
+                    completedAt: new Date(), 
+                    verifiedBy: adminId 
+                }
+            );
+            
+            await Wallet.updateOne(
+                { userId: request.userId },
+                { $inc: { usdtBalance: request.amount } }
+            );
+            
+            // إشعار المستخدم
+            this.sendTradeNotification(
+                request.userId, 
+                'deposit', 
+                request.amount, 
+                0
+            ).catch(() => {});
+            
+            return { 
+                success: true, 
+                message: `✅ تم إيداع ${request.amount} USDT إلى حساب المستخدم` 
+            };
+            
+        } catch (e) {
+            return { success: false, message: '❌ حدث خطأ في تأكيد الإيداع' };
+        }
     }
 
     async requestWithdraw(userId, amount, currency, network, address, twoFACode = null) {
-        const wallet = await this.getUserWallet(userId);
-        if (wallet.usdtBalance < amount) return { success: false, message: `❌ رصيد غير كافٍ! لديك ${wallet.usdtBalance.toFixed(2)} USDT` };
-        if (amount < 5) return { success: false, message: '⚠️ الحد الأدنى للسحب هو 5 دولار' };
-        
-        const user = await User.findOne({ userId });
-        if (user.twoFAEnabled && twoFACode) {
-            const verified = await this.verify2FACode(userId, twoFACode);
-            if (!verified) return { success: false, message: '❌ رمز التحقق غير صحيح' };
+        try {
+            const wallet = await this.getUserWallet(userId);
+            
+            if (amount < 5) {
+                return { success: false, message: '⚠️ الحد الأدنى للسحب هو 5 USDT' };
+            }
+            
+            // التحقق من 2FA
+            const user = await User.findOne({ userId });
+            if (user && user.twoFAEnabled) {
+                if (!twoFACode) {
+                    return { success: false, message: '⚠️ يرجى إدخال رمز التحقق بخطوتين' };
+                }
+                const verified = await this.verify2FACode(userId, twoFACode);
+                if (!verified) {
+                    return { success: false, message: '❌ رمز التحقق غير صحيح' };
+                }
+            }
+            
+            const platformFee = this.platformWithdrawFee;
+            const networkFee = this.getNetworkFee(network);
+            const totalDeduct = amount + platformFee + networkFee;
+            
+            if (wallet.usdtBalance < totalDeduct) {
+                return { 
+                    success: false, 
+                    message: `❌ رصيد غير كافٍ! تحتاج ${totalDeduct.toFixed(2)} USDT (المبلغ + الرسوم)` 
+                };
+            }
+            
+            const request = await WithdrawRequest.create({
+                userId,
+                amount,
+                currency: 'USDT',
+                network,
+                address,
+                fee: platformFee,
+                networkFee,
+                status: amount > 1000 ? 'pending' : 'processing'
+            });
+            
+            // سحب تلقائي للمبالغ الصغيرة
+            if (amount <= 1000) {
+                await Wallet.updateOne(
+                    { userId },
+                    { $inc: { usdtBalance: -totalDeduct } }
+                );
+            }
+            
+            return { 
+                success: true, 
+                requestId: request._id, 
+                message: `✅ تم استلام طلب سحب ${amount} USDT${amount > 1000 ? ' (يتطلب موافقة)' : ''}` 
+            };
+            
+        } catch (e) {
+            return { success: false, message: '❌ حدث خطأ في طلب السحب' };
         }
-        
-        const platformFee = this.platformWithdrawFee;
-        const networkFee = this.getNetworkFee(network);
-        const totalDeduct = amount + platformFee + networkFee;
-        
-        if (wallet.usdtBalance < totalDeduct) {
-            return { success: false, message: `❌ رصيد غير كافٍ للرسوم! تحتاج ${totalDeduct.toFixed(2)} USDT` };
-        }
-        
-        const request = await WithdrawRequest.create({ 
-            userId, amount, currency: 'USDT', network, address, 
-            fee: platformFee, networkFee, status: amount > 1000 ? 'pending' : 'completed'
-        });
-        
-        if (amount <= 1000) {
-            await Wallet.updateOne({ userId }, { $inc: { usdtBalance: -totalDeduct } });
-        }
-        
-        return { success: true, requestId: request._id, message: `✅ تم استلام طلب سحب ${amount} USDT` };
     }
 
     async confirmWithdraw(requestId, transactionHash, adminId) {
-        const request = await WithdrawRequest.findOne({ _id: requestId, status: 'pending' });
-        if (!request) return { success: false, message: 'الطلب غير موجود' };
-        
-        const totalDeduct = request.amount + request.fee + (request.networkFee || 0);
-        await Wallet.updateOne({ userId: request.userId }, { $inc: { usdtBalance: -totalDeduct } });
-        await WithdrawRequest.updateOne({ _id: requestId }, { status: 'completed', transactionHash, approvedBy: adminId, approvedAt: new Date() });
-        
-        return { success: true, message: `✅ تمت الموافقة على سحب ${request.amount} USDT` };
+        try {
+            const request = await WithdrawRequest.findOne({ 
+                _id: requestId, 
+                status: { $in: ['pending', 'processing'] } 
+            });
+            
+            if (!request) {
+                return { success: false, message: 'الطلب غير موجود' };
+            }
+            
+            const totalDeduct = request.amount + request.fee + (request.networkFee || 0);
+            
+            await Wallet.updateOne(
+                { userId: request.userId },
+                { $inc: { usdtBalance: -totalDeduct } }
+            );
+            
+            await WithdrawRequest.updateOne(
+                { _id: requestId },
+                { 
+                    status: 'completed', 
+                    transactionHash, 
+                    approvedBy: adminId, 
+                    approvedAt: new Date() 
+                }
+            );
+            
+            // إشعار المستخدم
+            this.sendTradeNotification(
+                request.userId, 
+                'withdraw', 
+                request.amount, 
+                0
+            ).catch(() => {});
+            
+            return { 
+                success: true, 
+                message: `✅ تم تأكيد سحب ${request.amount} USDT` 
+            };
+            
+        } catch (e) {
+            return { success: false, message: '❌ حدث خطأ في تأكيد السحب' };
+        }
     }
 
     // ========== KYC ==========
+    
     async createKycRequest(userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city, passportPhotoFileId, personalPhotoFileId, bankName, bankAccountNumber, bankAccountName) {
-        const existing = await KycRequest.findOne({ userId });
-        if (existing && existing.status === 'pending') return { success: false, message: '⚠️ لديك طلب قيد المراجعة' };
-        if (existing && existing.status === 'approved') return { success: false, message: '✅ حسابك موثق بالفعل' };
-        
-        const kycRequest = await KycRequest.create({
-            userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city,
-            passportPhotoFileId, personalPhotoFileId, bankName, bankAccountNumber, bankAccountName, status: 'pending'
-        });
-        return { success: true, requestId: kycRequest._id, message: `✅ تم إرسال طلب التوثيق!` };
+        try {
+            const existing = await KycRequest.findOne({ userId });
+            
+            if (existing && existing.status === 'pending') {
+                return { success: false, message: '⚠️ لديك طلب قيد المراجعة' };
+            }
+            if (existing && existing.status === 'approved') {
+                return { success: false, message: '✅ حسابك موثق بالفعل' };
+            }
+            
+            const kycRequest = await KycRequest.create({
+                userId,
+                fullName,
+                passportNumber,
+                nationalId,
+                phoneNumber,
+                email,
+                country,
+                city,
+                passportPhotoFileId,
+                personalPhotoFileId,
+                bankName,
+                bankAccountNumber,
+                bankAccountName,
+                status: 'pending',
+                createdAt: new Date()
+            });
+            
+            return { 
+                success: true, 
+                requestId: kycRequest._id, 
+                message: '✅ تم إرسال طلب التوثيق بنجاح! سنقوم بمراجعته في أقرب وقت' 
+            };
+            
+        } catch (e) {
+            return { success: false, message: '❌ حدث خطأ في إرسال طلب التوثيق' };
+        }
     }
 
     async approveKyc(requestId, adminId) {
-        const request = await KycRequest.findOne({ _id: requestId, status: 'pending' });
-        if (!request) return { success: false, message: 'الطلب غير موجود' };
-        
-        await KycRequest.updateOne({ _id: requestId }, { status: 'approved', approvedBy: adminId, approvedAt: new Date() });
-        await User.updateOne({ userId: request.userId }, { isVerified: true });
-        await this.updateDailyStats('verifiedUsers', 1);
-        return { success: true, message: `✅ تم توثيق الحساب بنجاح!` };
+        try {
+            const request = await KycRequest.findOne({ 
+                _id: requestId, 
+                status: 'pending' 
+            });
+            
+            if (!request) {
+                return { success: false, message: 'الطلب غير موجود' };
+            }
+            
+            await KycRequest.updateOne(
+                { _id: requestId },
+                { 
+                    status: 'approved', 
+                    approvedBy: adminId, 
+                    approvedAt: new Date() 
+                }
+            );
+            
+            await User.updateOne(
+                { userId: request.userId },
+                { isVerified: true }
+            );
+            
+            this.updateDailyStats('verifiedUsers', 1).catch(() => {});
+            
+            // إشعار المستخدم
+            this.sendTradeNotification(
+                request.userId, 
+                'kyc_approved', 
+                0, 
+                0
+            ).catch(() => {});
+            
+            return { success: true, message: '✅ تم توثيق الحساب بنجاح' };
+            
+        } catch (e) {
+            return { success: false, message: '❌ حدث خطأ في توثيق الحساب' };
+        }
     }
 
     async rejectKyc(requestId, adminId, reason) {
-        const request = await KycRequest.findOne({ _id: requestId, status: 'pending' });
-        if (!request) return { success: false, message: 'الطلب غير موجود' };
-        
-        await KycRequest.updateOne({ _id: requestId }, { status: 'rejected', rejectionReason: reason, approvedBy: adminId });
-        return { success: true, message: `❌ تم رفض طلب التوثيق!\nالسبب: ${reason}` };
+        try {
+            const request = await KycRequest.findOne({ 
+                _id: requestId, 
+                status: 'pending' 
+            });
+            
+            if (!request) {
+                return { success: false, message: 'الطلب غير موجود' };
+            }
+            
+            await KycRequest.updateOne(
+                { _id: requestId },
+                { 
+                    status: 'rejected', 
+                    rejectionReason: reason, 
+                    approvedBy: adminId 
+                }
+            );
+            
+            return { 
+                success: true, 
+                message: `❌ تم رفض طلب التوثيق\nالسبب: ${reason}` 
+            };
+            
+        } catch (e) {
+            return { success: false, message: '❌ حدث خطأ في رفض الطلب' };
+        }
     }
 
     async getKycStatus(userId) {
-        const request = await KycRequest.findOne({ userId });
-        if (!request) return { status: 'not_submitted' };
-        return { status: request.status, rejectionReason: request.rejectionReason };
+        try {
+            const request = await KycRequest.findOne({ userId }).sort({ createdAt: -1 });
+            if (!request) return { status: 'not_submitted' };
+            return { 
+                status: request.status, 
+                rejectionReason: request.rejectionReason,
+                fullName: request.fullName,
+                submittedAt: request.createdAt
+            };
+        } catch (e) {
+            return { status: 'not_submitted' };
+        }
     }
 
     // ========== الإحالات ==========
+    
     async getReferralData(userId) {
-        const user = await User.findOne({ userId });
-        if (!user) return { referralCount: 0, referralEarnings: 0, referralCommissionRate: this.referralCommissionRate, referrals: [] };
-        return {
-            referralCount: user.referralCount || 0,
-            referralEarnings: user.referralEarnings || 0,
-            referralCommissionRate: user.referralCommissionRate || this.referralCommissionRate,
-            referrals: user.referrals || [],
-            referralLink: `https://t.me/${process.env.BOT_USERNAME}?start=${userId}`
-        };
+        try {
+            const user = await User.findOne({ userId });
+            if (!user) {
+                return { 
+                    referralCount: 0, 
+                    referralEarnings: 0, 
+                    referralCommissionRate: this.referralCommissionRate,
+                    referrals: [],
+                    referralLink: `https://t.me/${process.env.BOT_USERNAME || 'TradeCrystalBot'}?start=${userId}`
+                };
+            }
+            
+            return {
+                referralCount: user.referralCount || 0,
+                referralEarnings: user.referralEarnings || 0,
+                referralCommissionRate: user.referralCommissionRate || this.referralCommissionRate,
+                referrals: user.referrals || [],
+                referralLink: `https://t.me/${process.env.BOT_USERNAME || 'TradeCrystalBot'}?start=${userId}`
+            };
+        } catch (e) {
+            return { 
+                referralCount: 0, 
+                referralEarnings: 0, 
+                referralCommissionRate: this.referralCommissionRate,
+                referrals: [],
+                referralLink: ''
+            };
+        }
     }
 
     async transferReferralEarningsToWallet(userId) {
-        const user = await User.findOne({ userId });
-        if (!user) return { success: false, message: 'المستخدم غير موجود' };
-        const referralEarnings = user.referralEarnings || 0;
-        if (referralEarnings <= 0) return { success: false, message: '⚠️ لا يوجد رصيد إحالات للتحويل' };
-        
-        await Wallet.updateOne({ userId }, { $inc: { usdtBalance: referralEarnings } });
-        await User.updateOne({ userId }, { $set: { referralEarnings: 0 } });
-        return { success: true, amount: referralEarnings, message: `✅ تم تحويل ${referralEarnings.toFixed(2)} USDT إلى محفظتك` };
+        try {
+            const user = await User.findOne({ userId });
+            if (!user) {
+                return { success: false, message: 'المستخدم غير موجود' };
+            }
+            
+            const referralEarnings = user.referralEarnings || 0;
+            if (referralEarnings <= 0) {
+                return { success: false, message: '⚠️ لا يوجد رصيد إحالات للتحويل' };
+            }
+            
+            await Wallet.updateOne(
+                { userId },
+                { $inc: { usdtBalance: referralEarnings } }
+            );
+            
+            await User.updateOne(
+                { userId },
+                { $set: { referralEarnings: 0 } }
+            );
+            
+            return { 
+                success: true, 
+                amount: referralEarnings, 
+                message: `✅ تم تحويل ${referralEarnings.toFixed(2)} USDT إلى محفظتك` 
+            };
+            
+        } catch (e) {
+            return { success: false, message: '❌ حدث خطأ في التحويل' };
+        }
     }
 
     // ========== الإحصائيات ==========
+    
     async getMarketStats() {
-        const marketPrice = await MarketPrice.findOne({ symbol: 'CRYSTAL/USDT' });
-        const buyOrders = await Order.countDocuments({ type: 'buy', status: 'open' });
-        const sellOrders = await Order.countDocuments({ type: 'sell', status: 'open' });
-        const totalTrades = await Trade.countDocuments();
-        const totalVolume = await Trade.aggregate([{ $group: { _id: null, total: { $sum: '$totalUsdt' } } }]);
-        
-        return {
-            price: marketPrice?.price || 0.002,
-            change24h: marketPrice?.change24h || 0,
-            volume24h: marketPrice?.volume24h || 0,
-            high24h: marketPrice?.high24h || 0.002,
-            low24h: marketPrice?.low24h || 0.002,
-            buyOrders,
-            sellOrders,
-            totalTrades,
-            totalVolume: totalVolume[0]?.total || 0
-        };
+        try {
+            const marketPrice = await MarketPrice.findOne({ symbol: 'CRYSTAL/USDT' });
+            const buyOrders = await Order.countDocuments({ type: 'buy', status: { $in: ['open', 'partial'] } });
+            const sellOrders = await Order.countDocuments({ type: 'sell', status: { $in: ['open', 'partial'] } });
+            const totalTrades = await Trade.countDocuments();
+            
+            const totalVolumeResult = await Trade.aggregate([
+                { $group: { _id: null, total: { $sum: '$totalUsdt' } } }
+            ]);
+            
+            return {
+                price: marketPrice?.price || 0.002,
+                change24h: marketPrice?.change24h || 0,
+                volume24h: marketPrice?.volume24h || 0,
+                high24h: marketPrice?.high24h || 0.002,
+                low24h: marketPrice?.low24h || 0.002,
+                buyOrders,
+                sellOrders,
+                totalTrades,
+                totalVolume: totalVolumeResult[0]?.total || 0,
+                lastUpdated: marketPrice?.lastUpdated || new Date()
+            };
+        } catch (e) {
+            return {
+                price: 0.002,
+                change24h: 0,
+                volume24h: 0,
+                high24h: 0.002,
+                low24h: 0.002,
+                buyOrders: 0,
+                sellOrders: 0,
+                totalTrades: 0,
+                totalVolume: 0,
+                lastUpdated: new Date()
+            };
+        }
     }
 
     async getLeaderboard(limit = 15) {
-        return await User.find({}).sort({ totalVolume: -1 }).limit(limit).select('userId firstName username totalVolume totalTrades rating');
+        try {
+            return await User.find({})
+                .sort({ totalVolume: -1 })
+                .limit(Math.min(limit, 50))
+                .select('userId firstName username totalVolume totalTrades');
+        } catch (e) {
+            return [];
+        }
     }
 
     async updateDailyStats(type, value = 1) {
-        const today = new Date().toISOString().split('T')[0];
-        let s = await DailyStats.findOne({ date: today });
-        if (!s) s = await DailyStats.create({ date: today });
-        
-        const update = {};
-        if (type === 'totalUsers') update.totalUsers = (s.totalUsers || 0) + value;
-        if (type === 'newUsers') update.newUsers = (s.newUsers || 0) + value;
-        if (type === 'verifiedUsers') update.verifiedUsers = (s.verifiedUsers || 0) + value;
-        if (type === 'totalTrades') update.totalTrades = (s.totalTrades || 0) + value;
-        if (type === 'totalVolume') update.totalVolume = (s.totalVolume || 0) + value;
-        if (type === 'totalCommission') update.totalCommission = (s.totalCommission || 0) + value;
-        if (type === 'activeOffers') update.activeOffers = (s.activeOffers || 0) + value;
-        if (type === 'pendingKyc') update.pendingKyc = (s.pendingKyc || 0) + value;
-        
-        await DailyStats.updateOne({ date: today }, { $inc: update });
-    }
-
-    async updateBankDetails(userId, bankName, accountNumber, accountName) {
-        await User.updateOne({ userId }, { bankName, bankAccountNumber: accountNumber, bankAccountName: accountName });
-        return true;
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            let stats = await DailyStats.findOne({ date: today });
+            
+            if (!stats) {
+                stats = await DailyStats.create({ 
+                    date: today,
+                    totalUsers: 0,
+                    newUsers: 0,
+                    verifiedUsers: 0,
+                    totalTrades: 0,
+                    totalVolume: 0,
+                    totalCommission: 0,
+                    activeOffers: 0,
+                    pendingKyc: 0
+                });
+            }
+            
+            const update = {};
+            if (type === 'totalUsers') update.totalUsers = (stats.totalUsers || 0) + value;
+            if (type === 'newUsers') update.newUsers = (stats.newUsers || 0) + value;
+            if (type === 'verifiedUsers') update.verifiedUsers = (stats.verifiedUsers || 0) + value;
+            if (type === 'totalTrades') update.totalTrades = (stats.totalTrades || 0) + value;
+            if (type === 'totalVolume') update.totalVolume = (stats.totalVolume || 0) + value;
+            if (type === 'totalCommission') update.totalCommission = (stats.totalCommission || 0) + value;
+            if (type === 'activeOffers') update.activeOffers = (stats.activeOffers || 0) + value;
+            if (type === 'pendingKyc') update.pendingKyc = (stats.pendingKyc || 0) + value;
+            
+            if (Object.keys(update).length > 0) {
+                await DailyStats.updateOne({ date: today }, { $set: update });
+            }
+        } catch (e) {
+            // تجاهل أخطاء الإحصائيات
+        }
     }
 
     // ========== الدردشة ==========
+    
     async sendMessage(senderId, receiverId, message, imageFileId = null) {
-        const chatMessage = await ChatMessage.create({
-            chatType: receiverId ? 'trade' : 'global',
-            senderId, receiverId, message,
-            messageType: imageFileId ? 'image' : 'text',
-            imageFileId: imageFileId || '',
-            isRead: false
-        });
-        return chatMessage;
+        try {
+            const chatMessage = await ChatMessage.create({
+                chatType: receiverId ? 'trade' : 'global',
+                senderId,
+                receiverId,
+                message: message || '',
+                messageType: imageFileId ? 'image' : 'text',
+                imageFileId: imageFileId || '',
+                isRead: false,
+                createdAt: new Date()
+            });
+            
+            return chatMessage;
+        } catch (e) {
+            return null;
+        }
     }
 
     async getGlobalMessages(limit = 50) {
-        return await ChatMessage.find({ chatType: 'global' }).sort({ createdAt: -1 }).limit(limit).sort({ createdAt: 1 });
+        try {
+            const messages = await ChatMessage.find({ chatType: 'global' })
+                .sort({ createdAt: -1 })
+                .limit(Math.min(limit, 100));
+            
+            return messages.reverse();
+        } catch (e) {
+            return [];
+        }
     }
 
-    // ========== الأدمن ==========
+    // ========== صلاحيات الأدمن ==========
+    
     async isAdmin(userId) {
-        const user = await User.findOne({ userId });
-        return user?.isAdmin || false;
+        try {
+            const user = await User.findOne({ userId });
+            return user?.isAdmin || false;
+        } catch (e) {
+            return false;
+        }
     }
 
     async getPendingKycRequests() {
-        return await KycRequest.find({ status: 'pending' }).sort({ createdAt: -1 });
+        try {
+            return await KycRequest.find({ status: 'pending' })
+                .sort({ createdAt: -1 })
+                .limit(50);
+        } catch (e) {
+            return [];
+        }
     }
 
     async getPendingWithdraws() {
-        return await WithdrawRequest.find({ status: 'pending' }).sort({ createdAt: -1 });
+        try {
+            return await WithdrawRequest.find({ status: 'pending' })
+                .sort({ createdAt: -1 })
+                .limit(50);
+        } catch (e) {
+            return [];
+        }
     }
 
     async getPendingDeposits() {
-        return await DepositRequest.find({ status: 'pending' }).sort({ createdAt: -1 });
+        try {
+            return await DepositRequest.find({ status: 'pending' })
+                .sort({ createdAt: -1 })
+                .limit(50);
+        } catch (e) {
+            return [];
+        }
     }
 }
 
