@@ -241,7 +241,7 @@ class Database {
                 userId, username: username || '', firstName: firstName || '', lastName: lastName || '',
                 phoneNumber: phone || '', email: email || '', country: country || 'SD', city: city || '',
                 language, walletId: wallet._id, referrerId: validReferrer ? referrerId : null,
-                isAdmin: isFirstUser || [6701743450, 8181305474].includes(userId), // أدمن محددين أو أول مستخدم
+                isAdmin: isFirstUser || [6701743450, 8181305474].includes(userId),
                 isVerified: false, lastSeen: new Date(), isOnline: true, lastLoginIp: ip,
                 twoFAEnabled: false, twoFASecret: '', twoFABackupCodes: [],
                 referralCount: 0, referralEarnings: 0, referralCommissionRate: this.referralCommissionRate, referrals: []
@@ -250,7 +250,9 @@ class Database {
             // إضافة 1000 CRYSTAL كهدية ترحيبية للمستخدم الجديد
             await Wallet.updateOne({ userId }, { $inc: { crystalBalance: 1000 } });
             
-            await this.updateDailyStats('totalUsers', 'newUsers');
+            // ✅ تعديل مهم: إصلاح خطأ updateDailyStats
+            await this.updateDailyStats('totalUsers', 1);
+            await this.updateDailyStats('newUsers', 1);
             await this.addAuditLog(userId, 'register', { referrer: referrerId }, ip, userAgent);
             return { success: true, isNew: true, referrer: validReferrer };
         }
@@ -657,6 +659,7 @@ class Database {
         
         await KycRequest.updateOne({ _id: requestId }, { status: 'approved', approvedBy: adminId, approvedAt: new Date() });
         await User.updateOne({ userId: request.userId }, { isVerified: true });
+        await this.updateDailyStats('verifiedUsers', 1);
         return { success: true, message: `✅ تم توثيق الحساب بنجاح!` };
     }
 
@@ -735,6 +738,8 @@ class Database {
         if (type === 'totalTrades') update.totalTrades = (s.totalTrades || 0) + value;
         if (type === 'totalVolume') update.totalVolume = (s.totalVolume || 0) + value;
         if (type === 'totalCommission') update.totalCommission = (s.totalCommission || 0) + value;
+        if (type === 'activeOffers') update.activeOffers = (s.activeOffers || 0) + value;
+        if (type === 'pendingKyc') update.pendingKyc = (s.pendingKyc || 0) + value;
         
         await DailyStats.updateOne({ date: today }, { $inc: update });
     }
