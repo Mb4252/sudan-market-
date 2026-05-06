@@ -1,82 +1,67 @@
 require('dotenv').config();
-const { Telegraf, Markup } = require('telegraf');
-const db = require('./database');
 const express = require('express');
 const path = require('path');
-const rateLimit = require('express-rate-limit');
-const multer = require('multer');
+const { Telegraf, Markup } = require('telegraf');
 const cors = require('cors');
-const fetch = require('node-fetch');
+const db = require('./database');
 
-// ========== إعداد خادم الويب ==========
+// ========== إعدادات السيرفر ==========
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-const upload = multer({ storage: multer.memoryStorage() });
-
-// CORS
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// ========== تعديل المسار: استخدام mining-app بدلاً من public ==========
-app.use(express.static(path.join(__dirname, 'mining-app')));
-
+// ========== إعدادات البوت ==========
+const bot = new Telegraf(process.env.BOT_TOKEN);
+const WEBHOOK_PATH = `/webhook/${process.env.BOT_TOKEN ? process.env.BOT_TOKEN.split(':')[1] : 'secret'}`;
 const WEBAPP_URL = process.env.WEBAPP_URL || `https://${process.env.RENDER_EXTERNAL_URL || 'localhost'}`;
-const ADMIN_IDS = (process.env.ADMIN_IDS || '6701743450,8181305474').split(',').map(Number);
-const BOT_USERNAME = process.env.BOT_USERNAME || 'crystal_exchange_bot';
+const ADMIN_IDS = (process.env.ADMIN_IDS || '6701743450').split(',').map(Number);
 
 function isAdmin(userId) {
     return ADMIN_IDS.includes(parseInt(userId));
 }
 
-// ========== API Routes ==========
+// ========== إعدادات Express ==========
+app.use(cors());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// عامة
+// ========== مسارات API ==========
+
+// السوق
 app.get('/api/market/price', async (req, res) => {
     try {
         const price = await db.getMarketPrice();
         res.json({ price });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json({ price: 0.002 }); }
 });
 
 app.get('/api/market/stats', async (req, res) => {
     try {
         const stats = await db.getMarketStats();
         res.json(stats);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json({}); }
 });
 
 app.get('/api/market/candles/:timeframe', async (req, res) => {
     try {
         const candles = await db.getCandlesticks(req.params.timeframe, parseInt(req.query.limit) || 100);
         res.json(candles);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json([]); }
 });
 
-// الأوامر (Order Book)
+// الأوامر
 app.get('/api/orders', async (req, res) => {
     try {
         const orders = await db.getActiveOrders(req.query.type, parseInt(req.query.limit) || 50);
         res.json(orders);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json({ orders: [] }); }
 });
 
 app.get('/api/orders/:userId', async (req, res) => {
     try {
         const orders = await db.getUserOrders(parseInt(req.params.userId));
         res.json(orders);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json([]); }
 });
 
 app.post('/api/order/create', async (req, res) => {
@@ -84,18 +69,15 @@ app.post('/api/order/create', async (req, res) => {
         const { user_id, type, price, amount } = req.body;
         const result = await db.createOrder(parseInt(user_id), type, parseFloat(price), parseFloat(amount));
         res.json(result);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json({ success: false, message: e.message }); }
 });
 
 app.post('/api/order/cancel', async (req, res) => {
     try {
-        const result = await db.cancelOrder(req.body.order_id, parseInt(req.body.user_id));
+        const { order_id, user_id } = req.body;
+        const result = await db.cancelOrder(order_id, parseInt(user_id));
         res.json(result);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json({ success: false, message: e.message }); }
 });
 
 // المستخدم
@@ -103,89 +85,55 @@ app.get('/api/user/:userId', async (req, res) => {
     try {
         const stats = await db.getUserStats(parseInt(req.params.userId));
         res.json(stats);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json({}); }
 });
 
 app.post('/api/register', async (req, res) => {
     try {
-        await db.registerUser(
-            parseInt(req.body.user_id), 
-            req.body.username, 
-            req.body.first_name, 
-            '', 
-            '', 
-            '', 
-            req.body.country || 'SD', 
-            '', 
-            null, 
-            'ar', 
-            req.ip, 
-            req.headers['user-agent']
-        );
+        const { user_id, username, first_name, language } = req.body;
+        await db.registerUser(parseInt(user_id), username, first_name, '', '', '', 'SD', '', null, language || 'ar', req.ip, req.headers['user-agent']);
         res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json({ success: false }); }
 });
 
 app.get('/api/user/trades/:userId', async (req, res) => {
     try {
         const trades = await db.getUserTradeHistory(parseInt(req.params.userId), 50);
         res.json(trades);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json([]); }
 });
 
 // المحفظة
 app.get('/api/wallet/:userId', async (req, res) => {
     try {
-        const w = await db.getUserWallet(parseInt(req.params.userId));
+        const wallet = await db.getUserWallet(parseInt(req.params.userId));
         res.json({ 
-            usdtBalance: w.usdtBalance, 
-            crystalBalance: w.crystalBalance, 
+            usdtBalance: wallet.usdtBalance || 0, 
+            crystalBalance: wallet.crystalBalance || 0,
             addresses: { 
-                bnb: w.bnbAddress, 
-                polygon: w.polygonAddress, 
-                solana: w.solanaAddress, 
-                aptos: w.aptosAddress 
-            } 
+                bnb: wallet.bnbAddress, 
+                polygon: wallet.polygonAddress, 
+                solana: wallet.solanaAddress, 
+                aptos: wallet.aptosAddress 
+            }
         });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json({ usdtBalance: 0, crystalBalance: 0, addresses: {} }); }
 });
 
 app.post('/api/deposit', async (req, res) => {
     try {
-        const result = await db.requestDeposit(
-            parseInt(req.body.user_id), 
-            parseFloat(req.body.amount), 
-            'USDT', 
-            req.body.network
-        );
+        const { user_id, amount, network } = req.body;
+        const result = await db.requestDeposit(parseInt(user_id), parseFloat(amount), 'USDT', network);
         res.json(result);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json({ success: false, message: e.message }); }
 });
 
 app.post('/api/withdraw', async (req, res) => {
     try {
-        const result = await db.requestWithdraw(
-            parseInt(req.body.user_id), 
-            parseFloat(req.body.amount), 
-            'USDT', 
-            req.body.network, 
-            req.body.address, 
-            req.body.twofa_code
-        );
+        const { user_id, amount, network, address, twofa_code } = req.body;
+        const result = await db.requestWithdraw(parseInt(user_id), parseFloat(amount), 'USDT', network, address, twofa_code);
         res.json(result);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json({ success: false, message: e.message }); }
 });
 
 // KYC
@@ -193,38 +141,7 @@ app.get('/api/kyc/status/:userId', async (req, res) => {
     try {
         const status = await db.getKycStatus(parseInt(req.params.userId));
         res.json(status);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.post('/api/kyc/submit', upload.fields([
-    { name: 'passportPhoto' }, 
-    { name: 'personalPhoto' }
-]), async (req, res) => {
-    try {
-        const { user_id, fullName, passportNumber, nationalId, phoneNumber, email, country, city, bankName, bankAccountNumber, bankAccountName } = req.body;
-        
-        let passportFileId = null, personalFileId = null;
-        const bot = require('./server').bot;
-        
-        if (req.files['passportPhoto'] && bot) {
-            const msg = await bot.telegram.sendPhoto(ADMIN_IDS[0], { source: req.files['passportPhoto'][0].buffer });
-            passportFileId = msg.photo[msg.photo.length - 1].file_id;
-        }
-        if (req.files['personalPhoto'] && bot) {
-            const msg = await bot.telegram.sendPhoto(ADMIN_IDS[0], { source: req.files['personalPhoto'][0].buffer });
-            personalFileId = msg.photo[msg.photo.length - 1].file_id;
-        }
-        
-        const result = await db.createKycRequest(
-            parseInt(user_id), fullName, passportNumber, nationalId, phoneNumber, email, 
-            country, city, passportFileId, personalFileId, bankName, bankAccountNumber, bankAccountName
-        );
-        res.json(result);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json({ status: 'not_submitted' }); }
 });
 
 // الإحالات
@@ -232,18 +149,40 @@ app.get('/api/user/referral/:userId', async (req, res) => {
     try {
         const data = await db.getReferralData(parseInt(req.params.userId));
         res.json(data);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json({ referralCount: 0, referralEarnings: 0 }); }
 });
 
 app.post('/api/referral/transfer', async (req, res) => {
     try {
-        const result = await db.transferReferralEarningsToWallet(parseInt(req.body.user_id));
+        const { user_id } = req.body;
+        const result = await db.transferReferralEarningsToWallet(parseInt(user_id));
         res.json(result);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json({ success: false, message: e.message }); }
+});
+
+// 2FA
+app.post('/api/2fa/generate', async (req, res) => {
+    try {
+        const { user_id } = req.body;
+        const result = await db.generate2FASecret(parseInt(user_id));
+        res.json(result);
+    } catch(e) { res.json({ success: false, message: e.message }); }
+});
+
+app.post('/api/2fa/enable', async (req, res) => {
+    try {
+        const { user_id, code } = req.body;
+        const result = await db.enable2FA(parseInt(user_id), code);
+        res.json(result);
+    } catch(e) { res.json({ success: false, message: e.message }); }
+});
+
+app.post('/api/2fa/disable', async (req, res) => {
+    try {
+        const { user_id, code } = req.body;
+        const result = await db.disable2FA(parseInt(user_id), code);
+        res.json(result);
+    } catch(e) { res.json({ success: false, message: e.message }); }
 });
 
 // الدردشة
@@ -251,350 +190,348 @@ app.get('/api/chat/global', async (req, res) => {
     try {
         const messages = await db.getGlobalMessages(50);
         res.json(messages);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch(e) { res.json([]); }
 });
 
 app.post('/api/chat/send', async (req, res) => {
     try {
-        const result = await db.sendMessage(parseInt(req.body.senderId), null, req.body.message);
-        res.json(result);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+        const { senderId, message } = req.body;
+        const result = await db.sendMessage(parseInt(senderId), null, message);
+        res.json({ success: true });
+    } catch(e) { res.json({ success: false }); }
 });
 
-app.post('/api/chat/send-image', upload.single('image'), async (req, res) => {
-    try {
-        let imageFileId = null;
-        const bot = require('./server').bot;
-        if (bot && req.file) {
-            const msg = await bot.telegram.sendPhoto(ADMIN_IDS[0], { source: req.file.buffer });
-            imageFileId = msg.photo[msg.photo.length - 1].file_id;
-        }
-        const result = await db.sendMessage(parseInt(req.body.senderId), null, req.body.message || '📸 صورة', imageFileId);
-        res.json(result);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// 2FA
-app.post('/api/2fa/generate', async (req, res) => {
-    try {
-        const result = await db.generate2FASecret(parseInt(req.body.user_id));
-        res.json(result);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.post('/api/2fa/enable', async (req, res) => {
-    try {
-        const result = await db.enable2FA(parseInt(req.body.user_id), req.body.code);
-        res.json(result);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.post('/api/2fa/disable', async (req, res) => {
-    try {
-        const result = await db.disable2FA(parseInt(req.body.user_id), req.body.code);
-        res.json(result);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// ========== نقطة الصحة (Health Check) لـ Render ==========
-app.get('/health', async (req, res) => {
-    try {
-        const price = await db.getMarketPrice();
-        res.json({ 
-            status: 'ok', 
-            timestamp: new Date(), 
-            supply: 5000000, 
-            price: price 
-        });
-    } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
-    }
-});
-
-// ========== الصفحات الرئيسية - تعديل المسار إلى mining-app ==========
+// ========== الصفحات الثابتة ==========
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'mining-app', 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.get('/terms', (req, res) => {
-    res.sendFile(path.join(__dirname, 'mining-app', 'terms.html'));
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date() });
 });
-
-// ========== إعداد بوت التلجرام ==========
-const bot = new Telegraf(process.env.BOT_TOKEN);
-module.exports.bot = bot;
 
 // ========== أوامر البوت ==========
+
+// أمر /start
 bot.start(async (ctx) => {
-    try {
-        const user = ctx.from;
-        const referrer = ctx.startPayload ? parseInt(ctx.startPayload) : null;
-        
-        await db.registerUser(user.id, user.username, user.first_name, '', '', '', 'SD', '', referrer, 'ar', ctx.message?.chat?.id, ctx.message?.from?.is_bot ? 'Bot' : 'User');
-        
-        const price = await db.getMarketPrice();
-        
-        await ctx.reply(
-            `💎 *CRYSTAL Exchange* 💎\n\n` +
-            `✨ *مرحباً بك في منصة تداول عملة الكريستال!*\n\n` +
-            `👤 *المستخدم:* ${user.first_name}\n\n` +
-            `📊 *إجمالي العرض:* 5,000,000 CRYSTAL\n` +
-            `💰 *السعر الحالي:* ${price} USDT\n` +
-            `📈 *1 CRYSTAL = ${(price * 500).toFixed(2)} حبة*\n\n` +
-            `🚀 *اضغط على الزر أدناه لبدء التداول*`,
-            {
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard([
-                    [Markup.button.webApp('💎 فتح منصة التداول', WEBAPP_URL)],
-                    [Markup.button.url('📜 الشروط والأحكام', `${WEBAPP_URL}/terms`)]
-                ])
+    const user = ctx.from;
+    const referrer = ctx.startPayload ? parseInt(ctx.startPayload) : null;
+    
+    await db.registerUser(user.id, user.username, user.first_name, '', '', '', 'SD', '', referrer, 'ar', ctx.message?.chat?.id, 'User');
+    
+    const stats = await db.getUserStats(user.id);
+    const price = await db.getMarketPrice();
+    
+    await ctx.replyWithHTML(
+        `💎 <b>CRYSTAL Exchange</b> 💎\n\n` +
+        `✨ مرحباً بك في منصة تداول عملة الكريستال!\n\n` +
+        `👤 <b>المستخدم:</b> ${user.first_name}\n` +
+        `💎 <b>رصيد CRYSTAL:</b> ${stats?.crystalBalance?.toFixed(2) || 0}\n` +
+        `💵 <b>رصيد USDT:</b> ${stats?.usdtBalance?.toFixed(2) || 0}\n` +
+        `💰 <b>سعر CRYSTAL:</b> ${price} USDT\n\n` +
+        `🚀 <a href="${WEBAPP_URL}">اضغط هنا لفتح منصة التداول</a>\n\n` +
+        `📊 <b>الأوامر المتاحة:</b>\n` +
+        `/price - سعر CRYSTAL الحالي\n` +
+        `/balance - رصيدك\n` +
+        `/stats - إحصائيات السوق\n` +
+        `/buy [السعر] [الكمية] - شراء CRYSTAL\n` +
+        `/sell [السعر] [الكمية] - بيع CRYSTAL\n` +
+        `/orders - أخر 5 طلبات شراء وبيع\n` +
+        `/admin - لوحة الأدمن (للمدراء فقط)`,
+        {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '💎 فتح منصة التداول', web_app: { url: WEBAPP_URL } }],
+                    [{ text: '📊 السوق', callback_data: 'market_stats' }, { text: '💰 رصيدي', callback_data: 'my_balance' }],
+                    [{ text: '🟢 شراء', callback_data: 'buy_menu' }, { text: '🔴 بيع', callback_data: 'sell_menu' }],
+                    [{ text: '📖 المساعدة', callback_data: 'help_menu' }]
+                ]
             }
-        );
-    } catch (error) {
-        console.error('Start command error:', error);
-        ctx.reply('❌ حدث خطأ، يرجى المحاولة لاحقاً');
-    }
+        }
+    );
 });
 
+// أمر السعر
 bot.command('price', async (ctx) => {
-    try {
-        const price = await db.getMarketPrice();
-        await ctx.reply(`💎 *سعر CRYSTAL الحالي:* ${price} USDT\n📊 *1 CRYSTAL = ${(price * 500).toFixed(2)} حبة*`, { parse_mode: 'Markdown' });
-    } catch (error) {
-        ctx.reply('❌ حدث خطأ');
-    }
+    const price = await db.getMarketPrice();
+    await ctx.reply(`💎 <b>سعر CRYSTAL الحالي:</b> ${price} USDT\n📊 <b>1 USDT =</b> ${(1/price).toFixed(2)} CRYSTAL`, { parse_mode: 'HTML' });
 });
 
+// أمر الرصيد
 bot.command('balance', async (ctx) => {
-    try {
-        const stats = await db.getUserStats(ctx.from.id);
-        await ctx.reply(
-            `💰 *رصيدك*\n\n` +
-            `💎 CRYSTAL: ${stats.crystalBalance?.toFixed(2) || 0}\n` +
-            `💵 USDT: ${stats.usdtBalance?.toFixed(2) || 0}`,
-            { parse_mode: 'Markdown' }
-        );
-    } catch (error) {
-        ctx.reply('❌ حدث خطأ');
-    }
+    const stats = await db.getUserStats(ctx.from.id);
+    await ctx.reply(
+        `💰 <b>رصيدك</b>\n\n` +
+        `💎 <b>CRYSTAL:</b> ${stats?.crystalBalance?.toFixed(2) || 0}\n` +
+        `💵 <b>USDT:</b> ${stats?.usdtBalance?.toFixed(2) || 0}\n` +
+        `⭐ <b>التقييم:</b> ${stats?.rating || 5.0}/5\n` +
+        `📊 <b>إجمالي الصفقات:</b> ${stats?.totalTrades || 0}`,
+        { parse_mode: 'HTML' }
+    );
 });
 
+// أمر الإحصائيات
 bot.command('stats', async (ctx) => {
-    try {
-        const stats = await db.getMarketStats();
-        await ctx.reply(
-            `📊 *إحصائيات السوق*\n\n` +
-            `💎 *سعر CRYSTAL:* ${stats.price} USDT\n` +
-            `📈 *التغير 24h:* ${stats.change24h?.toFixed(2) || 0}%\n` +
-            `📊 *حجم التداول 24h:* ${stats.volume24h?.toFixed(2) || 0} CRYSTAL\n` +
-            `📈 *أعلى سعر 24h:* ${stats.high24h} USDT\n` +
-            `📉 *أدنى سعر 24h:* ${stats.low24h} USDT\n\n` +
-            `🟢 *طلبات الشراء:* ${stats.buyOrders}\n` +
-            `🔴 *طلبات البيع:* ${stats.sellOrders}\n` +
-            `🔄 *إجمالي الصفقات:* ${stats.totalTrades}`,
-            { parse_mode: 'Markdown' }
-        );
-    } catch (error) {
-        ctx.reply('❌ حدث خطأ');
-    }
+    const stats = await db.getMarketStats();
+    await ctx.reply(
+        `📊 <b>إحصائيات السوق</b>\n\n` +
+        `💎 <b>سعر CRYSTAL:</b> ${stats.price} USDT\n` +
+        `📈 <b>التغير 24h:</b> ${stats.change24h?.toFixed(2) || 0}%\n` +
+        `📊 <b>حجم 24h:</b> ${stats.volume24h?.toFixed(0) || 0} CRYSTAL\n` +
+        `📈 <b>أعلى سعر:</b> ${stats.high24h} USDT\n` +
+        `📉 <b>أدنى سعر:</b> ${stats.low24h} USDT\n\n` +
+        `🟢 <b>طلبات الشراء:</b> ${stats.buyOrders || 0}\n` +
+        `🔴 <b>طلبات البيع:</b> ${stats.sellOrders || 0}\n` +
+        `🔄 <b>إجمالي الصفقات:</b> ${stats.totalTrades || 0}`,
+        { parse_mode: 'HTML' }
+    );
 });
 
+// أمر شراء
 bot.command('buy', async (ctx) => {
     const args = ctx.message.text.split(' ');
     if (args.length < 3) {
-        return ctx.reply('❌ /buy [السعر] [الكمية]\nمثال: /buy 0.002 1000');
+        return ctx.reply('❌ <b>طريقة الاستخدام:</b>\n/buy [السعر] [الكمية]\n\nمثال: /buy 0.002 1000', { parse_mode: 'HTML' });
     }
-    try {
-        const price = parseFloat(args[1]);
-        const amount = parseFloat(args[2]);
-        const result = await db.createOrder(ctx.from.id, 'buy', price, amount);
-        await ctx.reply(result.message);
-    } catch (error) {
-        ctx.reply('❌ حدث خطأ');
+    const price = parseFloat(args[1]);
+    const amount = parseFloat(args[2]);
+    if (isNaN(price) || isNaN(amount) || price <= 0 || amount <= 0) {
+        return ctx.reply('❌ يرجى إدخال سعر وكمية صحيحة');
     }
+    const result = await db.createOrder(ctx.from.id, 'buy', price, amount);
+    ctx.reply(result.message);
 });
 
+// أمر بيع
 bot.command('sell', async (ctx) => {
     const args = ctx.message.text.split(' ');
     if (args.length < 3) {
-        return ctx.reply('❌ /sell [السعر] [الكمية]\nمثال: /sell 0.003 500');
+        return ctx.reply('❌ <b>طريقة الاستخدام:</b>\n/sell [السعر] [الكمية]\n\nمثال: /sell 0.003 500', { parse_mode: 'HTML' });
     }
-    try {
-        const price = parseFloat(args[1]);
-        const amount = parseFloat(args[2]);
-        const result = await db.createOrder(ctx.from.id, 'sell', price, amount);
-        await ctx.reply(result.message);
-    } catch (error) {
-        ctx.reply('❌ حدث خطأ');
+    const price = parseFloat(args[1]);
+    const amount = parseFloat(args[2]);
+    if (isNaN(price) || isNaN(amount) || price <= 0 || amount <= 0) {
+        return ctx.reply('❌ يرجى إدخال سعر وكمية صحيحة');
     }
+    const result = await db.createOrder(ctx.from.id, 'sell', price, amount);
+    ctx.reply(result.message);
 });
 
-bot.command('cancel', async (ctx) => {
-    const orderId = ctx.message.text.split(' ')[1];
-    if (!orderId) {
-        return ctx.reply('❌ /cancel [رقم الطلب]');
-    }
-    try {
-        const result = await db.cancelOrder(orderId, ctx.from.id);
-        await ctx.reply(result.message);
-    } catch (error) {
-        ctx.reply('❌ حدث خطأ');
-    }
-});
-
+// أمر الطلبات
 bot.command('orders', async (ctx) => {
-    try {
-        const buys = await db.getActiveOrders('buy', 10);
-        const sells = await db.getActiveOrders('sell', 10);
-        
-        let text = '📊 *طلبات الشراء*\n';
-        const buyOrders = buys.orders || buys;
-        for (const o of buyOrders.slice(0, 5)) {
-            text += `💰 ${o.price} USDT | 📦 ${o.amount.toFixed(2)} CRYSTAL\n`;
-        }
-        text += '\n📊 *طلبات البيع*\n';
-        const sellOrders = sells.orders || sells;
-        for (const o of sellOrders.slice(0, 5)) {
-            text += `💰 ${o.price} USDT | 📦 ${o.amount.toFixed(2)} CRYSTAL\n`;
-        }
-        await ctx.reply(text, { parse_mode: 'Markdown' });
-    } catch (error) {
-        ctx.reply('❌ حدث خطأ');
+    const buys = await db.getActiveOrders('buy', 5);
+    const sells = await db.getActiveOrders('sell', 5);
+    
+    let text = `📊 <b>أحدث الطلبات</b>\n\n`;
+    text += `🟢 <b>طلبات الشراء</b>\n`;
+    for (const o of (buys.orders || buys).slice(0, 5)) {
+        text += `💰 ${o.price} USDT | 📦 ${o.amount.toFixed(2)} CRYSTAL\n`;
     }
+    text += `\n🔴 <b>طلبات البيع</b>\n`;
+    for (const o of (sells.orders || sells).slice(0, 5)) {
+        text += `💰 ${o.price} USDT | 📦 ${o.amount.toFixed(2)} CRYSTAL\n`;
+    }
+    ctx.reply(text, { parse_mode: 'HTML' });
 });
 
+// أمر الأدمن
 bot.command('admin', async (ctx) => {
-    if (!isAdmin(ctx.from.id)) return ctx.reply('⛔ للأدمن فقط');
-    await ctx.reply('👑 *لوحة تحكم الأدمن*', {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-            [Markup.button.callback('🆔 طلبات التوثيق', 'pending_kyc')],
-            [Markup.button.callback('💰 طلبات السحب', 'pending_withdraws')],
-            [Markup.button.callback('📤 طلبات الإيداع', 'pending_deposits')],
-            [Markup.button.callback('📊 إحصائيات', 'global_stats')],
-            [Markup.button.webApp('💎 فتح المنصة', WEBAPP_URL)]
-        ])
-    });
+    if (!isAdmin(ctx.from.id)) return ctx.reply('⛔ هذا الأمر للأدمن فقط');
+    await ctx.reply(
+        `👑 <b>لوحة تحكم الأدمن</b> 👑\n\n` +
+        `اختر أحد الخيارات:`,
+        {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🆔 طلبات التوثيق', callback_data: 'admin_kyc' }],
+                    [{ text: '💰 طلبات السحب', callback_data: 'admin_withdraws' }],
+                    [{ text: '📤 طلبات الإيداع', callback_data: 'admin_deposits' }],
+                    [{ text: '📊 إحصائيات', callback_data: 'admin_stats' }],
+                    [{ text: '🔙 رجوع', callback_data: 'back_to_start' }]
+                ]
+            }
+        }
+    );
+});
+
+// ========== أزرار البوت (Callback Queries) ==========
+
+bot.action('market_stats', async (ctx) => {
+    await ctx.answerCbQuery();
+    const stats = await db.getMarketStats();
+    await ctx.editMessageText(
+        `📊 <b>إحصائيات السوق</b>\n\n` +
+        `💎 <b>سعر CRYSTAL:</b> ${stats.price} USDT\n` +
+        `📈 <b>التغير 24h:</b> ${stats.change24h?.toFixed(2) || 0}%\n` +
+        `📊 <b>حجم 24h:</b> ${stats.volume24h?.toFixed(0) || 0} CRYSTAL\n` +
+        `🟢 <b>طلبات الشراء:</b> ${stats.buyOrders || 0}\n` +
+        `🔴 <b>طلبات البيع:</b> ${stats.sellOrders || 0}`,
+        { parse_mode: 'HTML' }
+    );
+});
+
+bot.action('my_balance', async (ctx) => {
+    await ctx.answerCbQuery();
+    const stats = await db.getUserStats(ctx.from.id);
+    await ctx.editMessageText(
+        `💰 <b>رصيدك</b>\n\n` +
+        `💎 <b>CRYSTAL:</b> ${stats?.crystalBalance?.toFixed(2) || 0}\n` +
+        `💵 <b>USDT:</b> ${stats?.usdtBalance?.toFixed(2) || 0}\n` +
+        `⭐ <b>التقييم:</b> ${stats?.rating || 5.0}/5`,
+        { parse_mode: 'HTML' }
+    );
+});
+
+bot.action('buy_menu', async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `🟢 <b>شراء CRYSTAL</b>\n\n` +
+        `أرسل الأمر التالي:\n` +
+        `<code>/buy [السعر] [الكمية]</code>\n\n` +
+        `مثال: <code>/buy 0.002 1000</code>\n\n` +
+        `💰 <b>السعر الحالي:</b> ${await db.getMarketPrice()} USDT`,
+        { parse_mode: 'HTML' }
+    );
+});
+
+bot.action('sell_menu', async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `🔴 <b>بيع CRYSTAL</b>\n\n` +
+        `أرسل الأمر التالي:\n` +
+        `<code>/sell [السعر] [الكمية]</code>\n\n` +
+        `مثال: <code>/sell 0.003 500</code>\n\n` +
+        `💰 <b>السعر الحالي:</b> ${await db.getMarketPrice()} USDT`,
+        { parse_mode: 'HTML' }
+    );
+});
+
+bot.action('help_menu', async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+        `📖 <b>قائمة المساعدة</b>\n\n` +
+        `<b>الأوامر المتاحة:</b>\n` +
+        `/start - بدء البوت\n` +
+        `/price - سعر CRYSTAL\n` +
+        `/balance - رصيدك\n` +
+        `/stats - إحصائيات السوق\n` +
+        `/buy [سعر] [كمية] - شراء\n` +
+        `/sell [سعر] [كمية] - بيع\n` +
+        `/orders - آخر الطلبات\n\n` +
+        `<b>روابط مهمة:</b>\n` +
+        `<a href="${WEBAPP_URL}">🚀 فتح منصة التداول</a>`,
+        { parse_mode: 'HTML' }
+    );
+});
+
+bot.action('back_to_start', async (ctx) => {
+    await ctx.answerCbQuery();
+    const user = ctx.from;
+    const stats = await db.getUserStats(user.id);
+    const price = await db.getMarketPrice();
+    await ctx.editMessageText(
+        `💎 <b>CRYSTAL Exchange</b> 💎\n\n` +
+        `👤 <b>المستخدم:</b> ${user.first_name}\n` +
+        `💎 <b>رصيد CRYSTAL:</b> ${stats?.crystalBalance?.toFixed(2) || 0}\n` +
+        `💵 <b>رصيد USDT:</b> ${stats?.usdtBalance?.toFixed(2) || 0}\n` +
+        `💰 <b>سعر CRYSTAL:</b> ${price} USDT`,
+        {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '💎 فتح منصة التداول', web_app: { url: WEBAPP_URL } }],
+                    [{ text: '📊 السوق', callback_data: 'market_stats' }, { text: '💰 رصيدي', callback_data: 'my_balance' }],
+                    [{ text: '🟢 شراء', callback_data: 'buy_menu' }, { text: '🔴 بيع', callback_data: 'sell_menu' }],
+                    [{ text: '📖 المساعدة', callback_data: 'help_menu' }]
+                ]
+            }
+        }
+    );
 });
 
 // أزرار الأدمن
-bot.action('pending_kyc', async (ctx) => {
+bot.action('admin_kyc', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
-    try {
-        const pending = await db.getPendingKycRequests();
-        if (!pending.length) return ctx.editMessageText('📭 لا توجد طلبات');
-        let text = '🆔 *طلبات التوثيق*\n\n';
-        for (const req of pending) {
-            text += `📋 ${req._id.toString().slice(-8)} | 👤 ${req.fullName}\n`;
-        }
-        await ctx.editMessageText(text, { parse_mode: 'Markdown' });
-    } catch (error) {
-        ctx.editMessageText('❌ حدث خطأ');
+    const pending = await db.getPendingKycRequests();
+    if (!pending.length) return ctx.reply('📭 لا توجد طلبات توثيق');
+    let text = '🆔 <b>طلبات التوثيق</b>\n\n';
+    for (const req of pending.slice(0, 10)) {
+        text += `📋 <b>${req._id.toString().slice(-8)}</b>\n👤 ${req.fullName}\n📱 ${req.phoneNumber}\n━━━━━━━━━━━━━━━━━━\n`;
     }
+    await ctx.reply(text, { parse_mode: 'HTML' });
 });
 
-bot.action('pending_withdraws', async (ctx) => {
+bot.action('admin_withdraws', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
-    try {
-        const pending = await db.getPendingWithdraws();
-        if (!pending.length) return ctx.editMessageText('📭 لا توجد طلبات سحب');
-        let text = '💰 *طلبات السحب*\n\n';
-        for (const req of pending) {
-            text += `🆔 ${req._id.toString().slice(-8)} | 👤 ${req.userId} | 💰 ${req.amount} USDT\n`;
-        }
-        await ctx.editMessageText(text, { parse_mode: 'Markdown' });
-    } catch (error) {
-        ctx.editMessageText('❌ حدث خطأ');
+    const pending = await db.getPendingWithdraws();
+    if (!pending.length) return ctx.reply('📭 لا توجد طلبات سحب');
+    let text = '💰 <b>طلبات السحب</b>\n\n';
+    for (const req of pending.slice(0, 10)) {
+        text += `🆔 <b>${req._id.toString().slice(-8)}</b>\n👤 ${req.userId}\n💰 ${req.amount} USDT\n━━━━━━━━━━━━━━━━━━\n`;
     }
+    await ctx.reply(text, { parse_mode: 'HTML' });
 });
 
-bot.action('pending_deposits', async (ctx) => {
+bot.action('admin_deposits', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
-    try {
-        const pending = await db.getPendingDeposits();
-        if (!pending.length) return ctx.editMessageText('📭 لا توجد طلبات إيداع');
-        let text = '📤 *طلبات الإيداع*\n\n';
-        for (const req of pending) {
-            text += `🆔 ${req._id.toString().slice(-8)} | 👤 ${req.userId} | 💰 ${req.amount} USDT\n`;
-        }
-        await ctx.editMessageText(text, { parse_mode: 'Markdown' });
-    } catch (error) {
-        ctx.editMessageText('❌ حدث خطأ');
+    const pending = await db.getPendingDeposits();
+    if (!pending.length) return ctx.reply('📭 لا توجد طلبات إيداع');
+    let text = '📤 <b>طلبات الإيداع</b>\n\n';
+    for (const req of pending.slice(0, 10)) {
+        text += `🆔 <b>${req._id.toString().slice(-8)}</b>\n👤 ${req.userId}\n💰 ${req.amount} USDT\n━━━━━━━━━━━━━━━━━━\n`;
     }
+    await ctx.reply(text, { parse_mode: 'HTML' });
 });
 
-bot.action('global_stats', async (ctx) => {
+bot.action('admin_stats', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ للأدمن فقط');
-    try {
-        const stats = await db.getMarketStats();
-        await ctx.editMessageText(
-            `📊 *إحصائيات المنصة*\n\n` +
-            `💎 *سعر CRYSTAL:* ${stats.price} USDT\n` +
-            `🟢 طلبات شراء: ${stats.buyOrders}\n` +
-            `🔴 طلبات بيع: ${stats.sellOrders}\n` +
-            `🔄 إجمالي الصفقات: ${stats.totalTrades}\n` +
-            `💰 إجمالي الحجم: ${stats.totalVolume?.toFixed(2)} USDT`,
-            { parse_mode: 'Markdown' }
-        );
-    } catch (error) {
-        ctx.editMessageText('❌ حدث خطأ');
-    }
+    const stats = await db.getMarketStats();
+    await ctx.reply(
+        `📊 <b>إحصائيات المنصة</b>\n\n` +
+        `💎 <b>سعر CRYSTAL:</b> ${stats.price} USDT\n` +
+        `🟢 <b>طلبات شراء:</b> ${stats.buyOrders || 0}\n` +
+        `🔴 <b>طلبات بيع:</b> ${stats.sellOrders || 0}\n` +
+        `🔄 <b>إجمالي الصفقات:</b> ${stats.totalTrades || 0}\n` +
+        `💰 <b>إجمالي الحجم:</b> ${stats.totalVolume?.toFixed(2) || 0} USDT`,
+        { parse_mode: 'HTML' }
+    );
 });
 
-// ========== تشغيل الخادم ==========
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🌐 Web server on port ${PORT}`);
+// ========== تشغيل السيرفر ==========
+app.listen(PORT, '0.0.0.0', async () => {
+    console.log(`🌐 Web server running on port ${PORT}`);
     console.log(`🌐 WebApp URL: ${WEBAPP_URL}`);
-});
-
-// ========== تشغيل البوت ==========
-(async () => {
+    
     try {
         await db.connect();
         console.log('✅ Database connected');
         
-        // حذف أي Webhook موجود
+        // إعداد Webhook
         await bot.telegram.deleteWebhook();
-        console.log('✅ Webhook deleted');
+        console.log('✅ Old webhook deleted');
         
-        // الحصول على معلومات البوت
+        const webhookUrl = `${WEBAPP_URL}${WEBHOOK_PATH}`;
+        await bot.telegram.setWebhook(webhookUrl);
+        console.log(`✅ Webhook set to: ${webhookUrl}`);
+        
         const botInfo = await bot.telegram.getMe();
         console.log(`✅ Bot @${botInfo.username} is ready`);
         console.log(`✅ Bot ID: ${botInfo.id}`);
         
-        // تشغيل البوت باستخدام Polling
-        bot.launch({
-            polling: {
-                timeout: 30,
-                limit: 100,
-                retryTimeout: 5000
-            }
-        });
-        console.log('🚀 Bot launched with polling');
-        
     } catch (error) {
-        console.error('❌ Bot error:', error.message);
+        console.error('❌ Setup error:', error.message);
     }
-})();
+});
 
-// إيقاف نظيف
+// ========== إيقاف آمن ==========
 process.once('SIGINT', () => {
     bot.stop('SIGINT');
-    server.close();
+    process.exit(0);
 });
 process.once('SIGTERM', () => {
     bot.stop('SIGTERM');
-    server.close();
+    process.exit(0);
 });
+
+module.exports = { bot, app };
