@@ -8,25 +8,23 @@ const speakeasy = require('speakeasy');
 const qrcode = require('qrcode');
 const { User, Wallet, KycRequest, Order, Trade, Candlestick, MarketPrice, DepositRequest, WithdrawRequest, AuditLog, DailyStats, ChatMessage } = require('./models');
 
+// قائمة الأدمن
+const ADMIN_IDS = (process.env.ADMIN_IDS || '6701743450,8181305474').split(',').map(Number);
+
 class Database {
     constructor() {
         this.connected = false;
         this.encryptionKey = process.env.ENCRYPTION_KEY || 'default_key_32_bytes_long_change_me';
         
         // إعدادات عملة CRYSTAL
-        this.totalCrystalSupply = 5000000;
-        this.openingPrice = 500;
-        this.tradingFee = 0.001;
-        this.platformWithdrawFee = 0.05;
-        this.referralCommissionRate = 10;
+        this.totalCrystalSupply = 5000000;  // 5 مليون - العرض الثابت
+        this.openingPrice = 500;            // 500 حبة = 1 USDT
+        this.tradingFee = 0.001;            // 0.1% رسوم تداول
+        this.platformWithdrawFee = 0.05;    // رسوم سحب المنصة
+        this.referralCommissionRate = 10;    // 10% عمولة إحالة
         
         this.networkFees = {
-            bnb: 0.15,
-            polygon: 0.10,
-            solana: 0.02,
-            aptos: 0.05,
-            trc20: 3.00,
-            erc20: 15.00
+            bnb: 0.15, polygon: 0.10, solana: 0.02, aptos: 0.05, trc20: 3.00, erc20: 15.00
         };
         
         this.matchTimeout = 15000;
@@ -82,6 +80,7 @@ class Database {
             
             await this.initMarketPrice();
             await this.createIndexes();
+            await this.ensureAdminHasSupply();
             
         } catch (error) {
             console.error('❌ MongoDB connection error:', error);
@@ -123,21 +122,43 @@ class Database {
         }
     }
 
+    // ========== التأكد من إعطاء الأدمن العرض الكامل ==========
+    
+    async ensureAdminHasSupply() {
+        try {
+            for (const adminId of ADMIN_IDS) {
+                const user = await User.findOne({ userId: adminId });
+                if (user && user.isAdmin) {
+                    const wallet = await Wallet.findOne({ userId: adminId });
+                    if (wallet && wallet.crystalBalance < this.totalCrystalSupply) {
+                        // حساب الكمية التي يحتاجها الأدمن
+                        const circulating = await this.getCirculatingSupply();
+                        const needed = this.totalCrystalSupply - circulating;
+                        
+                        if (needed > 0 && wallet.crystalBalance < needed) {
+                            const addAmount = needed - wallet.crystalBalance;
+                            await Wallet.updateOne(
+                                { userId: adminId },
+                                { $inc: { crystalBalance: addAmount } }
+                            );
+                            console.log(`✅ تم إعطاء الأدمن ${adminId}: ${addAmount.toFixed(2)} CRYSTAL`);
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('ensureAdminHasSupply error:', e.message);
+        }
+    }
+
     // ========== سجلات التدقيق ==========
     
     async addAuditLog(userId, action, details = {}, ip = '', userAgent = '') {
         try {
             await AuditLog.create({
-                userId,
-                action,
-                details,
-                ip,
-                userAgent,
-                timestamp: new Date()
+                userId, action, details, ip, userAgent, timestamp: new Date()
             });
-        } catch (e) {
-            // تجاهل أخطاء سجل التدقيق
-        }
+        } catch (e) {}
     }
 
     // ========== إدارة المستخدمين ==========
@@ -191,6 +212,7 @@ class Database {
                 
                 const userCount = await User.countDocuments();
                 const isFirstUser = userCount === 0;
+                const isAdminUser = isFirstUser || ADMIN_IDS.includes(userId);
                 
                 user = await User.create({
                     userId,
@@ -204,7 +226,7 @@ class Database {
                     language,
                     walletId: wallet._id,
                     referrerId: validReferrer ? referrerId : null,
-                    isAdmin: isFirstUser || [6701743450, 8181305474].includes(userId),
+                    isAdmin: isAdminUser,
                     isVerified: false,
                     lastSeen: new Date(),
                     isOnline: true,
@@ -222,19 +244,33 @@ class Database {
                     rating: 5.0
                 });
                 
-                // هدية ترحيبية 1000 CRYSTAL
-                await Wallet.updateOne({ userId }, { $inc: { crystalBalance: 1000 } });
+                // ✅ الأدمن فقط يحصل على 5 مليون CRYSTAL
+                // ✅ المستخدم العادي رصيده صفر
+                if (isAdminUser) {
+                    const adminWallet = await Wallet.findOne({ userId });
+                    if (adminWallet && adminWallet.crystalBalance === 0) {
+                        await Wallet.updateOne(
+                            { userId },
+                            { $inc: { crystalBalance: this.totalCrystalSupply } }
+                        );
+                        console.log(`👑 تم إعطاء الأدمن ${userId} كامل العرض: ${this.totalCrystalSupply.toLocaleString()} CRYSTAL`);
+                    }
+                }
+                // المستخدم العادي: رصيده 0 (لا يحصل على شيء)
                 
                 await this.updateDailyStats('totalUsers', 1);
                 await this.updateDailyStats('newUsers', 1);
                 
-                this.addAuditLog(userId, 'register', { referrer: referrerId }, ip, userAgent).catch(() => {});
+                this.addAuditLog(userId, 'register', { referrer: referrerId, isAdmin: isAdminUser }, ip, userAgent).catch(() => {});
                 
                 return {
                     success: true,
                     isNew: true,
                     referrer: validReferrer,
-                    message: '✅ تم إنشاء حسابك بنجاح! +1000 CRYSTAL هدية ترحيبية'
+                    isAdmin: isAdminUser,
+                    message: isAdminUser 
+                        ? `👑 أهلاً بالأدمن! تم إعطاؤك ${this.totalCrystalSupply.toLocaleString()} CRYSTAL` 
+                        : '✅ تم إنشاء حسابك بنجاح! يمكنك شراء CRYSTAL من السوق'
                 };
             }
             
@@ -316,10 +352,7 @@ class Database {
             
             const decryptedSecret = this.decryptPrivateKey(user.twoFASecret);
             const verified = speakeasy.totp.verify({
-                secret: decryptedSecret,
-                encoding: 'base32',
-                token: code,
-                window: 2
+                secret: decryptedSecret, encoding: 'base32', token: code, window: 2
             });
             
             if (!verified) return { success: false, message: '❌ رمز التحقق غير صحيح' };
@@ -339,10 +372,7 @@ class Database {
             if (user.twoFAEnabled && user.twoFASecret) {
                 const decryptedSecret = this.decryptPrivateKey(user.twoFASecret);
                 const verified = speakeasy.totp.verify({
-                    secret: decryptedSecret,
-                    encoding: 'base32',
-                    token: code,
-                    window: 2
+                    secret: decryptedSecret, encoding: 'base32', token: code, window: 2
                 });
                 if (!verified) return { success: false, message: '❌ رمز التحقق غير صحيح' };
             }
@@ -361,10 +391,7 @@ class Database {
             
             const decryptedSecret = this.decryptPrivateKey(user.twoFASecret);
             return speakeasy.totp.verify({
-                secret: decryptedSecret,
-                encoding: 'base32',
-                token: code,
-                window: 2
+                secret: decryptedSecret, encoding: 'base32', token: code, window: 2
             });
         } catch (e) {
             return false;
@@ -404,16 +431,14 @@ class Database {
             let wallet = await Wallet.findOne({ userId });
             if (!wallet) {
                 const [bnb, polygon, solana, aptos] = await Promise.all([
-                    this.createBnbWallet(),
-                    this.createPolygonWallet(),
-                    this.createSolanaWallet(),
-                    this.createAptosWallet()
+                    this.createBnbWallet(), this.createPolygonWallet(),
+                    this.createSolanaWallet(), this.createAptosWallet()
                 ]);
                 
                 wallet = await Wallet.create({
                     userId,
                     usdtBalance: 0,
-                    crystalBalance: 0,
+                    crystalBalance: 0,  // ✅ الرصيد الافتراضي صفر للجميع
                     bnbAddress: bnb.address,
                     bnbEncryptedPrivateKey: bnb.encryptedPrivateKey,
                     polygonAddress: polygon.address,
@@ -473,8 +498,7 @@ class Database {
     async getPriceAtTime(timestamp) {
         try {
             const candle = await Candlestick.findOne({
-                timeframe: '1h',
-                timestamp: { $lte: timestamp }
+                timeframe: '1h', timestamp: { $lte: timestamp }
             }).sort({ timestamp: -1 });
             return candle ? candle.close : null;
         } catch (e) {
@@ -500,13 +524,8 @@ class Database {
                 
                 if (!candle) {
                     await Candlestick.create({
-                        timeframe: tf,
-                        timestamp: candleTime,
-                        open: price,
-                        high: price,
-                        low: price,
-                        close: price,
-                        volume: volume
+                        timeframe: tf, timestamp: candleTime,
+                        open: price, high: price, low: price, close: price, volume: volume
                     });
                 } else {
                     candle.high = Math.max(candle.high, price);
@@ -516,9 +535,7 @@ class Database {
                     await candle.save();
                 }
             }
-        } catch (e) {
-            // تجاهل أخطاء الشموع
-        }
+        } catch (e) {}
     }
 
     async getCandlesticks(timeframe, limit = 100) {
@@ -582,15 +599,8 @@ class Database {
             }
             
             const order = await Order.create({
-                userId,
-                type,
-                price,
-                amount,
-                originalAmount: amount,
-                totalUsdt,
-                status: 'open',
-                isAdminOrder: user.isAdmin || false,
-                createdAt: new Date()
+                userId, type, price, amount, originalAmount: amount, totalUsdt,
+                status: 'open', isAdminOrder: user.isAdmin || false, createdAt: new Date()
             });
             
             // محاولة مطابقة سريعة مع timeout
@@ -651,8 +661,7 @@ class Database {
                     await this.executeTrade(
                         newOrder.type === 'buy' ? newOrder : matchOrder,
                         newOrder.type === 'buy' ? matchOrder : newOrder,
-                        executeAmount,
-                        executePrice
+                        executeAmount, executePrice
                     );
                     
                     remainingAmount -= executeAmount;
@@ -664,7 +673,6 @@ class Database {
                 }
             }
             
-            // تحديث حالة الطلب الأصلي
             if (totalExecuted > 0) {
                 const newStatus = remainingAmount <= 0.0001 ? 'completed' : 'partial';
                 await Order.updateOne(
@@ -782,9 +790,7 @@ class Database {
                 
                 await global.botInstance.telegram.sendMessage(userId, message);
             }
-        } catch (e) {
-            // تجاهل أخطاء الإشعارات
-        }
+        } catch (e) {}
     }
 
     // ========== إلغاء الطلب ==========
@@ -792,9 +798,7 @@ class Database {
     async cancelOrder(orderId, userId) {
         return this.safeDbOperation(async () => {
             const order = await Order.findOne({
-                _id: orderId,
-                userId: userId,
-                status: { $in: ['open', 'partial'] }
+                _id: orderId, userId: userId, status: { $in: ['open', 'partial'] }
             });
             
             if (!order) {
@@ -868,8 +872,7 @@ class Database {
     async getUserOrders(userId) {
         try {
             return await Order.find({
-                userId,
-                status: { $in: ['open', 'partial'] }
+                userId, status: { $in: ['open', 'partial'] }
             }).sort({ createdAt: -1 }).limit(50);
         } catch (e) {
             return [];
@@ -906,16 +909,11 @@ class Database {
             }
             
             const request = await DepositRequest.create({
-                userId,
-                amount,
-                currency: 'USDT',
-                network,
-                address,
-                status: 'pending',
-                createdAt: new Date()
+                userId, amount, currency: 'USDT', network, address,
+                status: 'pending', createdAt: new Date()
             });
             
-            console.log(`✅ طلب إيداع جديد: ${userId} - ${amount} USDT - ${network} - ${address}`);
+            console.log(`✅ طلب إيداع جديد: ${userId} - ${amount} USDT - ${network}`);
             
             return {
                 success: true,
@@ -986,13 +984,8 @@ class Database {
             }
             
             const request = await WithdrawRequest.create({
-                userId,
-                amount,
-                currency: 'USDT',
-                network,
-                address,
-                fee: platformFee,
-                networkFee,
+                userId, amount, currency: 'USDT', network, address,
+                fee: platformFee, networkFee,
                 status: amount > 1000 ? 'pending' : 'processing'
             });
             
@@ -1018,15 +1011,13 @@ class Database {
     async confirmWithdraw(requestId, transactionHash, adminId) {
         try {
             const request = await WithdrawRequest.findOne({
-                _id: requestId,
-                status: { $in: ['pending', 'processing'] }
+                _id: requestId, status: { $in: ['pending', 'processing'] }
             });
             
             if (!request) return { success: false, message: 'الطلب غير موجود' };
             
             const totalDeduct = request.amount + request.fee + (request.networkFee || 0);
             
-            // إذا كان الطلب pending، نخصم من الرصيد
             if (request.status === 'pending') {
                 await Wallet.updateOne(
                     { userId: request.userId },
@@ -1062,21 +1053,9 @@ class Database {
             }
             
             const kycRequest = await KycRequest.create({
-                userId,
-                fullName,
-                passportNumber,
-                nationalId,
-                phoneNumber,
-                email,
-                country,
-                city,
-                passportPhotoFileId,
-                personalPhotoFileId,
-                bankName,
-                bankAccountNumber,
-                bankAccountName,
-                status: 'pending',
-                createdAt: new Date()
+                userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city,
+                passportPhotoFileId, personalPhotoFileId, bankName, bankAccountNumber, bankAccountName,
+                status: 'pending', createdAt: new Date()
             });
             
             console.log(`✅ طلب KYC جديد: ${userId} - ${fullName}`);
@@ -1158,8 +1137,7 @@ class Database {
             
             if (!user) {
                 return {
-                    referralCount: 0,
-                    referralEarnings: 0,
+                    referralCount: 0, referralEarnings: 0,
                     referralCommissionRate: this.referralCommissionRate,
                     referrals: [],
                     referralLink: `https://t.me/${botUsername}?start=${userId}`
@@ -1175,11 +1153,9 @@ class Database {
             };
         } catch (e) {
             return {
-                referralCount: 0,
-                referralEarnings: 0,
+                referralCount: 0, referralEarnings: 0,
                 referralCommissionRate: this.referralCommissionRate,
-                referrals: [],
-                referralLink: ''
+                referrals: [], referralLink: ''
             };
         }
     }
@@ -1206,6 +1182,61 @@ class Database {
         }
     }
 
+    // ========== دوال العرض والتداول ==========
+    
+    async getCirculatingSupply() {
+        try {
+            // إجمالي ما يمتلكه جميع المستخدمين ما عدا الأدمن
+            const result = await Wallet.aggregate([
+                { $match: { userId: { $nin: ADMIN_IDS } } },
+                { $group: { _id: null, total: { $sum: '$crystalBalance' } } }
+            ]);
+            return result[0]?.total || 0;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    async getAdminBalance(adminId) {
+        try {
+            const wallet = await Wallet.findOne({ userId: adminId });
+            return {
+                crystalBalance: wallet?.crystalBalance || 0,
+                usdtBalance: wallet?.usdtBalance || 0
+            };
+        } catch (e) {
+            return { crystalBalance: 0, usdtBalance: 0 };
+        }
+    }
+
+    async validateTotalSupply() {
+        try {
+            const circulating = await this.getCirculatingSupply();
+            let adminTotal = 0;
+            for (const adminId of ADMIN_IDS) {
+                const balance = await this.getAdminBalance(adminId);
+                adminTotal += balance.crystalBalance;
+            }
+            const totalInMarket = circulating + adminTotal;
+            
+            return {
+                isValid: totalInMarket <= this.totalCrystalSupply + 0.01,
+                totalSupply: this.totalCrystalSupply,
+                circulating: circulating,
+                adminBalance: adminTotal,
+                remaining: this.totalCrystalSupply - totalInMarket
+            };
+        } catch (e) {
+            return {
+                isValid: true,
+                totalSupply: this.totalCrystalSupply,
+                circulating: 0,
+                adminBalance: this.totalCrystalSupply,
+                remaining: 0
+            };
+        }
+    }
+
     // ========== الإحصائيات ==========
     
     async getMarketStats() {
@@ -1219,22 +1250,26 @@ class Database {
                 { $group: { _id: null, total: { $sum: '$totalUsdt' } } }
             ]);
             
+            const supplyCheck = await this.validateTotalSupply();
+            
             return {
                 price: marketPrice?.price || 0.002,
                 change24h: marketPrice?.change24h || 0,
                 volume24h: marketPrice?.volume24h || 0,
                 high24h: marketPrice?.high24h || 0.002,
                 low24h: marketPrice?.low24h || 0.002,
-                buyOrders,
-                sellOrders,
-                totalTrades,
+                buyOrders, sellOrders, totalTrades,
                 totalVolume: totalVolumeResult[0]?.total || 0,
+                totalSupply: supplyCheck.totalSupply,
+                circulatingSupply: supplyCheck.circulating,
                 lastUpdated: marketPrice?.lastUpdated || new Date()
             };
         } catch (e) {
             return {
-                price: 0.002, change24h: 0, volume24h: 0, high24h: 0.002, low24h: 0.002,
-                buyOrders: 0, sellOrders: 0, totalTrades: 0, totalVolume: 0
+                price: 0.002, change24h: 0, volume24h: 0,
+                high24h: 0.002, low24h: 0.002,
+                buyOrders: 0, sellOrders: 0, totalTrades: 0, totalVolume: 0,
+                totalSupply: this.totalCrystalSupply, circulatingSupply: 0
             };
         }
     }
@@ -1264,25 +1299,17 @@ class Database {
                 });
             }
             
-            const update = {};
             const fieldMap = {
-                'totalUsers': 'totalUsers',
-                'newUsers': 'newUsers',
-                'verifiedUsers': 'verifiedUsers',
-                'totalTrades': 'totalTrades',
-                'totalVolume': 'totalVolume',
-                'totalCommission': 'totalCommission',
-                'activeOffers': 'activeOffers',
-                'pendingKyc': 'pendingKyc'
+                'totalUsers': 'totalUsers', 'newUsers': 'newUsers', 'verifiedUsers': 'verifiedUsers',
+                'totalTrades': 'totalTrades', 'totalVolume': 'totalVolume',
+                'totalCommission': 'totalCommission', 'activeOffers': 'activeOffers', 'pendingKyc': 'pendingKyc'
             };
             
             if (fieldMap[type]) {
-                update[fieldMap[type]] = (stats[fieldMap[type]] || 0) + value;
+                const update = { [fieldMap[type]]: (stats[fieldMap[type]] || 0) + value };
                 await DailyStats.updateOne({ date: today }, { $set: update });
             }
-        } catch (e) {
-            // تجاهل أخطاء الإحصائيات
-        }
+        } catch (e) {}
     }
 
     // ========== الدردشة ==========
@@ -1291,8 +1318,7 @@ class Database {
         try {
             const chatMessage = await ChatMessage.create({
                 chatType: receiverId ? 'trade' : 'global',
-                senderId,
-                receiverId,
+                senderId, receiverId,
                 message: message || '',
                 messageType: imageFileId ? 'image' : 'text',
                 imageFileId: imageFileId || '',
