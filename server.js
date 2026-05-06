@@ -3,10 +3,8 @@ const { Telegraf, Markup } = require('telegraf');
 const db = require('./database');
 const express = require('express');
 const path = require('path');
-const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const cors = require('cors');
-const fetch = require('node-fetch');
 
 // ========== إعداد خادم الويب ==========
 const app = express();
@@ -33,39 +31,113 @@ function isAdmin(userId) {
 // ========== API Routes ==========
 
 // عامة
-app.get('/api/market/price', async (req, res) => res.json({ price: await db.getMarketPrice() }));
-app.get('/api/market/stats', async (req, res) => res.json(await db.getMarketStats()));
-app.get('/api/market/candles/:timeframe', async (req, res) => res.json(await db.getCandlesticks(req.params.timeframe, parseInt(req.query.limit) || 100)));
+app.get('/api/market/price', async (req, res) => {
+    try {
+        const price = await db.getMarketPrice();
+        res.json({ price: price });
+    } catch(e) {
+        res.json({ price: 0.002 });
+    }
+});
+
+app.get('/api/market/stats', async (req, res) => {
+    try {
+        const stats = await db.getMarketStats();
+        res.json(stats);
+    } catch(e) {
+        res.json({ price: 0.002, buyOrders: 0, sellOrders: 0, volume24h: 0 });
+    }
+});
+
+app.get('/api/market/candles/:timeframe', async (req, res) => {
+    try {
+        const candles = await db.getCandlesticks(req.params.timeframe, parseInt(req.query.limit) || 100);
+        res.json(candles);
+    } catch(e) {
+        res.json([]);
+    }
+});
 
 // الأوامر
-app.get('/api/orders', async (req, res) => res.json(await db.getActiveOrders(req.query.type, parseInt(req.query.limit) || 50)));
-app.get('/api/orders/:userId', async (req, res) => res.json(await db.getUserOrders(parseInt(req.params.userId))));
+app.get('/api/orders', async (req, res) => {
+    try {
+        const orders = await db.getActiveOrders(req.query.type, parseInt(req.query.limit) || 50);
+        res.json(orders);
+    } catch(e) {
+        res.json({ orders: [] });
+    }
+});
+
+app.get('/api/orders/:userId', async (req, res) => {
+    try {
+        const orders = await db.getUserOrders(parseInt(req.params.userId));
+        res.json(orders);
+    } catch(e) {
+        res.json([]);
+    }
+});
+
 app.post('/api/order/create', async (req, res) => {
     const { user_id, type, price, amount } = req.body;
-    res.json(await db.createOrder(parseInt(user_id), type, parseFloat(price), parseFloat(amount)));
+    const result = await db.createOrder(parseInt(user_id), type, parseFloat(price), parseFloat(amount));
+    res.json(result);
 });
+
 app.post('/api/order/cancel', async (req, res) => {
-    res.json(await db.cancelOrder(req.body.order_id, parseInt(req.body.user_id)));
+    const result = await db.cancelOrder(req.body.order_id, parseInt(req.body.user_id));
+    res.json(result);
 });
 
 // المستخدم
-app.get('/api/user/:userId', async (req, res) => res.json(await db.getUserStats(parseInt(req.params.userId))));
+app.get('/api/user/:userId', async (req, res) => {
+    try {
+        const stats = await db.getUserStats(parseInt(req.params.userId));
+        res.json(stats);
+    } catch(e) {
+        res.json({ usdtBalance: 0, crystalBalance: 0, isVerified: false });
+    }
+});
+
 app.post('/api/register', async (req, res) => {
     await db.registerUser(parseInt(req.body.user_id), req.body.username, req.body.first_name, '', '', '', req.body.country || 'SD', '', null, 'ar', req.ip, req.headers['user-agent']);
     res.json({ success: true });
 });
-app.get('/api/user/trades/:userId', async (req, res) => res.json(await db.getUserTradeHistory(parseInt(req.params.userId), 50)));
+
+app.get('/api/user/trades/:userId', async (req, res) => {
+    try {
+        const trades = await db.getUserTradeHistory(parseInt(req.params.userId), 50);
+        res.json(trades);
+    } catch(e) {
+        res.json([]);
+    }
+});
 
 // المحفظة
 app.get('/api/wallet/:userId', async (req, res) => {
-    const w = await db.getUserWallet(parseInt(req.params.userId));
-    res.json({ usdtBalance: w.usdtBalance, crystalBalance: w.crystalBalance, addresses: { bnb: w.bnbAddress, polygon: w.polygonAddress, solana: w.solanaAddress, aptos: w.aptosAddress } });
+    try {
+        const w = await db.getUserWallet(parseInt(req.params.userId));
+        res.json({ usdtBalance: w.usdtBalance, crystalBalance: w.crystalBalance, addresses: { bnb: w.bnbAddress, polygon: w.polygonAddress, solana: w.solanaAddress, aptos: w.aptosAddress } });
+    } catch(e) {
+        res.json({ usdtBalance: 0, crystalBalance: 0, addresses: {} });
+    }
 });
-app.post('/api/deposit', async (req, res) => res.json(await db.requestDeposit(parseInt(req.body.user_id), parseFloat(req.body.amount), 'USDT', req.body.network)));
-app.post('/api/withdraw', async (req, res) => res.json(await db.requestWithdraw(parseInt(req.body.user_id), parseFloat(req.body.amount), 'USDT', req.body.network, req.body.address, req.body.twofa_code)));
+
+app.post('/api/deposit', async (req, res) => {
+    const result = await db.requestDeposit(parseInt(req.body.user_id), parseFloat(req.body.amount), 'USDT', req.body.network);
+    res.json(result);
+});
+
+app.post('/api/withdraw', async (req, res) => {
+    const result = await db.requestWithdraw(parseInt(req.body.user_id), parseFloat(req.body.amount), 'USDT', req.body.network, req.body.address, req.body.twofa_code);
+    res.json(result);
+});
 
 // KYC
-app.get('/api/kyc/status/:userId', async (req, res) => res.json(await db.getKycStatus(parseInt(req.params.userId))));
+app.get('/api/kyc/status/:userId', async (req, res) => {
+    const status = await db.getKycStatus(parseInt(req.params.userId));
+    res.json(status);
+});
+
 app.post('/api/kyc/submit', upload.fields([{ name: 'passportPhoto' }, { name: 'personalPhoto' }]), async (req, res) => {
     const { user_id, fullName, passportNumber, nationalId, phoneNumber, email, country, city, bankName, bankAccountNumber, bankAccountName } = req.body;
     
@@ -79,38 +151,71 @@ app.post('/api/kyc/submit', upload.fields([{ name: 'passportPhoto' }, { name: 'p
         personalFileId = msg.photo[msg.photo.length - 1].file_id;
     }
     
-    res.json(await db.createKycRequest(parseInt(user_id), fullName, passportNumber, nationalId, phoneNumber, email, country, city, passportFileId, personalFileId, bankName, bankAccountNumber, bankAccountName));
+    const result = await db.createKycRequest(parseInt(user_id), fullName, passportNumber, nationalId, phoneNumber, email, country, city, passportFileId, personalFileId, bankName, bankAccountNumber, bankAccountName);
+    res.json(result);
 });
 
 // الإحالات
-app.get('/api/user/referral/:userId', async (req, res) => res.json(await db.getReferralData(parseInt(req.params.userId))));
-app.post('/api/referral/transfer', async (req, res) => res.json(await db.transferReferralEarningsToWallet(parseInt(req.body.user_id))));
+app.get('/api/user/referral/:userId', async (req, res) => {
+    const data = await db.getReferralData(parseInt(req.params.userId));
+    res.json(data);
+});
+
+app.post('/api/referral/transfer', async (req, res) => {
+    const result = await db.transferReferralEarningsToWallet(parseInt(req.body.user_id));
+    res.json(result);
+});
 
 // الدردشة
-app.get('/api/chat/global', async (req, res) => res.json(await db.getGlobalMessages(50)));
-app.post('/api/chat/send', async (req, res) => res.json(await db.sendMessage(parseInt(req.body.senderId), null, req.body.message)));
+app.get('/api/chat/global', async (req, res) => {
+    const messages = await db.getGlobalMessages(50);
+    res.json(messages);
+});
+
+app.post('/api/chat/send', async (req, res) => {
+    const result = await db.sendMessage(parseInt(req.body.senderId), null, req.body.message);
+    res.json(result);
+});
+
 app.post('/api/chat/send-image', upload.single('image'), async (req, res) => {
     let imageFileId = null;
     if (bot && req.file) {
         const msg = await bot.telegram.sendPhoto(ADMIN_IDS[0], { source: req.file.buffer });
         imageFileId = msg.photo[msg.photo.length - 1].file_id;
     }
-    res.json(await db.sendMessage(parseInt(req.body.senderId), null, req.body.message || '📸 صورة', imageFileId));
+    const result = await db.sendMessage(parseInt(req.body.senderId), null, req.body.message || '📸 صورة', imageFileId);
+    res.json(result);
 });
 
 // 2FA
-app.post('/api/2fa/generate', async (req, res) => res.json(await db.generate2FASecret(parseInt(req.body.user_id))));
-app.post('/api/2fa/enable', async (req, res) => res.json(await db.enable2FA(parseInt(req.body.user_id), req.body.code)));
-app.post('/api/2fa/disable', async (req, res) => res.json(await db.disable2FA(parseInt(req.body.user_id), req.body.code)));
+app.post('/api/2fa/generate', async (req, res) => {
+    const result = await db.generate2FASecret(parseInt(req.body.user_id));
+    res.json(result);
+});
+
+app.post('/api/2fa/enable', async (req, res) => {
+    const result = await db.enable2FA(parseInt(req.body.user_id), req.body.code);
+    res.json(result);
+});
+
+app.post('/api/2fa/disable', async (req, res) => {
+    const result = await db.disable2FA(parseInt(req.body.user_id), req.body.code);
+    res.json(result);
+});
 
 // سيرفر الملفات الثابتة - مسار mining-app
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'mining-app', 'index.html'));
 });
+
 app.get('/terms', (req, res) => {
     res.sendFile(path.join(__dirname, 'mining-app', 'terms.html'));
 });
-app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date(), supply: 5000000, price: await db.getMarketPrice() }));
+
+app.get('/health', async (req, res) => {
+    const price = await db.getMarketPrice();
+    res.json({ status: 'ok', timestamp: new Date(), supply: 5000000, price: price });
+});
 
 // ========== إعداد بوت التلجرام ==========
 const bot = new Telegraf(process.env.BOT_TOKEN);
@@ -123,12 +228,14 @@ bot.start(async (ctx) => {
     
     await db.registerUser(user.id, user.username, user.first_name, '', '', '', 'SD', '', referrer, 'ar', ctx.message?.chat?.id, ctx.message?.from?.is_bot ? 'Bot' : 'User');
     
+    const price = await db.getMarketPrice();
+    
     await ctx.reply(
         `💎 *CRYSTAL Exchange* 💎\n\n` +
         `✨ *مرحباً بك في منصة تداول عملة الكريستال!*\n\n` +
         `👤 *المستخدم:* ${user.first_name}\n\n` +
         `📊 *إجمالي العرض:* 5,000,000 CRYSTAL\n` +
-        `💰 *السعر الحالي:* ${await db.getMarketPrice()} USDT\n\n` +
+        `💰 *السعر الحالي:* ${price} USDT\n\n` +
         `🚀 *اضغط على الزر أدناه لبدء التداول*`,
         {
             parse_mode: 'Markdown',
@@ -147,7 +254,7 @@ bot.command('price', async (ctx) => {
 
 bot.command('balance', async (ctx) => {
     const stats = await db.getUserStats(ctx.from.id);
-    await ctx.reply(`💰 *رصيدك*\n💎 CRYSTAL: ${stats.crystalBalance?.toFixed(2) || 0}\n💵 USDT: ${stats.usdtBalance?.toFixed(2) || 0}`, { parse_mode: 'Markdown' });
+    await ctx.reply(`💰 *رصيدك*\n💎 CRYSTAL: ${stats?.crystalBalance?.toFixed(2) || 0}\n💵 USDT: ${stats?.usdtBalance?.toFixed(2) || 0}`, { parse_mode: 'Markdown' });
 });
 
 bot.command('stats', async (ctx) => {
@@ -255,12 +362,14 @@ bot.command('orders', async (ctx) => {
     const buys = await db.getActiveOrders('buy', 10);
     const sells = await db.getActiveOrders('sell', 10);
     let text = '📊 *طلبات الشراء*\n';
-    for (const o of buys.orders || buys.slice(0, 5)) {
-        text += `💰 ${o.price} USDT | 📦 ${o.amount.toFixed(2)} CRYSTAL\n`;
+    const buyList = buys.orders || buys || [];
+    for (const o of buyList.slice(0, 5)) {
+        text += `💰 ${o.price} USDT | 📦 ${o.amount?.toFixed(2) || 0} CRYSTAL\n`;
     }
     text += '\n📊 *طلبات البيع*\n';
-    for (const o of sells.orders || sells.slice(0, 5)) {
-        text += `💰 ${o.price} USDT | 📦 ${o.amount.toFixed(2)} CRYSTAL\n`;
+    const sellList = sells.orders || sells || [];
+    for (const o of sellList.slice(0, 5)) {
+        text += `💰 ${o.price} USDT | 📦 ${o.amount?.toFixed(2) || 0} CRYSTAL\n`;
     }
     await ctx.reply(text, { parse_mode: 'Markdown' });
 });
@@ -271,22 +380,19 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 WebApp URL: ${WEBAPP_URL}`);
 });
 
-// بدء البوت باستخدام Webhook (الأفضل لـ Render)
+// بدء البوت باستخدام Webhook
 (async () => {
     try {
         await db.connect();
         console.log('✅ Database connected');
         
-        // حذف أي Webhook قديم
         await bot.telegram.deleteWebhook();
         console.log('✅ Old webhook deleted');
         
-        // تعيين Webhook جديد
         const webhookUrl = `${WEBAPP_URL}/webhook`;
         await bot.telegram.setWebhook(webhookUrl);
         console.log(`✅ Webhook set to: ${webhookUrl}`);
         
-        // ربط Webhook بـ Express
         app.use(bot.webhookCallback('/webhook'));
         
         const botInfo = await bot.telegram.getMe();
