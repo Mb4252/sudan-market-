@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 10000;
 
 const upload = multer({ 
     storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 } // 10MB max
+    limits: { fileSize: 10 * 1024 * 1024 }
 });
 
 app.use(cors());
@@ -316,25 +316,6 @@ app.post('/api/chat/send', async (req, res) => {
     }
 });
 
-app.post('/api/chat/send-image', upload.single('image'), async (req, res) => {
-    try {
-        const { senderId, message } = req.body;
-        if (!senderId) return res.json({ success: false, message: '⚠️ معرف المرسل مطلوب' });
-        
-        let imageFileId = null;
-        if (global.botInstance && req.file) {
-            try {
-                const msg = await global.botInstance.telegram.sendPhoto(ADMIN_IDS[0], { source: req.file.buffer });
-                imageFileId = msg.photo[msg.photo.length - 1].file_id;
-            } catch (uploadError) {}
-        }
-        const result = await db.sendMessage(parseInt(senderId), null, message || '📸 صورة', imageFileId);
-        res.json({ success: true, message: result });
-    } catch(e) {
-        res.json({ success: false, message: '❌ حدث خطأ' });
-    }
-});
-
 // 2FA
 app.post('/api/2fa/generate', async (req, res) => {
     try {
@@ -369,13 +350,13 @@ app.post('/api/2fa/disable', async (req, res) => {
     }
 });
 
-// لوحة المتصدرين
-app.get('/api/leaderboard', async (req, res) => {
+// معلومات العرض
+app.get('/api/supply', async (req, res) => {
     try {
-        const leaderboard = await db.getLeaderboard(15);
-        res.json({ success: true, leaderboard });
+        const supplyCheck = await db.validateTotalSupply();
+        res.json({ success: true, ...supplyCheck });
     } catch(e) {
-        res.json({ success: true, leaderboard: [] });
+        res.json({ success: true, totalSupply: 5000000, circulating: 0, adminBalance: 5000000 });
     }
 });
 
@@ -407,19 +388,41 @@ bot.start(async (ctx) => {
         );
         
         const price = await db.getMarketPrice();
+        const supplyCheck = await db.validateTotalSupply();
         
-        const welcomeMessage = result.isNew
-            ? `🎉 *أهلاً بك في CRYSTAL Exchange!*\n\n` +
-              `✨ تم إنشاء حسابك بنجاح\n` +
-              `🎁 *هدية ترحيبية: +1,000 CRYSTAL*\n\n` +
-              `👤 *المستخدم:* ${user.first_name}\n` +
-              `💰 *السعر الحالي:* ${price} USDT\n` +
-              `📊 *1 CRYSTAL = ${(price * 500).toFixed(2)} حبة*\n\n` +
-              `🚀 *اضغط على الزر لبدء التداول*`
-            : `👋 *أهلاً بعودتك ${user.first_name}!*\n\n` +
-              `💰 *السعر الحالي:* ${price} USDT\n` +
-              `📊 *1 CRYSTAL = ${(price * 500).toFixed(2)} حبة*\n\n` +
-              `🚀 *اضغط على الزر لبدء التداول*`;
+        let welcomeMessage;
+        
+        if (result.isAdmin) {
+            welcomeMessage = 
+                `👑 *أهلاً بالأدمن!*\n\n` +
+                `💎 *CRYSTAL Exchange*\n` +
+                `━━━━━━━━━━━━━━━\n\n` +
+                `📦 *رصيدك:* ${supplyCheck.adminBalance.toLocaleString()} CRYSTAL\n` +
+                `💰 *السعر الحالي:* ${price} USDT\n` +
+                `📊 *1 CRYSTAL = ${(price * 500).toFixed(2)} حبة*\n\n` +
+                `🔄 *المتداول في السوق:* ${supplyCheck.circulating.toLocaleString()} CRYSTAL\n` +
+                `📦 *إجمالي العرض:* ${supplyCheck.totalSupply.toLocaleString()} CRYSTAL\n\n` +
+                `⚡ *أنت المتحكم الوحيد في السوق!*\n` +
+                `يمكنك بيع CRYSTAL بالسعر الذي تريده`;
+        } else if (result.isNew) {
+            welcomeMessage = 
+                `🎉 *أهلاً بك في CRYSTAL Exchange!*\n\n` +
+                `✨ تم إنشاء حسابك بنجاح\n\n` +
+                `👤 *المستخدم:* ${user.first_name}\n` +
+                `💰 *السعر الحالي:* ${price} USDT\n` +
+                `📊 *1 CRYSTAL = ${(price * 500).toFixed(2)} حبة*\n` +
+                `📦 *العرض الكلي:* ${supplyCheck.totalSupply.toLocaleString()} CRYSTAL\n\n` +
+                `💡 *للبدء:*\n` +
+                `1️⃣ قم بتوثيق حسابك\n` +
+                `2️⃣ أودع USDT\n` +
+                `3️⃣ اشترِ CRYSTAL من السوق`;
+        } else {
+            welcomeMessage = 
+                `👋 *أهلاً بعودتك ${user.first_name}!*\n\n` +
+                `💰 *السعر الحالي:* ${price} USDT\n` +
+                `📊 *1 CRYSTAL = ${(price * 500).toFixed(2)} حبة*\n\n` +
+                `🚀 *اضغط على الزر لبدء التداول*`;
+        }
         
         await ctx.reply(welcomeMessage, {
             parse_mode: 'Markdown',
@@ -441,16 +444,17 @@ bot.command('help', async (ctx) => {
         `/price - عرض سعر CRYSTAL\n` +
         `/balance - عرض رصيدك\n` +
         `/stats - إحصائيات السوق\n` +
+        `/supply - معلومات العرض\n` +
         `/orders - عرض الطلبات النشطة\n` +
         `/buy [سعر] [كمية] - أمر شراء\n` +
         `/sell [سعر] [كمية] - أمر بيع\n` +
         `/cancel [رقم] - إلغاء أمر\n` +
-        `/referral - الإحالات\n` +
-        `/help - هذه القائمة`;
+        `/referral - الإحالات`;
     
     if (isUserAdmin) {
         text += `\n\n👑 *أوامر الأدمن:*\n` +
             `/admin - لوحة التحكم\n` +
+            `/admin_balance - رصيد الأدمن\n` +
             `/kyc_list - طلبات التوثيق\n` +
             `/pending - المعلقات`;
     }
@@ -468,7 +472,25 @@ bot.command('price', async (ctx) => {
             `💰 *السعر:* ${price} USDT\n` +
             `📊 *1 CRYSTAL = ${(price * 500).toFixed(2)} حبة*\n` +
             `📈 *التغير 24h:* ${stats.change24h?.toFixed(2) || 0}%\n` +
-            `📊 *الحجم 24h:* ${stats.volume24h?.toFixed(2) || 0} CRYSTAL`,
+            `📊 *الحجم 24h:* ${stats.volume24h?.toFixed(2) || 0} CRYSTAL\n` +
+            `🔄 *العرض المتداول:* ${stats.circulatingSupply?.toFixed(2) || 0} CRYSTAL`,
+            { parse_mode: 'Markdown' }
+        );
+    } catch (e) {
+        await ctx.reply('❌ حدث خطأ');
+    }
+});
+
+bot.command('supply', async (ctx) => {
+    try {
+        const supplyCheck = await db.validateTotalSupply();
+        
+        await ctx.reply(
+            `📊 *معلومات العرض*\n\n` +
+            `💰 *إجمالي العرض:* ${supplyCheck.totalSupply.toLocaleString()} CRYSTAL\n` +
+            `🔄 *في التداول (المستخدمون):* ${supplyCheck.circulating.toFixed(2)} CRYSTAL\n` +
+            `👑 *مع الأدمن:* ${supplyCheck.adminBalance.toFixed(2)} CRYSTAL\n` +
+            `✅ *العرض صحيح:* ${supplyCheck.isValid ? '✅ نعم' : '⚠️ تجاوز!'}`,
             { parse_mode: 'Markdown' }
         );
     } catch (e) {
@@ -481,14 +503,20 @@ bot.command('balance', async (ctx) => {
         const stats = await db.getUserStats(ctx.from.id);
         if (!stats) return ctx.reply('⚠️ استخدم /start للتسجيل أولاً');
         
-        await ctx.reply(
-            `💰 *رصيدك*\n\n` +
+        let text = `💰 *رصيدك*\n\n` +
             `💎 *CRYSTAL:* ${stats.crystalBalance?.toFixed(2) || 0}\n` +
             `💵 *USDT:* ${stats.usdtBalance?.toFixed(2) || 0}\n\n` +
             `📊 *الصفقات:* ${stats.totalTrades || 0}\n` +
-            `📦 *الطلبات المفتوحة:* ${stats.openOrders || 0}`,
-            { parse_mode: 'Markdown' }
-        );
+            `📦 *الطلبات المفتوحة:* ${stats.openOrders || 0}`;
+        
+        if (stats.isAdmin) {
+            const supplyCheck = await db.validateTotalSupply();
+            text += `\n\n👑 *معلومات الأدمن:*\n` +
+                `📦 *العرض الكلي:* ${supplyCheck.totalSupply.toLocaleString()} CRYSTAL\n` +
+                `🔄 *المتداول:* ${supplyCheck.circulating.toFixed(2)} CRYSTAL`;
+        }
+        
+        await ctx.reply(text, { parse_mode: 'Markdown' });
     } catch (e) {
         await ctx.reply('❌ حدث خطأ');
     }
@@ -506,7 +534,9 @@ bot.command('stats', async (ctx) => {
             `🟢 *شراء:* ${stats.buyOrders}\n` +
             `🔴 *بيع:* ${stats.sellOrders}\n` +
             `🔄 *إجمالي الصفقات:* ${stats.totalTrades}\n` +
-            `💰 *إجمالي الحجم:* ${stats.totalVolume?.toFixed(2) || 0} USDT`,
+            `💰 *إجمالي الحجم:* ${stats.totalVolume?.toFixed(2) || 0} USDT\n\n` +
+            `📦 *العرض الكلي:* ${stats.totalSupply?.toLocaleString() || '5,000,000'} CRYSTAL\n` +
+            `🔄 *المتداول:* ${stats.circulatingSupply?.toFixed(2) || 0} CRYSTAL`,
             { parse_mode: 'Markdown' }
         );
     } catch (e) {
@@ -611,9 +641,12 @@ bot.command('admin', async (ctx) => {
         const pendingKyc = await db.getPendingKycRequests();
         const pendingWithdraws = await db.getPendingWithdraws();
         const pendingDeposits = await db.getPendingDeposits();
+        const supplyCheck = await db.validateTotalSupply();
         
         await ctx.reply(
             `👑 *لوحة تحكم الأدمن*\n\n` +
+            `📦 *رصيدك:* ${supplyCheck.adminBalance.toLocaleString()} CRYSTAL\n` +
+            `🔄 *المتداول:* ${supplyCheck.circulating.toFixed(2)} CRYSTAL\n\n` +
             `🆔 طلبات التوثيق: *${pendingKyc.length}*\n` +
             `💰 طلبات السحب: *${pendingWithdraws.length}*\n` +
             `📤 طلبات الإيداع: *${pendingDeposits.length}*\n\n` +
@@ -627,6 +660,28 @@ bot.command('admin', async (ctx) => {
                     [Markup.button.webApp('💎 فتح المنصة', WEBAPP_URL)]
                 ])
             }
+        );
+    } catch (e) {
+        await ctx.reply('❌ حدث خطأ');
+    }
+});
+
+bot.command('admin_balance', async (ctx) => {
+    try {
+        if (!isAdmin(ctx.from.id)) return ctx.reply('⛔ للأدمن فقط');
+        
+        const balance = await db.getAdminBalance(ctx.from.id);
+        const supplyCheck = await db.validateTotalSupply();
+        
+        await ctx.reply(
+            `👑 *رصيد الأدمن*\n\n` +
+            `💎 *CRYSTAL:* ${balance.crystalBalance.toLocaleString()}\n` +
+            `💵 *USDT:* ${balance.usdtBalance.toFixed(2)}\n\n` +
+            `📊 *العرض الكلي:* ${supplyCheck.totalSupply.toLocaleString()} CRYSTAL\n` +
+            `🔄 *المتداول في السوق:* ${supplyCheck.circulating.toFixed(2)} CRYSTAL\n` +
+            `📦 *المتبقي معك:* ${balance.crystalBalance.toFixed(2)} CRYSTAL\n\n` +
+            `💡 *أنت المتحكم في السوق - ضع أوامر بيع للتحكم بالسعر*`,
+            { parse_mode: 'Markdown' }
         );
     } catch (e) {
         await ctx.reply('❌ حدث خطأ');
