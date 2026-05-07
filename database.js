@@ -26,10 +26,12 @@ class Database {
         };
         
         this.matchTimeout = 15000;
-        this.depositExpiryHours = 24; // صلاحية طلب الإيداع
+        this.depositExpiryHours = 24;
     }
 
-    // ========== وظائف مساعدة ==========
+    // ====================================================================
+    // وظائف مساعدة
+    // ====================================================================
     
     getNetworkFee(network) {
         return this.networkFees[network] || 0.10;
@@ -48,7 +50,9 @@ class Database {
         return bytes.toString(CryptoJS.enc.Utf8);
     }
 
-    // ========== الاتصال بقاعدة البيانات ==========
+    // ====================================================================
+    // الاتصال بقاعدة البيانات
+    // ====================================================================
     
     async connect() {
         if (this.connected) return;
@@ -67,7 +71,19 @@ class Database {
             
             await this.initMarketPrice();
             await this.createIndexes();
-            await this.ensureAdminHasSupply();
+            
+            // تصحيح الأوامر العالقة بعد الصيانة
+            const fixedOrders = await this.fixStuckOrders();
+            if (fixedOrders > 0) console.log(`🔧 تم تصحيح ${fixedOrders} أوامر`);
+            
+            // التأكد من سلامة الأرصدة
+            const balanceCheck = await this.validateBalances();
+            if (!balanceCheck.isValid) {
+                console.error('⚠️ تناقض في الأرصدة - جاري التصحيح...');
+                await this.ensureAdminHasSupply();
+            }
+            
+            // إلغاء طلبات الإيداع المنتهية
             await this.cancelExpiredDeposits();
             
             // تشغيل تنظيف الطلبات المنتهية كل 6 ساعات
@@ -120,17 +136,25 @@ class Database {
                 const user = await User.findOne({ userId: adminId });
                 if (user && user.isAdmin) {
                     const wallet = await Wallet.findOne({ userId: adminId });
-                    if (wallet && wallet.crystalBalance < this.totalCrystalSupply) {
-                        const circulating = await this.getCirculatingSupply();
-                        const needed = this.totalCrystalSupply - circulating;
-                        
-                        if (needed > 0 && wallet.crystalBalance < needed) {
-                            const addAmount = needed - wallet.crystalBalance;
+                    if (!wallet) continue;
+                    
+                    const circulating = await this.getCirculatingSupply();
+                    const openSellOrders = await Order.aggregate([
+                        { $match: { type: 'sell', status: { $in: ['open', 'partial'] } } },
+                        { $group: { _id: null, totalFrozen: { $sum: '$amount' } } }
+                    ]);
+                    const frozen = openSellOrders[0]?.totalFrozen || 0;
+                    
+                    const available = circulating + frozen + wallet.crystalBalance;
+                    const diff = this.totalCrystalSupply - available;
+                    
+                    if (Math.abs(diff) > 0.01) {
+                        if (diff > 0 && wallet.crystalBalance < this.totalCrystalSupply) {
                             await Wallet.updateOne(
                                 { userId: adminId },
-                                { $inc: { crystalBalance: addAmount } }
+                                { $inc: { crystalBalance: diff } }
                             );
-                            console.log(`👑 تم تعديل رصيد الأدمن ${adminId}: +${addAmount.toFixed(2)} CRYSTAL`);
+                            console.log(`👑 تم تصحيح رصيد الأدمن ${adminId}: ${diff > 0 ? '+' : ''}${diff.toFixed(2)} CRYSTAL`);
                         }
                     }
                 }
@@ -140,8 +164,116 @@ class Database {
         }
     }
 
-    // ========== إلغاء طلبات الإيداع المنتهية ==========
-    
+    // ====================================================================
+    // تصحيح الأوامر والأرصدة بعد الصيانة
+    // ====================================================================
+
+    async fixStuckOrders() {
+        try {
+            console.log('🔧 فحص الأوامر العالقة...');
+            
+            const openOrders = await Order.find({ status: { $in: ['open', 'partial'] } });
+            let fixedCount = 0;
+            
+            for (const order of openOrders) {
+                const wallet = await Wallet.findOne({ userId: order.userId });
+                if (!wallet) continue;
+                
+                if (order.type === 'sell') {
+                    // التحقق: إذا كان الرصيد أكبر من أو يساوي كمية الأمر ولم يتم تجميده
+                    // معنى ذلك أن التجميد فُقد أثناء الصيانة
+                    if (wallet.crystalBalance >= order.amount) {
+                        // إعادة تجميد الكمية
+                        await Wallet.updateOne(
+                            { userId: order.userId },
+                            { $inc: { crystalBalance: -order.amount } }
+                        );
+                        console.log(`🔧 إعادة تجميد ${order.amount} CRYSTAL من ${order.userId}`);
+                        fixedCount++;
+                    }
+                } else if (order.type === 'buy') {
+                    const totalNeeded = (order.amount * order.price) * (1 + this.tradingFee);
+                    if (wallet.usdtBalance >= totalNeeded) {
+                        await Wallet.updateOne(
+                            { userId: order.userId },
+                            { $inc: { usdtBalance: -totalNeeded } }
+                        );
+                        console.log(`🔧 إعادة تجميد ${totalNeeded.toFixed(4)} USDT من ${order.userId}`);
+                        fixedCount++;
+                    }
+                }
+            }
+            
+            console.log(`✅ تم تصحيح ${fixedCount} أوامر`);
+            return fixedCount;
+            
+        } catch (e) {
+            console.error('fixStuckOrders error:', e.message);
+            return 0;
+        }
+    }
+
+    async validateBalances() {
+        try {
+            console.log('🔍 فحص تناقض الأرصدة...');
+            
+            // إجمالي CRYSTAL في جميع المحافظ
+            const totalCrystal = await Wallet.aggregate([
+                { $group: { _id: null, total: { $sum: '$crystalBalance' } } }
+            ]);
+            const totalInWallets = totalCrystal[0]?.total || 0;
+            
+            // الأوامر المفتوحة (المجمدة)
+            const openSellOrders = await Order.aggregate([
+                { $match: { type: 'sell', status: { $in: ['open', 'partial'] } } },
+                { $group: { _id: null, totalFrozen: { $sum: '$amount' } } }
+            ]);
+            const frozenInOrders = openSellOrders[0]?.totalFrozen || 0;
+            
+            // العرض المتداول (بدون الأدمن)
+            const circulating = await this.getCirculatingSupply();
+            
+            // رصيد الأدمن
+            let adminTotal = 0;
+            for (const adminId of ADMIN_IDS) {
+                const balance = await this.getAdminBalance(adminId);
+                adminTotal += balance.crystalBalance;
+            }
+            
+            const grandTotal = circulating + frozenInOrders + adminTotal;
+            const isValid = Math.abs(grandTotal - this.totalCrystalSupply) <= 1;
+            
+            console.log(`📊 العرض الكلي: ${this.totalCrystalSupply.toLocaleString()}`);
+            console.log(`📊 متداول: ${circulating.toFixed(2)}`);
+            console.log(`📊 مجمد في أوامر: ${frozenInOrders.toFixed(2)}`);
+            console.log(`📊 أدمن: ${adminTotal.toFixed(2)}`);
+            console.log(`📊 المجموع: ${grandTotal.toFixed(2)} - ${isValid ? '✅ سليم' : '❌ خطأ'}`);
+            
+            if (!isValid) {
+                // تصحيح تلقائي
+                console.log('⚠️ تناقض في الأرصدة - جاري التصحيح...');
+                await this.ensureAdminHasSupply();
+            }
+            
+            return {
+                totalSupply: this.totalCrystalSupply,
+                circulating,
+                frozen: frozenInOrders,
+                adminBalance: adminTotal,
+                total: grandTotal,
+                isValid
+            };
+            
+        } catch (e) {
+            console.error('validateBalances error:', e.message);
+            return { isValid: false, totalSupply: this.totalCrystalSupply };
+        }
+    }
+
+    // ====================================================================
+    // إلغاء طلبات الإيداع المنتهية
+    // ====================================================================
+
     async cancelExpiredDeposits() {
         try {
             const result = await DepositRequest.updateMany(
@@ -165,7 +297,9 @@ class Database {
         }
     }
 
-    // ========== سجلات التدقيق ==========
+    // ====================================================================
+    // سجلات التدقيق
+    // ====================================================================
     
     async addAuditLog(userId, action, details = {}, ip = '', userAgent = '') {
         try {
@@ -173,7 +307,9 @@ class Database {
         } catch (e) {}
     }
 
-    // ========== إدارة المستخدمين ==========
+    // ====================================================================
+    // إدارة المستخدمين
+    // ====================================================================
     
     async updateLastSeen(userId) {
         try {
@@ -325,11 +461,18 @@ class Database {
         }
     }
 
-    // ========== حظر المستخدمين ==========
+    // ====================================================================
+    // حظر المستخدمين
+    // ====================================================================
     
     async banUser(userId, reason) {
         try {
             await User.updateOne({ userId }, { isBanned: true, banReason: reason });
+            // إلغاء جميع أوامره المفتوحة
+            const openOrders = await Order.find({ userId, status: { $in: ['open', 'partial'] } });
+            for (const order of openOrders) {
+                await this.cancelOrder(order._id, userId);
+            }
             return { success: true, message: `🚫 تم حظر المستخدم ${userId}` };
         } catch (e) {
             return { success: false, message: '❌ حدث خطأ' };
@@ -345,7 +488,9 @@ class Database {
         }
     }
 
-    // ========== نظام 2FA ==========
+    // ====================================================================
+    // نظام 2FA
+    // ====================================================================
     
     async generate2FASecret(userId) {
         try {
@@ -430,7 +575,9 @@ class Database {
         }
     }
 
-    // ========== إنشاء المحافظ ==========
+    // ====================================================================
+    // إنشاء المحافظ
+    // ====================================================================
     
     async createBnbWallet() {
         const wallet = ethers.Wallet.createRandom();
@@ -489,7 +636,9 @@ class Database {
         }
     }
 
-    // ========== نظام التداول ==========
+    // ====================================================================
+    // نظام التداول
+    // ====================================================================
     
     async getMarketPrice() {
         try {
@@ -581,7 +730,9 @@ class Database {
         }
     }
 
-    // ========== إنشاء أمر تداول ==========
+    // ====================================================================
+    // إنشاء أمر تداول
+    // ====================================================================
     
     async createOrder(userId, type, price, amount) {
         try {
@@ -680,7 +831,9 @@ class Database {
         }
     }
 
-    // ========== مطابقة الأوامر ==========
+    // ====================================================================
+    // مطابقة الأوامر
+    // ====================================================================
     
     async matchOrders(newOrder) {
         let remainingAmount = newOrder.amount;
@@ -691,7 +844,7 @@ class Database {
             let query = {
                 type: oppositeType,
                 status: { $in: ['open', 'partial'] },
-                userId: { $ne: newOrder.userId }  // لا يطابق نفس المستخدم
+                userId: { $ne: newOrder.userId }
             };
             
             if (newOrder.type === 'buy') {
@@ -838,7 +991,9 @@ class Database {
         } catch (e) {}
     }
 
-    // ========== إلغاء الطلب ==========
+    // ====================================================================
+    // إلغاء الطلب
+    // ====================================================================
     
     async cancelOrder(orderId, userId) {
         try {
@@ -879,7 +1034,9 @@ class Database {
         }
     }
 
-    // ========== جلب الأوامر ==========
+    // ====================================================================
+    // جلب الأوامر
+    // ====================================================================
     
     async getActiveOrders(type = null, limit = 50) {
         try {
@@ -953,7 +1110,9 @@ class Database {
         }
     }
 
-    // ========== الإيداع ==========
+    // ====================================================================
+    // الإيداع
+    // ====================================================================
     
     async requestDeposit(userId, amount, currency, network) {
         try {
@@ -961,7 +1120,6 @@ class Database {
                 return { success: false, message: '⚠️ الحد الأدنى للإيداع هو 1 USDT' };
             }
             
-            // التحقق من وجود طلب معلق سابق
             const existingPending = await DepositRequest.findOne({
                 userId,
                 status: 'pending',
@@ -975,7 +1133,6 @@ class Database {
                 };
             }
             
-            // حد أقصى 3 طلبات معلقة
             const pendingCount = await DepositRequest.countDocuments({
                 userId,
                 status: 'pending'
@@ -1060,7 +1217,9 @@ class Database {
         }
     }
 
-    // ========== السحب ==========
+    // ====================================================================
+    // السحب
+    // ====================================================================
     
     async requestWithdraw(userId, amount, currency, network, address, twoFACode = null) {
         try {
@@ -1147,7 +1306,9 @@ class Database {
         }
     }
 
-    // ========== KYC ==========
+    // ====================================================================
+    // KYC
+    // ====================================================================
     
     async createKycRequest(userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city, passportPhotoFileId, personalPhotoFileId, bankName, bankAccountNumber, bankAccountName) {
         try {
@@ -1236,7 +1397,9 @@ class Database {
         }
     }
 
-    // ========== الإحالات ==========
+    // ====================================================================
+    // الإحالات
+    // ====================================================================
     
     async getReferralData(userId) {
         try {
@@ -1290,7 +1453,9 @@ class Database {
         }
     }
 
-    // ========== دوال العرض والتداول ==========
+    // ====================================================================
+    // دوال العرض والتداول
+    // ====================================================================
     
     async getCirculatingSupply() {
         try {
@@ -1324,12 +1489,20 @@ class Database {
                 const balance = await this.getAdminBalance(adminId);
                 adminTotal += balance.crystalBalance;
             }
-            const totalInMarket = circulating + adminTotal;
+            
+            const openSellOrders = await Order.aggregate([
+                { $match: { type: 'sell', status: { $in: ['open', 'partial'] } } },
+                { $group: { _id: null, totalFrozen: { $sum: '$amount' } } }
+            ]);
+            const frozen = openSellOrders[0]?.totalFrozen || 0;
+            
+            const totalInMarket = circulating + frozen + adminTotal;
             
             return {
-                isValid: totalInMarket <= this.totalCrystalSupply + 0.01,
+                isValid: Math.abs(totalInMarket - this.totalCrystalSupply) <= 1,
                 totalSupply: this.totalCrystalSupply,
                 circulating: circulating,
+                frozen: frozen,
                 adminBalance: adminTotal,
                 remaining: this.totalCrystalSupply - totalInMarket
             };
@@ -1338,13 +1511,16 @@ class Database {
                 isValid: true,
                 totalSupply: this.totalCrystalSupply,
                 circulating: 0,
+                frozen: 0,
                 adminBalance: this.totalCrystalSupply,
                 remaining: 0
             };
         }
     }
 
-    // ========== الإحصائيات ==========
+    // ====================================================================
+    // الإحصائيات
+    // ====================================================================
     
     async getMarketStats() {
         try {
@@ -1419,7 +1595,9 @@ class Database {
         } catch (e) {}
     }
 
-    // ========== الدردشة ==========
+    // ====================================================================
+    // الدردشة
+    // ====================================================================
     
     async sendMessage(senderId, receiverId, message, imageFileId = null) {
         try {
@@ -1449,7 +1627,9 @@ class Database {
         }
     }
 
-    // ========== صلاحيات الأدمن ==========
+    // ====================================================================
+    // صلاحيات الأدمن
+    // ====================================================================
     
     async isAdmin(userId) {
         try {
