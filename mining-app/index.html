@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>💎 CRYSTAL Exchange - منصة تداول احترافية</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.0/dist/chartjs-chart-financial.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         :root {
             --bg-primary: #0b0e11;
@@ -31,7 +30,7 @@
             font-size: 13px;
         }
 
-        .app { max-width: 480px; margin: 0 auto; padding: 8px; }
+        .app { max-width: 480px; margin: 0 auto; padding: 6px; }
 
         .header {
             display: flex;
@@ -40,7 +39,7 @@
             padding: 8px 12px;
             background: var(--bg-secondary);
             border-radius: 8px;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
         .header .pair { font-size: 16px; font-weight: bold; color: var(--gold); }
         .header .price-info { text-align: left; }
@@ -51,8 +50,8 @@
 
         .balance-bar {
             display: flex;
-            gap: 8px;
-            margin-bottom: 8px;
+            gap: 6px;
+            margin-bottom: 6px;
         }
         .balance-item {
             flex: 1;
@@ -65,12 +64,29 @@
         .balance-item .label { color: var(--text-secondary); font-size: 10px; }
         .balance-item .value { font-weight: bold; font-size: 14px; margin-top: 2px; }
 
+        .stats-bar {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 6px;
+            flex-wrap: wrap;
+        }
+        .stat-item {
+            flex: 1;
+            min-width: 55px;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            padding: 6px 4px;
+            text-align: center;
+        }
+        .stat-item .stat-label { font-size: 8px; color: var(--text-secondary); }
+        .stat-item .stat-value { font-size: 11px; font-weight: bold; margin-top: 2px; }
+
         .chart-container {
             background: var(--bg-secondary);
             border-radius: 8px;
             padding: 8px;
-            margin-bottom: 8px;
-            height: 320px;
+            margin-bottom: 6px;
+            height: 300px;
             position: relative;
         }
         .timeframe-btns {
@@ -92,8 +108,8 @@
 
         .trade-area {
             display: flex;
-            gap: 8px;
-            margin-bottom: 8px;
+            gap: 6px;
+            margin-bottom: 6px;
         }
         .order-book-mini {
             flex: 1;
@@ -104,18 +120,8 @@
             max-height: 220px;
             overflow: hidden;
         }
-        .ob-title {
-            font-size: 11px;
-            font-weight: bold;
-            margin-bottom: 4px;
-            text-align: center;
-        }
-        .ob-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 2px 4px;
-            position: relative;
-        }
+        .ob-title { font-size: 11px; font-weight: bold; margin-bottom: 4px; text-align: center; }
+        .ob-row { display: flex; justify-content: space-between; padding: 2px 4px; }
         .ob-row .price { flex: 1; }
         .ob-row .amount { flex: 1; text-align: center; }
         .ob-row .total { flex: 1; text-align: left; }
@@ -128,11 +134,7 @@
             border-radius: 8px;
             padding: 8px;
         }
-        .trade-tabs {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 8px;
-        }
+        .trade-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
         .trade-tab {
             flex: 1;
             padding: 7px;
@@ -158,101 +160,45 @@
             color: #fff;
             font-size: 13px;
         }
-        .input-group input:focus {
-            border-color: var(--gold);
-            outline: none;
-        }
+        .input-group input:focus { border-color: var(--gold); outline: none; }
 
         .slider-container { margin: 8px 0; }
         .slider-container input[type=range] {
-            width: 100%;
-            height: 4px;
-            -webkit-appearance: none;
-            background: var(--bg-tertiary);
-            border-radius: 2px;
-            outline: none;
+            width: 100%; height: 4px; -webkit-appearance: none;
+            background: var(--bg-tertiary); border-radius: 2px; outline: none;
         }
         .slider-container input[type=range]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 20px;
-            height: 20px;
-            background: var(--gold);
-            border-radius: 50%;
-            cursor: pointer;
+            -webkit-appearance: none; width: 20px; height: 20px;
+            background: var(--gold); border-radius: 50%; cursor: pointer;
         }
-        .quick-btns {
-            display: flex;
-            gap: 4px;
-            margin-top: 4px;
-        }
+        .quick-btns { display: flex; gap: 4px; margin-top: 4px; }
         .quick-btn {
-            flex: 1;
-            padding: 5px;
-            background: var(--bg-tertiary);
-            border: none;
-            color: var(--text-secondary);
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 10px;
+            flex: 1; padding: 5px; background: var(--bg-tertiary);
+            border: none; color: var(--text-secondary); border-radius: 3px;
+            cursor: pointer; font-size: 10px;
         }
         .quick-btn:hover { background: var(--border); color: #fff; }
 
         .trade-btn {
-            width: 100%;
-            padding: 11px;
-            border: none;
-            border-radius: 4px;
-            font-size: 14px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 6px;
-            transition: opacity 0.2s;
+            width: 100%; padding: 11px; border: none; border-radius: 4px;
+            font-size: 14px; font-weight: bold; cursor: pointer; margin-top: 6px;
         }
         .trade-btn.buy-btn { background: var(--green); color: #000; }
         .trade-btn.sell-btn { background: var(--red); color: #fff; }
         .trade-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        .bottom-tabs {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 6px;
-            overflow-x: auto;
-        }
+        .bottom-tabs { display: flex; gap: 4px; margin-bottom: 6px; overflow-x: auto; }
         .bottom-tab {
-            padding: 7px 12px;
-            background: var(--bg-secondary);
-            border: none;
-            color: var(--text-secondary);
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 10px;
-            white-space: nowrap;
+            padding: 7px 12px; background: var(--bg-secondary);
+            border: none; color: var(--text-secondary); border-radius: 6px;
+            cursor: pointer; font-size: 10px; white-space: nowrap;
         }
         .bottom-tab.active { background: var(--gold); color: #000; font-weight: bold; }
 
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
-
-        .card {
-            background: var(--bg-secondary);
-            border-radius: 8px;
-            padding: 10px;
-            margin-bottom: 8px;
-        }
-
+        .card { background: var(--bg-secondary); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
         .loading { text-align: center; padding: 20px; color: var(--text-secondary); }
-
-        .price-input-wrapper {
-            position: relative;
-        }
-        .price-input-wrapper .market-hint {
-            position: absolute;
-            left: 8px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 10px;
-            color: var(--text-secondary);
-        }
     </style>
 </head>
 <body>
@@ -261,11 +207,13 @@
         <div class="header">
             <div>
                 <div class="pair">💎 CRYSTAL/USDT</div>
-                <div style="font-size:10px;color:var(--text-secondary)">500 حبة = 1 USDT</div>
+                <div style="font-size:9px;color:var(--text-secondary)">
+                    500 حبة = 1 USDT | <span style="color:var(--green)">H:<span id="high24h">0</span></span> | <span style="color:var(--red)">L:<span id="low24h">0</span></span>
+                </div>
             </div>
             <div class="price-info">
                 <div class="current-price" id="headerPrice">0.0020</div>
-                <div class="price-change" id="headerChange">0.00%</div>
+                <div class="price-change price-up" id="headerChange">0.00%</div>
             </div>
         </div>
 
@@ -284,6 +232,30 @@
             </div>
         </div>
 
+        <!-- شريط إحصائيات السوق -->
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-label">📈 التغير 24h</div>
+                <div class="stat-value" id="statChange" style="color:var(--green);">0.00%</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">📊 أعلى 24h</div>
+                <div class="stat-value" id="statHigh">0.0000</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">📉 أدنى 24h</div>
+                <div class="stat-value" id="statLow">0.0000</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">💰 الحجم 24h</div>
+                <div class="stat-value" id="statVolume" style="color:var(--gold);">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">🔄 الصفقات</div>
+                <div class="stat-value" id="statTrades">0</div>
+            </div>
+        </div>
+
         <!-- الرسم البياني -->
         <div class="chart-container">
             <div class="timeframe-btns">
@@ -299,16 +271,17 @@
 
         <!-- دفتر الطلبات + التداول -->
         <div class="trade-area">
-            <!-- دفتر الطلبات المصغر -->
             <div class="order-book-mini">
                 <div class="ob-title" style="color:var(--red)">🔴 بيع</div>
                 <div id="sellOrderBook"></div>
-                <div style="text-align:center;padding:8px;font-weight:bold;font-size:15px;" id="midPrice">0.0020</div>
+                <div style="text-align:center;padding:6px;">
+                    <div style="font-weight:bold;font-size:14px;" id="midPrice">0.0020</div>
+                    <div style="font-size:9px;" id="midChange">0.00%</div>
+                </div>
                 <div class="ob-title" style="color:var(--green)">🟢 شراء</div>
                 <div id="buyOrderBook"></div>
             </div>
 
-            <!-- نموذج التداول -->
             <div class="trade-form">
                 <div class="trade-tabs">
                     <button class="trade-tab buy-tab active" id="buyTab" onclick="setOrderType('buy')">🟢 شراء</button>
@@ -316,10 +289,8 @@
                 </div>
                 
                 <div class="input-group">
-                    <label>السعر (USDT) <span style="color:var(--text-secondary);font-size:9px;">- يمكنك التعديل يدوياً</span></label>
-                    <div class="price-input-wrapper">
-                        <input type="number" id="orderPrice" placeholder="0.0020" step="0.0001" oninput="onPriceManualChange()" value="0.002">
-                    </div>
+                    <label>السعر (USDT)</label>
+                    <input type="number" id="orderPrice" placeholder="0.0020" step="0.0001" oninput="onPriceManualChange()" value="0.002">
                 </div>
                 
                 <div class="input-group">
@@ -467,7 +438,7 @@
                 document.getElementById('usdtBalance').textContent = (data.usdtBalance || 0).toFixed(2);
                 document.getElementById('kycStatus').innerHTML = data.isVerified ? '✅' : '⚠️';
                 updateSliderMax();
-            } catch(e) { console.error(e); }
+            } catch(e) {}
         }
 
         // ========== السوق ==========
@@ -477,26 +448,45 @@
                 const data = await res.json();
                 marketPrice = data.price || 0.002;
                 
+                // الهيدر
                 document.getElementById('headerPrice').textContent = marketPrice.toFixed(4);
                 document.getElementById('midPrice').textContent = marketPrice.toFixed(4);
                 
-                // ✅ تحديث السعر في الحقل فقط إذا لم يغيره المستخدم يدوياً خلال آخر 30 ثانية
+                // تحديث السعر في الحقل
                 const now = Date.now();
                 if (!priceManuallyChanged || (now - lastManualPriceChange) > 30000) {
                     document.getElementById('orderPrice').value = marketPrice.toFixed(4);
                     priceManuallyChanged = false;
                 }
                 
+                // نسبة التغير
                 const change = data.change24h || 0;
-                const changeEl = document.getElementById('headerChange');
-                changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
-                changeEl.className = 'price-change ' + (change >= 0 ? 'price-up' : 'price-down');
+                const changeText = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+                const changeColor = change >= 0 ? 'var(--green)' : 'var(--red)';
+                
+                document.getElementById('headerChange').textContent = changeText;
+                document.getElementById('headerChange').className = 'price-change ' + (change >= 0 ? 'price-up' : 'price-down');
+                
+                document.getElementById('midChange').textContent = changeText;
+                document.getElementById('midChange').style.color = changeColor;
+                
+                document.getElementById('statChange').textContent = changeText;
+                document.getElementById('statChange').style.color = changeColor;
+                
+                // أعلى وأدنى
+                document.getElementById('statHigh').textContent = (data.high24h || 0).toFixed(4);
+                document.getElementById('statLow').textContent = (data.low24h || 0).toFixed(4);
+                document.getElementById('high24h').textContent = (data.high24h || 0).toFixed(4);
+                document.getElementById('low24h').textContent = (data.low24h || 0).toFixed(4);
+                
+                // الحجم والصفقات
+                document.getElementById('statVolume').textContent = (data.volume24h || 0).toFixed(0) + ' CRYSTAL';
+                document.getElementById('statTrades').textContent = data.totalTrades || 0;
                 
                 updateOrderTotal();
-            } catch(e) { console.error(e); }
+            } catch(e) {}
         }
 
-        // ✅ عندما يغير المستخدم السعر يدوياً
         function onPriceManualChange() {
             priceManuallyChanged = true;
             lastManualPriceChange = Date.now();
@@ -524,161 +514,89 @@
                     buyHtml += `<div class="ob-row buy"><span class="price">${o.price.toFixed(4)}</span><span class="amount">${o.amount.toFixed(0)}</span><span class="total">${(o.price*o.amount).toFixed(2)}</span></div>`;
                 }
                 document.getElementById('buyOrderBook').innerHTML = buyHtml || '<div style="color:var(--text-secondary);text-align:center;padding:10px;">-</div>';
-            } catch(e) { console.error(e); }
+            } catch(e) {}
         }
 
         // ========== الرسم البياني - شموع يابانية ==========
-        // ========== الرسم البياني - شموع يابانية (طريقة مضمونة) ==========
-async function loadChart() {
-    try {
-        const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=60`);
-        const candles = await res.json();
-        if (!candles || candles.length === 0) return;
-        
-        if (priceChart) priceChart.destroy();
-        
-        const ctx = document.getElementById('priceChart').getContext('2d');
-        
-        // تحويل البيانات
-        const labels = candles.map(c => new Date(c.timestamp).toLocaleTimeString('ar-SA', {hour:'2-digit',minute:'2-digit'}));
-        
-        // استخدام Bar chart كشمعة
-        const data = candles.map((c, i) => ({
-            x: i,
-            o: c.open,
-            h: c.high,
-            l: c.low,
-            c: c.close,
-            isUp: c.close >= c.open
-        }));
-        
-        priceChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        // الجسم (Body)
-                        label: 'الجسم',
-                        data: data.map(d => Math.abs(d.c - d.o)),
-                        backgroundColor: data.map(d => d.isUp ? 'rgba(14,203,129,0.9)' : 'rgba(246,70,93,0.9)'),
-                        borderColor: data.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
-                        borderWidth: 1,
-                        barPercentage: 0.6,
-                        categoryPercentage: 0.8,
-                        base: data.map(d => Math.min(d.o, d.c))
-                    },
-                    {
-                        // الظل العلوي (High Wick)
-                        label: 'الظل العلوي',
-                        data: data.map(d => d.h - Math.max(d.o, d.c)),
-                        backgroundColor: data.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
-                        borderColor: data.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
-                        borderWidth: 0.5,
-                        barPercentage: 0.1,
-                        categoryPercentage: 0.8,
-                        base: data.map(d => Math.max(d.o, d.c))
-                    },
-                    {
-                        // الظل السفلي (Low Wick)
-                        label: 'الظل السفلي',
-                        data: data.map(d => Math.min(d.o, d.c) - d.l),
-                        backgroundColor: data.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
-                        borderColor: data.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
-                        borderWidth: 0.5,
-                        barPercentage: 0.1,
-                        categoryPercentage: 0.8,
-                        base: data.map(d => d.l)
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function(ctx) {
-                                const i = ctx.dataIndex;
-                                const d = data[i];
-                                return [
-                                    `فتح: ${d.o.toFixed(6)}`,
-                                    `أعلى: ${d.h.toFixed(6)}`,
-                                    `أدنى: ${d.l.toFixed(6)}`,
-                                    `إغلاق: ${d.c.toFixed(6)}`,
-                                    d.isUp ? '🟢 صعود' : '🔴 هبوط'
-                                ];
+        async function loadChart() {
+            try {
+                const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=60`);
+                const candles = await res.json();
+                if (!candles || candles.length === 0) return;
+                
+                if (priceChart) priceChart.destroy();
+                
+                const ctx = document.getElementById('priceChart').getContext('2d');
+                const labels = candles.map(c => {
+                    const d = new Date(c.timestamp);
+                    if (currentTimeframe === '1d') return d.toLocaleDateString('ar-SA', {day:'2-digit',month:'2-digit'});
+                    return d.toLocaleTimeString('ar-SA', {hour:'2-digit',minute:'2-digit'});
+                });
+                
+                const barData = candles.map((c, i) => ({
+                    x: i,
+                    o: c.open, h: c.high, l: c.low, c: c.close,
+                    isUp: c.close >= c.open
+                }));
+                
+                priceChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'الجسم',
+                                data: barData.map(d => Math.abs(d.c - d.o)),
+                                backgroundColor: barData.map(d => d.isUp ? 'rgba(14,203,129,0.9)' : 'rgba(246,70,93,0.9)'),
+                                borderColor: barData.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
+                                borderWidth: 1,
+                                barPercentage: 0.6,
+                                categoryPercentage: 0.8,
+                                base: barData.map(d => Math.min(d.o, d.c))
+                            },
+                            {
+                                label: 'الظل',
+                                data: barData.map(d => d.h - Math.max(d.o, d.c)),
+                                backgroundColor: barData.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
+                                borderWidth: 0.5,
+                                barPercentage: 0.08,
+                                categoryPercentage: 0.8,
+                                base: barData.map(d => Math.max(d.o, d.c))
+                            },
+                            {
+                                label: 'الظل السفلي',
+                                data: barData.map(d => Math.min(d.o, d.c) - d.l),
+                                backgroundColor: barData.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
+                                borderWidth: 0.5,
+                                barPercentage: 0.08,
+                                categoryPercentage: 0.8,
+                                base: barData.map(d => d.l)
                             }
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        grid: { color: 'rgba(255,255,255,0.05)' },
-                        ticks: { color: '#848e9c', font: { size: 10 } },
-                        stacked: false
+                        ]
                     },
-                    x: {
-                        grid: { color: 'rgba(255,255,255,0.05)' },
-                        ticks: { color: '#848e9c', font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
-                        stacked: true
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const d = barData[ctx.dataIndex];
+                                        return [`فتح: ${d.o.toFixed(6)}`, `أعلى: ${d.h.toFixed(6)}`, `أدنى: ${d.l.toFixed(6)}`, `إغلاق: ${d.c.toFixed(6)}`];
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#848e9c', font: { size: 10 } }, stacked: false },
+                            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#848e9c', font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }, stacked: true }
+                        },
+                        interaction: { intersect: false, mode: 'index' }
                     }
-                },
-                interaction: { intersect: false, mode: 'index' }
-            }
-        });
-    } catch(e) { 
-        console.error('Chart error:', e);
-        // إذا فشل الرسم، استخدم الخط البسيط
-        loadSimpleChart();
-    }
-}
-
-// رسم بياني بسيط كخطة بديلة
-async function loadSimpleChart() {
-    try {
-        const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=60`);
-        const candles = await res.json();
-        if (!candles || candles.length === 0) return;
-        
-        if (priceChart) priceChart.destroy();
-        
-        const ctx = document.getElementById('priceChart').getContext('2d');
-        const labels = candles.map(c => new Date(c.timestamp).toLocaleTimeString('ar-SA', {hour:'2-digit',minute:'2-digit'}));
-        const prices = candles.map(c => c.close);
-        
-        const gradient = ctx.createLinearGradient(0, 0, 0, 320);
-        gradient.addColorStop(0, 'rgba(14,203,129,0.3)');
-        gradient.addColorStop(1, 'rgba(14,203,129,0)');
-        
-        priceChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    data: prices,
-                    borderColor: '#0ecb81',
-                    borderWidth: 2,
-                    backgroundColor: gradient,
-                    fill: true,
-                    tension: 0.1,
-                    pointRadius: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#848e9c', font: { size: 10 } } },
-                    x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#848e9c', font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } }
-                },
-                interaction: { intersect: false, mode: 'index' }
-            }
-        });
-    } catch(e) { console.error('Simple chart error:', e); }
-}
+                });
+            } catch(e) { console.error('Chart error:', e); }
+        }
 
         function setTimeframe(tf) {
             currentTimeframe = tf;
@@ -716,29 +634,26 @@ async function loadSimpleChart() {
             } else {
                 const price = parseFloat(document.getElementById('orderPrice').value) || 0.002;
                 const balance = parseFloat(document.getElementById('usdtBalance').textContent) || 0;
-                const maxAmount = balance / (price * 1.001);
-                slider.max = Math.max(1, Math.floor(maxAmount));
+                slider.max = Math.max(1, Math.floor(balance / (price * 1.001)));
             }
         }
 
         function syncInputFromSlider() {
-            const val = parseFloat(document.getElementById('amountSlider').value);
-            document.getElementById('orderAmount').value = val;
+            document.getElementById('orderAmount').value = parseFloat(document.getElementById('amountSlider').value);
             updateOrderTotal();
         }
 
         function syncSliderFromInput() {
-            const val = parseFloat(document.getElementById('orderAmount').value) || 1;
-            document.getElementById('amountSlider').value = val;
+            document.getElementById('amountSlider').value = parseFloat(document.getElementById('orderAmount').value) || 1;
             updateOrderTotal();
         }
 
         function setAmountPercent(percent) {
             const slider = document.getElementById('amountSlider');
             const max = parseFloat(slider.max);
-            const amount = Math.floor(max * percent / 100);
-            document.getElementById('orderAmount').value = Math.max(1, amount);
-            document.getElementById('amountSlider').value = Math.max(1, amount);
+            const amount = Math.max(1, Math.floor(max * percent / 100));
+            document.getElementById('orderAmount').value = amount;
+            document.getElementById('amountSlider').value = amount;
             updateOrderTotal();
         }
 
@@ -760,21 +675,14 @@ async function loadSimpleChart() {
                     body: JSON.stringify({ user_id: userId, type: currentOrderType, price, amount })
                 });
                 const result = await res.json();
-                
                 const msgDiv = document.getElementById('orderMessage');
-                if (result.success) {
-                    msgDiv.innerHTML = `<span style="color:var(--green)">${result.message}</span>`;
-                    loadAllData();
-                } else {
-                    msgDiv.innerHTML = `<span style="color:var(--red)">${result.message}</span>`;
-                }
+                msgDiv.innerHTML = result.success 
+                    ? `<span style="color:var(--green)">${result.message}</span>` 
+                    : `<span style="color:var(--red)">${result.message}</span>`;
                 tg.showAlert(result.message);
-            } catch(e) {
-                tg.showAlert('❌ حدث خطأ');
-            } finally {
-                btn.disabled = false;
-                btn.textContent = currentOrderType === 'buy' ? '✅ شراء CRYSTAL' : '🔴 بيع CRYSTAL';
-            }
+                if (result.success) loadAllData();
+            } catch(e) { tg.showAlert('❌ حدث خطأ'); }
+            finally { btn.disabled = false; btn.textContent = currentOrderType === 'buy' ? '✅ شراء CRYSTAL' : '🔴 بيع CRYSTAL'; }
         }
 
         // ========== طلباتي ==========
@@ -784,7 +692,6 @@ async function loadSimpleChart() {
                 const orders = await res.json();
                 const container = document.getElementById('myOrdersList');
                 if (!orders.length) { container.innerHTML = '<div class="loading">لا توجد طلبات</div>'; return; }
-                
                 let html = '';
                 for (const o of orders) {
                     const color = o.type === 'buy' ? 'var(--green)' : 'var(--red)';
@@ -805,8 +712,7 @@ async function loadSimpleChart() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ order_id: orderId, user_id: userId })
                 });
-                const result = await res.json();
-                tg.showAlert(result.message);
+                tg.showAlert((await res.json()).message);
                 loadAllData();
             } catch(e) { tg.showAlert('❌ خطأ'); }
         }
@@ -815,23 +721,14 @@ async function loadSimpleChart() {
         async function deposit() {
             const amount = parseFloat(document.getElementById('depositAmount').value);
             const network = document.getElementById('depositNetwork').value;
-            const btn = document.getElementById('depositBtn');
             if (!amount || amount < 1) { tg.showAlert('⚠️ الحد الأدنى 1 USDT'); return; }
-            
+            const btn = document.getElementById('depositBtn');
             btn.disabled = true;
             try {
-                const res = await fetch(`${API_URL}/api/deposit`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: userId, amount, network })
-                });
+                const res = await fetch(`${API_URL}/api/deposit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: userId, amount, network }) });
                 const result = await res.json();
-                if (result.address) {
-                    await navigator.clipboard.writeText(result.address);
-                    tg.showAlert(`📤 العنوان:\n${result.address}\n\n(تم النسخ)`);
-                } else {
-                    tg.showAlert(result.message);
-                }
+                if (result.address) { await navigator.clipboard.writeText(result.address); tg.showAlert(`📤 العنوان:\n${result.address}\n\n(تم النسخ)`); }
+                else tg.showAlert(result.message);
             } catch(e) { tg.showAlert('❌ خطأ'); }
             finally { btn.disabled = false; }
         }
@@ -842,15 +739,9 @@ async function loadSimpleChart() {
             const network = document.getElementById('depositNetwork').value;
             if (!amount || amount < 5) { tg.showAlert('⚠️ الحد الأدنى 5 USDT'); return; }
             if (!address) { tg.showAlert('⚠️ أدخل العنوان'); return; }
-            
             try {
-                const res = await fetch(`${API_URL}/api/withdraw`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: userId, amount, network, address })
-                });
-                const result = await res.json();
-                tg.showAlert(result.message);
+                const res = await fetch(`${API_URL}/api/withdraw`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: userId, amount, network, address }) });
+                tg.showAlert((await res.json()).message);
                 loadUserData();
             } catch(e) { tg.showAlert('❌ خطأ'); }
         }
@@ -861,29 +752,16 @@ async function loadSimpleChart() {
                 const res = await fetch(`${API_URL}/api/kyc/status/${userId}`);
                 const data = await res.json();
                 const container = document.getElementById('kycPanel');
-                if (data.status === 'approved') {
-                    container.innerHTML = '<div style="color:var(--green);font-size:16px;">✅ حساب موثق</div>';
-                } else if (data.status === 'pending') {
-                    container.innerHTML = '<div style="color:var(--gold);font-size:16px;">⏳ قيد المراجعة</div>';
-                } else {
+                if (data.status === 'approved') container.innerHTML = '<div style="color:var(--green);font-size:16px;">✅ حساب موثق</div>';
+                else if (data.status === 'pending') container.innerHTML = '<div style="color:var(--gold);font-size:16px;">⏳ قيد المراجعة</div>';
+                else {
                     container.innerHTML = `
                         <input type="text" id="kycFullName" placeholder="الاسم الكامل" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;margin:4px 0;">
                         <input type="text" id="kycPassport" placeholder="رقم الجواز" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;margin:4px 0;">
                         <input type="text" id="kycNationalId" placeholder="الرقم الوطني" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;margin:4px 0;">
                         <input type="tel" id="kycPhone" placeholder="رقم الهاتف" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;margin:4px 0;">
-                        <input type="text" id="kycBankName" placeholder="اسم البنك" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;margin:4px 0;">
-                        <input type="text" id="kycAccountNumber" placeholder="رقم الحساب" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;margin:4px 0;">
-                        <input type="text" id="kycAccountName" placeholder="اسم صاحب الحساب" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;margin:4px 0;">
-                        <div style="margin:6px 0;">
-                            <label style="font-size:10px;">صورة الجواز</label>
-                            <input type="file" id="passportPhoto" accept="image/*" onchange="previewFile(this,'passportPreview')" style="margin:4px 0;">
-                            <div id="passportPreview"></div>
-                        </div>
-                        <div style="margin:6px 0;">
-                            <label style="font-size:10px;">صورة شخصية</label>
-                            <input type="file" id="personalPhoto" accept="image/*" onchange="previewFile(this,'personalPreview')" style="margin:4px 0;">
-                            <div id="personalPreview"></div>
-                        </div>
+                        <div style="margin:6px 0;"><label style="font-size:10px;">صورة الجواز</label><input type="file" id="passportPhoto" accept="image/*" onchange="previewFile(this,'passportPreview')"><div id="passportPreview"></div></div>
+                        <div style="margin:6px 0;"><label style="font-size:10px;">صورة شخصية</label><input type="file" id="personalPhoto" accept="image/*" onchange="previewFile(this,'personalPreview')"><div id="personalPreview"></div></div>
                         <button class="trade-btn buy-btn" onclick="submitKyc()">📤 إرسال</button>`;
                 }
             } catch(e) {}
@@ -891,48 +769,21 @@ async function loadSimpleChart() {
 
         function previewFile(input, previewId) {
             const file = input.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = e => { document.getElementById(previewId).innerHTML = `<img src="${e.target.result}" style="max-width:100%;border-radius:4px;margin-top:4px;">`; };
-                reader.readAsDataURL(file);
-            }
+            if (file) { const r = new FileReader(); r.onload = e => { document.getElementById(previewId).innerHTML = `<img src="${e.target.result}" style="max-width:100%;border-radius:4px;margin-top:4px;">`; }; r.readAsDataURL(file); }
         }
 
         async function submitKyc() {
-            const fullName = document.getElementById('kycFullName')?.value;
-            const passport = document.getElementById('kycPassport')?.value;
-            const nationalId = document.getElementById('kycNationalId')?.value;
-            const phone = document.getElementById('kycPhone')?.value;
-            const bankName = document.getElementById('kycBankName')?.value || '';
-            const accountNum = document.getElementById('kycAccountNumber')?.value || '';
-            const accountName = document.getElementById('kycAccountName')?.value || '';
-            const passportFile = document.getElementById('passportPhoto')?.files[0];
-            const personalFile = document.getElementById('personalPhoto')?.files[0];
-            
-            if (!fullName || !passport || !nationalId || !phone) { tg.showAlert('⚠️ املأ جميع الحقول'); return; }
-            if (!passportFile || !personalFile) { tg.showAlert('⚠️ ارفع الصور'); return; }
-            
-            const formData = new FormData();
-            formData.append('user_id', userId);
-            formData.append('fullName', fullName);
-            formData.append('passportNumber', passport);
-            formData.append('nationalId', nationalId);
-            formData.append('phoneNumber', phone);
-            formData.append('email', '');
-            formData.append('country', 'SD');
-            formData.append('city', '');
-            formData.append('bankName', bankName);
-            formData.append('bankAccountNumber', accountNum);
-            formData.append('bankAccountName', accountName);
-            formData.append('passportPhoto', passportFile);
-            formData.append('personalPhoto', personalFile);
-            
-            try {
-                const res = await fetch(`${API_URL}/api/kyc/submit`, { method: 'POST', body: formData });
-                const result = await res.json();
-                tg.showAlert(result.message);
-                loadKycPanel();
-            } catch(e) { tg.showAlert('❌ خطأ'); }
+            const fn = document.getElementById('kycFullName')?.value, pp = document.getElementById('kycPassport')?.value, ni = document.getElementById('kycNationalId')?.value, ph = document.getElementById('kycPhone')?.value;
+            const pf = document.getElementById('passportPhoto')?.files[0], sf = document.getElementById('personalPhoto')?.files[0];
+            if (!fn||!pp||!ni||!ph) { tg.showAlert('⚠️ املأ جميع الحقول'); return; }
+            if (!pf||!sf) { tg.showAlert('⚠️ ارفع الصور'); return; }
+            const fd = new FormData();
+            fd.append('user_id',userId); fd.append('fullName',fn); fd.append('passportNumber',pp); fd.append('nationalId',ni);
+            fd.append('phoneNumber',ph); fd.append('email',''); fd.append('country','SD'); fd.append('city','');
+            fd.append('bankName',''); fd.append('bankAccountNumber',''); fd.append('bankAccountName','');
+            fd.append('passportPhoto',pf); fd.append('personalPhoto',sf);
+            try { const r = await fetch(`${API_URL}/api/kyc/submit`,{method:'POST',body:fd}); tg.showAlert((await r.json()).message); loadKycPanel(); }
+            catch(e) { tg.showAlert('❌ خطأ'); }
         }
 
         // ========== الإحالات ==========
@@ -950,21 +801,15 @@ async function loadSimpleChart() {
         }
 
         function copyReferral() {
-            const link = document.getElementById('referralPanel').querySelector('div').nextElementSibling?.nextElementSibling?.textContent;
+            const link = document.getElementById('referralPanel').querySelector('div:nth-child(3)')?.textContent;
             if (link) { navigator.clipboard.writeText(link); tg.showAlert('✅ تم النسخ'); }
         }
 
         async function transferReferral() {
             try {
-                const res = await fetch(`${API_URL}/api/referral/transfer`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: userId })
-                });
-                const result = await res.json();
-                tg.showAlert(result.message);
-                loadReferralPanel();
-                loadUserData();
+                const res = await fetch(`${API_URL}/api/referral/transfer`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:userId}) });
+                tg.showAlert((await res.json()).message);
+                loadReferralPanel(); loadUserData();
             } catch(e) { tg.showAlert('❌ خطأ'); }
         }
 
@@ -988,11 +833,7 @@ async function loadSimpleChart() {
             const msg = document.getElementById('chatMessage').value.trim();
             if (!msg) return;
             try {
-                await fetch(`${API_URL}/api/chat/send`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ senderId: userId, message: msg })
-                });
+                await fetch(`${API_URL}/api/chat/send`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({senderId:userId,message:msg}) });
                 document.getElementById('chatMessage').value = '';
                 loadChatMessages();
             } catch(e) {}
@@ -1004,11 +845,11 @@ async function loadSimpleChart() {
             document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
             event.target.classList.add('active');
             document.getElementById(`panel-${tab}`).classList.add('active');
-            if (tab === 'orders') loadMyOrders();
-            if (tab === 'history') loadTradeHistory();
-            if (tab === 'kyc') loadKycPanel();
-            if (tab === 'referral') loadReferralPanel();
-            if (tab === 'chat') loadChatMessages();
+            if (tab==='orders') loadMyOrders();
+            if (tab==='history') loadTradeHistory();
+            if (tab==='kyc') loadKycPanel();
+            if (tab==='referral') loadReferralPanel();
+            if (tab==='chat') loadChatMessages();
         }
 
         async function loadTradeHistory() {
@@ -1018,7 +859,7 @@ async function loadSimpleChart() {
                 const container = document.getElementById('tradeHistoryList');
                 if (!trades.length) { container.innerHTML = '<div class="loading">لا توجد صفقات</div>'; return; }
                 let html = '';
-                for (const t of trades.slice(0, 10)) {
+                for (const t of trades.slice(0,10)) {
                     const isBuyer = t.buyerId == userId;
                     html += `<div style="padding:6px;margin-bottom:4px;background:var(--bg-tertiary);border-radius:4px;border-right:3px solid ${isBuyer?'var(--green)':'var(--red)'};">
                         <div>${isBuyer?'🟢 شراء':'🔴 بيع'} | ${new Date(t.createdAt).toLocaleString('ar-SA')}</div>
@@ -1028,7 +869,6 @@ async function loadSimpleChart() {
             } catch(e) {}
         }
 
-        // ========== بدء التشغيل ==========
         init();
     </script>
 </body>
