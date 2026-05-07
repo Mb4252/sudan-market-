@@ -3,8 +3,8 @@ const mongoose = require('mongoose');
 // ========== نموذج المحفظة ==========
 const walletSchema = new mongoose.Schema({
     userId: { type: Number, required: true, unique: true },
-    usdtBalance: { type: Number, default: 0 },      // رصيد USDT
-    crystalBalance: { type: Number, default: 0 },   // رصيد عملة CRYSTAL
+    usdtBalance: { type: Number, default: 0 },
+    crystalBalance: { type: Number, default: 0 },
     bnbAddress: { type: String, unique: true, sparse: true },
     bnbEncryptedPrivateKey: { type: String },
     polygonAddress: { type: String, unique: true, sparse: true },
@@ -20,7 +20,7 @@ const walletSchema = new mongoose.Schema({
 
 // ========== نموذج طلب التوثيق (KYC) ==========
 const kycRequestSchema = new mongoose.Schema({
-    userId: { type: Number, required: true, unique: true },
+    userId: { type: Number, required: true },
     fullName: { type: String, required: true },
     passportNumber: { type: String, required: true },
     nationalId: { type: String, required: true },
@@ -101,14 +101,15 @@ const userSchema = new mongoose.Schema({
 const orderSchema = new mongoose.Schema({
     userId: { type: Number, required: true, index: true },
     type: { type: String, enum: ['buy', 'sell'], required: true },
-    price: { type: Number, required: true },        // السعر بـ USDT
-    amount: { type: Number, required: true },       // كمية CRYSTAL
-    originalAmount: { type: Number, required: true }, // الكمية الأصلية
-    totalUsdt: { type: Number, required: true },    // الإجمالي بـ USDT
+    price: { type: Number, required: true },
+    amount: { type: Number, required: true },
+    originalAmount: { type: Number, required: true },
+    totalUsdt: { type: Number, required: true },
     status: { type: String, enum: ['open', 'partial', 'completed', 'cancelled'], default: 'open' },
     isAdminOrder: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now },
-    completedAt: { type: Date, default: null }
+    completedAt: { type: Date, default: null },
+    cancelledAt: { type: Date, default: null }
 });
 
 // ========== نموذج الصفقات المنفذة ==========
@@ -120,7 +121,7 @@ const tradeSchema = new mongoose.Schema({
     price: { type: Number, required: true },
     amount: { type: Number, required: true },
     totalUsdt: { type: Number, required: true },
-    fee: { type: Number, default: 0.001 },  // 0.1% رسوم
+    fee: { type: Number, default: 0.001 },
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -132,18 +133,21 @@ const candlestickSchema = new mongoose.Schema({
     low: { type: Number, required: true },
     close: { type: Number, required: true },
     volume: { type: Number, default: 0 },
+    isReal: { type: Boolean, default: true },  // ✅ true = صفقة حقيقية، false = وهمية
     timestamp: { type: Date, required: true, index: true }
 });
 
 // ========== نموذج السعر السوقي الحالي ==========
 const marketPriceSchema = new mongoose.Schema({
     symbol: { type: String, default: 'CRYSTAL/USDT' },
-    price: { type: Number, required: true },
+    price: { type: Number, required: true, default: 0.002 },           // السعر الحقيقي (آخر صفقة)
+    displayPrice: { type: Number, required: true, default: 0.002 },    // ✅ السعر الوهمي (للعرض)
     change24h: { type: Number, default: 0 },
     volume24h: { type: Number, default: 0 },
-    high24h: { type: Number, default: 0 },
-    low24h: { type: Number, default: 0 },
-    lastUpdated: { type: Date, default: Date.now }
+    high24h: { type: Number, default: 0.002 },
+    low24h: { type: Number, default: 0.002 },
+    lastUpdated: { type: Date, default: Date.now },
+    lastFakeUpdate: { type: Date, default: Date.now }                  // ✅ وقت آخر تحديث وهمي
 });
 
 // ========== نماذج الإيداع والسحب ==========
@@ -154,10 +158,11 @@ const depositRequestSchema = new mongoose.Schema({
     network: { type: String, required: true },
     address: { type: String, required: true },
     transactionHash: { type: String, default: '' },
-    status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending' },
+    status: { type: String, enum: ['pending', 'completed', 'expired', 'failed'], default: 'pending' },
+    rejectionReason: { type: String, default: '' },
     verifiedBy: { type: Number, default: null },
-    verifiedAt: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date, default: () => new Date(Date.now() + 24 * 60 * 60 * 1000) },
     completedAt: { type: Date, default: null }
 });
 
@@ -167,7 +172,7 @@ const withdrawRequestSchema = new mongoose.Schema({
     currency: { type: String, default: 'USDT' },
     network: { type: String, required: true },
     address: { type: String, required: true },
-    status: { type: String, enum: ['pending', 'approved', 'rejected', 'completed'], default: 'pending' },
+    status: { type: String, enum: ['pending', 'processing', 'approved', 'rejected', 'completed'], default: 'pending' },
     transactionHash: { type: String, default: '' },
     fee: { type: Number, default: 0 },
     networkFee: { type: Number, default: 0 },
@@ -195,6 +200,8 @@ const dailyStatsSchema = new mongoose.Schema({
     totalTrades: { type: Number, default: 0 },
     totalVolume: { type: Number, default: 0 },
     totalCommission: { type: Number, default: 0 },
+    activeOffers: { type: Number, default: 0 },
+    pendingKyc: { type: Number, default: 0 },
     totalReferralCommissions: { type: Number, default: 0 },
     avgPrice: { type: Number, default: 0 },
     highPrice: { type: Number, default: 0 },
@@ -215,11 +222,15 @@ const chatMessageSchema = new mongoose.Schema({
 
 // ========== إنشاء الفهارس ==========
 userSchema.index({ userId: 1 });
+walletSchema.index({ userId: 1 });
 orderSchema.index({ type: 1, price: 1, status: 1 });
 orderSchema.index({ userId: 1, status: 1 });
 tradeSchema.index({ createdAt: -1 });
 candlestickSchema.index({ timeframe: 1, timestamp: 1 });
+candlestickSchema.index({ isReal: 1 });
 marketPriceSchema.index({ symbol: 1 });
+depositRequestSchema.index({ status: 1, address: 1 });
+depositRequestSchema.index({ userId: 1, status: 1 });
 
 // ========== إنشاء النماذج ==========
 const User = mongoose.model('User', userSchema);
