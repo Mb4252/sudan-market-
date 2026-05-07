@@ -986,71 +986,78 @@ class Database {
     // ====================================================================
     
     async matchOrders(newOrder) {
-        let remainingAmount = newOrder.amount;
-        let totalExecuted = 0;
+    let remainingAmount = newOrder.amount;
+    let totalExecuted = 0;
+    
+    try {
+        const oppositeType = newOrder.type === 'buy' ? 'sell' : 'buy';
+        const isUserAdmin = await this.isAdmin(newOrder.userId);
         
-        try {
-            const oppositeType = newOrder.type === 'buy' ? 'sell' : 'buy';
-            let query = {
-                type: oppositeType,
-                status: { $in: ['open', 'partial'] },
-                userId: { $ne: newOrder.userId }
-            };
+        let query = {
+            type: oppositeType,
+            status: { $in: ['open', 'partial'] }
+        };
+        
+        // ✅ الأدمن فقط يمكنه التداول مع نفسه
+        // ✅ المستخدم العادي لا يمكنه مطابقة أوامره
+        if (!isUserAdmin) {
+            query.userId = { $ne: newOrder.userId };
+        }
+        
+        if (newOrder.type === 'buy') {
+            query.price = { $lte: newOrder.price };
+        } else {
+            query.price = { $gte: newOrder.price };
+        }
+        
+        const matchingOrders = await Order.find(query)
+            .sort({ price: newOrder.type === 'buy' ? 1 : -1, createdAt: 1 })
+            .limit(20);
+        
+        for (const matchOrder of matchingOrders) {
+            if (remainingAmount <= 0.0001) break;
             
-            if (newOrder.type === 'buy') {
-                query.price = { $lte: newOrder.price };
-            } else {
-                query.price = { $gte: newOrder.price };
-            }
+            const executeAmount = Math.min(remainingAmount, matchOrder.amount);
+            const executePrice = matchOrder.price;
             
-            const matchingOrders = await Order.find(query)
-                .sort({ price: newOrder.type === 'buy' ? 1 : -1, createdAt: 1 })
-                .limit(20);
-            
-            for (const matchOrder of matchingOrders) {
-                if (remainingAmount <= 0.0001) break;
-                
-                const executeAmount = Math.min(remainingAmount, matchOrder.amount);
-                const executePrice = matchOrder.price;
-                
-                try {
-                    await this.executeTrade(
-                        newOrder.type === 'buy' ? newOrder : matchOrder,
-                        newOrder.type === 'buy' ? matchOrder : newOrder,
-                        executeAmount, executePrice
-                    );
-                    
-                    remainingAmount -= executeAmount;
-                    totalExecuted += executeAmount;
-                    
-                } catch (tradeError) {
-                    console.error('Trade execution error:', tradeError.message);
-                    continue;
-                }
-            }
-            
-            if (totalExecuted > 0) {
-                const newStatus = remainingAmount <= 0.0001 ? 'completed' : 'partial';
-                await Order.updateOne(
-                    { _id: newOrder._id },
-                    {
-                        status: newStatus,
-                        amount: Math.max(0, remainingAmount),
-                        completedAt: newStatus === 'completed' ? new Date() : null
-                    }
+            try {
+                await this.executeTrade(
+                    newOrder.type === 'buy' ? newOrder : matchOrder,
+                    newOrder.type === 'buy' ? matchOrder : newOrder,
+                    executeAmount, executePrice
                 );
                 
-                const lastPrice = matchingOrders[0]?.price || newOrder.price;
-                await this.updateMarketPrice(lastPrice, totalExecuted);
+                remainingAmount -= executeAmount;
+                totalExecuted += executeAmount;
+                
+            } catch (tradeError) {
+                console.error('Trade execution error:', tradeError.message);
+                continue;
             }
-            
-            return totalExecuted;
-            
-        } catch (error) {
-            console.error('matchOrders error:', error.message);
-            return totalExecuted;
         }
+        
+        if (totalExecuted > 0) {
+            const newStatus = remainingAmount <= 0.0001 ? 'completed' : 'partial';
+            await Order.updateOne(
+                { _id: newOrder._id },
+                {
+                    status: newStatus,
+                    amount: Math.max(0, remainingAmount),
+                    completedAt: newStatus === 'completed' ? new Date() : null
+                }
+            );
+            
+            const lastPrice = matchingOrders[0]?.price || newOrder.price;
+            await this.updateMarketPrice(lastPrice, totalExecuted);
+        }
+        
+        return totalExecuted;
+        
+    } catch (error) {
+        console.error('matchOrders error:', error.message);
+        return totalExecuted;
     }
+}
 
     async executeTrade(buyOrder, sellOrder, amount, price) {
         const totalUsdt = amount * price;
