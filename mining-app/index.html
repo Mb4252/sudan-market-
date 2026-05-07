@@ -528,93 +528,157 @@
         }
 
         // ========== الرسم البياني - شموع يابانية ==========
-        async function loadChart() {
-            try {
-                const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=60`);
-                const candles = await res.json();
-                if (!candles || candles.length === 0) return;
-                
-                if (priceChart) priceChart.destroy();
-                
-                const ctx = document.getElementById('priceChart').getContext('2d');
-                
-                // تحويل البيانات إلى صيغة الشموع المالية
-                const financialData = candles.map(c => ({
-                    x: new Date(c.timestamp).getTime(),
-                    o: c.open,
-                    h: c.high,
-                    l: c.low,
-                    c: c.close
-                }));
-                
-                priceChart = new Chart(ctx, {
-                    type: 'candlestick',
-                    data: {
-                        datasets: [{
-                            label: 'CRYSTAL/USDT',
-                            data: financialData,
-                            color: {
-                                up: '#0ecb81',
-                                down: '#f6465d',
-                                unchanged: '#999'
-                            },
-                            borderColor: {
-                                up: '#0ecb81',
-                                down: '#f6465d',
-                                unchanged: '#999'
-                            },
-                            backgroundColor: {
-                                up: 'rgba(14,203,129,0.8)',
-                                down: 'rgba(246,70,93,0.8)',
-                                unchanged: 'rgba(153,153,153,0.8)'
-                            },
-                            borderWidth: 1,
-                            barThickness: 'flex'
-                        }]
+        // ========== الرسم البياني - شموع يابانية (طريقة مضمونة) ==========
+async function loadChart() {
+    try {
+        const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=60`);
+        const candles = await res.json();
+        if (!candles || candles.length === 0) return;
+        
+        if (priceChart) priceChart.destroy();
+        
+        const ctx = document.getElementById('priceChart').getContext('2d');
+        
+        // تحويل البيانات
+        const labels = candles.map(c => new Date(c.timestamp).toLocaleTimeString('ar-SA', {hour:'2-digit',minute:'2-digit'}));
+        
+        // استخدام Bar chart كشمعة
+        const data = candles.map((c, i) => ({
+            x: i,
+            o: c.open,
+            h: c.high,
+            l: c.low,
+            c: c.close,
+            isUp: c.close >= c.open
+        }));
+        
+        priceChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        // الجسم (Body)
+                        label: 'الجسم',
+                        data: data.map(d => Math.abs(d.c - d.o)),
+                        backgroundColor: data.map(d => d.isUp ? 'rgba(14,203,129,0.9)' : 'rgba(246,70,93,0.9)'),
+                        borderColor: data.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
+                        borderWidth: 1,
+                        barPercentage: 0.6,
+                        categoryPercentage: 0.8,
+                        base: data.map(d => Math.min(d.o, d.c))
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(ctx) {
-                                        const d = ctx.raw;
-                                        return [
-                                            `فتح: ${d.o.toFixed(6)}`,
-                                            `أعلى: ${d.h.toFixed(6)}`,
-                                            `أدنى: ${d.l.toFixed(6)}`,
-                                            `إغلاق: ${d.c.toFixed(6)}`
-                                        ];
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                grid: { color: 'rgba(255,255,255,0.05)' },
-                                ticks: { color: '#848e9c', font: { size: 10 } }
-                            },
-                            x: {
-                                grid: { color: 'rgba(255,255,255,0.05)' },
-                                ticks: { color: '#848e9c', font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
-                                type: 'time',
-                                time: {
-                                    unit: currentTimeframe === '1d' ? 'day' : currentTimeframe === '4h' ? 'hour' : 'minute',
-                                    displayFormats: {
-                                        minute: 'HH:mm',
-                                        hour: 'HH:mm',
-                                        day: 'MM/DD'
-                                    }
-                                }
-                            }
-                        },
-                        interaction: { intersect: false, mode: 'index' }
+                    {
+                        // الظل العلوي (High Wick)
+                        label: 'الظل العلوي',
+                        data: data.map(d => d.h - Math.max(d.o, d.c)),
+                        backgroundColor: data.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
+                        borderColor: data.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
+                        borderWidth: 0.5,
+                        barPercentage: 0.1,
+                        categoryPercentage: 0.8,
+                        base: data.map(d => Math.max(d.o, d.c))
+                    },
+                    {
+                        // الظل السفلي (Low Wick)
+                        label: 'الظل السفلي',
+                        data: data.map(d => Math.min(d.o, d.c) - d.l),
+                        backgroundColor: data.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
+                        borderColor: data.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
+                        borderWidth: 0.5,
+                        barPercentage: 0.1,
+                        categoryPercentage: 0.8,
+                        base: data.map(d => d.l)
                     }
-                });
-            } catch(e) { console.error('Chart error:', e); }
-        }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                const i = ctx.dataIndex;
+                                const d = data[i];
+                                return [
+                                    `فتح: ${d.o.toFixed(6)}`,
+                                    `أعلى: ${d.h.toFixed(6)}`,
+                                    `أدنى: ${d.l.toFixed(6)}`,
+                                    `إغلاق: ${d.c.toFixed(6)}`,
+                                    d.isUp ? '🟢 صعود' : '🔴 هبوط'
+                                ];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#848e9c', font: { size: 10 } },
+                        stacked: false
+                    },
+                    x: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#848e9c', font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+                        stacked: true
+                    }
+                },
+                interaction: { intersect: false, mode: 'index' }
+            }
+        });
+    } catch(e) { 
+        console.error('Chart error:', e);
+        // إذا فشل الرسم، استخدم الخط البسيط
+        loadSimpleChart();
+    }
+}
+
+// رسم بياني بسيط كخطة بديلة
+async function loadSimpleChart() {
+    try {
+        const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=60`);
+        const candles = await res.json();
+        if (!candles || candles.length === 0) return;
+        
+        if (priceChart) priceChart.destroy();
+        
+        const ctx = document.getElementById('priceChart').getContext('2d');
+        const labels = candles.map(c => new Date(c.timestamp).toLocaleTimeString('ar-SA', {hour:'2-digit',minute:'2-digit'}));
+        const prices = candles.map(c => c.close);
+        
+        const gradient = ctx.createLinearGradient(0, 0, 0, 320);
+        gradient.addColorStop(0, 'rgba(14,203,129,0.3)');
+        gradient.addColorStop(1, 'rgba(14,203,129,0)');
+        
+        priceChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: prices,
+                    borderColor: '#0ecb81',
+                    borderWidth: 2,
+                    backgroundColor: gradient,
+                    fill: true,
+                    tension: 0.1,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#848e9c', font: { size: 10 } } },
+                    x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#848e9c', font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } }
+                },
+                interaction: { intersect: false, mode: 'index' }
+            }
+        });
+    } catch(e) { console.error('Simple chart error:', e); }
+}
 
         function setTimeframe(tf) {
             currentTimeframe = tf;
