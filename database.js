@@ -27,6 +27,8 @@ class Database {
         
         this.matchTimeout = 15000;
         this.depositExpiryHours = 24;
+        this.fakePriceInterval = null;
+        this.lastFakePrice = 0.002;
     }
 
     // ====================================================================
@@ -72,21 +74,16 @@ class Database {
             await this.initMarketPrice();
             await this.createIndexes();
             
-            // تصحيح الأوامر العالقة بعد الصيانة
             const fixedOrders = await this.fixStuckOrders();
             if (fixedOrders > 0) console.log(`🔧 تم تصحيح ${fixedOrders} أوامر`);
             
-            // التأكد من سلامة الأرصدة
             const balanceCheck = await this.validateBalances();
             if (!balanceCheck.isValid) {
                 console.error('⚠️ تناقض في الأرصدة - جاري التصحيح...');
                 await this.ensureAdminHasSupply();
             }
             
-            // إلغاء طلبات الإيداع المنتهية
             await this.cancelExpiredDeposits();
-            
-            // تشغيل تنظيف الطلبات المنتهية كل 6 ساعات
             setInterval(() => this.cancelExpiredDeposits(), 6 * 60 * 60 * 1000);
             
         } catch (error) {
@@ -104,6 +101,7 @@ class Database {
             await Trade.collection.createIndex({ createdAt: -1 });
             await ChatMessage.collection.createIndex({ chatType: 1, createdAt: -1 });
             await DepositRequest.collection.createIndex({ status: 1, address: 1 });
+            await Candlestick.collection.createIndex({ timeframe: 1, timestamp: 1, isReal: 1 });
             console.log('✅ Database indexes created');
         } catch (e) {
             console.log('⚠️ Index creation warning:', e.message);
@@ -117,11 +115,13 @@ class Database {
                 await MarketPrice.create({
                     symbol: 'CRYSTAL/USDT',
                     price: 0.002,
+                    displayPrice: 0.002,
                     change24h: 0,
                     volume24h: 0,
                     high24h: 0.002,
                     low24h: 0.002,
-                    lastUpdated: new Date()
+                    lastUpdated: new Date(),
+                    lastFakeUpdate: new Date()
                 });
                 console.log('✅ Market price initialized: 1 CRYSTAL = 0.002 USDT');
             }
@@ -165,6 +165,120 @@ class Database {
     }
 
     // ====================================================================
+    // نظام الحركة الوهمية للسعر والشموع
+    // ====================================================================
+
+    async startFakePriceMovement() {
+        if (this.fakePriceInterval) return;
+        
+        // تعيين آخر سعر وهمي من قاعدة البيانات
+        const marketPrice = await MarketPrice.findOne({ symbol: 'CRYSTAL/USDT' });
+        if (marketPrice) {
+            this.lastFakePrice = marketPrice.price;
+        }
+        
+        console.log('📊 بدء حركة السعر والشموع الوهمية...');
+        
+        // أول تحديث فوري
+        await this.fakePriceTick();
+        
+        // تشغيل كل 5 ثواني
+        this.fakePriceInterval = setInterval(async () => {
+            await this.fakePriceTick();
+        }, 5000);
+    }
+
+    async stopFakePriceMovement() {
+        if (this.fakePriceInterval) {
+            clearInterval(this.fakePriceInterval);
+            this.fakePriceInterval = null;
+            console.log('📊 توقف حركة السعر الوهمية');
+        }
+    }
+
+    async fakePriceTick() {
+        try {
+            const marketPrice = await MarketPrice.findOne({ symbol: 'CRYSTAL/USDT' });
+            if (!marketPrice) return;
+            
+            const realPrice = marketPrice.price;
+            
+            // تذبذب عشوائي بسيط (±0.5% من السعر الحقيقي)
+            const maxChange = realPrice * 0.005;
+            const randomChange = (Math.random() - 0.5) * 2 * maxChange;
+            const fakePrice = Math.max(0.0001, realPrice + randomChange);
+            
+            const now = new Date();
+            
+            // تحديث السعر الوهمي
+            await MarketPrice.updateOne(
+                { symbol: 'CRYSTAL/USDT' },
+                { 
+                    $set: { 
+                        displayPrice: parseFloat(fakePrice.toFixed(6)),
+                        lastFakeUpdate: now
+                    } 
+                }
+            );
+            
+            // إضافة شمعة وهمية
+            await this.addFakeCandlestick(fakePrice, realPrice, now);
+            
+            this.lastFakePrice = fakePrice;
+            
+        } catch (e) {
+            // تجاهل الأخطاء
+        }
+    }
+
+    async addFakeCandlestick(fakePrice, realPrice, timestamp) {
+        try {
+            const timeframes = ['1m', '5m', '15m', '1h'];
+            
+            for (const tf of timeframes) {
+                let interval = 60 * 1000;
+                if (tf === '5m') interval = 5 * 60 * 1000;
+                if (tf === '15m') interval = 15 * 60 * 1000;
+                if (tf === '1h') interval = 60 * 60 * 1000;
+                
+                const currentSlot = Math.floor(timestamp.getTime() / interval) * interval;
+                const candleTime = new Date(currentSlot);
+                
+                // البحث عن شمعة وهمية موجودة في هذه الفتحة
+                let candle = await Candlestick.findOne({ 
+                    timeframe: tf, 
+                    timestamp: candleTime,
+                    isReal: false
+                });
+                
+                if (!candle) {
+                    // إنشاء شمعة وهمية جديدة
+                    const openPrice = this.lastFakePrice || fakePrice;
+                    await Candlestick.create({
+                        timeframe: tf,
+                        timestamp: candleTime,
+                        open: openPrice,
+                        high: Math.max(openPrice, fakePrice),
+                        low: Math.min(openPrice, fakePrice),
+                        close: fakePrice,
+                        volume: Math.random() * 10, // حجم صغير وهمي
+                        isReal: false // ✅ شمعة وهمية
+                    });
+                } else {
+                    // تحديث الشمعة الوهمية الموجودة
+                    candle.high = Math.max(candle.high, fakePrice);
+                    candle.low = Math.min(candle.low, fakePrice);
+                    candle.close = fakePrice;
+                    candle.volume += Math.random() * 5;
+                    await candle.save();
+                }
+            }
+        } catch (e) {
+            // تجاهل أخطاء الشموع الوهمية
+        }
+    }
+
+    // ====================================================================
     // تصحيح الأوامر والأرصدة بعد الصيانة
     // ====================================================================
 
@@ -180,10 +294,7 @@ class Database {
                 if (!wallet) continue;
                 
                 if (order.type === 'sell') {
-                    // التحقق: إذا كان الرصيد أكبر من أو يساوي كمية الأمر ولم يتم تجميده
-                    // معنى ذلك أن التجميد فُقد أثناء الصيانة
                     if (wallet.crystalBalance >= order.amount) {
-                        // إعادة تجميد الكمية
                         await Wallet.updateOne(
                             { userId: order.userId },
                             { $inc: { crystalBalance: -order.amount } }
@@ -217,23 +328,19 @@ class Database {
         try {
             console.log('🔍 فحص تناقض الأرصدة...');
             
-            // إجمالي CRYSTAL في جميع المحافظ
             const totalCrystal = await Wallet.aggregate([
                 { $group: { _id: null, total: { $sum: '$crystalBalance' } } }
             ]);
             const totalInWallets = totalCrystal[0]?.total || 0;
             
-            // الأوامر المفتوحة (المجمدة)
             const openSellOrders = await Order.aggregate([
                 { $match: { type: 'sell', status: { $in: ['open', 'partial'] } } },
                 { $group: { _id: null, totalFrozen: { $sum: '$amount' } } }
             ]);
             const frozenInOrders = openSellOrders[0]?.totalFrozen || 0;
             
-            // العرض المتداول (بدون الأدمن)
             const circulating = await this.getCirculatingSupply();
             
-            // رصيد الأدمن
             let adminTotal = 0;
             for (const adminId of ADMIN_IDS) {
                 const balance = await this.getAdminBalance(adminId);
@@ -245,12 +352,11 @@ class Database {
             
             console.log(`📊 العرض الكلي: ${this.totalCrystalSupply.toLocaleString()}`);
             console.log(`📊 متداول: ${circulating.toFixed(2)}`);
-            console.log(`📊 مجمد في أوامر: ${frozenInOrders.toFixed(2)}`);
+            console.log(`📊 مجمد: ${frozenInOrders.toFixed(2)}`);
             console.log(`📊 أدمن: ${adminTotal.toFixed(2)}`);
             console.log(`📊 المجموع: ${grandTotal.toFixed(2)} - ${isValid ? '✅ سليم' : '❌ خطأ'}`);
             
             if (!isValid) {
-                // تصحيح تلقائي
                 console.log('⚠️ تناقض في الأرصدة - جاري التصحيح...');
                 await this.ensureAdminHasSupply();
             }
@@ -269,10 +375,6 @@ class Database {
             return { isValid: false, totalSupply: this.totalCrystalSupply };
         }
     }
-
-    // ====================================================================
-    // إلغاء طلبات الإيداع المنتهية
-    // ====================================================================
 
     async cancelExpiredDeposits() {
         try {
@@ -392,7 +494,6 @@ class Database {
                     rating: 5.0
                 });
                 
-                // الأدمن فقط يحصل على 5 مليون CRYSTAL
                 if (isAdminUser) {
                     const adminWallet = await Wallet.findOne({ userId });
                     if (adminWallet && adminWallet.crystalBalance === 0) {
@@ -461,14 +562,9 @@ class Database {
         }
     }
 
-    // ====================================================================
-    // حظر المستخدمين
-    // ====================================================================
-    
     async banUser(userId, reason) {
         try {
             await User.updateOne({ userId }, { isBanned: true, banReason: reason });
-            // إلغاء جميع أوامره المفتوحة
             const openOrders = await Order.find({ userId, status: { $in: ['open', 'partial'] } });
             for (const order of openOrders) {
                 await this.cancelOrder(order._id, userId);
@@ -637,10 +733,21 @@ class Database {
     }
 
     // ====================================================================
-    // نظام التداول
+    // نظام التداول - الأسعار
     // ====================================================================
     
     async getMarketPrice() {
+        try {
+            const price = await MarketPrice.findOne({ symbol: 'CRYSTAL/USDT' });
+            if (!price) return 0.002;
+            // إرجاع السعر الوهمي للعرض
+            return price.displayPrice || price.price;
+        } catch (e) {
+            return 0.002;
+        }
+    }
+
+    async getRealMarketPrice() {
         try {
             const price = await MarketPrice.findOne({ symbol: 'CRYSTAL/USDT' });
             return price ? price.price : 0.002;
@@ -656,6 +763,7 @@ class Database {
             
             const update = {
                 price: newPrice,
+                displayPrice: newPrice,  // السعر الوهمي = الحقيقي بعد الصفقة
                 volume24h: (price.volume24h || 0) + volume,
                 high24h: Math.max(price.high24h || newPrice, newPrice),
                 low24h: Math.min(price.low24h || newPrice, newPrice),
@@ -669,7 +777,11 @@ class Database {
             }
             
             await MarketPrice.updateOne({ symbol: 'CRYSTAL/USDT' }, update);
-            this.addCandlestick(newPrice, volume).catch(() => {});
+            
+            // إضافة شمعة حقيقية
+            this.addCandlestick(newPrice, volume, true).catch(() => {});
+            
+            console.log(`💰 السعر الحقيقي: ${newPrice} USDT (حجم: ${volume})`);
             
         } catch (e) {
             console.error('updateMarketPrice error:', e.message);
@@ -678,16 +790,28 @@ class Database {
 
     async getPriceAtTime(timestamp) {
         try {
+            // البحث في الشموع الحقيقية أولاً
             const candle = await Candlestick.findOne({
-                timeframe: '1h', timestamp: { $lte: timestamp }
+                timeframe: '1h', 
+                timestamp: { $lte: timestamp },
+                isReal: true
             }).sort({ timestamp: -1 });
-            return candle ? candle.close : null;
+            
+            if (candle) return candle.close;
+            
+            // إذا لم يوجد، البحث في أي شمعة
+            const anyCandle = await Candlestick.findOne({
+                timeframe: '1h', 
+                timestamp: { $lte: timestamp }
+            }).sort({ timestamp: -1 });
+            
+            return anyCandle ? anyCandle.close : null;
         } catch (e) {
             return null;
         }
     }
 
-    async addCandlestick(price, volume) {
+    async addCandlestick(price, volume, isReal = true) {
         try {
             const timeframes = ['1m', '5m', '15m', '1h'];
             const now = new Date();
@@ -701,12 +825,37 @@ class Database {
                 const currentSlot = Math.floor(now.getTime() / interval) * interval;
                 const candleTime = new Date(currentSlot);
                 
-                let candle = await Candlestick.findOne({ timeframe: tf, timestamp: candleTime });
+                // البحث عن شمعة حقيقية أولاً
+                let candle = await Candlestick.findOne({ 
+                    timeframe: tf, 
+                    timestamp: candleTime,
+                    isReal: true
+                });
+                
+                if (!candle) {
+                    // إذا لم توجد شمعة حقيقية، نبحث عن وهمية ونحولها لحقيقية
+                    candle = await Candlestick.findOne({ 
+                        timeframe: tf, 
+                        timestamp: candleTime,
+                        isReal: false
+                    });
+                    
+                    if (candle) {
+                        // تحويل الشمعة الوهمية إلى حقيقية
+                        candle.isReal = true;
+                    }
+                }
                 
                 if (!candle) {
                     await Candlestick.create({
-                        timeframe: tf, timestamp: candleTime,
-                        open: price, high: price, low: price, close: price, volume: volume
+                        timeframe: tf,
+                        timestamp: candleTime,
+                        open: price,
+                        high: price,
+                        low: price,
+                        close: price,
+                        volume: volume,
+                        isReal: isReal
                     });
                 } else {
                     candle.high = Math.max(candle.high, price);
@@ -721,6 +870,7 @@ class Database {
 
     async getCandlesticks(timeframe, limit = 100) {
         try {
+            // جلب جميع الشموع (حقيقية ووهمية)
             const candles = await Candlestick.find({ timeframe })
                 .sort({ timestamp: -1 })
                 .limit(Math.min(limit, 200));
@@ -1536,7 +1686,7 @@ class Database {
             const supplyCheck = await this.validateTotalSupply();
             
             return {
-                price: marketPrice?.price || 0.002,
+                price: marketPrice?.displayPrice || marketPrice?.price || 0.002,
                 change24h: marketPrice?.change24h || 0,
                 volume24h: marketPrice?.volume24h || 0,
                 high24h: marketPrice?.high24h || 0.002,
