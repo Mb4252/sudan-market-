@@ -204,7 +204,7 @@
                 document.getElementById('high24h').textContent = hi.toFixed(4); document.getElementById('low24h').textContent = lo.toFixed(4);
                 document.getElementById('statVolume').textContent = vol.toFixed(0)+' CRYSTAL'; document.getElementById('statTrades').textContent = trades;
                 updateOrderTotal();
-            } catch(e) {}
+           } catch(e) {}
         }
         function onPriceManualChange() { priceManuallyChanged = true; lastManualPriceChange = Date.now(); updateOrderTotal(); updateSliderMax(); }
 
@@ -221,92 +221,133 @@
 
         // ========== شموع يابانية واضحة ==========
         async function loadChart() {
-            try {
-                let limit = 60; if (currentTimeframe === '4h') limit = 90; if (currentTimeframe === '1d') limit = 60;
-                const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=${limit}`);
-                const candles = await res.json();
-                if (!candles || candles.length === 0) return;
-                
-                if (priceChart) priceChart.destroy();
-                const ctx = document.getElementById('priceChart').getContext('2d');
-                
-                const labels = candles.map(c => {
-                    const d = new Date(c.timestamp);
-                    if (currentTimeframe === '1d') return d.toLocaleDateString('ar-SA', {day:'2-digit', month:'2-digit'});
-                    if (currentTimeframe === '4h') return d.toLocaleDateString('ar-SA', {day:'2-digit', month:'2-digit'}) + '\n' + d.toLocaleTimeString('ar-SA', {hour:'2-digit'});
-                    return d.toLocaleTimeString('ar-SA', {hour:'2-digit', minute:'2-digit'});
-                });
-                
-                const cd = candles.map((c, i) => ({
-                    x: i, o: c.open, h: c.high, l: c.low, c: c.close,
-                    isUp: c.close >= c.open, volume: c.volume || 0
-                }));
-                
-                priceChart = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: labels,
-                        datasets: [
-                            {
-                                label: 'الظل الكامل',
-                                data: cd.map(d => d.h - d.l),
-                                backgroundColor: cd.map(d => d.isUp ? 'rgba(14,203,129,0.3)' : 'rgba(246,70,93,0.3)'),
-                                borderColor: cd.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
-                                borderWidth: 1,
-                                barPercentage: 0.2,
-                                categoryPercentage: 0.85,
-                                base: cd.map(d => d.l)
-                            },
-                            {
-                                label: 'الجسم',
-                                data: cd.map(d => Math.abs(d.c - d.o)),
-                                backgroundColor: cd.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
-                                borderColor: cd.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
-                                borderWidth: 1,
-                                barPercentage: 0.55,
-                                categoryPercentage: 0.85,
-                                base: cd.map(d => Math.min(d.o, d.c))
-                            }
-                        ]
+    try {
+        let limit = 60;
+        if (currentTimeframe === '4h') limit = 90;
+        if (currentTimeframe === '1d') limit = 60;
+        
+        const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=${limit}`);
+        const candles = await res.json();
+        
+        if (!candles || candles.length === 0) return;
+        
+        if (priceChart) priceChart.destroy();
+        
+        const ctx = document.getElementById('priceChart').getContext('2d');
+        
+        const labels = candles.map(c => {
+            const d = new Date(c.timestamp);
+            if (currentTimeframe === '1d') return d.toLocaleDateString('ar-SA', { day: '2-digit', month: '2-digit' });
+            if (currentTimeframe === '4h') return d.toLocaleDateString('ar-SA', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('ar-SA', { hour: '2-digit' });
+            return d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+        });
+        
+        const cd = candles.map((c, i) => ({
+            x: i,
+            o: c.open,
+            h: c.high,
+            l: c.low,
+            c: c.close,
+            isUp: c.close >= c.open,
+            volume: c.volume || 0
+        }));
+        
+        // ✅ استخدام dataset واحد للجسم + الظلال
+        priceChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    // ✅ الجسم الرئيسي - floating bar
+                    {
+                        label: 'جسم',
+                        data: cd.map(d => [Math.min(d.o, d.c), Math.max(d.o, d.c)]),
+                        backgroundColor: cd.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
+                        borderColor: cd.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
+                        borderWidth: 1,
+                        borderSkipped: false,
+                        barPercentage: 0.6,
+                        categoryPercentage: 0.9
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(ctx) {
-                                        const d = cd[ctx.dataIndex];
-                                        return [
-                                            `🕯️ فتح: ${d.o.toFixed(6)}`,
-                                            `📈 أعلى: ${d.h.toFixed(6)}`,
-                                            `📉 أدنى: ${d.l.toFixed(6)}`,
-                                            `🏁 إغلاق: ${d.c.toFixed(6)}`,
-                                            `📊 حجم: ${d.volume}`,
-                                            d.isUp ? '🟢 صعود' : '🔴 هبوط'
-                                        ];
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                grid: { color: 'rgba(255,255,255,0.06)' },
-                                ticks: { color: '#848e9c', font: { size: 10 } },
-                                stacked: false
-                            },
-                            x: {
-                                grid: { color: 'rgba(255,255,255,0.04)' },
-                                ticks: { color: '#848e9c', font: { size: 8 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 10 },
-                                stacked: true
-                            }
-                        },
-                        interaction: { intersect: false, mode: 'index' }
+                    // ✅ الظل العلوي - floating bar رفيع
+                    {
+                        label: 'ظل علوي',
+                        data: cd.map(d => [Math.max(d.o, d.c), d.h]),
+                        backgroundColor: cd.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
+                        borderColor: cd.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
+                        borderWidth: 1,
+                        borderSkipped: false,
+                        barPercentage: 0.1,
+                        categoryPercentage: 0.9
+                    },
+                    // ✅ الظل السفلي - floating bar رفيع
+                    {
+                        label: 'ظل سفلي',
+                        data: cd.map(d => [d.l, Math.min(d.o, d.c)]),
+                        backgroundColor: cd.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
+                        borderColor: cd.map(d => d.isUp ? '#0ecb81' : '#f6465d'),
+                        borderWidth: 1,
+                        borderSkipped: false,
+                        barPercentage: 0.1,
+                        categoryPercentage: 0.9
                     }
-                });
-            } catch(e) { console.error('Chart:', e); }
-        }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                const d = cd[ctx.dataIndex];
+                                return [
+                                    `🕯️ فتح: ${d.o.toFixed(6)}`,
+                                    `📈 أعلى: ${d.h.toFixed(6)}`,
+                                    `📉 أدنى: ${d.l.toFixed(6)}`,
+                                    `🏁 إغلاق: ${d.c.toFixed(6)}`,
+                                    `📊 حجم: ${d.volume}`,
+                                    d.isUp ? '🟢 صعود' : '🔴 هبوط'
+                                ];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.08)' },
+                        ticks: {
+                            color: '#848e9c',
+                            font: { size: 10 },
+                            callback: function(v) {
+                                if (v >= 1) return v.toFixed(2);
+                                if (v >= 0.01) return v.toFixed(4);
+                                return v.toFixed(6);
+                            }
+                        },
+                        // ✅ بداية المحور من أقل قيمة بقليل
+                        grace: '5%'
+                    },
+                    x: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: {
+                            color: '#848e9c',
+                            font: { size: currentTimeframe === '1d' ? 8 : 9 },
+                            maxRotation: 45,
+                            autoSkip: true,
+                            maxTicksLimit: currentTimeframe === '1d' ? 15 : currentTimeframe === '4h' ? 12 : 10
+                        }
+                    }
+                },
+                interaction: { intersect: false, mode: 'index' }
+            }
+        });
+        
+    } catch(e) {
+        console.error('Chart error:', e);
+    }
+}
 
         function setTimeframe(tf) { currentTimeframe = tf; document.querySelectorAll('.tf-btn').forEach(b=>b.classList.remove('active')); event.target.classList.add('active'); if(priceChart){priceChart.destroy();priceChart=null;} loadChart(); }
         function setOrderType(type) { currentOrderType = type; document.getElementById('buyTab').classList.toggle('active', type==='buy'); document.getElementById('sellTab').classList.toggle('active', type==='sell'); const btn = document.getElementById('createOrderBtn'); btn.textContent = type==='buy'?'✅ شراء CRYSTAL':'🔴 بيع CRYSTAL'; btn.className = 'trade-btn '+(type==='buy'?'buy-btn':'sell-btn'); updateSliderMax(); updateOrderTotal(); }
