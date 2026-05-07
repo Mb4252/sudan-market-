@@ -100,18 +100,22 @@ app.get('/api/orders/:userId', async (req, res) => {
 app.post('/api/order/create', async (req, res) => {
     try {
         const { user_id, type, price, amount } = req.body;
-        console.log('📥 طلب إنشاء أمر:', { user_id, type, price, amount });
+        console.log('📥 POST /api/order/create - Body:', { user_id, type, price, amount });
         
         if (!user_id || !type || !price || !amount) {
+            console.log('❌ Missing fields');
             return res.json({ success: false, message: '⚠️ جميع الحقول مطلوبة' });
         }
         
+        console.log('🔄 Calling db.createOrder...');
         const result = await db.createOrder(parseInt(user_id), type, parseFloat(price), parseFloat(amount));
-        console.log('📤 رد إنشاء الأمر:', result);
+        console.log('📤 createOrder result:', JSON.stringify(result));
+        
         res.json(result);
     } catch(e) {
-        console.error('❌ createOrder API error:', e);
-        res.json({ success: false, message: '❌ حدث خطأ في إنشاء الطلب' });
+        console.error('❌ createOrder API error:', e.message);
+        console.error(e.stack);
+        res.json({ success: false, message: '❌ حدث خطأ في إنشاء الطلب: ' + e.message });
     }
 });
 
@@ -572,7 +576,7 @@ bot.command('buy', async (ctx) => {
         if (isNaN(price) || isNaN(amount)) return ctx.reply('❌ السعر والكمية يجب أن يكونا أرقاماً');
         
         const result = await db.createOrder(ctx.from.id, 'buy', price, amount);
-        await ctx.reply(result.message);
+        await ctx.reply(result.message || 'تم إنشاء الطلب');
     } catch (e) {
         await ctx.reply('❌ حدث خطأ');
     }
@@ -589,7 +593,7 @@ bot.command('sell', async (ctx) => {
         if (isNaN(price) || isNaN(amount)) return ctx.reply('❌ السعر والكمية يجب أن يكونا أرقاماً');
         
         const result = await db.createOrder(ctx.from.id, 'sell', price, amount);
-        await ctx.reply(result.message);
+        await ctx.reply(result.message || 'تم إنشاء الطلب');
     } catch (e) {
         await ctx.reply('❌ حدث خطأ');
     }
@@ -601,7 +605,7 @@ bot.command('cancel', async (ctx) => {
         if (!orderId) return ctx.reply('❌ /cancel [رقم الطلب]');
         
         const result = await db.cancelOrder(orderId, ctx.from.id);
-        await ctx.reply(result.message);
+        await ctx.reply(result.message || 'تم إلغاء الطلب');
     } catch (e) {
         await ctx.reply('❌ حدث خطأ');
     }
@@ -836,7 +840,7 @@ bot.action(/approve_kyc_(.+)/, async (ctx) => {
     const result = await db.approveKyc(requestId, adminId);
     
     await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
-    await ctx.reply(result.message);
+    await ctx.reply(result.message || 'تمت الموافقة');
 });
 
 // رفض KYC
@@ -850,7 +854,7 @@ bot.action(/reject_kyc_(.+)/, async (ctx) => {
     const result = await db.rejectKyc(requestId, adminId, 'غير مستوفي للشروط');
     
     await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
-    await ctx.reply(result.message);
+    await ctx.reply(result.message || 'تم الرفض');
 });
 
 // تأكيد سحب
@@ -864,7 +868,7 @@ bot.action(/confirm_withdraw_(.+)/, async (ctx) => {
     const result = await db.confirmWithdraw(requestId, 'confirmed_by_admin', adminId);
     
     await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
-    await ctx.reply(result.message);
+    await ctx.reply(result.message || 'تم التأكيد');
 });
 
 // تأكيد إيداع
@@ -878,7 +882,7 @@ bot.action(/confirm_deposit_(.+)/, async (ctx) => {
     const result = await db.confirmDeposit(requestId, 'confirmed_by_admin', adminId);
     
     await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
-    await ctx.reply(result.message);
+    await ctx.reply(result.message || 'تم التأكيد');
 });
 
 // ========== معالج أخطاء البوت ==========
