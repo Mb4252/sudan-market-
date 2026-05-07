@@ -365,29 +365,6 @@ app.get('/api/supply', async (req, res) => {
     }
 });
 
-// ========== API الأدمن ==========
-app.post('/api/admin/ban', async (req, res) => {
-    try {
-        const { admin_id, user_id, reason } = req.body;
-        if (!isAdmin(parseInt(admin_id))) return res.json({ success: false, message: '⛔ غير مصرح' });
-        const result = await db.banUser(parseInt(user_id), reason || 'مخالفة');
-        res.json(result);
-    } catch(e) {
-        res.json({ success: false, message: '❌ حدث خطأ' });
-    }
-});
-
-app.post('/api/admin/unban', async (req, res) => {
-    try {
-        const { admin_id, user_id } = req.body;
-        if (!isAdmin(parseInt(admin_id))) return res.json({ success: false, message: '⛔ غير مصرح' });
-        const result = await db.unbanUser(parseInt(user_id));
-        res.json(result);
-    } catch(e) {
-        res.json({ success: false, message: '❌ حدث خطأ' });
-    }
-});
-
 // ========== معالج الأخطاء ==========
 app.use((err, req, res, next) => {
     console.error('❌ Server Error:', err.message);
@@ -485,6 +462,8 @@ bot.command('help', async (ctx) => {
             `/admin_balance - رصيد الأدمن\n` +
             `/kyc_list - طلبات التوثيق\n` +
             `/pending - المعلقات\n` +
+            `/fix - فحص وتصحيح النظام\n` +
+            `/maintenance - إيقاف التداول للصيانة\n` +
             `/ban [id] - حظر مستخدم\n` +
             `/unban [id] - فك حظر`;
     }
@@ -519,8 +498,9 @@ bot.command('supply', async (ctx) => {
             `📊 *معلومات العرض*\n\n` +
             `💰 *إجمالي العرض:* ${supplyCheck.totalSupply.toLocaleString()} CRYSTAL\n` +
             `🔄 *في التداول:* ${supplyCheck.circulating.toFixed(2)} CRYSTAL\n` +
+            `🔒 *مجمد في أوامر:* ${supplyCheck.frozen.toFixed(2)} CRYSTAL\n` +
             `👑 *مع الأدمن:* ${supplyCheck.adminBalance.toFixed(2)} CRYSTAL\n` +
-            `✅ *العرض صحيح:* ${supplyCheck.isValid ? '✅ نعم' : '⚠️ تجاوز!'}`,
+            `✅ *العرض صحيح:* ${supplyCheck.isValid ? '✅ نعم' : '⚠️ خطأ!'}`,
             { parse_mode: 'Markdown' }
         );
     } catch (e) {
@@ -784,6 +764,52 @@ bot.command('pending', async (ctx) => {
                 }
             );
         }
+    } catch (e) {
+        await ctx.reply('❌ حدث خطأ');
+    }
+});
+
+bot.command('fix', async (ctx) => {
+    try {
+        if (!isAdmin(ctx.from.id)) return ctx.reply('⛔ للأدمن فقط');
+        
+        await ctx.reply('🔧 جاري فحص وتصحيح النظام...');
+        
+        const fixedOrders = await db.fixStuckOrders();
+        const balanceCheck = await db.validateBalances();
+        
+        await ctx.reply(
+            `🔧 *نتيجة الفحص*\n\n` +
+            `📋 أوامر مصححة: ${fixedOrders}\n` +
+            `✅ الأرصدة سليمة: ${balanceCheck.isValid ? '✅ نعم' : '❌ خطأ - تحتاج تدخل'}\n\n` +
+            `📊 *تفاصيل:*\n` +
+            `💰 العرض الكلي: ${balanceCheck.totalSupply?.toLocaleString()}\n` +
+            `🔄 المتداول: ${balanceCheck.circulating?.toFixed(2)}\n` +
+            `🔒 المجمد: ${balanceCheck.frozen?.toFixed(2)}\n` +
+            `👑 الأدمن: ${balanceCheck.adminBalance?.toFixed(2)}\n` +
+            `📊 المجموع: ${balanceCheck.total?.toFixed(2)}`,
+            { parse_mode: 'Markdown' }
+        );
+        
+    } catch (e) {
+        await ctx.reply('❌ حدث خطأ');
+    }
+});
+
+bot.command('maintenance', async (ctx) => {
+    try {
+        if (!isAdmin(ctx.from.id)) return ctx.reply('⛔ للأدمن فقط');
+        
+        await ctx.reply('🛑 جاري إيقاف التداول للصيانة...');
+        
+        const openOrders = await require('./models').Order.find({ status: { $in: ['open', 'partial'] } });
+        
+        for (const order of openOrders) {
+            await db.cancelOrder(order._id, order.userId);
+        }
+        
+        await ctx.reply(`✅ تم إلغاء ${openOrders.length} أمر وإرجاع الأموال\n🔧 يمكنك الآن إجراء الصيانة بأمان`);
+        
     } catch (e) {
         await ctx.reply('❌ حدث خطأ');
     }
