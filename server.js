@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { Telegraf, Markup } = require('telegraf');
 const db = require('./database');
+const blockchainMonitor = require('./blockchain');
 const express = require('express');
 const path = require('path');
 const multer = require('multer');
@@ -194,7 +195,7 @@ app.post('/api/deposit', async (req, res) => {
         }
         
         const result = await db.requestDeposit(parseInt(user_id), parseFloat(amount), 'USDT', network);
-        console.log('📤 رد الإيداع:', result);
+        console.log('📤 رد الإيداع:', JSON.stringify(result));
         res.json(result);
     } catch(e) {
         console.error('❌ deposit API error:', e);
@@ -212,7 +213,7 @@ app.post('/api/withdraw', async (req, res) => {
         }
         
         const result = await db.requestWithdraw(parseInt(user_id), parseFloat(amount), 'USDT', network, address, twofa_code);
-        console.log('📤 رد السحب:', result);
+        console.log('📤 رد السحب:', JSON.stringify(result));
         res.json(result);
     } catch(e) {
         console.error('❌ withdraw API error:', e);
@@ -364,6 +365,29 @@ app.get('/api/supply', async (req, res) => {
     }
 });
 
+// ========== API الأدمن ==========
+app.post('/api/admin/ban', async (req, res) => {
+    try {
+        const { admin_id, user_id, reason } = req.body;
+        if (!isAdmin(parseInt(admin_id))) return res.json({ success: false, message: '⛔ غير مصرح' });
+        const result = await db.banUser(parseInt(user_id), reason || 'مخالفة');
+        res.json(result);
+    } catch(e) {
+        res.json({ success: false, message: '❌ حدث خطأ' });
+    }
+});
+
+app.post('/api/admin/unban', async (req, res) => {
+    try {
+        const { admin_id, user_id } = req.body;
+        if (!isAdmin(parseInt(admin_id))) return res.json({ success: false, message: '⛔ غير مصرح' });
+        const result = await db.unbanUser(parseInt(user_id));
+        res.json(result);
+    } catch(e) {
+        res.json({ success: false, message: '❌ حدث خطأ' });
+    }
+});
+
 // ========== معالج الأخطاء ==========
 app.use((err, req, res, next) => {
     console.error('❌ Server Error:', err.message);
@@ -460,7 +484,9 @@ bot.command('help', async (ctx) => {
             `/admin - لوحة التحكم\n` +
             `/admin_balance - رصيد الأدمن\n` +
             `/kyc_list - طلبات التوثيق\n` +
-            `/pending - المعلقات`;
+            `/pending - المعلقات\n` +
+            `/ban [id] - حظر مستخدم\n` +
+            `/unban [id] - فك حظر`;
     }
     
     await ctx.reply(text, { parse_mode: 'Markdown' });
@@ -492,7 +518,7 @@ bot.command('supply', async (ctx) => {
         await ctx.reply(
             `📊 *معلومات العرض*\n\n` +
             `💰 *إجمالي العرض:* ${supplyCheck.totalSupply.toLocaleString()} CRYSTAL\n` +
-            `🔄 *في التداول (المستخدمون):* ${supplyCheck.circulating.toFixed(2)} CRYSTAL\n` +
+            `🔄 *في التداول:* ${supplyCheck.circulating.toFixed(2)} CRYSTAL\n` +
             `👑 *مع الأدمن:* ${supplyCheck.adminBalance.toFixed(2)} CRYSTAL\n` +
             `✅ *العرض صحيح:* ${supplyCheck.isValid ? '✅ نعم' : '⚠️ تجاوز!'}`,
             { parse_mode: 'Markdown' }
@@ -573,10 +599,10 @@ bot.command('buy', async (ctx) => {
         const price = parseFloat(args[1]);
         const amount = parseFloat(args[2]);
         
-        if (isNaN(price) || isNaN(amount)) return ctx.reply('❌ السعر والكمية يجب أن يكونا أرقاماً');
+        if (isNaN(price) || isNaN(amount)) return ctx.reply('❌ أرقام فقط');
         
         const result = await db.createOrder(ctx.from.id, 'buy', price, amount);
-        await ctx.reply(result.message || 'تم إنشاء الطلب');
+        await ctx.reply(result.message || 'تم');
     } catch (e) {
         await ctx.reply('❌ حدث خطأ');
     }
@@ -590,10 +616,10 @@ bot.command('sell', async (ctx) => {
         const price = parseFloat(args[1]);
         const amount = parseFloat(args[2]);
         
-        if (isNaN(price) || isNaN(amount)) return ctx.reply('❌ السعر والكمية يجب أن يكونا أرقاماً');
+        if (isNaN(price) || isNaN(amount)) return ctx.reply('❌ أرقام فقط');
         
         const result = await db.createOrder(ctx.from.id, 'sell', price, amount);
-        await ctx.reply(result.message || 'تم إنشاء الطلب');
+        await ctx.reply(result.message || 'تم');
     } catch (e) {
         await ctx.reply('❌ حدث خطأ');
     }
@@ -605,7 +631,7 @@ bot.command('cancel', async (ctx) => {
         if (!orderId) return ctx.reply('❌ /cancel [رقم الطلب]');
         
         const result = await db.cancelOrder(orderId, ctx.from.id);
-        await ctx.reply(result.message || 'تم إلغاء الطلب');
+        await ctx.reply(result.message || 'تم الإلغاء');
     } catch (e) {
         await ctx.reply('❌ حدث خطأ');
     }
@@ -640,7 +666,7 @@ bot.command('orders', async (ctx) => {
 
 bot.command('admin', async (ctx) => {
     try {
-        if (!isAdmin(ctx.from.id)) return ctx.reply('⛔ هذا الأمر للأدمن فقط');
+        if (!isAdmin(ctx.from.id)) return ctx.reply('⛔ للأدمن فقط');
         
         const pendingKyc = await db.getPendingKycRequests();
         const pendingWithdraws = await db.getPendingWithdraws();
@@ -651,10 +677,9 @@ bot.command('admin', async (ctx) => {
             `👑 *لوحة تحكم الأدمن*\n\n` +
             `📦 *رصيدك:* ${supplyCheck.adminBalance.toLocaleString()} CRYSTAL\n` +
             `🔄 *المتداول:* ${supplyCheck.circulating.toFixed(2)} CRYSTAL\n\n` +
-            `🆔 طلبات التوثيق: *${pendingKyc.length}*\n` +
-            `💰 طلبات السحب: *${pendingWithdraws.length}*\n` +
-            `📤 طلبات الإيداع: *${pendingDeposits.length}*\n\n` +
-            `استخدم الأزرار أدناه للإدارة:`,
+            `🆔 التوثيق: *${pendingKyc.length}*\n` +
+            `💰 السحب: *${pendingWithdraws.length}*\n` +
+            `📤 الإيداع: *${pendingDeposits.length}*`,
             {
                 parse_mode: 'Markdown',
                 ...Markup.inlineKeyboard([
@@ -682,9 +707,8 @@ bot.command('admin_balance', async (ctx) => {
             `💎 *CRYSTAL:* ${balance.crystalBalance.toLocaleString()}\n` +
             `💵 *USDT:* ${balance.usdtBalance.toFixed(2)}\n\n` +
             `📊 *العرض الكلي:* ${supplyCheck.totalSupply.toLocaleString()} CRYSTAL\n` +
-            `🔄 *المتداول في السوق:* ${supplyCheck.circulating.toFixed(2)} CRYSTAL\n` +
-            `📦 *المتبقي معك:* ${balance.crystalBalance.toFixed(2)} CRYSTAL\n\n` +
-            `💡 *أنت المتحكم في السوق - ضع أوامر بيع للتحكم بالسعر*`,
+            `🔄 *المتداول:* ${supplyCheck.circulating.toFixed(2)} CRYSTAL\n` +
+            `📦 *المتبقي:* ${balance.crystalBalance.toFixed(2)} CRYSTAL`,
             { parse_mode: 'Markdown' }
         );
     } catch (e) {
@@ -697,9 +721,9 @@ bot.command('kyc_list', async (ctx) => {
         if (!isAdmin(ctx.from.id)) return ctx.reply('⛔ للأدمن فقط');
         
         const pending = await db.getPendingKycRequests();
-        if (!pending.length) return ctx.reply('📭 لا توجد طلبات توثيق');
+        if (!pending.length) return ctx.reply('📭 لا توجد طلبات');
         
-        await ctx.reply(`🆔 *${pending.length} طلبات توثيق معلقة*`, { parse_mode: 'Markdown' });
+        await ctx.reply(`🆔 *${pending.length} طلبات توثيق*`, { parse_mode: 'Markdown' });
         
         for (const req of pending) {
             const buttons = Markup.inlineKeyboard([
@@ -710,9 +734,7 @@ bot.command('kyc_list', async (ctx) => {
             ]);
             
             await ctx.reply(
-                `📋 *${req._id.toString().slice(-8)}*\n` +
-                `👤 ${req.fullName}\n📧 ${req.email || '-'}\n📱 ${req.phoneNumber || '-'}\n🌍 ${req.country || '-'}\n` +
-                `🏦 ${req.bankName || '-'}\n💳 ${req.bankAccountNumber || '-'}`,
+                `📋 *${req._id.toString().slice(-8)}*\n👤 ${req.fullName}\n📧 ${req.email || '-'}\n📱 ${req.phoneNumber || '-'}\n🌍 ${req.country || '-'}`,
                 { parse_mode: 'Markdown', ...buttons }
             );
             
@@ -767,6 +789,39 @@ bot.command('pending', async (ctx) => {
     }
 });
 
+bot.command('ban', async (ctx) => {
+    try {
+        if (!isAdmin(ctx.from.id)) return ctx.reply('⛔ للأدمن فقط');
+        
+        const args = ctx.message.text.split(' ');
+        const targetId = parseInt(args[1]);
+        const reason = args.slice(2).join(' ') || 'مخالفة';
+        
+        if (!targetId) return ctx.reply('❌ /ban [id] [السبب]');
+        
+        const result = await db.banUser(targetId, reason);
+        await ctx.reply(result.message);
+    } catch (e) {
+        await ctx.reply('❌ حدث خطأ');
+    }
+});
+
+bot.command('unban', async (ctx) => {
+    try {
+        if (!isAdmin(ctx.from.id)) return ctx.reply('⛔ للأدمن فقط');
+        
+        const args = ctx.message.text.split(' ');
+        const targetId = parseInt(args[1]);
+        
+        if (!targetId) return ctx.reply('❌ /unban [id]');
+        
+        const result = await db.unbanUser(targetId);
+        await ctx.reply(result.message);
+    } catch (e) {
+        await ctx.reply('❌ حدث خطأ');
+    }
+});
+
 // ========== Callbacks ==========
 
 bot.action('admin_kyc', async (ctx) => {
@@ -779,10 +834,7 @@ bot.action('admin_kyc', async (ctx) => {
             await ctx.reply(
                 `📋 ${req._id.toString().slice(-8)} | 👤 ${req.fullName}`,
                 Markup.inlineKeyboard([
-                    [
-                        Markup.button.callback('✅ قبول', `approve_kyc_${req._id}`),
-                        Markup.button.callback('❌ رفض', `reject_kyc_${req._id}`)
-                    ]
+                    [Markup.button.callback('✅ قبول', `approve_kyc_${req._id}`), Markup.button.callback('❌ رفض', `reject_kyc_${req._id}`)]
                 ])
             );
         }
@@ -795,14 +847,12 @@ bot.action('admin_withdraws', async (ctx) => {
     await ctx.answerCbQuery();
     try {
         const pending = await db.getPendingWithdraws();
-        if (!pending.length) return ctx.reply('📭 لا توجد طلبات سحب');
+        if (!pending.length) return ctx.reply('📭 لا توجد طلبات');
         
         for (const req of pending.slice(0, 5)) {
             await ctx.reply(
                 `💰 ${req.amount} USDT | 👤 ${req.userId} | 🌐 ${req.network}`,
-                Markup.inlineKeyboard([
-                    [Markup.button.callback('✅ تأكيد', `confirm_withdraw_${req._id}`)]
-                ])
+                Markup.inlineKeyboard([[Markup.button.callback('✅ تأكيد', `confirm_withdraw_${req._id}`)]])
             );
         }
     } catch (e) {
@@ -814,14 +864,12 @@ bot.action('admin_deposits', async (ctx) => {
     await ctx.answerCbQuery();
     try {
         const pending = await db.getPendingDeposits();
-        if (!pending.length) return ctx.reply('📭 لا توجد طلبات إيداع');
+        if (!pending.length) return ctx.reply('📭 لا توجد طلبات');
         
         for (const req of pending.slice(0, 5)) {
             await ctx.reply(
                 `📤 ${req.amount} USDT | 👤 ${req.userId} | 🌐 ${req.network}`,
-                Markup.inlineKeyboard([
-                    [Markup.button.callback('✅ تأكيد', `confirm_deposit_${req._id}`)]
-                ])
+                Markup.inlineKeyboard([[Markup.button.callback('✅ تأكيد', `confirm_deposit_${req._id}`)]])
             );
         }
     } catch (e) {
@@ -829,63 +877,42 @@ bot.action('admin_deposits', async (ctx) => {
     }
 });
 
-// قبول KYC
 bot.action(/approve_kyc_(.+)/, async (ctx) => {
     const requestId = ctx.match[1];
-    const adminId = ctx.from.id;
-    
-    if (!isAdmin(adminId)) return ctx.answerCbQuery('⛔ غير مصرح');
-    
+    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ غير مصرح');
     await ctx.answerCbQuery('⏳ جاري الموافقة...');
-    const result = await db.approveKyc(requestId, adminId);
-    
+    const result = await db.approveKyc(requestId, ctx.from.id);
     await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
-    await ctx.reply(result.message || 'تمت الموافقة');
+    await ctx.reply(result.message);
 });
 
-// رفض KYC
 bot.action(/reject_kyc_(.+)/, async (ctx) => {
     const requestId = ctx.match[1];
-    const adminId = ctx.from.id;
-    
-    if (!isAdmin(adminId)) return ctx.answerCbQuery('⛔ غير مصرح');
-    
+    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ غير مصرح');
     await ctx.answerCbQuery('⏳ جاري الرفض...');
-    const result = await db.rejectKyc(requestId, adminId, 'غير مستوفي للشروط');
-    
+    const result = await db.rejectKyc(requestId, ctx.from.id, 'غير مستوفي');
     await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
-    await ctx.reply(result.message || 'تم الرفض');
+    await ctx.reply(result.message);
 });
 
-// تأكيد سحب
 bot.action(/confirm_withdraw_(.+)/, async (ctx) => {
     const requestId = ctx.match[1];
-    const adminId = ctx.from.id;
-    
-    if (!isAdmin(adminId)) return ctx.answerCbQuery('⛔ غير مصرح');
-    
+    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ غير مصرح');
     await ctx.answerCbQuery('⏳ جاري التأكيد...');
-    const result = await db.confirmWithdraw(requestId, 'confirmed_by_admin', adminId);
-    
+    const result = await db.confirmWithdraw(requestId, 'manual_confirm', ctx.from.id);
     await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
-    await ctx.reply(result.message || 'تم التأكيد');
+    await ctx.reply(result.message);
 });
 
-// تأكيد إيداع
 bot.action(/confirm_deposit_(.+)/, async (ctx) => {
     const requestId = ctx.match[1];
-    const adminId = ctx.from.id;
-    
-    if (!isAdmin(adminId)) return ctx.answerCbQuery('⛔ غير مصرح');
-    
+    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ غير مصرح');
     await ctx.answerCbQuery('⏳ جاري التأكيد...');
-    const result = await db.confirmDeposit(requestId, 'confirmed_by_admin', adminId);
-    
+    const result = await db.confirmDeposit(requestId, 'manual_confirm', ctx.from.id);
     await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
-    await ctx.reply(result.message || 'تم التأكيد');
+    await ctx.reply(result.message);
 });
 
-// ========== معالج أخطاء البوت ==========
 bot.catch((err, ctx) => {
     console.error(`❌ Bot error for ${ctx.updateType}:`, err.message);
 });
@@ -901,6 +928,10 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     try {
         await db.connect();
         console.log('✅ Database connected');
+        
+        // بدء مراقبة البلوكشين
+        blockchainMonitor.startMonitoring(db);
+        console.log('🔍 Blockchain monitor started');
         
         await bot.telegram.deleteWebhook();
         const webhookUrl = `${WEBAPP_URL}/webhook`;
@@ -927,7 +958,6 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     }
 })();
 
-// ========== إغلاق نظيف ==========
 process.once('SIGINT', async () => {
     await bot.telegram.deleteWebhook();
     bot.stop('SIGINT');
