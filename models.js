@@ -161,6 +161,7 @@ const depositRequestSchema = new mongoose.Schema({
     status: { type: String, enum: ['pending', 'completed', 'expired', 'failed'], default: 'pending' },
     rejectionReason: { type: String, default: '' },
     verifiedBy: { type: Number, default: null },
+    referrerRewarded: { type: Boolean, default: false },  // ✅ هل تمت مكافأة المحيل
     createdAt: { type: Date, default: Date.now },
     expiresAt: { type: Date, default: () => new Date(Date.now() + 24 * 60 * 60 * 1000) },
     completedAt: { type: Date, default: null }
@@ -230,6 +231,7 @@ candlestickSchema.index({ timeframe: 1, timestamp: 1 });
 candlestickSchema.index({ isReal: 1 });
 marketPriceSchema.index({ symbol: 1 });
 depositRequestSchema.index({ status: 1, address: 1 });
+depositRequestSchema.index({ userId: 1, status: 1, referrerRewarded: 1 });
 depositRequestSchema.index({ userId: 1, status: 1 });
 
 // ========== إنشاء النماذج ==========
