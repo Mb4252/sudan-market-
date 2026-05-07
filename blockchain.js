@@ -3,17 +3,17 @@ const { Connection, PublicKey } = require('@solana/web3.js');
 
 class BlockchainMonitor {
     constructor() {
-        // إعدادات الشبكات
+        // استخدام ethers v5 providers
         this.providers = {
-            bnb: new ethers.JsonRpcProvider('https://bsc-dataseed.binance.org'),
-            polygon: new ethers.JsonRpcProvider('https://polygon-rpc.com'),
+            bnb: new ethers.providers.JsonRpcProvider('https://bsc-dataseed.binance.org'),
+            polygon: new ethers.providers.JsonRpcProvider('https://polygon-rpc.com'),
             solana: new Connection('https://api.mainnet-beta.solana.com'),
         };
         
         // عنوان عقد USDT على كل شبكة
         this.usdtContracts = {
-            bnb: '0x55d398326f99059fF775485246999027B3197955',      // BUSD/USDT BSC
-            polygon: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', // USDT Polygon
+            bnb: '0x55d398326f99059fF775485246999027B3197955',
+            polygon: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
         };
         
         // ABI للتحقق من المعاملات
@@ -24,7 +24,7 @@ class BlockchainMonitor {
         ];
         
         this.isMonitoring = false;
-        this.monitoredAddresses = new Map(); // address -> { userId, amount }
+        this.monitoredAddresses = new Map();
     }
     
     // ========== بدء المراقبة ==========
@@ -45,6 +45,8 @@ class BlockchainMonitor {
         
         // تحديث قائمة العناوين كل 5 دقائق
         setInterval(() => this.loadPendingAddresses(), 5 * 60 * 1000);
+        
+        console.log('✅ مراقب البلوكشين جاهز');
     }
     
     // ========== تحميل العناوين المعلقة ==========
@@ -52,7 +54,10 @@ class BlockchainMonitor {
     async loadPendingAddresses() {
         try {
             const DepositRequest = require('./models').DepositRequest;
-            const pendingDeposits = await DepositRequest.find({ status: 'pending' });
+            const pendingDeposits = await DepositRequest.find({ 
+                status: 'pending',
+                network: { $in: ['bnb', 'polygon'] }
+            });
             
             this.monitoredAddresses.clear();
             
@@ -63,13 +68,14 @@ class BlockchainMonitor {
                         requestId: deposit._id,
                         userId: deposit.userId,
                         amount: deposit.amount,
-                        network: deposit.network,
-                        expectedAmount: ethers.parseUnits(deposit.amount.toString(), 18)
+                        network: deposit.network
                     });
                 }
             }
             
-            console.log(`📋 ${this.monitoredAddresses.size} عناوين قيد المراقبة`);
+            if (this.monitoredAddresses.size > 0) {
+                console.log(`📋 ${this.monitoredAddresses.size} عناوين قيد المراقبة`);
+            }
             
         } catch (e) {
             console.error('loadPendingAddresses error:', e.message);
@@ -79,78 +85,94 @@ class BlockchainMonitor {
     // ========== مراقبة BNB ==========
     
     async monitorBNB() {
-        const contract = new ethers.Contract(
-            this.usdtContracts.bnb,
-            this.erc20ABI,
-            this.providers.bnb
-        );
-        
-        // الاستماع لأحداث Transfer
-        contract.on('Transfer', async (from, to, value, event) => {
-            const toAddress = to.toLowerCase();
+        try {
+            const contract = new ethers.Contract(
+                this.usdtContracts.bnb,
+                this.erc20ABI,
+                this.providers.bnb
+            );
             
-            if (this.monitoredAddresses.has(toAddress)) {
-                const depositInfo = this.monitoredAddresses.get(toAddress);
+            // الاستماع لأحداث Transfer
+            contract.on('Transfer', async (from, to, value, event) => {
+                const toAddress = to.toLowerCase();
                 
-                console.log(`🔔 معاملة واردة على BNB:`);
-                console.log(`   من: ${from}`);
-                console.log(`   إلى: ${toAddress}`);
-                console.log(`   القيمة: ${ethers.formatUnits(value, 18)} USDT`);
-                
-                // التحقق من المبلغ
-                const receivedAmount = parseFloat(ethers.formatUnits(value, 18));
-                
-                if (receivedAmount >= depositInfo.amount) {
-                    await this.confirmDeposit(
-                        depositInfo.requestId,
-                        depositInfo.userId,
-                        receivedAmount,
-                        event.transactionHash,
-                        'bnb'
-                    );
-                } else {
-                    console.log(`⚠️ مبلغ غير كافٍ: ${receivedAmount} < ${depositInfo.amount}`);
+                if (this.monitoredAddresses.has(toAddress)) {
+                    const depositInfo = this.monitoredAddresses.get(toAddress);
+                    
+                    // استخدام ethers v5 formatUnits
+                    const decimals = 18;
+                    const receivedAmount = parseFloat(ethers.utils.formatUnits(value, decimals));
+                    
+                    console.log(`🔔 معاملة واردة على BNB:`);
+                    console.log(`   من: ${from}`);
+                    console.log(`   إلى: ${toAddress}`);
+                    console.log(`   القيمة: ${receivedAmount} USDT`);
+                    console.log(`   المطلوب: ${depositInfo.amount} USDT`);
+                    
+                    if (receivedAmount >= depositInfo.amount * 0.99) { // قبول 99% أو أكثر
+                        await this.confirmDeposit(
+                            depositInfo.requestId,
+                            depositInfo.userId,
+                            receivedAmount,
+                            event.transactionHash,
+                            'bnb'
+                        );
+                    } else {
+                        console.log(`⚠️ مبلغ غير كافٍ: ${receivedAmount} < ${depositInfo.amount}`);
+                    }
                 }
-            }
-        });
-        
-        console.log('✅ مراقبة BNB جاهزة');
+            });
+            
+            console.log('✅ مراقبة BNB جاهزة');
+            
+        } catch (e) {
+            console.error('❌ monitorBNB error:', e.message);
+        }
     }
     
     // ========== مراقبة Polygon ==========
     
     async monitorPolygon() {
-        const contract = new ethers.Contract(
-            this.usdtContracts.polygon,
-            this.erc20ABI,
-            this.providers.polygon
-        );
-        
-        contract.on('Transfer', async (from, to, value, event) => {
-            const toAddress = to.toLowerCase();
+        try {
+            const contract = new ethers.Contract(
+                this.usdtContracts.polygon,
+                this.erc20ABI,
+                this.providers.polygon
+            );
             
-            if (this.monitoredAddresses.has(toAddress)) {
-                const depositInfo = this.monitoredAddresses.get(toAddress);
+            contract.on('Transfer', async (from, to, value, event) => {
+                const toAddress = to.toLowerCase();
                 
-                console.log(`🔔 معاملة واردة على Polygon:`);
-                console.log(`   إلى: ${toAddress}`);
-                console.log(`   القيمة: ${ethers.formatUnits(value, 6)} USDT`);
-                
-                const receivedAmount = parseFloat(ethers.formatUnits(value, 6));
-                
-                if (receivedAmount >= depositInfo.amount) {
-                    await this.confirmDeposit(
-                        depositInfo.requestId,
-                        depositInfo.userId,
-                        receivedAmount,
-                        event.transactionHash,
-                        'polygon'
-                    );
+                if (this.monitoredAddresses.has(toAddress)) {
+                    const depositInfo = this.monitoredAddresses.get(toAddress);
+                    
+                    const decimals = 6; // USDT on Polygon uses 6 decimals
+                    const receivedAmount = parseFloat(ethers.utils.formatUnits(value, decimals));
+                    
+                    console.log(`🔔 معاملة واردة على Polygon:`);
+                    console.log(`   إلى: ${toAddress}`);
+                    console.log(`   القيمة: ${receivedAmount} USDT`);
+                    console.log(`   المطلوب: ${depositInfo.amount} USDT`);
+                    
+                    if (receivedAmount >= depositInfo.amount * 0.99) {
+                        await this.confirmDeposit(
+                            depositInfo.requestId,
+                            depositInfo.userId,
+                            receivedAmount,
+                            event.transactionHash,
+                            'polygon'
+                        );
+                    } else {
+                        console.log(`⚠️ مبلغ غير كافٍ: ${receivedAmount} < ${depositInfo.amount}`);
+                    }
                 }
-            }
-        });
-        
-        console.log('✅ مراقبة Polygon جاهزة');
+            });
+            
+            console.log('✅ مراقبة Polygon جاهزة');
+            
+        } catch (e) {
+            console.error('❌ monitorPolygon error:', e.message);
+        }
     }
     
     // ========== تأكيد الإيداع تلقائياً ==========
@@ -162,6 +184,17 @@ class BlockchainMonitor {
             // تحديث قاعدة البيانات
             const DepositRequest = require('./models').DepositRequest;
             const Wallet = require('./models').Wallet;
+            
+            // التحقق من أن الطلب لم يتم تأكيده مسبقاً
+            const existingRequest = await DepositRequest.findOne({ 
+                _id: requestId, 
+                status: 'pending' 
+            });
+            
+            if (!existingRequest) {
+                console.log('⚠️ الطلب غير موجود أو تم تأكيده مسبقاً');
+                return;
+            }
             
             await DepositRequest.updateOne(
                 { _id: requestId },
@@ -188,9 +221,9 @@ class BlockchainMonitor {
                     await global.botInstance.telegram.sendMessage(
                         userId,
                         `✅ *تم تأكيد الإيداع تلقائياً!*\n\n` +
-                        `💰 المبلغ: ${amount} USDT\n` +
-                        `🌐 الشبكة: ${network}\n` +
-                        `🔗 المعاملة: \`${txHash}\`\n\n` +
+                        `💰 المبلغ: ${amount.toFixed(2)} USDT\n` +
+                        `🌐 الشبكة: ${network.toUpperCase()}\n` +
+                        `🔗 المعاملة: \`${txHash.slice(0, 20)}...\`\n\n` +
                         `تم إضافة الرصيد إلى حسابك`,
                         { parse_mode: 'Markdown' }
                     );
@@ -199,10 +232,29 @@ class BlockchainMonitor {
                 }
             }
             
+            // إشعار الأدمن
+            if (global.botInstance) {
+                const ADMIN_IDS = (process.env.ADMIN_IDS || '6701743450').split(',').map(Number);
+                for (const adminId of ADMIN_IDS) {
+                    try {
+                        await global.botInstance.telegram.sendMessage(
+                            adminId,
+                            `🤖 *إيداع تلقائي*\n\n` +
+                            `👤 المستخدم: \`${userId}\`\n` +
+                            `💰 المبلغ: ${amount.toFixed(2)} USDT\n` +
+                            `🌐 الشبكة: ${network.toUpperCase()}\n` +
+                            `🔗 TX: \`${txHash.slice(0, 20)}...\``,
+                            { parse_mode: 'Markdown' }
+                        );
+                    } catch (adminNotifyError) {}
+                }
+            }
+            
             console.log(`✅ إيداع ${userId} مكتمل`);
             
         } catch (e) {
             console.error('confirmDeposit error:', e.message);
+            console.error(e.stack);
         }
     }
     
@@ -211,13 +263,17 @@ class BlockchainMonitor {
     async checkBalance(address, network = 'bnb') {
         try {
             if (network === 'solana') {
-                const publicKey = new PublicKey(address);
-                // فحص حسابات SPL Token للسولانا
-                const tokenAccounts = await this.providers.solana.getParsedTokenAccountsByOwner(
-                    publicKey,
-                    { mint: new PublicKey('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB') } // USDT Solana
-                );
-                return tokenAccounts.value[0]?.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0;
+                try {
+                    const publicKey = new PublicKey(address);
+                    const tokenAccounts = await this.providers.solana.getParsedTokenAccountsByOwner(
+                        publicKey,
+                        { mint: new PublicKey('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB') }
+                    );
+                    return tokenAccounts.value[0]?.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0;
+                } catch (solanaError) {
+                    console.error('Solana balance check error:', solanaError.message);
+                    return 0;
+                }
             } else {
                 const contract = new ethers.Contract(
                     this.usdtContracts[network],
@@ -225,13 +281,22 @@ class BlockchainMonitor {
                     this.providers[network]
                 );
                 const balance = await contract.balanceOf(address);
-                const decimals = await contract.decimals();
-                return parseFloat(ethers.formatUnits(balance, decimals));
+                const decimals = network === 'polygon' ? 6 : 18;
+                return parseFloat(ethers.utils.formatUnits(balance, decimals));
             }
         } catch (e) {
             console.error(`checkBalance error for ${network}:`, e.message);
             return 0;
         }
+    }
+    
+    // ========== إيقاف المراقبة ==========
+    
+    stop() {
+        this.isMonitoring = false;
+        this.providers.bnb.removeAllListeners();
+        this.providers.polygon.removeAllListeners();
+        console.log('🛑 مراقب البلوكشين متوقف');
     }
 }
 
