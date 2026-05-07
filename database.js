@@ -20,6 +20,7 @@ class Database {
         this.tradingFee = 0.001;
         this.platformWithdrawFee = 0.05;
         this.referralCommissionRate = 10;
+        this.referralDepositReward = 1000; // ✅ مكافأة الإيداع للإحالة
         
         this.networkFees = {
             bnb: 0.15, polygon: 0.10, solana: 0.02, aptos: 0.05, trc20: 3.00, erc20: 15.00
@@ -101,6 +102,7 @@ class Database {
             await Trade.collection.createIndex({ createdAt: -1 });
             await ChatMessage.collection.createIndex({ chatType: 1, createdAt: -1 });
             await DepositRequest.collection.createIndex({ status: 1, address: 1 });
+            await DepositRequest.collection.createIndex({ userId: 1, status: 1, referrerRewarded: 1 });
             await Candlestick.collection.createIndex({ timeframe: 1, timestamp: 1, isReal: 1 });
             console.log('✅ Database indexes created');
         } catch (e) {
@@ -171,7 +173,6 @@ class Database {
     async startFakePriceMovement() {
         if (this.fakePriceInterval) return;
         
-        // تعيين آخر سعر وهمي من قاعدة البيانات
         const marketPrice = await MarketPrice.findOne({ symbol: 'CRYSTAL/USDT' });
         if (marketPrice) {
             this.lastFakePrice = marketPrice.price;
@@ -179,10 +180,8 @@ class Database {
         
         console.log('📊 بدء حركة السعر والشموع الوهمية...');
         
-        // أول تحديث فوري
         await this.fakePriceTick();
         
-        // تشغيل كل 5 ثواني
         this.fakePriceInterval = setInterval(async () => {
             await this.fakePriceTick();
         }, 5000);
@@ -203,14 +202,12 @@ class Database {
             
             const realPrice = marketPrice.price;
             
-            // تذبذب عشوائي بسيط (±0.5% من السعر الحقيقي)
             const maxChange = realPrice * 0.005;
             const randomChange = (Math.random() - 0.5) * 2 * maxChange;
             const fakePrice = Math.max(0.0001, realPrice + randomChange);
             
             const now = new Date();
             
-            // تحديث السعر الوهمي
             await MarketPrice.updateOne(
                 { symbol: 'CRYSTAL/USDT' },
                 { 
@@ -221,14 +218,11 @@ class Database {
                 }
             );
             
-            // إضافة شمعة وهمية
             await this.addFakeCandlestick(fakePrice, realPrice, now);
             
             this.lastFakePrice = fakePrice;
             
-        } catch (e) {
-            // تجاهل الأخطاء
-        }
+        } catch (e) {}
     }
 
     async addFakeCandlestick(fakePrice, realPrice, timestamp) {
@@ -244,7 +238,6 @@ class Database {
                 const currentSlot = Math.floor(timestamp.getTime() / interval) * interval;
                 const candleTime = new Date(currentSlot);
                 
-                // البحث عن شمعة وهمية موجودة في هذه الفتحة
                 let candle = await Candlestick.findOne({ 
                     timeframe: tf, 
                     timestamp: candleTime,
@@ -252,7 +245,6 @@ class Database {
                 });
                 
                 if (!candle) {
-                    // إنشاء شمعة وهمية جديدة
                     const openPrice = this.lastFakePrice || fakePrice;
                     await Candlestick.create({
                         timeframe: tf,
@@ -261,11 +253,10 @@ class Database {
                         high: Math.max(openPrice, fakePrice),
                         low: Math.min(openPrice, fakePrice),
                         close: fakePrice,
-                        volume: Math.random() * 10, // حجم صغير وهمي
-                        isReal: false // ✅ شمعة وهمية
+                        volume: Math.random() * 10,
+                        isReal: false
                     });
                 } else {
-                    // تحديث الشمعة الوهمية الموجودة
                     candle.high = Math.max(candle.high, fakePrice);
                     candle.low = Math.min(candle.low, fakePrice);
                     candle.close = fakePrice;
@@ -273,9 +264,7 @@ class Database {
                     await candle.save();
                 }
             }
-        } catch (e) {
-            // تجاهل أخطاء الشموع الوهمية
-        }
+        } catch (e) {}
     }
 
     // ====================================================================
@@ -740,7 +729,6 @@ class Database {
         try {
             const price = await MarketPrice.findOne({ symbol: 'CRYSTAL/USDT' });
             if (!price) return 0.002;
-            // إرجاع السعر الوهمي للعرض
             return price.displayPrice || price.price;
         } catch (e) {
             return 0.002;
@@ -763,7 +751,7 @@ class Database {
             
             const update = {
                 price: newPrice,
-                displayPrice: newPrice,  // السعر الوهمي = الحقيقي بعد الصفقة
+                displayPrice: newPrice,
                 volume24h: (price.volume24h || 0) + volume,
                 high24h: Math.max(price.high24h || newPrice, newPrice),
                 low24h: Math.min(price.low24h || newPrice, newPrice),
@@ -777,8 +765,6 @@ class Database {
             }
             
             await MarketPrice.updateOne({ symbol: 'CRYSTAL/USDT' }, update);
-            
-            // إضافة شمعة حقيقية
             this.addCandlestick(newPrice, volume, true).catch(() => {});
             
             console.log(`💰 السعر الحقيقي: ${newPrice} USDT (حجم: ${volume})`);
@@ -790,7 +776,6 @@ class Database {
 
     async getPriceAtTime(timestamp) {
         try {
-            // البحث في الشموع الحقيقية أولاً
             const candle = await Candlestick.findOne({
                 timeframe: '1h', 
                 timestamp: { $lte: timestamp },
@@ -799,7 +784,6 @@ class Database {
             
             if (candle) return candle.close;
             
-            // إذا لم يوجد، البحث في أي شمعة
             const anyCandle = await Candlestick.findOne({
                 timeframe: '1h', 
                 timestamp: { $lte: timestamp }
@@ -825,7 +809,6 @@ class Database {
                 const currentSlot = Math.floor(now.getTime() / interval) * interval;
                 const candleTime = new Date(currentSlot);
                 
-                // البحث عن شمعة حقيقية أولاً
                 let candle = await Candlestick.findOne({ 
                     timeframe: tf, 
                     timestamp: candleTime,
@@ -833,7 +816,6 @@ class Database {
                 });
                 
                 if (!candle) {
-                    // إذا لم توجد شمعة حقيقية، نبحث عن وهمية ونحولها لحقيقية
                     candle = await Candlestick.findOne({ 
                         timeframe: tf, 
                         timestamp: candleTime,
@@ -841,7 +823,6 @@ class Database {
                     });
                     
                     if (candle) {
-                        // تحويل الشمعة الوهمية إلى حقيقية
                         candle.isReal = true;
                     }
                 }
@@ -870,7 +851,6 @@ class Database {
 
     async getCandlesticks(timeframe, limit = 100) {
         try {
-            // جلب جميع الشموع (حقيقية ووهمية)
             const candles = await Candlestick.find({ timeframe })
                 .sort({ timestamp: -1 })
                 .limit(Math.min(limit, 200));
@@ -949,7 +929,6 @@ class Database {
             
             console.log('✅ Order created:', order._id.toString());
             
-            // محاولة مطابقة
             try {
                 const matchPromise = this.matchOrders(order);
                 const timeoutPromise = new Promise(resolve =>
@@ -982,82 +961,81 @@ class Database {
     }
 
     // ====================================================================
-    // مطابقة الأوامر
+    // مطابقة الأوامر - الأدمن فقط يمكنه التداول مع نفسه
     // ====================================================================
     
     async matchOrders(newOrder) {
-    let remainingAmount = newOrder.amount;
-    let totalExecuted = 0;
-    
-    try {
-        const oppositeType = newOrder.type === 'buy' ? 'sell' : 'buy';
-        const isUserAdmin = await this.isAdmin(newOrder.userId);
+        let remainingAmount = newOrder.amount;
+        let totalExecuted = 0;
         
-        let query = {
-            type: oppositeType,
-            status: { $in: ['open', 'partial'] }
-        };
-        
-        // ✅ الأدمن فقط يمكنه التداول مع نفسه
-        // ✅ المستخدم العادي لا يمكنه مطابقة أوامره
-        if (!isUserAdmin) {
-            query.userId = { $ne: newOrder.userId };
-        }
-        
-        if (newOrder.type === 'buy') {
-            query.price = { $lte: newOrder.price };
-        } else {
-            query.price = { $gte: newOrder.price };
-        }
-        
-        const matchingOrders = await Order.find(query)
-            .sort({ price: newOrder.type === 'buy' ? 1 : -1, createdAt: 1 })
-            .limit(20);
-        
-        for (const matchOrder of matchingOrders) {
-            if (remainingAmount <= 0.0001) break;
+        try {
+            const oppositeType = newOrder.type === 'buy' ? 'sell' : 'buy';
+            const isUserAdmin = await this.isAdmin(newOrder.userId);
             
-            const executeAmount = Math.min(remainingAmount, matchOrder.amount);
-            const executePrice = matchOrder.price;
+            let query = {
+                type: oppositeType,
+                status: { $in: ['open', 'partial'] }
+            };
             
-            try {
-                await this.executeTrade(
-                    newOrder.type === 'buy' ? newOrder : matchOrder,
-                    newOrder.type === 'buy' ? matchOrder : newOrder,
-                    executeAmount, executePrice
+            // ✅ الأدمن فقط يمكنه مطابقة أوامره مع نفسه
+            if (!isUserAdmin) {
+                query.userId = { $ne: newOrder.userId };
+            }
+            
+            if (newOrder.type === 'buy') {
+                query.price = { $lte: newOrder.price };
+            } else {
+                query.price = { $gte: newOrder.price };
+            }
+            
+            const matchingOrders = await Order.find(query)
+                .sort({ price: newOrder.type === 'buy' ? 1 : -1, createdAt: 1 })
+                .limit(20);
+            
+            for (const matchOrder of matchingOrders) {
+                if (remainingAmount <= 0.0001) break;
+                
+                const executeAmount = Math.min(remainingAmount, matchOrder.amount);
+                const executePrice = matchOrder.price;
+                
+                try {
+                    await this.executeTrade(
+                        newOrder.type === 'buy' ? newOrder : matchOrder,
+                        newOrder.type === 'buy' ? matchOrder : newOrder,
+                        executeAmount, executePrice
+                    );
+                    
+                    remainingAmount -= executeAmount;
+                    totalExecuted += executeAmount;
+                    
+                } catch (tradeError) {
+                    console.error('Trade execution error:', tradeError.message);
+                    continue;
+                }
+            }
+            
+            if (totalExecuted > 0) {
+                const newStatus = remainingAmount <= 0.0001 ? 'completed' : 'partial';
+                await Order.updateOne(
+                    { _id: newOrder._id },
+                    {
+                        status: newStatus,
+                        amount: Math.max(0, remainingAmount),
+                        completedAt: newStatus === 'completed' ? new Date() : null
+                    }
                 );
                 
-                remainingAmount -= executeAmount;
-                totalExecuted += executeAmount;
-                
-            } catch (tradeError) {
-                console.error('Trade execution error:', tradeError.message);
-                continue;
+                const lastPrice = matchingOrders[0]?.price || newOrder.price;
+                await this.updateMarketPrice(lastPrice, totalExecuted);
             }
-        }
-        
-        if (totalExecuted > 0) {
-            const newStatus = remainingAmount <= 0.0001 ? 'completed' : 'partial';
-            await Order.updateOne(
-                { _id: newOrder._id },
-                {
-                    status: newStatus,
-                    amount: Math.max(0, remainingAmount),
-                    completedAt: newStatus === 'completed' ? new Date() : null
-                }
-            );
             
-            const lastPrice = matchingOrders[0]?.price || newOrder.price;
-            await this.updateMarketPrice(lastPrice, totalExecuted);
+            return totalExecuted;
+            
+        } catch (error) {
+            console.error('matchOrders error:', error.message);
+            return totalExecuted;
         }
-        
-        return totalExecuted;
-        
-    } catch (error) {
-        console.error('matchOrders error:', error.message);
-        return totalExecuted;
     }
-}
 
     async executeTrade(buyOrder, sellOrder, amount, price) {
         const totalUsdt = amount * price;
@@ -1359,6 +1337,9 @@ class Database {
                 { $inc: { usdtBalance: request.amount } }
             );
             
+            // ✅ مكافأة المحيل عند أول إيداع
+            await this.checkAndRewardReferrer(request.userId, request.amount);
+            
             const isAuto = adminId === 0;
             this.sendTradeNotification(request.userId, 'deposit', request.amount, 0).catch(() => {});
             
@@ -1371,6 +1352,84 @@ class Database {
             
         } catch (e) {
             return { success: false, message: '❌ حدث خطأ في تأكيد الإيداع' };
+        }
+    }
+
+    // ====================================================================
+    // مكافأة الإيداع للإحالات
+    // ====================================================================
+
+    async checkAndRewardReferrer(userId, depositAmount) {
+        try {
+            const user = await User.findOne({ userId });
+            if (!user || !user.referrerId) return;
+            
+            const referrerId = user.referrerId;
+            const referrer = await User.findOne({ userId: referrerId });
+            if (!referrer) return;
+            
+            // التحقق من أن هذا المستخدم لم يتم مكافأة إحالته من قبل
+            const alreadyRewarded = await DepositRequest.findOne({
+                userId: userId,
+                status: 'completed',
+                referrerRewarded: true
+            });
+            
+            if (alreadyRewarded) {
+                console.log(`⚠️ المستخدم ${userId} تمت مكافأة محيله مسبقاً`);
+                return;
+            }
+            
+            // ✅ إضافة 1000 CRYSTAL للمحيل
+            await Wallet.updateOne(
+                { userId: referrerId },
+                { $inc: { crystalBalance: this.referralDepositReward } }
+            );
+            
+            // ✅ تحديث أرباح الإحالة
+            await User.updateOne(
+                { userId: referrerId },
+                { $inc: { referralEarnings: this.referralDepositReward } }
+            );
+            
+            // ✅ تحديث الإحالة في قائمة الإحالات
+            await User.updateOne(
+                { 
+                    userId: referrerId, 
+                    'referrals.userId': userId 
+                },
+                { 
+                    $set: { 
+                        'referrals.$.earned': this.referralDepositReward,
+                        'referrals.$.totalCommission': this.referralDepositReward
+                    } 
+                }
+            );
+            
+            // ✅ تعليم أن هذا الإيداع تمت مكافأة المحيل عنه
+            await DepositRequest.updateMany(
+                { userId: userId, status: 'completed' },
+                { $set: { referrerRewarded: true } }
+            );
+            
+            console.log(`🎁 مكافأة إحالة: ${referrerId} حصل على ${this.referralDepositReward} CRYSTAL من إيداع ${userId}`);
+            
+            // إشعار المحيل
+            if (global.botInstance) {
+                try {
+                    await global.botInstance.telegram.sendMessage(
+                        referrerId,
+                        `🎁 *مبروك!*\n\n` +
+                        `حصلت على *${this.referralDepositReward} CRYSTAL* كمكافأة إحالة!\n` +
+                        `👤 المدعو: \`${userId}\` قام بأول إيداع له\n` +
+                        `💰 تمت إضافة ${this.referralDepositReward} CRYSTAL إلى رصيدك`,
+                        { parse_mode: 'Markdown' }
+                    );
+                } catch (e) {}
+            }
+            
+        } catch (e) {
+            console.error('checkAndRewardReferrer error:', e.message);
         }
     }
 
