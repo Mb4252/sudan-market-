@@ -474,12 +474,13 @@ bot.command('help', async (ctx) => {
 bot.command('price', async (ctx) => {
     try {
         const price = await db.getMarketPrice();
+        const realPrice = await db.getRealMarketPrice();
         const stats = await db.getMarketStats();
         
         await ctx.reply(
             `💎 *سعر CRYSTAL*\n\n` +
-            `💰 *السعر:* ${price} USDT\n` +
-            `📊 *1 CRYSTAL = ${(price * 500).toFixed(2)} حبة*\n` +
+            `💰 *السعر (العرض):* ${price.toFixed(6)} USDT\n` +
+            `📊 *آخر سعر صفقة:* ${realPrice.toFixed(6)} USDT\n` +
             `📈 *التغير 24h:* ${stats.change24h?.toFixed(2) || 0}%\n` +
             `📊 *الحجم 24h:* ${stats.volume24h?.toFixed(2) || 0} CRYSTAL\n` +
             `🔄 *العرض المتداول:* ${stats.circulatingSupply?.toFixed(2) || 0} CRYSTAL`,
@@ -802,7 +803,8 @@ bot.command('maintenance', async (ctx) => {
         
         await ctx.reply('🛑 جاري إيقاف التداول للصيانة...');
         
-        const openOrders = await require('./models').Order.find({ status: { $in: ['open', 'partial'] } });
+        const Order = require('./models').Order;
+        const openOrders = await Order.find({ status: { $in: ['open', 'partial'] } });
         
         for (const order of openOrders) {
             await db.cancelOrder(order._id, order.userId);
@@ -955,6 +957,10 @@ const server = app.listen(PORT, '0.0.0.0', () => {
         await db.connect();
         console.log('✅ Database connected');
         
+        // بدء حركة السعر الوهمية
+        await db.startFakePriceMovement();
+        console.log('📊 Fake price movement started');
+        
         // بدء مراقبة البلوكشين
         blockchainMonitor.startMonitoring(db);
         console.log('🔍 Blockchain monitor started');
@@ -985,6 +991,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 })();
 
 process.once('SIGINT', async () => {
+    await db.stopFakePriceMovement();
     await bot.telegram.deleteWebhook();
     bot.stop('SIGINT');
     server.close();
@@ -992,6 +999,7 @@ process.once('SIGINT', async () => {
 });
 
 process.once('SIGTERM', async () => {
+    await db.stopFakePriceMovement();
     await bot.telegram.deleteWebhook();
     bot.stop('SIGTERM');
     server.close();
