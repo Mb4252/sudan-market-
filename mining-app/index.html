@@ -53,10 +53,11 @@
         .stat-item .stat-value { font-size: 11px; font-weight: bold; margin-top: 2px; }
 
         .chart-container {
-            background: var(--bg-secondary); border-radius: 8px; padding: 8px;
-            margin-bottom: 6px; height: 320px; position: relative; overflow: hidden;
+            background: #131722; border-radius: 8px; padding: 4px;
+            margin-bottom: 6px; position: relative;
         }
-        .timeframe-btns { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; position: relative; z-index: 10; }
+        #chart { width: 100%; height: 320px; }
+        .timeframe-btns { display: flex; gap: 4px; margin-bottom: 4px; flex-wrap: wrap; padding: 0 4px; }
         .tf-btn { background: var(--bg-tertiary); border: none; color: var(--text-secondary); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; }
         .tf-btn.active { background: var(--gold); color: #000; font-weight: bold; }
 
@@ -129,7 +130,7 @@
             <div class="stat-item"><div class="stat-label">🔄 الصفقات</div><div class="stat-value" id="statTrades">0</div></div>
         </div>
         <!-- الشموع -->
-        <div class="chart-container" id="priceChart">
+        <div class="chart-container">
             <div class="timeframe-btns">
                 <button class="tf-btn active" onclick="setTimeframe('1m')">1د</button>
                 <button class="tf-btn" onclick="setTimeframe('5m')">5د</button>
@@ -138,6 +139,7 @@
                 <button class="tf-btn" onclick="setTimeframe('4h')">4س</button>
                 <button class="tf-btn" onclick="setTimeframe('1d')">يوم</button>
             </div>
+            <div id="chart"></div>
         </div>
         <!-- دفتر الطلبات + التداول -->
         <div class="trade-area">
@@ -187,16 +189,21 @@
         const tg = window.Telegram.WebApp; tg.expand(); tg.ready();
         const API_URL = window.location.origin;
         let currentTimeframe = '1m', currentOrderType = 'buy';
-        let chart = null, candlestickSeries = null;
+        let chart, candleSeries;
         let userId = tg.initDataUnsafe?.user?.id || 6701743450;
         let marketPrice = 0.002, priceManuallyChanged = false, lastManualPriceChange = 0;
 
+        // ========== تهيئة ==========
         async function init() {
             try { const r = await fetch(`${API_URL}/api/market/price`); const d = await r.json(); marketPrice = d.price || 0.002; document.getElementById('orderPrice').value = marketPrice.toFixed(4); } catch(e) {}
-            loadAllData(); setInterval(loadMarketData, 5000); setInterval(loadOrderBook, 3000); updateOrderTotal();
+            loadAllData();
+            setInterval(loadMarketData, 5000);
+            setInterval(loadOrderBook, 3000);
+            setInterval(realtimeUpdate, 2000); // ✅ تحديث الشموع مباشر
+            updateOrderTotal();
         }
 
-        async function loadAllData() { loadUserData(); loadMarketData(); loadOrderBook(); loadChart(); loadMyOrders(); loadKycPanel(); loadReferralPanel(); loadChatMessages(); }
+        async function loadAllData() { loadUserData(); loadMarketData(); loadOrderBook(); initChart(); loadMyOrders(); loadKycPanel(); loadReferralPanel(); loadChatMessages(); }
 
         async function loadUserData() {
             try { const r = await fetch(`${API_URL}/api/user/${userId}`); const d = await r.json(); document.getElementById('crystalBalance').textContent = (d.crystalBalance||0).toFixed(2); document.getElementById('usdtBalance').textContent = (d.usdtBalance||0).toFixed(2); document.getElementById('kycStatus').innerHTML = d.isVerified ? '✅' : '⚠️'; updateSliderMax(); } catch(e) {}
@@ -233,111 +240,65 @@
             } catch(e) {}
         }
 
-        // ========== شموع يابانية احترافية - Lightweight Charts ==========
-        async function loadChart() {
-    const chartContainer = document.getElementById('priceChart');
-
-    try {
-        // 1. جلب البيانات من السيرفر
-        const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=100`);
-        let rawData = await res.json();
-
-        // 2. محاولة استخراج مصفوفة البيانات (سواء كانت داخل كائن أو مصفوفة مباشرة)
-        let candles = Array.isArray(rawData) ? rawData : (rawData.data || rawData.candles ||[]);
-
-        // 🛑 إذا لم يرسل السيرفر أي شموع:
-        if (!candles || candles.length === 0) {
-            chartContainer.innerHTML = `<div style="color:#ff9800; text-align:center; padding-top:100px; font-weight:bold;">⚠️ لا توجد بيانات شموع قادمة من السيرفر حالياً</div>`;
-            return;
-        }
-
-        // 3. تحويل البيانات وتجهيزها (تدعم جميع أشكال الـ API الممكنة)
-        let formattedData =[];
-        candles.forEach(c => {
-            try {
-                let t, o, h, l, closePrice;
-
-                // إذا كانت البيانات مصفوفات (مثل نظام منصة بينانس)
-                if (Array.isArray(c)) {
-                    t = c[0]; o = c[1]; h = c[2]; l = c[3]; closePrice = c[4];
-                } 
-                // إذا كانت البيانات كائنات عادية
-                else {
-                    t = c.timestamp || c.time || c.date || c.createdAt || c.t;
-                    closePrice = parseFloat(c.close || c.c || c.price || 0);
-                    o = parseFloat(c.open || c.o) || closePrice;
-                    h = parseFloat(c.high || c.h) || closePrice;
-                    l = parseFloat(c.low || c.l) || closePrice;
-                }
-
-                // ضبط الوقت بصيغة (الثواني) حصراً كما تتطلب المكتبة
-                let timeValue = typeof t === 'string' ? new Date(t).getTime() : t;
-                if (timeValue > 9999999999) timeValue = Math.floor(timeValue / 1000); // تحويل الملي ثانية إلى ثواني
-
-                // التأكد من صحة الأرقام قبل إضافتها
-                if (!isNaN(timeValue) && !isNaN(closePrice) && closePrice > 0) {
-                    formattedData.push({ time: timeValue, open: o, high: h, low: l, close: closePrice });
-                }
-            } catch(err) {}
-        });
-
-        // 4. ترتيب الشموع زمنياً وحذف أي شمعتين لهما نفس الوقت تماماً (لأنها تعطل المكتبة)
-        formattedData.sort((a, b) => a.time - b.time);
-        let uniqueData =[];
-        formattedData.forEach(candle => {
-            if (uniqueData.length === 0 || uniqueData[uniqueData.length - 1].time !== candle.time) {
-                uniqueData.push(candle);
-            }
-        });
-
-        // 🛑 إذا فشل الكود في قراءة البيانات بسبب صيغتها الغريبة:
-        if (uniqueData.length === 0) {
-            chartContainer.innerHTML = `<div style="color:#f44336; text-align:center; padding-top:80px; font-weight:bold;">❌ صيغة بيانات السيرفر غير متوافقة<br><span style="font-size:11px; opacity:0.8;">الرجاء مراجعة الـ API الخاص بالشموع</span></div>`;
-            return;
-        }
-
-        // 5. رسم الشموع اليابانية
-        if (!chart) {
-            chartContainer.innerHTML = ''; // تنظيف الشاشة من رسائل التحميل أو الأخطاء
-            
-            chart = LightweightCharts.createChart(chartContainer, {
-                width: chartContainer.clientWidth,
-                height: 300,
-                layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#d1d4dc' },
-                grid: { vertLines: { color: 'rgba(255, 255, 255, 0.05)' }, horzLines: { color: 'rgba(255, 255, 255, 0.05)' } },
+        // ========== شموع Lightweight Charts ==========
+        function initChart() {
+            const chartEl = document.getElementById('chart');
+            chart = LightweightCharts.createChart(chartEl, {
+                width: chartEl.clientWidth,
+                height: 320,
+                layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
+                grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
                 crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-                rightPriceScale: { borderColor: 'rgba(255, 255, 255, 0.1)' },
-                timeScale: { borderColor: 'rgba(255, 255, 255, 0.1)', timeVisible: true }
+                rightPriceScale: { borderColor: '#485c7b' },
+                timeScale: { borderColor: '#485c7b', timeVisible: true, secondsVisible: false }
             });
 
-            candlestickSeries = chart.addCandlestickSeries({
-                upColor: '#4caf50', downColor: '#f44336', borderVisible: false,
-                wickUpColor: '#4caf50', wickDownColor: '#f44336'
+            candleSeries = chart.addCandlestickSeries({
+                upColor: '#26a69a', downColor: '#ef5350',
+                borderDownColor: '#ef5350', borderUpColor: '#26a69a',
+                wickDownColor: '#ef5350', wickUpColor: '#26a69a'
             });
 
-            // تجاوب الشارت مع حجم الشاشة
-            new ResizeObserver(entries => {
-                if (entries.length > 0 && entries[0].target === chartContainer) {
-                    chart.applyOptions({ width: entries[0].contentRect.width, height: 300 });
-                }
-            }).observe(chartContainer);
+            loadCandles();
+
+            window.addEventListener('resize', () => {
+                if (chart) chart.applyOptions({ width: chartEl.clientWidth, height: 320 });
+            });
         }
 
-        // إدخال البيانات المفلترة للشارت وتوسيطها
-        candlestickSeries.setData(uniqueData);
-        chart.timeScale().fitContent();
+        async function loadCandles() {
+            try {
+                const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=100`);
+                const candles = await res.json();
+                const formatted = candles.map(c => ({
+                    time: Math.floor(new Date(c.timestamp).getTime() / 1000),
+                    open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close)
+                }));
+                if (candleSeries) candleSeries.setData(formatted);
+                if (chart) chart.timeScale().fitContent();
+            } catch(e) { console.error('loadCandles:', e); }
+        }
 
-    } catch (e) {
-        // 🛑 إذا كان السيرفر متوقف أو هناك مشكلة في الاتصال
-        chartContainer.innerHTML = `<div style="color:#f44336; text-align:center; padding-top:100px; font-weight:bold;">❌ حدث خطأ في جلب بيانات الشموع</div>`;
-        console.error(e);
-    }
-}
+        async function realtimeUpdate() {
+            try {
+                const res = await fetch(`${API_URL}/api/market/latest-candle/${currentTimeframe}`);
+                if (!res.ok) return;
+                const c = await res.json();
+                if (!c || !c.timestamp) return;
+                if (candleSeries) {
+                    candleSeries.update({
+                        time: Math.floor(new Date(c.timestamp).getTime() / 1000),
+                        open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close)
+                    });
+                }
+            } catch(e) {}
+        }
+
         function setTimeframe(tf) {
             currentTimeframe = tf;
             document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
             event.target.classList.add('active');
-            loadChart();
+            loadCandles();
         }
 
         function setOrderType(type) { currentOrderType = type; document.getElementById('buyTab').classList.toggle('active', type==='buy'); document.getElementById('sellTab').classList.toggle('active', type==='sell'); const btn = document.getElementById('createOrderBtn'); btn.textContent = type==='buy'?'✅ شراء CRYSTAL':'🔴 بيع CRYSTAL'; btn.className = 'trade-btn '+(type==='buy'?'buy-btn':'sell-btn'); updateSliderMax(); updateOrderTotal(); }
