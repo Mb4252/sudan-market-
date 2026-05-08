@@ -79,6 +79,20 @@ app.get('/api/market/candles/:timeframe', async (req, res) => {
     }
 });
 
+// ✅ أحدث شمعة للتحديث المباشر
+app.get('/api/market/latest-candle/:timeframe', async (req, res) => {
+    try {
+        const candles = await db.getCandlesticks(req.params.timeframe, 1);
+        if (candles && candles.length > 0) {
+            res.json(candles[candles.length - 1]);
+        } else {
+            res.json({});
+        }
+    } catch(e) {
+        res.json({});
+    }
+});
+
 // الأوامر
 app.get('/api/orders', async (req, res) => {
     try {
