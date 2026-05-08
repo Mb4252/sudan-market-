@@ -22,9 +22,9 @@ const walletSchema = new mongoose.Schema({
 const kycRequestSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
     fullName: { type: String, required: true },
-    passportNumber: { type: String, required: true },
-    nationalId: { type: String, required: true },
-    phoneNumber: { type: String, required: true },
+    passportNumber: { type: String, default: 'N/A' },
+    nationalId: { type: String, default: 'N/A' },
+    phoneNumber: { type: String, default: 'N/A' },
     email: { type: String, default: '' },
     country: { type: String, default: 'SD' },
     city: { type: String, default: '' },
@@ -97,7 +97,7 @@ const userSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
-// ========== نموذج طلبات البيع والشراء (Order Book) ==========
+// ========== نموذج طلبات البيع والشراء ==========
 const orderSchema = new mongoose.Schema({
     userId: { type: Number, required: true, index: true },
     type: { type: String, enum: ['buy', 'sell'], required: true },
@@ -125,7 +125,7 @@ const tradeSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
-// ========== نموذج الشموع (Candlesticks) ==========
+// ========== نموذج الشموع ==========
 const candlestickSchema = new mongoose.Schema({
     timeframe: { type: String, enum: ['1m', '5m', '15m', '1h', '4h', '1d'], required: true },
     open: { type: Number, required: true },
@@ -133,21 +133,21 @@ const candlestickSchema = new mongoose.Schema({
     low: { type: Number, required: true },
     close: { type: Number, required: true },
     volume: { type: Number, default: 0 },
-    isReal: { type: Boolean, default: true },  // ✅ true = صفقة حقيقية، false = وهمية
+    isReal: { type: Boolean, default: true },
     timestamp: { type: Date, required: true, index: true }
 });
 
-// ========== نموذج السعر السوقي الحالي ==========
+// ========== نموذج السعر السوقي ==========
 const marketPriceSchema = new mongoose.Schema({
     symbol: { type: String, default: 'CRYSTAL/USDT' },
-    price: { type: Number, required: true, default: 0.002 },           // السعر الحقيقي (آخر صفقة)
-    displayPrice: { type: Number, required: true, default: 0.002 },    // ✅ السعر الوهمي (للعرض)
+    price: { type: Number, required: true, default: 0.002 },
+    displayPrice: { type: Number, required: true, default: 0.002 },
     change24h: { type: Number, default: 0 },
     volume24h: { type: Number, default: 0 },
     high24h: { type: Number, default: 0.002 },
     low24h: { type: Number, default: 0.002 },
     lastUpdated: { type: Date, default: Date.now },
-    lastFakeUpdate: { type: Date, default: Date.now }                  // ✅ وقت آخر تحديث وهمي
+    lastFakeUpdate: { type: Date, default: Date.now }
 });
 
 // ========== نماذج الإيداع والسحب ==========
@@ -161,7 +161,7 @@ const depositRequestSchema = new mongoose.Schema({
     status: { type: String, enum: ['pending', 'completed', 'expired', 'failed'], default: 'pending' },
     rejectionReason: { type: String, default: '' },
     verifiedBy: { type: Number, default: null },
-    referrerRewarded: { type: Boolean, default: false },  // ✅ هل تمت مكافأة المحيل
+    referrerRewarded: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now },
     expiresAt: { type: Date, default: () => new Date(Date.now() + 24 * 60 * 60 * 1000) },
     completedAt: { type: Date, default: null }
@@ -221,7 +221,7 @@ const chatMessageSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
-// ========== إنشاء الفهارس ==========
+// ========== الفهارس ==========
 userSchema.index({ userId: 1 });
 walletSchema.index({ userId: 1 });
 orderSchema.index({ type: 1, price: 1, status: 1 });
@@ -232,9 +232,9 @@ candlestickSchema.index({ isReal: 1 });
 marketPriceSchema.index({ symbol: 1 });
 depositRequestSchema.index({ status: 1, address: 1 });
 depositRequestSchema.index({ userId: 1, status: 1, referrerRewarded: 1 });
-depositRequestSchema.index({ userId: 1, status: 1 });
+withdrawRequestSchema.index({ status: 1 });
 
-// ========== إنشاء النماذج ==========
+// ========== النماذج ==========
 const User = mongoose.model('User', userSchema);
 const Wallet = mongoose.model('Wallet', walletSchema);
 const KycRequest = mongoose.model('KycRequest', kycRequestSchema);
