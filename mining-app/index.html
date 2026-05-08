@@ -241,30 +241,103 @@
         }
 
         // ========== شموع Lightweight Charts ==========
-        function initChart() {
-            const chartEl = document.getElementById('chart');
-            chart = LightweightCharts.createChart(chartEl, {
-                width: chartEl.clientWidth,
-                height: 320,
-                layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
-                grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
-                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-                rightPriceScale: { borderColor: '#485c7b' },
-                timeScale: { borderColor: '#485c7b', timeVisible: true, secondsVisible: false }
+        // ========== شموع يابانية احترافية - Lightweight Charts ==========
+async function loadChart() {
+    try {
+        let limit = 100;
+        if (currentTimeframe === '4h') limit = 150;
+        if (currentTimeframe === '1d') limit = 100;
+        
+        const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=${limit}`);
+        const candles = await res.json();
+        
+        console.log(`📊 شموع ${currentTimeframe}:`, candles?.length || 0);
+        
+        if (!candles || candles.length === 0) {
+            console.log('❌ لا توجد شموع');
+            return;
+        }
+        
+        // ✅ تنسيق البيانات
+        const formattedData = candles.map(c => {
+            const ts = new Date(c.timestamp).getTime();
+            return {
+                time: Math.floor(ts / 1000),
+                open: Number(c.open || c.close),
+                high: Number(c.high || c.close),
+                low: Number(c.low || c.close),
+                close: Number(c.close)
+            };
+        }).sort((a, b) => a.time - b.time);
+        
+        console.log('📊 البيانات المنسقة:', formattedData.slice(0, 2));
+        
+        const container = document.getElementById('priceChart');
+        
+        // ✅ إنشاء المخطط مرة واحدة فقط
+        if (!chart) {
+            // تنظيف الحاوية
+            const tfBtns = container.querySelector('.timeframe-btns');
+            container.innerHTML = '';
+            if (tfBtns) container.appendChild(tfBtns);
+            
+            // إنشاء div للمخطط
+            const chartDiv = document.createElement('div');
+            chartDiv.id = 'chartInner';
+            chartDiv.style.width = '100%';
+            chartDiv.style.height = '270px';
+            chartDiv.style.position = 'relative';
+            container.appendChild(chartDiv);
+            
+            // انتظار قليل حتى يتم رسم الـ div
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            const w = chartDiv.clientWidth || 400;
+            const h = chartDiv.clientHeight || 270;
+            
+            console.log(`📊 حجم المخطط: ${w}x${h}`);
+            
+            chart = LightweightCharts.createChart(chartDiv, {
+                width: w,
+                height: h,
+                layout: {
+                    background: { type: 'solid', color: '#1e2329' },
+                    textColor: '#848e9c',
+                },
+                grid: {
+                    vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
+                    horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
+                },
+                crosshair: { mode: 0 },
+                rightPriceScale: { borderColor: 'rgba(255, 255, 255, 0.1)' },
+                timeScale: {
+                    borderColor: 'rgba(255, 255, 255, 0.1)',
+                    timeVisible: true,
+                    secondsVisible: false,
+                },
             });
-
-            candleSeries = chart.addCandlestickSeries({
-                upColor: '#26a69a', downColor: '#ef5350',
-                borderDownColor: '#ef5350', borderUpColor: '#26a69a',
-                wickDownColor: '#ef5350', wickUpColor: '#26a69a'
-            });
-
-            loadCandles();
-
-            window.addEventListener('resize', () => {
-                if (chart) chart.applyOptions({ width: chartEl.clientWidth, height: 320 });
+            
+            candlestickSeries = chart.addCandlestickSeries({
+                upColor: '#0ecb81',
+                downColor: '#f6465d',
+                borderVisible: false,
+                wickUpColor: '#0ecb81',
+                wickDownColor: '#f6465d',
             });
         }
+        
+        // ✅ تعيين البيانات
+        candlestickSeries.setData(formattedData);
+        
+        // ✅ ملاءمة العرض
+        chart.timeScale().fitContent();
+        
+        console.log('✅ الشموع ظهرت بنجاح');
+        
+    } catch(e) { 
+        console.error('❌ خطأ في الشموع:', e.message);
+    }
+}
 
         async function loadCandles() {
             try {
