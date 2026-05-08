@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>💎 CRYSTAL Exchange - منصة تداول احترافية</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         :root {
             --bg-primary: #0b0e11;
@@ -53,11 +53,10 @@
         .stat-item .stat-value { font-size: 11px; font-weight: bold; margin-top: 2px; }
 
         .chart-container {
-            background: #131722; border-radius: 8px; padding: 4px;
-            margin-bottom: 6px; position: relative;
+            background: var(--bg-secondary); border-radius: 8px; padding: 8px;
+            margin-bottom: 6px; height: 320px; position: relative;
         }
-        #chart { width: 100%; height: 320px; }
-        .timeframe-btns { display: flex; gap: 4px; margin-bottom: 4px; flex-wrap: wrap; padding: 0 4px; }
+        .timeframe-btns { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
         .tf-btn { background: var(--bg-tertiary); border: none; color: var(--text-secondary); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; }
         .tf-btn.active { background: var(--gold); color: #000; font-weight: bold; }
 
@@ -107,7 +106,6 @@
 </head>
 <body>
     <div class="app">
-        <!-- الهيدر -->
         <div class="header">
             <div>
                 <div class="pair">💎 CRYSTAL/USDT</div>
@@ -115,13 +113,11 @@
             </div>
             <div class="price-info"><div class="current-price" id="headerPrice">0.0020</div><div class="price-change price-up" id="headerChange">0.00%</div></div>
         </div>
-        <!-- الرصيد -->
         <div class="balance-bar">
             <div class="balance-item"><div class="label">💎 CRYSTAL</div><div class="value" id="crystalBalance">0</div></div>
             <div class="balance-item"><div class="label">💵 USDT</div><div class="value" id="usdtBalance">0</div></div>
             <div class="balance-item" style="display:flex;align-items:center;justify-content:center;"><span id="kycStatus" style="font-size:18px;">⚠️</span></div>
         </div>
-        <!-- إحصائيات -->
         <div class="stats-bar">
             <div class="stat-item"><div class="stat-label">📈 التغير 24h</div><div class="stat-value" id="statChange" style="color:var(--green);">0.00%</div></div>
             <div class="stat-item"><div class="stat-label">📊 أعلى 24h</div><div class="stat-value" id="statHigh">0.0000</div></div>
@@ -129,7 +125,6 @@
             <div class="stat-item"><div class="stat-label">💰 الحجم 24h</div><div class="stat-value" id="statVolume" style="color:var(--gold);">0</div></div>
             <div class="stat-item"><div class="stat-label">🔄 الصفقات</div><div class="stat-value" id="statTrades">0</div></div>
         </div>
-        <!-- الشموع -->
         <div class="chart-container">
             <div class="timeframe-btns">
                 <button class="tf-btn active" onclick="setTimeframe('1m')">1د</button>
@@ -139,9 +134,8 @@
                 <button class="tf-btn" onclick="setTimeframe('4h')">4س</button>
                 <button class="tf-btn" onclick="setTimeframe('1d')">يوم</button>
             </div>
-            <div id="chart"></div>
+            <canvas id="priceChart"></canvas>
         </div>
-        <!-- دفتر الطلبات + التداول -->
         <div class="trade-area">
             <div class="order-book-mini">
                 <div class="ob-title" style="color:var(--red)">🔴 بيع</div><div id="sellOrderBook"></div>
@@ -164,7 +158,6 @@
                 <div id="orderMessage" style="margin-top:6px;font-size:11px;text-align:center;"></div>
             </div>
         </div>
-        <!-- تبويبات -->
         <div class="bottom-tabs">
             <button class="bottom-tab active" onclick="switchBottomTab('orders')">📋 طلباتي</button>
             <button class="bottom-tab" onclick="switchBottomTab('history')">📜 تاريخي</button>
@@ -188,22 +181,16 @@
     <script>
         const tg = window.Telegram.WebApp; tg.expand(); tg.ready();
         const API_URL = window.location.origin;
-        let currentTimeframe = '1m', currentOrderType = 'buy';
-        let chart, candleSeries;
+        let currentTimeframe = '1m', currentOrderType = 'buy', priceChart = null;
         let userId = tg.initDataUnsafe?.user?.id || 6701743450;
         let marketPrice = 0.002, priceManuallyChanged = false, lastManualPriceChange = 0;
 
-        // ========== تهيئة ==========
         async function init() {
             try { const r = await fetch(`${API_URL}/api/market/price`); const d = await r.json(); marketPrice = d.price || 0.002; document.getElementById('orderPrice').value = marketPrice.toFixed(4); } catch(e) {}
-            loadAllData();
-            setInterval(loadMarketData, 5000);
-            setInterval(loadOrderBook, 3000);
-            setInterval(realtimeUpdate, 2000); // ✅ تحديث الشموع مباشر
-            updateOrderTotal();
+            loadAllData(); setInterval(loadMarketData, 5000); setInterval(loadOrderBook, 3000); updateOrderTotal();
         }
 
-        async function loadAllData() { loadUserData(); loadMarketData(); loadOrderBook(); initChart(); loadMyOrders(); loadKycPanel(); loadReferralPanel(); loadChatMessages(); }
+        async function loadAllData() { loadUserData(); loadMarketData(); loadOrderBook(); loadChart(); loadMyOrders(); loadKycPanel(); loadReferralPanel(); loadChatMessages(); }
 
         async function loadUserData() {
             try { const r = await fetch(`${API_URL}/api/user/${userId}`); const d = await r.json(); document.getElementById('crystalBalance').textContent = (d.crystalBalance||0).toFixed(2); document.getElementById('usdtBalance').textContent = (d.usdtBalance||0).toFixed(2); document.getElementById('kycStatus').innerHTML = d.isVerified ? '✅' : '⚠️'; updateSliderMax(); } catch(e) {}
@@ -240,138 +227,103 @@
             } catch(e) {}
         }
 
-        // ========== شموع Lightweight Charts ==========
-        // ========== شموع يابانية احترافية - Lightweight Charts ==========
-async function loadChart() {
-    try {
-        let limit = 100;
-        if (currentTimeframe === '4h') limit = 150;
-        if (currentTimeframe === '1d') limit = 100;
-        
-        const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=${limit}`);
-        const candles = await res.json();
-        
-        console.log(`📊 شموع ${currentTimeframe}:`, candles?.length || 0);
-        
-        if (!candles || candles.length === 0) {
-            console.log('❌ لا توجد شموع');
-            return;
-        }
-        
-        // ✅ تنسيق البيانات
-        const formattedData = candles.map(c => {
-            const ts = new Date(c.timestamp).getTime();
-            return {
-                time: Math.floor(ts / 1000),
-                open: Number(c.open || c.close),
-                high: Number(c.high || c.close),
-                low: Number(c.low || c.close),
-                close: Number(c.close)
-            };
-        }).sort((a, b) => a.time - b.time);
-        
-        console.log('📊 البيانات المنسقة:', formattedData.slice(0, 2));
-        
-        const container = document.getElementById('priceChart');
-        
-        // ✅ إنشاء المخطط مرة واحدة فقط
-        if (!chart) {
-            // تنظيف الحاوية
-            const tfBtns = container.querySelector('.timeframe-btns');
-            container.innerHTML = '';
-            if (tfBtns) container.appendChild(tfBtns);
-            
-            // إنشاء div للمخطط
-            const chartDiv = document.createElement('div');
-            chartDiv.id = 'chartInner';
-            chartDiv.style.width = '100%';
-            chartDiv.style.height = '270px';
-            chartDiv.style.position = 'relative';
-            container.appendChild(chartDiv);
-            
-            // انتظار قليل حتى يتم رسم الـ div
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            const w = chartDiv.clientWidth || 400;
-            const h = chartDiv.clientHeight || 270;
-            
-            console.log(`📊 حجم المخطط: ${w}x${h}`);
-            
-            chart = LightweightCharts.createChart(chartDiv, {
-                width: w,
-                height: h,
-                layout: {
-                    background: { type: 'solid', color: '#1e2329' },
-                    textColor: '#848e9c',
-                },
-                grid: {
-                    vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
-                    horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
-                },
-                crosshair: { mode: 0 },
-                rightPriceScale: { borderColor: 'rgba(255, 255, 255, 0.1)' },
-                timeScale: {
-                    borderColor: 'rgba(255, 255, 255, 0.1)',
-                    timeVisible: true,
-                    secondsVisible: false,
-                },
-            });
-            
-            candlestickSeries = chart.addCandlestickSeries({
-                upColor: '#0ecb81',
-                downColor: '#f6465d',
-                borderVisible: false,
-                wickUpColor: '#0ecb81',
-                wickDownColor: '#f6465d',
-            });
-        }
-        
-        // ✅ تعيين البيانات
-        candlestickSeries.setData(formattedData);
-        
-        // ✅ ملاءمة العرض
-        chart.timeScale().fitContent();
-        
-        console.log('✅ الشموع ظهرت بنجاح');
-        
-    } catch(e) { 
-        console.error('❌ خطأ في الشموع:', e.message);
-    }
-}
-
-        async function loadCandles() {
+        // ========== شموع يابانية - Line + Bars ==========
+        async function loadChart() {
             try {
-                const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=100`);
+                let limit = 60;
+                if (currentTimeframe === '4h') limit = 90;
+                if (currentTimeframe === '1d') limit = 60;
+                
+                const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=${limit}`);
                 const candles = await res.json();
-                const formatted = candles.map(c => ({
-                    time: Math.floor(new Date(c.timestamp).getTime() / 1000),
-                    open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close)
-                }));
-                if (candleSeries) candleSeries.setData(formatted);
-                if (chart) chart.timeScale().fitContent();
-            } catch(e) { console.error('loadCandles:', e); }
-        }
-
-        async function realtimeUpdate() {
-            try {
-                const res = await fetch(`${API_URL}/api/market/latest-candle/${currentTimeframe}`);
-                if (!res.ok) return;
-                const c = await res.json();
-                if (!c || !c.timestamp) return;
-                if (candleSeries) {
-                    candleSeries.update({
-                        time: Math.floor(new Date(c.timestamp).getTime() / 1000),
-                        open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close)
-                    });
+                
+                if (!candles || candles.length === 0) {
+                    console.log('No candles data');
+                    return;
                 }
-            } catch(e) {}
+                
+                console.log(`📊 Loading ${candles.length} candles for ${currentTimeframe}`);
+                
+                if (priceChart) { priceChart.destroy(); priceChart = null; }
+                
+                const ctx = document.getElementById('priceChart').getContext('2d');
+                
+                const labels = candles.map(c => {
+                    const d = new Date(c.timestamp);
+                    if (currentTimeframe === '1d') return d.toLocaleDateString('ar-SA', { day:'2-digit', month:'2-digit' });
+                    if (currentTimeframe === '4h') return d.toLocaleDateString('ar-SA', { day:'2-digit', month:'2-digit' });
+                    return d.toLocaleTimeString('ar-SA', { hour:'2-digit', minute:'2-digit' });
+                });
+                
+                // استخدام خط للشموع (أسهل وأضمن ظهور)
+                const prices = candles.map(c => c.close);
+                const gradient = ctx.createLinearGradient(0, 0, 0, 280);
+                gradient.addColorStop(0, 'rgba(14,203,129,0.3)');
+                gradient.addColorStop(1, 'rgba(14,203,129,0)');
+                
+                priceChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'CRYSTAL/USDT',
+                            data: prices,
+                            borderColor: '#0ecb81',
+                            borderWidth: 2,
+                            backgroundColor: gradient,
+                            fill: true,
+                            tension: 0.1,
+                            pointRadius: 0,
+                            pointHoverRadius: 5,
+                            pointHoverBackgroundColor: '#0ecb81'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const i = ctx.dataIndex;
+                                        const c = candles[i];
+                                        return [
+                                            `💰 سعر: ${c.close.toFixed(6)}`,
+                                            `📈 أعلى: ${c.high.toFixed(6)}`,
+                                            `📉 أدنى: ${c.low.toFixed(6)}`,
+                                            `📊 حجم: ${c.volume || 0}`
+                                        ];
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                grid: { color: 'rgba(255,255,255,0.08)' },
+                                ticks: { color: '#848e9c', font: { size: 10 } }
+                            },
+                            x: {
+                                grid: { color: 'rgba(255,255,255,0.05)' },
+                                ticks: { color: '#848e9c', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }
+                            }
+                        },
+                        interaction: { intersect: false, mode: 'index' }
+                    }
+                });
+                
+                console.log('✅ Chart rendered');
+                
+            } catch(e) {
+                console.error('❌ Chart error:', e.message);
+            }
         }
 
         function setTimeframe(tf) {
             currentTimeframe = tf;
             document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
             event.target.classList.add('active');
-            loadCandles();
+            loadChart();
         }
 
         function setOrderType(type) { currentOrderType = type; document.getElementById('buyTab').classList.toggle('active', type==='buy'); document.getElementById('sellTab').classList.toggle('active', type==='sell'); const btn = document.getElementById('createOrderBtn'); btn.textContent = type==='buy'?'✅ شراء CRYSTAL':'🔴 بيع CRYSTAL'; btn.className = 'trade-btn '+(type==='buy'?'buy-btn':'sell-btn'); updateSliderMax(); updateOrderTotal(); }
