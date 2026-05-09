@@ -71,6 +71,12 @@ const userSchema = new mongoose.Schema({
     twoFASecret: { type: String, default: '' },
     twoFABackupCodes: { type: Array, default: [] },
     
+    // المكافآت
+    channelRewardClaimed: { type: Boolean, default: false },     // مكافأة القناة
+    kycRewardClaimed: { type: Boolean, default: false },         // مكافأة التوثيق
+    referralDepositCount: { type: Number, default: 0 },          // عدد المدعوين الذين أودعوا
+    referralMilestoneReached: { type: Boolean, default: false }, // وصل لـ 5 مدعوين
+    
     // الإحالات
     referrerId: { type: Number, default: null },
     referralCount: { type: Number, default: 0 },
