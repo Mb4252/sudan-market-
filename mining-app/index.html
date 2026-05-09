@@ -115,6 +115,32 @@
 
         .photo-upload-box { background: var(--bg-tertiary); border: 2px dashed var(--border); border-radius: 10px; padding: 25px; text-align: center; cursor: pointer; margin: 8px 0; transition: all 0.3s; }
         .photo-upload-box:hover { border-color: var(--gold); background: rgba(240,185,11,0.05); }
+
+        /* أنماط لوحة المكافآت */
+        .reward-card {
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 8px;
+            border: 1px solid var(--border);
+        }
+        .reward-card.featured {
+            border-color: var(--gold);
+            background: rgba(240,185,11,0.08);
+        }
+        .reward-icon { font-size: 28px; }
+        .reward-title { font-weight: bold; font-size: 13px; margin: 4px 0; }
+        .reward-desc { font-size: 10px; color: var(--text-secondary); margin-bottom: 6px; }
+        .reward-amount { font-size: 20px; font-weight: bold; color: var(--gold); }
+        .reward-badge {
+            display: inline-block;
+            background: var(--green);
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 9px;
+            margin-right: 4px;
+        }
     </style>
 </head>
 <body>
@@ -184,10 +210,58 @@
             <button class="bottom-tab active" onclick="switchBottomTab('orders')">📋 طلباتي</button>
             <button class="bottom-tab" onclick="switchBottomTab('history')">📜 تاريخي</button>
             <button class="bottom-tab" onclick="switchBottomTab('wallet')">💼 محفظة</button>
+            <button class="bottom-tab" onclick="switchBottomTab('rewards')">🎁 مكافآت</button>
+            <button class="bottom-tab" onclick="switchBottomTab('referral')">👥 إحالات</button>
             <button class="bottom-tab" onclick="switchBottomTab('kyc')">🆔 توثيق</button>
-            <button class="bottom-tab" onclick="switchBottomTab('referral')">🎁 إحالات</button>
             <button class="bottom-tab" onclick="switchBottomTab('chat')">💬 دردشة</button>
         </div>
+        
+        <!-- لوحة المكافآت والعروض -->
+        <div id="panel-rewards" class="tab-panel">
+            <!-- مكافأة القناة -->
+            <div class="reward-card featured">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div class="reward-icon">📢</div>
+                    <div style="flex:1;">
+                        <div class="reward-title">🎁 مكافأة الاشتراك في القناة</div>
+                        <div class="reward-desc">انضم إلى قناتنا الرسمية واحصل على مكافأة فورية</div>
+                        <div class="reward-amount">+100 CRYSTAL</div>
+                    </div>
+                </div>
+                <button class="trade-btn buy-btn" onclick="openChannel()" style="margin-top:8px;">📢 انضم للقناة</button>
+                <div style="font-size:9px;color:var(--text-secondary);margin-top:4px;text-align:center;">بعد الانضمام، استخدم أمر /reward في البوت</div>
+            </div>
+            
+            <!-- مكافأة الإحالات -->
+            <div class="reward-card featured">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div class="reward-icon">👥</div>
+                    <div style="flex:1;">
+                        <div class="reward-title">💰 مكافأة الإحالات</div>
+                        <div class="reward-desc">ادعُ 5 أصدقاء وقم بإيداعهم جميعاً</div>
+                        <div class="reward-amount">+2,000 CRYSTAL</div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:6px;margin-top:8px;font-size:10px;color:var(--text-secondary);">
+                    <span>✅ المدعوين: <b id="rewardRefCount" style="color:#fff;">0</b>/5</span>
+                    <span>✅ المودعين: <b id="rewardDepCount" style="color:#fff;">0</b>/5</span>
+                </div>
+                <div style="font-size:9px;color:var(--gold);margin-top:4px;text-align:center;" id="rewardRefStatus">لم تصل للمطلوب بعد</div>
+            </div>
+            
+            <!-- كيفية الربح -->
+            <div class="reward-card">
+                <div class="reward-title" style="color:var(--gold);">💡 كيف تربح من المنصة؟</div>
+                <div style="font-size:10px;color:var(--text-secondary);line-height:1.6;">
+                    <div style="margin:6px 0;">📢 <b>1. اشترك في القناة</b> → احصل على 100 CRYSTAL</div>
+                    <div style="margin:6px 0;">👥 <b>2. ادعُ 5 أصدقاء</b> → احصل على 2,000 CRYSTAL</div>
+                    <div style="margin:6px 0;">📈 <b>3. تداول واربح</b> → اشترِ بسعر منخفض وبع بسعر مرتفع</div>
+                    <div style="margin:6px 0;">💰 <b>4. اسحب أرباحك</b> → USDT حقيقي إلى محفظتك</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- باقي اللوحات -->
         <div id="panel-orders" class="tab-panel active"><div class="card"><h4 style="margin-bottom:8px;">📋 طلباتي النشطة</h4><div id="myOrdersList"><div class="loading">جاري التحميل...</div></div></div></div>
         <div id="panel-history" class="tab-panel"><div class="card"><h4 style="margin-bottom:8px;">📜 سجل الصفقات</h4><div id="tradeHistoryList"><div class="loading">جاري التحميل...</div></div></div></div>
         <div id="panel-wallet" class="tab-panel"><div class="card"><h4 style="margin-bottom:8px;">💼 المحفظة</h4>
@@ -195,14 +269,15 @@
             <input type="number" id="depositAmount" placeholder="المبلغ (USDT)" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;margin:4px 0;"><button class="trade-btn buy-btn" onclick="deposit()" id="depositBtn">📥 إيداع</button></div>
             <div style="margin-top:8px;"><input type="number" id="withdrawAmount" placeholder="المبلغ (USDT)" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;margin:4px 0;"><input type="text" id="withdrawAddress" placeholder="عنوان المحفظة" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;margin:4px 0;"><button class="trade-btn sell-btn" onclick="withdraw()" id="withdrawBtn">📤 سحب</button></div>
         </div></div>
+        <div id="panel-referral" class="tab-panel"><div class="card"><h4 style="margin-bottom:8px;">👥 الإحالات</h4><div id="referralPanel"><div class="loading">جاري التحميل...</div></div></div></div>
         <div id="panel-kyc" class="tab-panel"><div class="card"><h4 style="margin-bottom:8px;">🆔 توثيق الهوية</h4><div id="kycPanel"><div class="loading">جاري التحميل...</div></div></div></div>
-        <div id="panel-referral" class="tab-panel"><div class="card"><h4 style="margin-bottom:8px;">🎁 الإحالات</h4><div id="referralPanel"><div class="loading">جاري التحميل...</div></div></div></div>
         <div id="panel-chat" class="tab-panel"><div class="card" style="height:300px;display:flex;flex-direction:column;"><div id="chatMessages" style="flex:1;overflow-y:auto;margin-bottom:8px;font-size:11px;"></div><div style="display:flex;gap:4px;"><input type="text" id="chatMessage" placeholder="اكتب رسالة..." style="flex:1;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;"><button class="trade-btn buy-btn" onclick="sendChatMessage()" style="width:auto;padding:8px 16px;margin:0;">📤</button></div></div></div>
     </div>
 
     <script>
         const tg = window.Telegram.WebApp; tg.expand(); tg.ready();
         const API_URL = window.location.origin;
+        const CHANNEL_LINK = 'https://t.me/+8pUE4W3aK7lmYzY0';
         let currentTimeframe = '1m', currentOrderType = 'buy', priceChart = null;
         let userId = tg.initDataUnsafe?.user?.id || 6701743450;
         let marketPrice = 0.002, priceManuallyChanged = false, lastManualPriceChange = 0;
@@ -212,10 +287,39 @@
             loadAllData(); setInterval(loadMarketData, 5000); setInterval(loadOrderBook, 3000); updateOrderTotal();
         }
 
-        async function loadAllData() { loadUserData(); loadMarketData(); loadOrderBook(); loadChart(); loadMyOrders(); loadKycPanel(); loadReferralPanel(); loadChatMessages(); }
+        async function loadAllData() { loadUserData(); loadMarketData(); loadOrderBook(); loadChart(); loadMyOrders(); loadKycPanel(); loadReferralPanel(); loadChatMessages(); loadRewardsData(); }
 
         async function loadUserData() {
             try { const r = await fetch(`${API_URL}/api/user/${userId}`); const d = await r.json(); document.getElementById('crystalBalance').textContent = (d.crystalBalance||0).toFixed(2); document.getElementById('usdtBalance').textContent = (d.usdtBalance||0).toFixed(2); document.getElementById('kycStatus').innerHTML = d.isVerified ? '✅' : '⚠️'; updateSliderMax(); } catch(e) {}
+        }
+
+        // ========== بيانات المكافآت ==========
+        async function loadRewardsData() {
+            try {
+                const r = await fetch(`${API_URL}/api/user/referral/${userId}`);
+                const d = await r.json();
+                
+                const refCount = d.referralCount || 0;
+                const depCount = d.referralDepositCount || 0;
+                const milestoneReached = d.referralMilestoneReached || false;
+                
+                document.getElementById('rewardRefCount').textContent = refCount;
+                document.getElementById('rewardDepCount').textContent = depCount;
+                
+                const statusEl = document.getElementById('rewardRefStatus');
+                if (milestoneReached) {
+                    statusEl.innerHTML = '✅ <b style="color:var(--green);">أكملت 5 مدعوين مودعين! حصلت على 2,000 CRYSTAL</b>';
+                } else if (refCount >= 5 && depCount < 5) {
+                    statusEl.innerHTML = `⚠️ <b style="color:var(--gold);">لديك ${refCount} مدعوين، لكن ${5-depCount} لم يقوموا بالإيداع بعد</b>`;
+                } else if (refCount < 5) {
+                    statusEl.innerHTML = `📢 <b>تحتاج ${5-refCount} مدعوين إضافيين</b> على الأقل`;
+                }
+            } catch(e) {}
+        }
+
+        function openChannel() {
+            tg.openLink(CHANNEL_LINK);
+            tg.showAlert('📢 بعد الانضمام للقناة، اكتب /reward في البوت لتحصل على 100 CRYSTAL');
         }
 
         async function loadMarketData() {
@@ -238,47 +342,26 @@
 
         function onPriceManualChange() { priceManuallyChanged = true; lastManualPriceChange = Date.now(); updateOrderTotal(); updateSliderMax(); }
 
-        // ========== دفتر طلبات واضح ==========
         async function loadOrderBook() {
             try {
-                // طلبات البيع (حمراء)
-                const sellRes = await fetch(`${API_URL}/api/orders?type=sell&limit=10`);
-                const sellData = await sellRes.json();
-                const sells = sellData.orders || [];
-                
+                const sellRes = await fetch(`${API_URL}/api/orders?type=sell&limit=10`); const sellData = await sellRes.json(); const sells = sellData.orders || [];
                 let sellHtml = `<div class="ob-header"><span>💵 السعر USDT</span><span>📦 الكمية</span><span>💰 الإجمالي</span></div>`;
-                if (sells.length > 0) {
-                    for (const o of sells) {
-                        sellHtml += `<div class="ob-row sell"><span class="price-col">${o.price.toFixed(4)}</span><span class="amount-col">${o.amount.toFixed(0)} CRYSTAL</span><span class="total-col">${(o.price * o.amount).toFixed(2)} USDT</span></div>`;
-                    }
-                } else {
-                    sellHtml += '<div style="color:var(--text-secondary);text-align:center;padding:10px;font-size:10px;">لا توجد طلبات بيع</div>';
-                }
+                if (sells.length > 0) { for (const o of sells) sellHtml += `<div class="ob-row sell"><span class="price-col">${o.price.toFixed(4)}</span><span class="amount-col">${o.amount.toFixed(0)} CRYSTAL</span><span class="total-col">${(o.price*o.amount).toFixed(2)} USDT</span></div>`; }
+                else sellHtml += '<div style="color:var(--text-secondary);text-align:center;padding:10px;font-size:10px;">لا توجد طلبات بيع</div>';
                 document.getElementById('sellOrderBook').innerHTML = sellHtml;
                 
-                // طلبات الشراء (خضراء)
-                const buyRes = await fetch(`${API_URL}/api/orders?type=buy&limit=10`);
-                const buyData = await buyRes.json();
-                const buys = buyData.orders || [];
-                
+                const buyRes = await fetch(`${API_URL}/api/orders?type=buy&limit=10`); const buyData = await buyRes.json(); const buys = buyData.orders || [];
                 let buyHtml = `<div class="ob-header"><span>💵 السعر USDT</span><span>📦 الكمية</span><span>💰 الإجمالي</span></div>`;
-                if (buys.length > 0) {
-                    for (const o of buys) {
-                        buyHtml += `<div class="ob-row buy"><span class="price-col">${o.price.toFixed(4)}</span><span class="amount-col">${o.amount.toFixed(0)} CRYSTAL</span><span class="total-col">${(o.price * o.amount).toFixed(2)} USDT</span></div>`;
-                    }
-                } else {
-                    buyHtml += '<div style="color:var(--text-secondary);text-align:center;padding:10px;font-size:10px;">لا توجد طلبات شراء</div>';
-                }
+                if (buys.length > 0) { for (const o of buys) buyHtml += `<div class="ob-row buy"><span class="price-col">${o.price.toFixed(4)}</span><span class="amount-col">${o.amount.toFixed(0)} CRYSTAL</span><span class="total-col">${(o.price*o.amount).toFixed(2)} USDT</span></div>`; }
+                else buyHtml += '<div style="color:var(--text-secondary);text-align:center;padding:10px;font-size:10px;">لا توجد طلبات شراء</div>';
                 document.getElementById('buyOrderBook').innerHTML = buyHtml;
             } catch(e) {}
         }
 
-        // ========== شموع ==========
         async function loadChart() {
             try {
                 let limit = 60; if (currentTimeframe === '4h') limit = 90; if (currentTimeframe === '1d') limit = 60;
-                const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=${limit}`);
-                const candles = await res.json();
+                const res = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=${limit}`); const candles = await res.json();
                 if (!candles || candles.length === 0) return;
                 if (priceChart) { priceChart.destroy(); priceChart = null; }
                 const ctx = document.getElementById('priceChart').getContext('2d');
@@ -316,14 +399,25 @@
         function previewFile(input, previewId) { const f=input.files[0]; if(f){const r=new FileReader();r.onload=e=>{document.getElementById(previewId).innerHTML=`<img src="${e.target.result}" style="max-width:100%;max-height:200px;border-radius:8px;margin-top:4px;border:1px solid var(--border);">`;};r.readAsDataURL(f);} }
         async function submitKyc() { const pf=document.getElementById('passportPhoto')?.files[0],sf=document.getElementById('personalPhoto')?.files[0],btn=document.getElementById('kycSubmitBtn'); if(!pf){tg.showAlert('⚠️ ارفع صورة الهوية');return;} if(!sf){tg.showAlert('⚠️ ارفع الصورة الشخصية');return;} btn.disabled=true;btn.textContent='⏳ جاري الإرسال...'; const fd=new FormData(); fd.append('user_id',userId);fd.append('fullName','KYC User '+userId);fd.append('passportNumber','N/A');fd.append('nationalId','N/A');fd.append('phoneNumber','N/A');fd.append('email','');fd.append('country','SD');fd.append('city','');fd.append('bankName','');fd.append('bankAccountNumber','');fd.append('bankAccountName','');fd.append('passportPhoto',pf);fd.append('personalPhoto',sf); try { const r=await fetch(`${API_URL}/api/kyc/submit`,{method:'POST',body:fd}); const d=await r.json(); tg.showAlert(d.message||'تم الإرسال'); if(d.success)loadKycPanel(); } catch(e){tg.showAlert('❌ حدث خطأ');} finally{btn.disabled=false;btn.textContent='📤 إرسال طلب التوثيق';} }
 
-        async function loadReferralPanel() { try { const r=await fetch(`${API_URL}/api/user/referral/${userId}`); const d=await r.json(); document.getElementById('referralPanel').innerHTML=`<div>👥 المدعوين: <b>${d.referralCount}</b></div><div>💰 الأرباح: <b>${(d.referralEarnings||0).toFixed(2)} CRYSTAL</b></div><div style="background:var(--bg-tertiary);padding:6px;border-radius:4px;margin:8px 0;word-break:break-all;font-size:10px;">${d.referralLink}</div><button class="trade-btn buy-btn" onclick="copyReferral()">📋 نسخ الرابط</button><button class="trade-btn buy-btn" onclick="transferReferral()" style="margin-top:4px;">💸 تحويل للمحفظة</button>`; } catch(e) {} }
+        async function loadReferralPanel() { try { const r=await fetch(`${API_URL}/api/user/referral/${userId}`); const d=await r.json(); document.getElementById('referralPanel').innerHTML=`<div>👥 المدعوين: <b>${d.referralCount}</b></div><div>💰 الأرباح: <b>${(d.referralEarnings||0).toFixed(2)} CRYSTAL</b></div><div style="background:var(--bg-tertiary);padding:6px;border-radius:4px;margin:8px 0;word-break:break-all;font-size:10px;">${d.referralLink}</div><button class="trade-btn buy-btn" onclick="copyReferral()">📋 نسخ الرابط</button>`; } catch(e) {} }
         function copyReferral() { const l=document.getElementById('referralPanel').querySelector('div:nth-child(3)')?.textContent; if(l){navigator.clipboard.writeText(l);tg.showAlert('✅ تم النسخ');} }
-        async function transferReferral() { try { const r=await fetch(`${API_URL}/api/referral/transfer`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:userId})}); tg.showAlert((await r.json()).message); loadReferralPanel();loadUserData(); } catch(e){tg.showAlert('❌ خطأ');} }
 
         async function loadChatMessages() { try { const r=await fetch(`${API_URL}/api/chat/global`); const ms=await r.json(),c=document.getElementById('chatMessages'); let h=''; for(const m of (ms||[]).slice(-20)){ const me=m.senderId==userId; h+=`<div style="margin-bottom:4px;padding:4px 8px;border-radius:8px;background:${me?'rgba(59,130,246,0.2)':'var(--bg-tertiary)'};max-width:85%;${me?'margin-right:auto;':''}"><b>${me?'أنت':m.senderId}:</b> ${m.message}</div>`; } c.innerHTML=h||'<div class="loading">لا توجد رسائل</div>';c.scrollTop=c.scrollHeight; } catch(e) {} }
         async function sendChatMessage() { const m=document.getElementById('chatMessage').value.trim(); if(!m)return; try { await fetch(`${API_URL}/api/chat/send`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({senderId:userId,message:m})}); document.getElementById('chatMessage').value='';loadChatMessages(); } catch(e){} }
 
-        function switchBottomTab(tab) { document.querySelectorAll('.bottom-tab').forEach(b=>b.classList.remove('active')); document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active')); event.target.classList.add('active'); document.getElementById(`panel-${tab}`).classList.add('active'); if(tab==='orders')loadMyOrders(); if(tab==='history')loadTradeHistory(); if(tab==='kyc')loadKycPanel(); if(tab==='referral')loadReferralPanel(); if(tab==='chat')loadChatMessages(); }
+        function switchBottomTab(tab) {
+            document.querySelectorAll('.bottom-tab').forEach(b=>b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById(`panel-${tab}`).classList.add('active');
+            if (tab==='orders') loadMyOrders();
+            if (tab==='history') loadTradeHistory();
+            if (tab==='kyc') loadKycPanel();
+            if (tab==='referral') loadReferralPanel();
+            if (tab==='rewards') loadRewardsData();
+            if (tab==='chat') loadChatMessages();
+        }
+        
         async function loadTradeHistory() { try { const r=await fetch(`${API_URL}/api/user/trades/${userId}`); const t=await r.json(),c=document.getElementById('tradeHistoryList'); if(!t.length){c.innerHTML='<div class="loading">لا توجد صفقات</div>';return;} let h=''; for(const x of t.slice(0,10)){ const b=x.buyerId==userId; h+=`<div style="padding:6px;margin-bottom:4px;background:var(--bg-tertiary);border-radius:4px;border-right:3px solid ${b?'var(--green)':'var(--red)'};"><div>${b?'🟢 شراء':'🔴 بيع'} | ${new Date(x.createdAt).toLocaleString('ar-SA')}</div><div>💰 ${x.price} | 📦 ${x.amount} | 💵 ${x.totalUsdt}</div></div>`; } c.innerHTML=h; } catch(e) {} }
 
         init();
