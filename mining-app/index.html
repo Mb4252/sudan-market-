@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>💎 CRYSTAL Exchange - شموع يابانية حقيقية</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.0/dist/chartjs-chart-financial.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.js"></script>
     <style>
         :root {
             --bg-primary: #0b0e11; --bg-secondary: #1e2329; --bg-tertiary: #2a2e35;
@@ -39,7 +38,7 @@
         .balance-item .label { color: var(--text-secondary); font-size: 10px; }
         .balance-item .value { font-weight: bold; font-size: 14px; margin-top: 2px; }
 
-        .chart-container { background: var(--bg-secondary); border-radius: 8px; padding: 8px; margin-bottom: 6px; height: 280px; position: relative; }
+        .chart-container { background: var(--bg-secondary); border-radius: 8px; padding: 8px; margin-bottom: 6px; height: 320px; position: relative; }
         .timeframe-btns { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
         .tf-btn { background: var(--bg-tertiary); border: none; color: var(--text-secondary); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; }
         .tf-btn.active { background: var(--gold); color: #000; font-weight: bold; }
@@ -77,7 +76,6 @@
         .input-group { margin-bottom: 5px; }
         .input-group label { font-size: 9px; color: var(--text-secondary); display: block; margin-bottom: 1px; }
         .input-group input, .input-group select { width: 100%; padding: 7px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 4px; color: #fff; font-size: 12px; }
-        .input-group input:focus, .input-group select:focus { border-color: var(--gold); outline: none; }
 
         .slider-container { margin: 6px 0; }
         .slider-container input[type=range] { width: 100%; height: 3px; -webkit-appearance: none; background: var(--bg-tertiary); border-radius: 2px; outline: none; }
@@ -110,7 +108,9 @@
         .bottom-nav-btn { flex: 1; padding: 10px 6px; background: var(--bg-secondary); border: none; color: var(--text-secondary); border-radius: 8px; cursor: pointer; font-size: 10px; text-align: center; }
         .bottom-nav-btn .icon { font-size: 18px; display: block; }
 
-        .indicator-badge { position: absolute; bottom: 10px; right: 10px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 4px; font-size: 9px; color: var(--gold); }
+        .indicator-badge { position: absolute; bottom: 10px; right: 10px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 4px; font-size: 9px; color: var(--gold); z-index: 10; }
+        
+        #priceChart { width: 100%; height: 100%; }
     </style>
 </head>
 <body>
@@ -148,8 +148,8 @@
                     <button class="tf-btn" onclick="setTimeframe('4h')">4س</button>
                     <button class="tf-btn" onclick="setTimeframe('1d')">يوم</button>
                 </div>
-                <canvas id="priceChart"></canvas>
-                <div class="indicator-badge" id="chartIndicator">🕯️ شموع يابانية</div>
+                <div id="priceChart" style="width: 100%; height: calc(100% - 30px);"></div>
+                <div class="indicator-badge" id="chartIndicator">🕯️ شموع يابانية - 1د</div>
             </div>
             
             <!-- دفتر الطلبات + نموذج التداول -->
@@ -228,14 +228,17 @@
         
         const API_URL = window.location.origin;
         const CHANNEL_LINK = 'https://t.me/+8pUE4W3aK7lmYzY0';
-        let currentTimeframe = '1m', currentOrderType = 'buy', currentOrderSubType = 'limit', priceChart = null, currentTradeTab = 'orders';
+        let currentTimeframe = '1m', currentOrderType = 'buy', currentOrderSubType = 'limit', currentTradeTab = 'orders';
         let userId = tg.initDataUnsafe?.user?.id || 6701743450;
         let marketPrice = 0.002, priceManuallyChanged = false, lastManualPriceChange = 0;
         
-        // متغيرات للشموع اليابانية
-        let lastCandleTime = null;
-        let currentCandle = null;
-        let ohlcHistory = [];
+        // متغيرات للرسم البياني
+        let chart = null;
+        let candlestickSeries = null;
+        
+        // بيانات الشموع
+        let candleData = [];
+        let lastTimestamp = null;
 
         async function init() {
             try { 
@@ -245,10 +248,168 @@
                 document.getElementById('orderPrice').value = marketPrice.toFixed(4); 
             } catch(e) {}
             loadAllData(); 
+            initChart();
             setInterval(loadMarketData, 3000); 
             setInterval(loadOrderBook, 3000); 
-            setInterval(updateLiveCandle, 3000);
             updateOrderTotal();
+        }
+        
+        function initChart() {
+            const container = document.getElementById('priceChart');
+            if (!container) return;
+            
+            chart = LightweightCharts.createChart(container, {
+                layout: {
+                    background: { color: '#1e2329' },
+                    textColor: '#848e9c',
+                },
+                grid: {
+                    vertLines: { color: '#2b3139' },
+                    horzLines: { color: '#2b3139' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                },
+                rightPriceScale: {
+                    borderColor: '#2b3139',
+                    textColor: '#848e9c',
+                },
+                timeScale: {
+                    borderColor: '#2b3139',
+                    textColor: '#848e9c',
+                    timeVisible: true,
+                    secondsVisible: false,
+                },
+                width: container.clientWidth,
+                height: 280,
+            });
+            
+            candlestickSeries = chart.addCandlestickSeries({
+                upColor: '#0ecb81',
+                downColor: '#f6465d',
+                borderDownColor: '#f6465d',
+                borderUpColor: '#0ecb81',
+                wickDownColor: '#f6465d',
+                wickUpColor: '#0ecb81',
+            });
+            
+            // إنشاء بيانات تجريبية أولية
+            generateMockData();
+            
+            window.addEventListener('resize', () => {
+                chart.applyOptions({ width: container.clientWidth });
+            });
+        }
+        
+        function generateMockData() {
+            const now = Math.floor(Date.now() / 1000);
+            const interval = getTimeframeSeconds();
+            let basePrice = marketPrice || 0.002;
+            candleData = [];
+            
+            for (let i = 50; i >= 0; i--) {
+                const timestamp = now - (i * interval);
+                const variation = (Math.random() - 0.5) * basePrice * 0.02;
+                const open = basePrice + variation;
+                const close = open + (Math.random() - 0.5) * basePrice * 0.015;
+                const high = Math.max(open, close) + Math.random() * basePrice * 0.01;
+                const low = Math.min(open, close) - Math.random() * basePrice * 0.01;
+                
+                candleData.push({
+                    time: timestamp,
+                    open: open,
+                    high: high,
+                    low: low,
+                    close: close
+                });
+                
+                basePrice = close;
+            }
+            
+            if (candlestickSeries) {
+                candlestickSeries.setData(candleData);
+            }
+        }
+        
+        function getTimeframeSeconds() {
+            switch(currentTimeframe) {
+                case '1m': return 60;
+                case '5m': return 300;
+                case '15m': return 900;
+                case '1h': return 3600;
+                case '4h': return 14400;
+                case '1d': return 86400;
+                default: return 60;
+            }
+        }
+        
+        async function loadChart() {
+            try {
+                let limit = 60;
+                if (currentTimeframe === '4h') limit = 90;
+                if (currentTimeframe === '1d') limit = 60;
+                
+                const response = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=${limit}`);
+                let candles = await response.json();
+                
+                if (!candles || !candles.length) {
+                    // استخدام البيانات التجريبية إذا لم تكن متوفرة
+                    generateMockData();
+                    return;
+                }
+                
+                // تحويل البيانات إلى صيغة Lightweight Charts
+                candleData = candles.map(candle => ({
+                    time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
+                    open: candle.open || candle.price * 0.998,
+                    high: candle.high || candle.price * 1.01,
+                    low: candle.low || candle.price * 0.99,
+                    close: candle.close || candle.price
+                }));
+                
+                if (candlestickSeries) {
+                    candlestickSeries.setData(candleData);
+                    chart.timeScale().fitContent();
+                }
+                
+                document.getElementById('chartIndicator').innerHTML = `🕯️ شموع يابانية - ${currentTimeframe}`;
+                
+            } catch(e) {
+                console.error('خطأ في تحميل الشموع:', e);
+                generateMockData();
+                document.getElementById('chartIndicator').innerHTML = '⚠️ بيانات تجريبية - شموع يابانية';
+            }
+        }
+        
+        function updateLastCandle(newPrice) {
+            if (!candlestickSeries || candleData.length === 0) return;
+            
+            const now = Math.floor(Date.now() / 1000);
+            const interval = getTimeframeSeconds();
+            const currentCandleTime = Math.floor(now / interval) * interval;
+            
+            const lastCandle = candleData[candleData.length - 1];
+            
+            // التحقق إذا كنا بحاجة لشمعة جديدة
+            if (!lastCandle || lastCandle.time !== currentCandleTime) {
+                // إنشاء شمعة جديدة
+                const newCandle = {
+                    time: currentCandleTime,
+                    open: newPrice,
+                    high: newPrice,
+                    low: newPrice,
+                    close: newPrice
+                };
+                candleData.push(newCandle);
+                if (candleData.length > 100) candleData.shift();
+                candlestickSeries.setData(candleData);
+            } else {
+                // تحديث الشمعة الحالية
+                lastCandle.high = Math.max(lastCandle.high, newPrice);
+                lastCandle.low = Math.min(lastCandle.low, newPrice);
+                lastCandle.close = newPrice;
+                candlestickSeries.update(lastCandle);
+            }
         }
 
         async function loadAllData() { 
@@ -270,6 +431,9 @@
                 loadOrderBook(); 
                 loadChart(); 
                 loadMyOrders(); 
+                setTimeout(() => {
+                    if (chart) chart.timeScale().fitContent();
+                }, 100);
             }
             else if (panel === 'rewards') { 
                 navBtns[2].classList.add('active'); 
@@ -393,255 +557,9 @@
                     priceManuallyChanged = false;
                 }
                 
-                // تحديث الشمعة الحالية
-                updateCurrentCandle(marketPrice);
+                // تحديث آخر شمعة بالسعر الجديد
+                updateLastCandle(marketPrice);
             } catch(e) {}
-        }
-
-        // تحديث الشمعة الحالية في الوقت الفعلي
-        function updateCurrentCandle(newPrice) {
-            const now = Math.floor(Date.now() / getTimeframeMilliseconds()) * getTimeframeMilliseconds();
-            
-            if (lastCandleTime !== now) {
-                // شمعة جديدة تبدأ
-                if (currentCandle && priceChart) {
-                    // حفظ الشمعة السابقة في التاريخ
-                    ohlcHistory.unshift({...currentCandle});
-                    if (ohlcHistory.length > 100) ohlcHistory.pop();
-                }
-                
-                lastCandleTime = now;
-                currentCandle = {
-                    x: new Date(now),
-                    o: newPrice,
-                    h: newPrice,
-                    l: newPrice,
-                    c: newPrice
-                };
-            } else if (currentCandle) {
-                // تحديث الشمعة الحالية
-                currentCandle.h = Math.max(currentCandle.h, newPrice);
-                currentCandle.l = Math.min(currentCandle.l, newPrice);
-                currentCandle.c = newPrice;
-            }
-            
-            // تحديث الرسم البياني
-            if (priceChart && priceChart.data.datasets[0]) {
-                const chartData = [...ohlcHistory.slice(0, 50), currentCandle];
-                priceChart.data.datasets[0].data = chartData;
-                priceChart.update('none'); // تحديث بدون حركة للحفاظ على الأداء
-            }
-        }
-
-        function getTimeframeMilliseconds() {
-            switch(currentTimeframe) {
-                case '1m': return 60 * 1000;
-                case '5m': return 5 * 60 * 1000;
-                case '15m': return 15 * 60 * 1000;
-                case '1h': return 60 * 60 * 1000;
-                case '4h': return 4 * 60 * 60 * 1000;
-                case '1d': return 24 * 60 * 60 * 1000;
-                default: return 60 * 1000;
-            }
-        }
-
-        function getTimeUnit(timeframe) {
-            switch(timeframe) {
-                case '1m': return 'minute';
-                case '5m': return 'minute';
-                case '15m': return 'minute';
-                case '1h': return 'hour';
-                case '4h': return 'hour';
-                case '1d': return 'day';
-                default: return 'minute';
-            }
-        }
-
-        // دالة الشموع اليابانية الحقيقية
-        async function loadChart() {
-            try {
-                let limit = 60;
-                if (currentTimeframe === '4h') limit = 90;
-                if (currentTimeframe === '1d') limit = 60;
-                
-                const response = await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=${limit}`);
-                let candles = await response.json();
-                
-                if (!candles || !candles.length) {
-                    // إنشاء بيانات تجريبية إذا لم تكن متوفرة
-                    candles = generateMockCandles(limit);
-                }
-                
-                if (priceChart) {
-                    priceChart.destroy();
-                    priceChart = null;
-                }
-                
-                const ctx = document.getElementById('priceChart').getContext('2d');
-                
-                // تحويل البيانات إلى صيغة OHLC للشموع اليابانية
-                const ohlcData = candles.map(candle => ({
-                    x: new Date(candle.timestamp),
-                    o: candle.open || candle.price * 0.998,
-                    h: candle.high || candle.price * 1.01,
-                    l: candle.low || candle.price * 0.99,
-                    c: candle.close || candle.price
-                }));
-                
-                // حفظ التاريخ
-                ohlcHistory = [...ohlcData];
-                
-                // إنشاء الرسم البياني بالشموع اليابانية
-                priceChart = new Chart(ctx, {
-                    type: 'candlestick',
-                    data: {
-                        datasets: [{
-                            label: '🕯️ CRYSTAL/USDT - شموع يابانية',
-                            data: ohlcData,
-                            borderWidth: 1,
-                            barPercentage: 0.9,
-                            candlestick: {
-                                upColor: '#0ecb81',      // شمعة صاعدة (خضراء)
-                                downColor: '#f6465d',    // شمعة هابطة (حمراء)
-                                upBorderColor: '#0ecb81',
-                                downBorderColor: '#f6465d',
-                                upWickColor: '#0ecb81',
-                                downWickColor: '#f6465d'
-                            }
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            x: {
-                                type: 'time',
-                                time: {
-                                    unit: getTimeUnit(currentTimeframe),
-                                    tooltipFormat: 'yyyy-MM-dd HH:mm:ss',
-                                    displayFormats: {
-                                        minute: 'HH:mm',
-                                        hour: 'HH:00',
-                                        day: 'MM-dd'
-                                    }
-                                },
-                                ticks: {
-                                    color: '#848e9c',
-                                    font: { size: 9 },
-                                    maxRotation: 45,
-                                    autoSkip: true,
-                                    maxTicksLimit: 6
-                                },
-                                grid: {
-                                    color: 'rgba(255,255,255,0.05)'
-                                }
-                            },
-                            y: {
-                                position: 'right',
-                                ticks: {
-                                    color: '#848e9c',
-                                    font: { size: 9 },
-                                    callback: (value) => value.toFixed(4)
-                                },
-                                grid: {
-                                    color: 'rgba(255,255,255,0.08)'
-                                },
-                                title: {
-                                    display: true,
-                                    text: 'السعر (USDT)',
-                                    color: '#848e9c',
-                                    font: { size: 9 }
-                                }
-                            }
-                        },
-                        plugins: {
-                            tooltip: {
-                                mode: 'index',
-                                intersect: false,
-                                callbacks: {
-                                    title: (context) => {
-                                        const date = new Date(context[0].raw.x);
-                                        return date.toLocaleString('ar-SA', {
-                                            year: 'numeric',
-                                            month: '2-digit',
-                                            day: '2-digit',
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                        });
-                                    },
-                                    label: (context) => {
-                                        const ohlc = context.raw;
-                                        const change = ((ohlc.c - ohlc.o) / ohlc.o * 100).toFixed(2);
-                                        return [
-                                            `📊 الافتتاح: ${ohlc.o.toFixed(6)}`,
-                                            `📈 الأعلى: ${ohlc.h.toFixed(6)}`,
-                                            `📉 الأدنى: ${ohlc.l.toFixed(6)}`,
-                                            `📉 الإغلاق: ${ohlc.c.toFixed(6)}`,
-                                            `📊 التغير: ${change}%`
-                                        ];
-                                    }
-                                },
-                                backgroundColor: 'rgba(0,0,0,0.8)',
-                                titleColor: '#f0b90b',
-                                bodyColor: '#eaecef',
-                                borderColor: '#f0b90b',
-                                borderWidth: 1
-                            },
-                            legend: { 
-                                display: false 
-                            }
-                        },
-                        interaction: {
-                            mode: 'nearest',
-                            intersect: true,
-                            axis: 'x'
-                        }
-                    }
-                });
-                
-                document.getElementById('chartIndicator').innerHTML = `🕯️ شموع يابانية - ${currentTimeframe}`;
-                
-            } catch(e) {
-                console.error('خطأ في تحميل الشموع:', e);
-                document.getElementById('chartIndicator').innerHTML = '⚠️ خطأ في تحميل الشموع';
-            }
-        }
-
-        // توليد بيانات تجريبية للشموع
-        function generateMockCandles(count) {
-            const candles = [];
-            let basePrice = marketPrice || 0.002;
-            const now = Date.now();
-            const interval = getTimeframeMilliseconds();
-            
-            for (let i = count; i >= 0; i--) {
-                const timestamp = now - (i * interval);
-                const variation = (Math.random() - 0.5) * basePrice * 0.02;
-                const open = basePrice + variation;
-                const close = open + (Math.random() - 0.5) * basePrice * 0.015;
-                const high = Math.max(open, close) + Math.random() * basePrice * 0.01;
-                const low = Math.min(open, close) - Math.random() * basePrice * 0.01;
-                
-                candles.push({
-                    timestamp: timestamp,
-                    open: open,
-                    high: high,
-                    low: low,
-                    close: close
-                });
-                
-                basePrice = close;
-            }
-            
-            return candles;
-        }
-
-        function updateLiveCandle() {
-            if (priceChart && currentCandle) {
-                const chartData = [...ohlcHistory.slice(0, 50), currentCandle];
-                priceChart.data.datasets[0].data = chartData;
-                priceChart.update('none');
-            }
         }
 
         async function loadOrderBook() {
@@ -686,6 +604,7 @@
             currentTimeframe = tf; 
             document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active')); 
             event.target.classList.add('active'); 
+            generateMockData();
             loadChart(); 
         }
         
