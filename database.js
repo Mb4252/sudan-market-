@@ -472,7 +472,26 @@ class Database {
     // ====================================================================
     
     async createKycRequest(userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city, passportPhotoFileId, personalPhotoFileId, bankName, bankAccountNumber, bankAccountName) { try { const ex = await KycRequest.findOne({ userId }); if (ex&&ex.status==='pending') return { success:false, message:'⚠️ لديك طلب قيد المراجعة' }; if (ex&&ex.status==='approved') return { success:false, message:'✅ موثق بالفعل' }; await KycRequest.create({ userId, fullName, passportNumber, nationalId, phoneNumber, email, country, city, passportPhotoFileId, personalPhotoFileId, bankName, bankAccountNumber, bankAccountName, status:'pending', createdAt:new Date() }); return { success:true, message:'✅ تم إرسال طلب التوثيق' }; } catch(e) { return { success:false, message:'❌ خطأ' }; } }
-    async approveKyc(requestId, adminId) { try { const r = await KycRequest.findOne({ _id:requestId, status:'pending' }); if (!r) return { success:false, message:'غير موجود' }; await KycRequest.updateOne({ _id:requestId }, { status:'approved', approvedBy:adminId, approvedAt:new Date() }); await User.updateOne({ userId:r.userId }, { isVerified:true }); this.sendTradeNotification(r.userId,'kyc_approved',0,0).catch(()=>{}); return { success:true, message:'✅ تم التوثيق' }; } catch(e) { return { success:false, message:'❌ خطأ' }; } }
+    async approveKyc(requestId, adminId) {
+    try {
+        const r = await KycRequest.findOne({ _id: requestId, status: 'pending' });
+        if (!r) return { success: false, message: 'غير موجود' };
+        
+        await KycRequest.updateOne({ _id: requestId }, { status: 'approved', approvedBy: adminId, approvedAt: new Date() });
+        await User.updateOne({ userId: r.userId }, { isVerified: true });
+        
+        // ✅ مكافأة التوثيق: 100 CRYSTAL
+        const user = await User.findOne({ userId: r.userId });
+        if (user && !user.kycRewardClaimed) {
+            await Wallet.updateOne({ userId: r.userId }, { $inc: { crystalBalance: 100 } });
+            await User.updateOne({ userId: r.userId }, { kycRewardClaimed: true });
+            console.log(`🎁 مكافأة توثيق: ${r.userId} +100 CRYSTAL`);
+        }
+        
+        this.sendTradeNotification(r.userId, 'kyc_approved', 0, 0).catch(() => {});
+        return { success: true, message: '✅ تم التوثيق + 100 CRYSTAL مكافأة!' };
+    } catch(e) { return { success: false, message: '❌ خطأ' }; }
+}
     async rejectKyc(requestId, adminId, reason) { try { await KycRequest.updateOne({ _id:requestId, status:'pending' }, { status:'rejected', rejectionReason:reason, approvedBy:adminId }); return { success:true, message:'❌ تم الرفض' }; } catch(e) { return { success:false, message:'❌ خطأ' }; } }
     async getKycStatus(userId) { try { const r = await KycRequest.findOne({ userId }).sort({ createdAt:-1 }); return r ? { status:r.status } : { status:'not_submitted' }; } catch(e) { return { status:'not_submitted' }; } }
 
