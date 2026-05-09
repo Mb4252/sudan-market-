@@ -116,31 +116,12 @@
         .photo-upload-box { background: var(--bg-tertiary); border: 2px dashed var(--border); border-radius: 10px; padding: 25px; text-align: center; cursor: pointer; margin: 8px 0; transition: all 0.3s; }
         .photo-upload-box:hover { border-color: var(--gold); background: rgba(240,185,11,0.05); }
 
-        /* أنماط لوحة المكافآت */
-        .reward-card {
-            background: var(--bg-tertiary);
-            border-radius: 10px;
-            padding: 12px;
-            margin-bottom: 8px;
-            border: 1px solid var(--border);
-        }
-        .reward-card.featured {
-            border-color: var(--gold);
-            background: rgba(240,185,11,0.08);
-        }
+        .reward-card { background: var(--bg-tertiary); border-radius: 10px; padding: 12px; margin-bottom: 8px; border: 1px solid var(--border); }
+        .reward-card.featured { border-color: var(--gold); background: rgba(240,185,11,0.08); }
         .reward-icon { font-size: 28px; }
         .reward-title { font-weight: bold; font-size: 13px; margin: 4px 0; }
         .reward-desc { font-size: 10px; color: var(--text-secondary); margin-bottom: 6px; }
         .reward-amount { font-size: 20px; font-weight: bold; color: var(--gold); }
-        .reward-badge {
-            display: inline-block;
-            background: var(--green);
-            color: #000;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 9px;
-            margin-right: 4px;
-        }
     </style>
 </head>
 <body>
@@ -182,12 +163,10 @@
         <!-- دفتر الطلبات + التداول -->
         <div class="trade-area">
             <div class="order-book-mini">
-                <div class="ob-title sell-title">🔴 طلبات البيع (يبيعون CRYSTAL)</div>
-                <div id="sellOrderBook"></div>
+                <div class="ob-title sell-title">🔴 طلبات البيع</div><div id="sellOrderBook"></div>
                 <div style="text-align:center;padding:8px;font-weight:bold;font-size:16px;color:var(--gold);" id="midPrice">0.0020</div>
                 <div style="text-align:center;font-size:10px;margin-top:-6px;margin-bottom:4px;" id="midChange">0.00%</div>
-                <div class="ob-title buy-title">🟢 طلبات الشراء (يشترون CRYSTAL)</div>
-                <div id="buyOrderBook"></div>
+                <div class="ob-title buy-title">🟢 طلبات الشراء</div><div id="buyOrderBook"></div>
             </div>
             <div class="trade-form">
                 <div class="trade-tabs">
@@ -216,23 +195,24 @@
             <button class="bottom-tab" onclick="switchBottomTab('chat')">💬 دردشة</button>
         </div>
         
-        <!-- لوحة المكافآت والعروض -->
+        <!-- لوحة المكافآت -->
         <div id="panel-rewards" class="tab-panel">
-            <!-- مكافأة القناة -->
-            <div class="reward-card featured">
+            <div class="reward-card featured" id="channelRewardCard">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <div class="reward-icon">📢</div>
                     <div style="flex:1;">
                         <div class="reward-title">🎁 مكافأة الاشتراك في القناة</div>
-                        <div class="reward-desc">انضم إلى قناتنا الرسمية واحصل على مكافأة فورية</div>
+                        <div class="reward-desc">اشترك في قناتنا الرسمية واحصل على 100 CRYSTAL فوراً</div>
                         <div class="reward-amount">+100 CRYSTAL</div>
                     </div>
                 </div>
-                <button class="trade-btn buy-btn" onclick="openChannel()" style="margin-top:8px;">📢 انضم للقناة</button>
-                <div style="font-size:9px;color:var(--text-secondary);margin-top:4px;text-align:center;">بعد الانضمام، استخدم أمر /reward في البوت</div>
+                <div id="channelRewardStatus" style="font-size:10px;margin:6px 0;text-align:center;color:var(--text-secondary);">لم تحصل على المكافأة بعد</div>
+                <div style="display:flex;gap:6px;">
+                    <button class="trade-btn buy-btn" onclick="openChannel()" style="flex:1;">📢 انضم للقناة</button>
+                    <button class="trade-btn buy-btn" onclick="checkAndClaimReward()" id="claimRewardBtn" style="flex:1;background:var(--gold);color:#000;">🎁 تحقق واستلم</button>
+                </div>
             </div>
             
-            <!-- مكافأة الإحالات -->
             <div class="reward-card featured">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <div class="reward-icon">👥</div>
@@ -249,7 +229,6 @@
                 <div style="font-size:9px;color:var(--gold);margin-top:4px;text-align:center;" id="rewardRefStatus">لم تصل للمطلوب بعد</div>
             </div>
             
-            <!-- كيفية الربح -->
             <div class="reward-card">
                 <div class="reward-title" style="color:var(--gold);">💡 كيف تربح من المنصة؟</div>
                 <div style="font-size:10px;color:var(--text-secondary);line-height:1.6;">
@@ -293,33 +272,56 @@
             try { const r = await fetch(`${API_URL}/api/user/${userId}`); const d = await r.json(); document.getElementById('crystalBalance').textContent = (d.crystalBalance||0).toFixed(2); document.getElementById('usdtBalance').textContent = (d.usdtBalance||0).toFixed(2); document.getElementById('kycStatus').innerHTML = d.isVerified ? '✅' : '⚠️'; updateSliderMax(); } catch(e) {}
         }
 
-        // ========== بيانات المكافآت ==========
+        // ========== المكافآت ==========
         async function loadRewardsData() {
             try {
-                const r = await fetch(`${API_URL}/api/user/referral/${userId}`);
-                const d = await r.json();
-                
-                const refCount = d.referralCount || 0;
-                const depCount = d.referralDepositCount || 0;
-                const milestoneReached = d.referralMilestoneReached || false;
-                
+                const r = await fetch(`${API_URL}/api/user/referral/${userId}`); const d = await r.json();
+                const refCount = d.referralCount || 0, depCount = d.referralDepositCount || 0, milestone = d.referralMilestoneReached || false;
                 document.getElementById('rewardRefCount').textContent = refCount;
                 document.getElementById('rewardDepCount').textContent = depCount;
-                
                 const statusEl = document.getElementById('rewardRefStatus');
-                if (milestoneReached) {
-                    statusEl.innerHTML = '✅ <b style="color:var(--green);">أكملت 5 مدعوين مودعين! حصلت على 2,000 CRYSTAL</b>';
-                } else if (refCount >= 5 && depCount < 5) {
-                    statusEl.innerHTML = `⚠️ <b style="color:var(--gold);">لديك ${refCount} مدعوين، لكن ${5-depCount} لم يقوموا بالإيداع بعد</b>`;
-                } else if (refCount < 5) {
-                    statusEl.innerHTML = `📢 <b>تحتاج ${5-refCount} مدعوين إضافيين</b> على الأقل`;
+                if (milestone) statusEl.innerHTML = '✅ <b style="color:var(--green);">أكملت 5 مدعوين مودعين! حصلت على 2,000 CRYSTAL</b>';
+                else if (refCount >= 5) statusEl.innerHTML = `⚠️ <b style="color:var(--gold);">لديك ${refCount} مدعوين، لكن ${5-depCount} لم يقوموا بالإيداع بعد</b>`;
+                else statusEl.innerHTML = `📢 <b>تحتاج ${5-refCount} مدعوين إضافيين</b> على الأقل`;
+                
+                // حالة مكافأة القناة
+                const ur = await fetch(`${API_URL}/api/user/${userId}`); const ud = await ur.json();
+                if (ud.channelRewardClaimed) {
+                    document.getElementById('channelRewardStatus').innerHTML = '✅ <b style="color:var(--green);">تم استلام المكافأة!</b>';
+                    document.getElementById('claimRewardBtn').disabled = true;
+                    document.getElementById('claimRewardBtn').textContent = '✅ تم الاستلام';
+                    document.getElementById('claimRewardBtn').style.opacity = '0.6';
                 }
             } catch(e) {}
         }
 
-        function openChannel() {
-            tg.openLink(CHANNEL_LINK);
-            tg.showAlert('📢 بعد الانضمام للقناة، اكتب /reward في البوت لتحصل على 100 CRYSTAL');
+        function openChannel() { tg.openLink(CHANNEL_LINK); }
+
+        // ✅ التحقق من الاشتراك وإعطاء المكافأة
+        async function checkAndClaimReward() {
+            const btn = document.getElementById('claimRewardBtn');
+            btn.disabled = true; btn.textContent = '⏳ جاري التحقق...';
+            try {
+                const res = await fetch(`${API_URL}/api/channel/check`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId })
+                });
+                const result = await res.json();
+                
+                if (result.subscribed && result.success) {
+                    document.getElementById('channelRewardStatus').innerHTML = '✅ <b style="color:var(--green);">تم استلام 100 CRYSTAL!</b>';
+                    btn.textContent = '✅ تم الاستلام'; btn.style.opacity = '0.6';
+                    tg.showAlert('🎁 تمت إضافة 100 CRYSTAL إلى رصيدك!');
+                    loadUserData();
+                } else if (result.subscribed && !result.success) {
+                    document.getElementById('channelRewardStatus').innerHTML = '⚠️ <b style="color:var(--gold);">' + result.message + '</b>';
+                    btn.disabled = false; btn.textContent = '🎁 تحقق واستلم';
+                } else {
+                    document.getElementById('channelRewardStatus').innerHTML = '❌ <b style="color:var(--red);">لم تشترك بعد! انضم للقناة أولاً</b>';
+                    btn.disabled = false; btn.textContent = '🎁 تحقق واستلم';
+                    tg.showAlert('⚠️ اشترك في القناة أولاً ثم اضغط تحقق');
+                }
+            } catch(e) { btn.disabled = false; btn.textContent = '🎁 تحقق واستلم'; tg.showAlert('❌ حدث خطأ'); }
         }
 
         async function loadMarketData() {
@@ -367,9 +369,8 @@
                 const ctx = document.getElementById('priceChart').getContext('2d');
                 const labels = candles.map(c => { const d = new Date(c.timestamp); if (currentTimeframe==='1d') return d.toLocaleDateString('ar-SA',{day:'2-digit',month:'2-digit'}); if (currentTimeframe==='4h') return d.toLocaleDateString('ar-SA',{day:'2-digit',month:'2-digit'}); return d.toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}); });
                 const prices = candles.map(c => c.close);
-                const gradient = ctx.createLinearGradient(0, 0, 0, 280);
-                gradient.addColorStop(0, 'rgba(14,203,129,0.3)'); gradient.addColorStop(1, 'rgba(14,203,129,0)');
-                priceChart = new Chart(ctx, { type:'line', data:{ labels, datasets:[{ label:'CRYSTAL/USDT', data:prices, borderColor:'#0ecb81', borderWidth:2, backgroundColor:gradient, fill:true, tension:0.1, pointRadius:0, pointHoverRadius:5 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ y:{ grid:{color:'rgba(255,255,255,0.08)'}, ticks:{color:'#848e9c',font:{size:10}} }, x:{ grid:{color:'rgba(255,255,255,0.05)'}, ticks:{color:'#848e9c',font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:8} } }, interaction:{intersect:false,mode:'index'} } });
+                const gradient = ctx.createLinearGradient(0, 0, 0, 280); gradient.addColorStop(0, 'rgba(14,203,129,0.3)'); gradient.addColorStop(1, 'rgba(14,203,129,0)');
+                priceChart = new Chart(ctx, { type:'line', data:{ labels, datasets:[{ data:prices, borderColor:'#0ecb81', borderWidth:2, backgroundColor:gradient, fill:true, tension:0.1, pointRadius:0 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ y:{ grid:{color:'rgba(255,255,255,0.08)'}, ticks:{color:'#848e9c',font:{size:10}} }, x:{ grid:{color:'rgba(255,255,255,0.05)'}, ticks:{color:'#848e9c',font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:8} } } } });
             } catch(e) {}
         }
 
@@ -395,12 +396,12 @@
         async function deposit() { const a=parseFloat(document.getElementById('depositAmount').value),n=document.getElementById('depositNetwork').value; if(!a||a<1){tg.showAlert('⚠️ الحد الأدنى 1 USDT');return;} const btn=document.getElementById('depositBtn'); btn.disabled=true; try { const r=await fetch(`${API_URL}/api/deposit`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:userId,amount:a,network:n})}); const d=await r.json(); if(d.address){await navigator.clipboard.writeText(d.address);tg.showAlert(`📤 العنوان:\n${d.address}\n\n(تم النسخ)`);}else tg.showAlert(d.message); } catch(e){tg.showAlert('❌ خطأ');} finally{btn.disabled=false;} }
         async function withdraw() { const a=parseFloat(document.getElementById('withdrawAmount').value),ad=document.getElementById('withdrawAddress').value.trim(),n=document.getElementById('depositNetwork').value; if(!a||a<5){tg.showAlert('⚠️ الحد الأدنى 5 USDT');return;} if(!ad){tg.showAlert('⚠️ أدخل العنوان');return;} try { const r=await fetch(`${API_URL}/api/withdraw`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:userId,amount:a,network:n,address:ad})}); tg.showAlert((await r.json()).message); loadUserData(); } catch(e){tg.showAlert('❌ خطأ');} }
 
-        async function loadKycPanel() { try { const r=await fetch(`${API_URL}/api/kyc/status/${userId}`); const d=await r.json(),c=document.getElementById('kycPanel'); if(d.status==='approved')c.innerHTML='<div style="color:var(--green);font-size:18px;text-align:center;padding:30px;">✅ حساب موثق</div>'; else if(d.status==='pending')c.innerHTML='<div style="color:var(--gold);font-size:18px;text-align:center;padding:30px;">⏳ طلبك قيد المراجعة</div>'; else c.innerHTML=`<div style="text-align:center;margin-bottom:15px;color:var(--text-secondary);font-size:12px;">📸 يرجى رفع صورة الهوية (جواز/بطاقة) + صورة شخصية (سيلفي)</div><div style="margin-bottom:15px;"><label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:6px;">📄 صورة الهوية</label><div class="photo-upload-box" onclick="document.getElementById('passportPhoto').click()">📷 اضغط لرفع صورة الهوية</div><input type="file" id="passportPhoto" accept="image/*" style="display:none" onchange="previewFile(this,'passportPreview')"><div id="passportPreview" style="margin-top:6px;"></div></div><div style="margin-bottom:15px;"><label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:6px;">👤 صورة شخصية</label><div class="photo-upload-box" onclick="document.getElementById('personalPhoto').click()">🤳 اضغط لرفع صورة شخصية</div><input type="file" id="personalPhoto" accept="image/*" style="display:none" onchange="previewFile(this,'personalPreview')"><div id="personalPreview" style="margin-top:6px;"></div></div><button class="trade-btn buy-btn" onclick="submitKyc()" id="kycSubmitBtn">📤 إرسال طلب التوثيق</button>`; } catch(e) {} }
+        async function loadKycPanel() { try { const r=await fetch(`${API_URL}/api/kyc/status/${userId}`); const d=await r.json(),c=document.getElementById('kycPanel'); if(d.status==='approved')c.innerHTML='<div style="color:var(--green);font-size:18px;text-align:center;padding:30px;">✅ حساب موثق</div>'; else if(d.status==='pending')c.innerHTML='<div style="color:var(--gold);font-size:18px;text-align:center;padding:30px;">⏳ طلبك قيد المراجعة</div>'; else c.innerHTML=`<div style="text-align:center;margin-bottom:15px;color:var(--text-secondary);font-size:12px;">📸 يرجى رفع صورة الهوية + صورة شخصية</div><div style="margin-bottom:15px;"><label style="font-size:11px;">📄 صورة الهوية</label><div class="photo-upload-box" onclick="document.getElementById('passportPhoto').click()">📷 اضغط لرفع صورة الهوية</div><input type="file" id="passportPhoto" accept="image/*" style="display:none" onchange="previewFile(this,'passportPreview')"><div id="passportPreview"></div></div><div style="margin-bottom:15px;"><label style="font-size:11px;">👤 صورة شخصية</label><div class="photo-upload-box" onclick="document.getElementById('personalPhoto').click()">🤳 اضغط لرفع صورة شخصية</div><input type="file" id="personalPhoto" accept="image/*" style="display:none" onchange="previewFile(this,'personalPreview')"><div id="personalPreview"></div></div><button class="trade-btn buy-btn" onclick="submitKyc()" id="kycSubmitBtn">📤 إرسال طلب التوثيق</button>`; } catch(e) {} }
         function previewFile(input, previewId) { const f=input.files[0]; if(f){const r=new FileReader();r.onload=e=>{document.getElementById(previewId).innerHTML=`<img src="${e.target.result}" style="max-width:100%;max-height:200px;border-radius:8px;margin-top:4px;border:1px solid var(--border);">`;};r.readAsDataURL(f);} }
         async function submitKyc() { const pf=document.getElementById('passportPhoto')?.files[0],sf=document.getElementById('personalPhoto')?.files[0],btn=document.getElementById('kycSubmitBtn'); if(!pf){tg.showAlert('⚠️ ارفع صورة الهوية');return;} if(!sf){tg.showAlert('⚠️ ارفع الصورة الشخصية');return;} btn.disabled=true;btn.textContent='⏳ جاري الإرسال...'; const fd=new FormData(); fd.append('user_id',userId);fd.append('fullName','KYC User '+userId);fd.append('passportNumber','N/A');fd.append('nationalId','N/A');fd.append('phoneNumber','N/A');fd.append('email','');fd.append('country','SD');fd.append('city','');fd.append('bankName','');fd.append('bankAccountNumber','');fd.append('bankAccountName','');fd.append('passportPhoto',pf);fd.append('personalPhoto',sf); try { const r=await fetch(`${API_URL}/api/kyc/submit`,{method:'POST',body:fd}); const d=await r.json(); tg.showAlert(d.message||'تم الإرسال'); if(d.success)loadKycPanel(); } catch(e){tg.showAlert('❌ حدث خطأ');} finally{btn.disabled=false;btn.textContent='📤 إرسال طلب التوثيق';} }
 
-        async function loadReferralPanel() { try { const r=await fetch(`${API_URL}/api/user/referral/${userId}`); const d=await r.json(); document.getElementById('referralPanel').innerHTML=`<div>👥 المدعوين: <b>${d.referralCount}</b></div><div>💰 الأرباح: <b>${(d.referralEarnings||0).toFixed(2)} CRYSTAL</b></div><div style="background:var(--bg-tertiary);padding:6px;border-radius:4px;margin:8px 0;word-break:break-all;font-size:10px;">${d.referralLink}</div><button class="trade-btn buy-btn" onclick="copyReferral()">📋 نسخ الرابط</button>`; } catch(e) {} }
-        function copyReferral() { const l=document.getElementById('referralPanel').querySelector('div:nth-child(3)')?.textContent; if(l){navigator.clipboard.writeText(l);tg.showAlert('✅ تم النسخ');} }
+        async function loadReferralPanel() { try { const r=await fetch(`${API_URL}/api/user/referral/${userId}`); const d=await r.json(); document.getElementById('referralPanel').innerHTML=`<div>👥 المدعوين: <b>${d.referralCount}</b></div><div>✅ المودعين: <b>${d.referralDepositCount||0}/5</b></div><div>💰 الأرباح: <b>${(d.referralEarnings||0).toFixed(2)} CRYSTAL</b></div><div style="background:var(--bg-tertiary);padding:6px;border-radius:4px;margin:8px 0;word-break:break-all;font-size:10px;">${d.referralLink}</div><button class="trade-btn buy-btn" onclick="copyReferral()">📋 نسخ الرابط</button>`; } catch(e) {} }
+        function copyReferral() { const l=document.getElementById('referralPanel').querySelector('div:nth-child(4)')?.textContent; if(l){navigator.clipboard.writeText(l);tg.showAlert('✅ تم النسخ');} }
 
         async function loadChatMessages() { try { const r=await fetch(`${API_URL}/api/chat/global`); const ms=await r.json(),c=document.getElementById('chatMessages'); let h=''; for(const m of (ms||[]).slice(-20)){ const me=m.senderId==userId; h+=`<div style="margin-bottom:4px;padding:4px 8px;border-radius:8px;background:${me?'rgba(59,130,246,0.2)':'var(--bg-tertiary)'};max-width:85%;${me?'margin-right:auto;':''}"><b>${me?'أنت':m.senderId}:</b> ${m.message}</div>`; } c.innerHTML=h||'<div class="loading">لا توجد رسائل</div>';c.scrollTop=c.scrollHeight; } catch(e) {} }
         async function sendChatMessage() { const m=document.getElementById('chatMessage').value.trim(); if(!m)return; try { await fetch(`${API_URL}/api/chat/send`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({senderId:userId,message:m})}); document.getElementById('chatMessage').value='';loadChatMessages(); } catch(e){} }
