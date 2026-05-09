@@ -299,31 +299,42 @@
 
         // ✅ التحقق من الاشتراك وإعطاء المكافأة
         async function checkAndClaimReward() {
-            const btn = document.getElementById('claimRewardBtn');
-            btn.disabled = true; btn.textContent = '⏳ جاري التحقق...';
-            try {
-                const res = await fetch(`${API_URL}/api/channel/check`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: userId })
-                });
-                const result = await res.json();
-                
-                if (result.subscribed && result.success) {
-                    document.getElementById('channelRewardStatus').innerHTML = '✅ <b style="color:var(--green);">تم استلام 100 CRYSTAL!</b>';
-                    btn.textContent = '✅ تم الاستلام'; btn.style.opacity = '0.6';
-                    tg.showAlert('🎁 تمت إضافة 100 CRYSTAL إلى رصيدك!');
-                    loadUserData();
-                } else if (result.subscribed && !result.success) {
-                    document.getElementById('channelRewardStatus').innerHTML = '⚠️ <b style="color:var(--gold);">' + result.message + '</b>';
-                    btn.disabled = false; btn.textContent = '🎁 تحقق واستلم';
-                } else {
-                    document.getElementById('channelRewardStatus').innerHTML = '❌ <b style="color:var(--red);">لم تشترك بعد! انضم للقناة أولاً</b>';
-                    btn.disabled = false; btn.textContent = '🎁 تحقق واستلم';
-                    tg.showAlert('⚠️ اشترك في القناة أولاً ثم اضغط تحقق');
-                }
-            } catch(e) { btn.disabled = false; btn.textContent = '🎁 تحقق واستلم'; tg.showAlert('❌ حدث خطأ'); }
+    const btn = document.getElementById('claimRewardBtn');
+    btn.disabled = true; btn.textContent = '⏳ جاري التحقق...';
+    
+    try {
+        const res = await fetch(`${API_URL}/api/channel/check`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId })
+        });
+        const result = await res.json();
+        
+        if (result.needKyc) {
+            // يحتاج توثيق أولاً
+            document.getElementById('channelRewardStatus').innerHTML = '⚠️ <b style="color:var(--gold);">يجب توثيق حسابك أولاً!</b>';
+            btn.disabled = false; btn.textContent = '🎁 تحقق واستلم';
+            tg.showAlert('⚠️ يجب توثيق حسابك أولاً! اذهب إلى تبويب 🆔 توثيق');
+        } else if (result.subscribed && result.success) {
+            // نجاح
+            document.getElementById('channelRewardStatus').innerHTML = '✅ <b style="color:var(--green);">تم استلام 100 CRYSTAL!</b>';
+            btn.textContent = '✅ تم الاستلام'; btn.style.opacity = '0.6';
+            tg.showAlert('🎁 تمت إضافة 100 CRYSTAL إلى رصيدك!');
+            loadUserData();
+        } else if (result.subscribed && !result.success) {
+            // مشترك لكن المكافأة مأخوذة
+            document.getElementById('channelRewardStatus').innerHTML = '⚠️ <b style="color:var(--gold);">' + result.message + '</b>';
+            btn.disabled = false; btn.textContent = '🎁 تحقق واستلم';
+        } else {
+            // غير مشترك
+            document.getElementById('channelRewardStatus').innerHTML = '❌ <b style="color:var(--red);">لم تشترك بعد! انضم للقناة أولاً</b>';
+            btn.disabled = false; btn.textContent = '🎁 تحقق واستلم';
+            tg.showAlert('⚠️ اشترك في القناة أولاً ثم اضغط تحقق');
         }
-
+    } catch(e) {
+        btn.disabled = false; btn.textContent = '🎁 تحقق واستلم';
+        tg.showAlert('❌ حدث خطأ');
+    }
+}
         async function loadMarketData() {
             try {
                 const r = await fetch(`${API_URL}/api/market/stats`); const d = await r.json();
