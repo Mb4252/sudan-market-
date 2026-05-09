@@ -9,7 +9,6 @@ const qrcode = require('qrcode');
 const { User, Wallet, KycRequest, Order, Trade, Candlestick, MarketPrice, DepositRequest, WithdrawRequest, AuditLog, DailyStats, ChatMessage } = require('./models');
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || '6701743450,8181305474').split(',').map(Number);
-const CHANNEL_REWARD = 100; // ✅ مكافأة الاشتراك في القناة
 
 class Database {
     constructor() {
@@ -21,8 +20,8 @@ class Database {
         this.tradingFee = 0.001;
         this.platformWithdrawFee = 0.05;
         this.referralCommissionRate = 10;
-        this.referralDepositReward = 2000; // ✅ 2000 CRYSTAL مكافأة الإيداع للإحالة
-        this.channelReward = 100; // ✅ مكافأة القناة
+        this.referralDepositReward = 2000; // مكافأة 5 مدعوين يودعون
+        this.channelReward = 100; // مكافأة القناة
         
         this.networkFees = {
             bnb: 0.15, polygon: 0.10, solana: 0.02, aptos: 0.05, trc20: 3.00, erc20: 15.00
@@ -34,19 +33,11 @@ class Database {
         this.lastFakePrice = 0.002;
     }
 
-    // ====================================================================
-    // وظائف مساعدة
-    // ====================================================================
-    
     getNetworkFee(network) { return this.networkFees[network] || 0.10; }
     generateSignature(data) { return crypto.createHash('sha256').update(`${data}-${Date.now()}-${Math.random()}`).digest('hex'); }
     encryptPrivateKey(privateKey) { return CryptoJS.AES.encrypt(privateKey, this.encryptionKey).toString(); }
     decryptPrivateKey(encryptedKey) { const bytes = CryptoJS.AES.decrypt(encryptedKey, this.encryptionKey); return bytes.toString(CryptoJS.enc.Utf8); }
 
-    // ====================================================================
-    // الاتصال بقاعدة البيانات
-    // ====================================================================
-    
     async connect() {
         if (this.connected) return;
         try {
@@ -114,7 +105,7 @@ class Database {
     }
 
     // ====================================================================
-    // ✅ مكافأة الاشتراك في القناة
+    // مكافأة الاشتراك في القناة
     // ====================================================================
 
     async giveChannelReward(userId) {
@@ -122,12 +113,10 @@ class Database {
             const user = await User.findOne({ userId });
             if (!user) return { success: false, message: '⚠️ سجل أولاً' };
             
-            // التحقق من أنه لم يحصل على المكافأة من قبل
             if (user.channelRewardClaimed) {
                 return { success: false, message: '⚠️ لقد حصلت على المكافأة مسبقاً!' };
             }
             
-            // إضافة 100 CRYSTAL
             await Wallet.updateOne({ userId }, { $inc: { crystalBalance: this.channelReward } });
             await User.updateOne({ userId }, { channelRewardClaimed: true });
             
@@ -143,9 +132,7 @@ class Database {
             }
             
             return { success: true, message: `🎁 تمت إضافة ${this.channelReward} CRYSTAL إلى رصيدك!` };
-        } catch (e) {
-            return { success: false, message: '❌ حدث خطأ' };
-        }
+        } catch (e) { return { success: false, message: '❌ حدث خطأ' }; }
     }
 
     // ====================================================================
@@ -218,10 +205,6 @@ class Database {
 
     async cancelExpiredDeposits() { try { await DepositRequest.updateMany({ status:'pending', expiresAt:{$lt:new Date()} }, { $set:{ status:'expired', rejectionReason:'انتهت الصلاحية' } }); } catch(e) {} }
 
-    // ====================================================================
-    // سجلات
-    // ====================================================================
-    
     async addAuditLog(userId, action, details = {}, ip = '', userAgent = '') { try { await AuditLog.create({ userId, action, details, ip, userAgent, timestamp: new Date() }); } catch(e) {} }
 
     // ====================================================================
@@ -251,6 +234,7 @@ class Database {
                     phoneNumber: phone || '', email: email || '', country: country || 'SD', city: city || '',
                     language, walletId: wallet._id, referrerId: validReferrer ? referrerId : null,
                     isAdmin: isAdminUser, isVerified: false, channelRewardClaimed: false,
+                    referralDepositCount: 0, referralMilestoneReached: false,
                     lastSeen: new Date(), isOnline: true, lastLoginIp: ip,
                     twoFAEnabled: false, twoFASecret: '', twoFABackupCodes: [],
                     referralCount: 0, referralEarnings: 0, referralCommissionRate: this.referralCommissionRate,
@@ -396,7 +380,82 @@ class Database {
 
     async confirmDeposit(requestId, transactionHash, adminId=0) { try { const r = await DepositRequest.findOne({ _id:requestId, status:'pending' }); if (!r) return { success:false, message:'غير موجود' }; await DepositRequest.updateOne({ _id:requestId }, { status:'completed', transactionHash, completedAt:new Date(), verifiedBy:adminId }); await Wallet.updateOne({ userId:r.userId }, { $inc:{ usdtBalance:r.amount } }); await this.checkAndRewardReferrer(r.userId, r.amount); this.sendTradeNotification(r.userId,'deposit',r.amount,0).catch(()=>{}); return { success:true, message:`✅ تم إيداع ${r.amount} USDT` }; } catch(e) { return { success:false, message:'❌ خطأ' }; } }
 
-    async checkAndRewardReferrer(userId, depositAmount) { try { const u = await User.findOne({ userId }); if (!u||!u.referrerId) return; const ar = await DepositRequest.findOne({ userId, status:'completed', referrerRewarded:true }); if (ar) return; await Wallet.updateOne({ userId:u.referrerId }, { $inc:{ crystalBalance:this.referralDepositReward } }); await User.updateOne({ userId:u.referrerId }, { $inc:{ referralEarnings:this.referralDepositReward } }); await User.updateOne({ userId:u.referrerId, 'referrals.userId':userId }, { $set:{ 'referrals.$.earned':this.referralDepositReward, 'referrals.$.totalCommission':this.referralDepositReward } }); await DepositRequest.updateMany({ userId, status:'completed' }, { $set:{ referrerRewarded:true } }); if (global.botInstance) { try { await global.botInstance.telegram.sendMessage(u.referrerId, `🎁 مكافأة ${this.referralDepositReward} CRYSTAL من إيداع ${userId}`); } catch(e){} } } catch(e) {} }
+    // ====================================================================
+    // مكافأة الإحالة - 5 مدعوين يودعون = 2000 CRYSTAL
+    // ====================================================================
+
+    async checkAndRewardReferrer(userId, depositAmount) {
+        try {
+            const user = await User.findOne({ userId });
+            if (!user || !user.referrerId) return;
+            
+            const referrerId = user.referrerId;
+            const referrer = await User.findOne({ userId: referrerId });
+            if (!referrer) return;
+            
+            // التحقق من أن هذا المستخدم لم تتم مكافأة محيله من قبل
+            const alreadyRewarded = await DepositRequest.findOne({
+                userId: userId,
+                status: 'completed',
+                referrerRewarded: true
+            });
+            
+            if (alreadyRewarded) {
+                console.log(`⚠️ المستخدم ${userId} تمت مكافأة محيله مسبقاً`);
+                return;
+            }
+            
+            // زيادة عدد المدعوين الذين أودعوا
+            await User.updateOne(
+                { userId: referrerId },
+                { $inc: { referralDepositCount: 1 } }
+            );
+            
+            // تعليم أن هذا الإيداع تمت مكافأة المحيل عنه
+            await DepositRequest.updateMany(
+                { userId: userId, status: 'completed' },
+                { $set: { referrerRewarded: true } }
+            );
+            
+            // جلب عدد المدعوين الذين أودعوا
+            const updatedReferrer = await User.findOne({ userId: referrerId });
+            const depositCount = updatedReferrer.referralDepositCount || 0;
+            
+            // إذا وصل إلى 5 مدعوين مودعين، يعطى 2000 CRYSTAL
+            if (depositCount >= 5 && !updatedReferrer.referralMilestoneReached) {
+                await Wallet.updateOne(
+                    { userId: referrerId },
+                    { $inc: { crystalBalance: this.referralDepositReward } }
+                );
+                
+                await User.updateOne(
+                    { userId: referrerId },
+                    { 
+                        $set: { referralMilestoneReached: true },
+                        $inc: { referralEarnings: this.referralDepositReward }
+                    }
+                );
+                
+                console.log(`🎁 مكافأة الإحالة: ${referrerId} حصل على ${this.referralDepositReward} CRYSTAL (5 مدعوين أودعوا)`);
+                
+                // إشعار المحيل
+                if (global.botInstance) {
+                    try {
+                        await global.botInstance.telegram.sendMessage(
+                            referrerId,
+                            `🎉 *مبروك!*\n\n` +
+                            `لقد دعوت *5 أشخاص* وقاموا جميعاً بالإيداع!\n\n` +
+                            `🎁 حصلت على *${this.referralDepositReward} CRYSTAL* كمكافأة!\n` +
+                            `💰 تمت إضافتها إلى رصيدك`,
+                            { parse_mode: 'Markdown' }
+                        );
+                    } catch(e) {}
+                }
+            }
+        } catch (e) {
+            console.error('checkAndRewardReferrer error:', e.message);
+        }
+    }
 
     // ====================================================================
     // سحب
@@ -421,7 +480,7 @@ class Database {
     // إحالات
     // ====================================================================
     
-    async getReferralData(userId) { try { const u = await User.findOne({ userId }); const bot = process.env.BOT_USERNAME||'TradeCrystalBot'; return { referralCount:u?.referralCount||0, referralEarnings:u?.referralEarnings||0, referrals:u?.referrals||[], referralLink:`https://t.me/${bot}?start=${userId}` }; } catch(e) { return { referralCount:0, referralEarnings:0, referrals:[], referralLink:'' }; } }
+    async getReferralData(userId) { try { const u = await User.findOne({ userId }); const bot = process.env.BOT_USERNAME||'TradeCrystalBot'; return { referralCount:u?.referralCount||0, referralDepositCount:u?.referralDepositCount||0, referralMilestoneReached:u?.referralMilestoneReached||false, referralEarnings:u?.referralEarnings||0, referrals:u?.referrals||[], referralLink:`https://t.me/${bot}?start=${userId}` }; } catch(e) { return { referralCount:0, referralDepositCount:0, referralMilestoneReached:false, referralEarnings:0, referrals:[], referralLink:'' }; } }
     async transferReferralEarningsToWallet(userId) { try { const u = await User.findOne({ userId }); if (!u) return { success:false, message:'غير موجود' }; const e = u.referralEarnings||0; if (e<=0) return { success:false, message:'⚠️ لا يوجد رصيد' }; await Wallet.updateOne({ userId }, { $inc:{ usdtBalance:e } }); await User.updateOne({ userId }, { $set:{ referralEarnings:0 } }); return { success:true, message:`✅ تم تحويل ${e.toFixed(2)} USDT` }; } catch(e) { return { success:false, message:'❌ خطأ' }; } }
 
     // ====================================================================
@@ -439,17 +498,9 @@ class Database {
 
     async updateDailyStats(type, value=1) { try { const today=new Date().toISOString().split('T')[0]; let s=await DailyStats.findOne({ date:today }); if (!s) s=await DailyStats.create({ date:today, totalUsers:0, newUsers:0, verifiedUsers:0, totalTrades:0, totalVolume:0, totalCommission:0, activeOffers:0, pendingKyc:0 }); const m={ totalUsers:'totalUsers', newUsers:'newUsers', verifiedUsers:'verifiedUsers', totalTrades:'totalTrades', totalVolume:'totalVolume', totalCommission:'totalCommission', activeOffers:'activeOffers', pendingKyc:'pendingKyc' }; if (m[type]) { const u={}; u[m[type]]=(s[m[type]]||0)+value; await DailyStats.updateOne({ date:today }, { $set:u }); } } catch(e) {} }
 
-    // ====================================================================
-    // دردشة
-    // ====================================================================
-    
     async sendMessage(senderId, receiverId, message, imageFileId=null) { try { return await ChatMessage.create({ chatType:receiverId?'trade':'global', senderId, receiverId, message:message||'', messageType:imageFileId?'image':'text', imageFileId:imageFileId||'', isRead:false, createdAt:new Date() }); } catch(e) { return null; } }
     async getGlobalMessages(limit=50) { try { return (await ChatMessage.find({ chatType:'global' }).sort({ createdAt:-1 }).limit(Math.min(limit,100))).reverse(); } catch(e) { return []; } }
 
-    // ====================================================================
-    // أدمن
-    // ====================================================================
-    
     async isAdmin(userId) { try { const u=await User.findOne({ userId }); return u?.isAdmin||false; } catch(e) { return false; } }
     async getPendingKycRequests() { try { return await KycRequest.find({ status:'pending' }).sort({ createdAt:-1 }).limit(50); } catch(e) { return []; } }
     async getPendingWithdraws() { try { return await WithdrawRequest.find({ status:'pending' }).sort({ createdAt:-1 }).limit(50); } catch(e) { return []; } }
