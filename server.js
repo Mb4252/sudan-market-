@@ -210,7 +210,37 @@ app.post('/api/2fa/disable', async (req, res) => {
 app.get('/api/supply', async (req, res) => {
     try { const sc = await db.validateTotalSupply(); res.json({ success: true, ...sc }); } catch(e) { res.json({ success: true, totalSupply: 5000000 }); }
 });
-
+// ✅ التحقق من الاشتراك في القناة وإعطاء المكافأة
+app.post('/api/channel/check', async (req, res) => {
+    try {
+        const { user_id } = req.body;
+        if (!user_id) return res.json({ success: false, message: '⚠️ معرف المستخدم مطلوب' });
+        
+        const userId = parseInt(user_id);
+        const CHANNEL_ID = process.env.CHANNEL_ID || '-100xxxxxxxxxx';
+        
+        // فحص الاشتراك عبر البوت
+        let isSubscribed = false;
+        try {
+            const chatMember = await bot.telegram.getChatMember(CHANNEL_ID, userId);
+            isSubscribed = ['member', 'administrator', 'creator'].includes(chatMember.status);
+        } catch(e) {
+            console.log('Channel check error:', e.message);
+            return res.json({ success: false, message: '⚠️ تعذر التحقق من الاشتراك. تأكد أن البوت أدمن في القناة.' });
+        }
+        
+        if (!isSubscribed) {
+            return res.json({ success: false, message: '⚠️ لم تشترك في القناة بعد!', subscribed: false });
+        }
+        
+        // ✅ المستخدم مشترك - إعطاء المكافأة
+        const result = await db.giveChannelReward(userId);
+        res.json({ ...result, subscribed: true });
+        
+    } catch(e) {
+        res.json({ success: false, message: '❌ حدث خطأ' });
+    }
+});
 // ========== معالج أخطاء ==========
 app.use((err, req, res, next) => { console.error('❌', err.message); res.status(500).json({ success: false, message: '❌ خطأ في الخادم' }); });
 
