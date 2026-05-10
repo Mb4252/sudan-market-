@@ -2,19 +2,16 @@ const { ethers } = require('ethers');
 
 class BlockchainMonitor {
     constructor() {
-        // استخدام ethers v5 providers
         this.providers = {
-            bnb: new ethers.providers.JsonRpcProvider('https://bsc-dataseed.binance.org'),
+            bnb: new ethers.providers.JsonRpcProvider('https://bsc-dataseed1.binance.org'),
             polygon: new ethers.providers.JsonRpcProvider('https://polygon-rpc.com'),
         };
         
-        // عنوان عقد USDT على كل شبكة
         this.usdtContracts = {
             bnb: '0x55d398326f99059fF775485246999027B3197955',
             polygon: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
         };
         
-        // ABI للتحقق من المعاملات
         this.erc20ABI = [
             'event Transfer(address indexed from, address indexed to, uint256 value)',
             'function balanceOf(address) view returns (uint256)',
@@ -28,34 +25,30 @@ class BlockchainMonitor {
         this.db = null;
     }
     
-    // ========== بدء المراقبة بنظام Polling ==========
-    
     async startMonitoring(db) {
         if (this.isMonitoring) return;
         this.isMonitoring = true;
         this.db = db;
         
-        console.log('🔍 بدء مراقبة البلوكشين (وضع Polling)...');
-        
-        // تحميل العناوين المراقبة
+        console.log('🔍 بدء مراقبة البلوكشين (وضع Polling - كل 60 ثانية)...');
         await this.loadPendingAddresses();
         
-        // ✅ استخدام Polling كل 30 ثانية بدل WebSocket
+        // ✅ فحص كل 60 ثانية
         this.pollingInterval = setInterval(async () => {
             await this.checkBNBDeposits();
             await this.checkPolygonDeposits();
-            // تحديث قائمة العناوين كل 5 دقائق
-            if (Math.random() < 0.1) await this.loadPendingAddresses();
-        }, 30000); // كل 30 ثانية
+            // تحديث قائمة العناوين كل 10 دورات (10 دقائق)
+            if (Math.random() < 0.05) await this.loadPendingAddresses();
+        }, 60000);
         
-        // أول فحص فوري
-        await this.checkBNBDeposits();
-        await this.checkPolygonDeposits();
+        // أول فحص بعد 15 ثانية
+        setTimeout(async () => {
+            await this.checkBNBDeposits();
+            await this.checkPolygonDeposits();
+        }, 15000);
         
-        console.log('✅ مراقب البلوكشين (Polling) جاهز - يفحص كل 30 ثانية');
+        console.log('✅ مراقب البلوكشين جاهز - يفحص كل 60 ثانية');
     }
-    
-    // ========== تحميل العناوين المعلقة ==========
     
     async loadPendingAddresses() {
         try {
@@ -88,15 +81,14 @@ class BlockchainMonitor {
         }
     }
     
-    // ========== فحص إيداعات BNB ==========
-    
     async checkBNBDeposits() {
         try {
-            // ✅ الحصول على آخر بلوك
             const currentBlock = await this.providers.bnb.getBlockNumber();
-            const fromBlock = Math.max(this.lastCheckedBlock.bnb || currentBlock - 100, currentBlock - 500);
+            // ✅ فحص آخر 30 بلوك فقط (أقل من دقيقة)
+            const fromBlock = currentBlock - 30;
             
-            if (fromBlock >= currentBlock) return;
+            if (!this.lastCheckedBlock.bnb) this.lastCheckedBlock.bnb = fromBlock;
+            if (fromBlock <= this.lastCheckedBlock.bnb) return;
             
             const contract = new ethers.Contract(
                 this.usdtContracts.bnb,
@@ -104,9 +96,8 @@ class BlockchainMonitor {
                 this.providers.bnb
             );
             
-            // ✅ البحث عن أحداث Transfer في البلوكات الجديدة
             const filter = contract.filters.Transfer();
-            const events = await contract.queryFilter(filter, fromBlock, currentBlock);
+            const events = await contract.queryFilter(filter, this.lastCheckedBlock.bnb, currentBlock);
             
             for (const event of events) {
                 const toAddress = event.args.to.toLowerCase();
@@ -125,8 +116,9 @@ class BlockchainMonitor {
                             event.transactionHash,
                             'bnb'
                         );
-                        // إزالة من المراقبة بعد التأكيد
                         this.monitoredAddresses.delete(toAddress);
+                    } else {
+                        console.log(`⚠️ مبلغ غير كافٍ: ${receivedAmount} < ${depositInfo.amount}`);
                     }
                 }
             }
@@ -134,18 +126,20 @@ class BlockchainMonitor {
             this.lastCheckedBlock.bnb = currentBlock;
             
         } catch (e) {
-            console.error('checkBNBDeposits error:', e.message);
+            // ✅ تجاهل أخطاء rate limit
+            if (!e.message.includes('limit exceeded')) {
+                console.error('checkBNBDeposits error:', e.message.slice(0, 100));
+            }
         }
     }
-    
-    // ========== فحص إيداعات Polygon ==========
     
     async checkPolygonDeposits() {
         try {
             const currentBlock = await this.providers.polygon.getBlockNumber();
-            const fromBlock = Math.max(this.lastCheckedBlock.polygon || currentBlock - 100, currentBlock - 500);
+            const fromBlock = currentBlock - 30;
             
-            if (fromBlock >= currentBlock) return;
+            if (!this.lastCheckedBlock.polygon) this.lastCheckedBlock.polygon = fromBlock;
+            if (fromBlock <= this.lastCheckedBlock.polygon) return;
             
             const contract = new ethers.Contract(
                 this.usdtContracts.polygon,
@@ -154,7 +148,7 @@ class BlockchainMonitor {
             );
             
             const filter = contract.filters.Transfer();
-            const events = await contract.queryFilter(filter, fromBlock, currentBlock);
+            const events = await contract.queryFilter(filter, this.lastCheckedBlock.polygon, currentBlock);
             
             for (const event of events) {
                 const toAddress = event.args.to.toLowerCase();
@@ -181,11 +175,11 @@ class BlockchainMonitor {
             this.lastCheckedBlock.polygon = currentBlock;
             
         } catch (e) {
-            console.error('checkPolygonDeposits error:', e.message);
+            if (!e.message.includes('limit exceeded') && !e.message.includes('NETWORK_ERROR')) {
+                console.error('checkPolygonDeposits error:', e.message.slice(0, 100));
+            }
         }
     }
-    
-    // ========== تأكيد الإيداع تلقائياً ==========
     
     async confirmDeposit(requestId, userId, amount, txHash, network) {
         try {
@@ -194,7 +188,6 @@ class BlockchainMonitor {
             const DepositRequest = require('./models').DepositRequest;
             const Wallet = require('./models').Wallet;
             
-            // التحقق من أن الطلب لم يتم تأكيده مسبقاً
             const existingRequest = await DepositRequest.findOne({ 
                 _id: requestId, 
                 status: 'pending' 
@@ -205,29 +198,25 @@ class BlockchainMonitor {
                 return;
             }
             
-            // ✅ تحديث الطلب إلى مكتمل
             await DepositRequest.updateOne(
                 { _id: requestId },
                 {
                     status: 'completed',
                     transactionHash: txHash,
                     completedAt: new Date(),
-                    verifiedBy: 0 // 0 = تلقائي
+                    verifiedBy: 0
                 }
             );
             
-            // ✅ إضافة الرصيد للمستخدم
             await Wallet.updateOne(
                 { userId: userId },
                 { $inc: { usdtBalance: amount } }
             );
             
-            // ✅ مكافأة المحيل إذا كان أول إيداع
             if (this.db && this.db.checkAndRewardReferrer) {
                 await this.db.checkAndRewardReferrer(userId, amount);
             }
             
-            // ✅ إشعار المستخدم
             if (global.botInstance) {
                 try {
                     await global.botInstance.telegram.sendMessage(
@@ -242,7 +231,6 @@ class BlockchainMonitor {
                 } catch (e) {}
             }
             
-            // ✅ إشعار الأدمن
             if (global.botInstance) {
                 const ADMIN_IDS = (process.env.ADMIN_IDS || '6701743450').split(',').map(Number);
                 for (const adminId of ADMIN_IDS) {
@@ -262,8 +250,6 @@ class BlockchainMonitor {
             console.error('confirmDeposit error:', e.message);
         }
     }
-    
-    // ========== إيقاف المراقبة ==========
     
     stop() {
         this.isMonitoring = false;
