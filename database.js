@@ -8,8 +8,8 @@ const { User, Wallet, KycRequest, Order, Trade, Candlestick, MarketPrice, Deposi
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || '6701743450,8181305474').split(',').map(Number);
 
-// ✅ عنوان المحفظة الرئيسية (يستقبل جميع الإيداعات)
-const MAIN_WALLET_ADDRESS = process.env.MAIN_WALLET_ADDRESS || '';
+// ✅ عنوان المحفظة الرئيسية الموحد لجميع المستخدمين
+const MAIN_WALLET_ADDRESS = process.env.MAIN_WALLET_ADDRESS || '0x182Bb461c35022719fCF243e29a16Fdc973D7d3D';
 
 class Database {
     constructor() {
@@ -91,7 +91,6 @@ class Database {
                 const diff = this.totalCrystalSupply - available;
                 if (Math.abs(diff) > 0.01 && diff > 0) {
                     await Wallet.updateOne({ userId: adminId }, { $inc: { crystalBalance: diff } });
-                    console.log(`👑 تم تصحيح رصيد الأدمن ${adminId}: +${diff.toFixed(2)} CRYSTAL`);
                 }
             }
         } catch (e) {}
@@ -172,13 +171,13 @@ class Database {
             await this.connect();
             let user = await User.findOne({ userId });
             if (!user) {
-                // ✅ إنشاء محفظة بسيطة (فقط للرصيد، بدون عناوين متعددة)
+                // ✅ محفظة بسيطة - العنوان الموحد للجميع
                 let wallet = await Wallet.findOne({ userId });
                 if (!wallet) {
                     wallet = await Wallet.create({
                         userId, usdtBalance: 0, crystalBalance: 0,
-                        bnbAddress: MAIN_WALLET_ADDRESS || '0xMAIN_WALLET',
-                        polygonAddress: MAIN_WALLET_ADDRESS || '0xMAIN_WALLET',
+                        bnbAddress: MAIN_WALLET_ADDRESS,
+                        polygonAddress: MAIN_WALLET_ADDRESS,
                         walletSignature: this.generateSignature(`wallet-${userId}`)
                     });
                 }
@@ -213,21 +212,21 @@ class Database {
             }
             await User.updateOne({ userId }, { lastSeen: new Date(), isOnline: true, lastLoginIp: ip });
             return { success: true, isNew: false, message: '👋 أهلاً بعودتك!' };
-        } catch (error) { return { success: false, message: '❌ حدث خطأ في التسجيل' }; }
+        } catch (error) { return { success: false, message: '❌ حدث خطأ' }; }
     }
 
     async getUser(userId) { try { return await User.findOne({ userId }); } catch(e) { return null; } }
     async getUserStats(userId) { try { const u = await this.getUser(userId); if (!u) return null; const w = await Wallet.findOne({ userId }); return { ...u.toObject(), usdtBalance: w?.usdtBalance||0, crystalBalance: w?.crystalBalance||0, openOrders: await Order.countDocuments({ userId, status:{$in:['open','partial']} }) }; } catch(e) { return null; } }
-    async banUser(userId, reason) { try { await User.updateOne({ userId }, { isBanned:true, banReason:reason }); const oo = await Order.find({ userId, status:{$in:['open','partial']} }); for (const o of oo) await this.cancelOrder(o._id, userId); return { success:true, message:`🚫 تم حظر ${userId}` }; } catch(e) { return { success:false, message:'❌ خطأ' }; } }
-    async unbanUser(userId) { try { await User.updateOne({ userId }, { isBanned:false, banReason:'' }); return { success:true, message:`✅ تم فك حظر ${userId}` }; } catch(e) { return { success:false, message:'❌ خطأ' }; } }
+    async banUser(userId, reason) { try { await User.updateOne({ userId }, { isBanned:true, banReason:reason }); const oo = await Order.find({ userId, status:{$in:['open','partial']} }); for (const o of oo) await this.cancelOrder(o._id, userId); return { success:true, message:`🚫 تم حظر ${userId}` }; } catch(e) { return { success:false }; } }
+    async unbanUser(userId) { try { await User.updateOne({ userId }, { isBanned:false, banReason:'' }); return { success:true, message:`✅ تم فك حظر ${userId}` }; } catch(e) { return { success:false }; } }
 
     // ====================================================================
     // 2FA
     // ====================================================================
     
-    async generate2FASecret(userId) { try { const u = await User.findOne({ userId }); if (!u) return { success:false, message:'غير موجود' }; const s = speakeasy.generateSecret({ length:20 }); const bc = []; for (let i=0;i<5;i++) bc.push(crypto.randomBytes(4).toString('hex').toUpperCase()); await User.updateOne({ userId }, { twoFASecret: this.encryptPrivateKey(s.base32), twoFABackupCodes: bc.map(c=>this.encryptPrivateKey(c)) }); const qr = await qrcode.toDataURL(speakeasy.otpauthURL({ secret:s.ascii, label:`CRYSTAL (${userId})`, issuer:'CRYSTAL Exchange' })); return { success:true, qrCode:qr, backupCodes:bc, secret:s.base32 }; } catch(e) { return { success:false, message:'خطأ' }; } }
-    async enable2FA(userId, code) { try { const u = await User.findOne({ userId }); if (!u||!u.twoFASecret) return { success:false, message:'لم يتم إنشاء 2FA' }; if (!speakeasy.totp.verify({ secret:this.decryptPrivateKey(u.twoFASecret), encoding:'base32', token:code, window:2 })) return { success:false, message:'❌ رمز خطأ' }; await User.updateOne({ userId }, { twoFAEnabled:true }); return { success:true, message:'✅ تم التفعيل' }; } catch(e) { return { success:false, message:'خطأ' }; } }
-    async disable2FA(userId, code) { try { const u = await User.findOne({ userId }); if (!u) return { success:false, message:'غير موجود' }; if (u.twoFAEnabled && u.twoFASecret && !speakeasy.totp.verify({ secret:this.decryptPrivateKey(u.twoFASecret), encoding:'base32', token:code, window:2 })) return { success:false, message:'❌ رمز خطأ' }; await User.updateOne({ userId }, { twoFAEnabled:false, twoFASecret:'', twoFABackupCodes:[] }); return { success:true, message:'✅ تم التعطيل' }; } catch(e) { return { success:false, message:'خطأ' }; } }
+    async generate2FASecret(userId) { try { const u = await User.findOne({ userId }); if (!u) return { success:false }; const s = speakeasy.generateSecret({ length:20 }); const bc = []; for (let i=0;i<5;i++) bc.push(crypto.randomBytes(4).toString('hex').toUpperCase()); await User.updateOne({ userId }, { twoFASecret: this.encryptPrivateKey(s.base32), twoFABackupCodes: bc.map(c=>this.encryptPrivateKey(c)) }); const qr = await qrcode.toDataURL(speakeasy.otpauthURL({ secret:s.ascii, label:`CRYSTAL (${userId})`, issuer:'CRYSTAL Exchange' })); return { success:true, qrCode:qr, backupCodes:bc, secret:s.base32 }; } catch(e) { return { success:false }; } }
+    async enable2FA(userId, code) { try { const u = await User.findOne({ userId }); if (!u||!u.twoFASecret) return { success:false }; if (!speakeasy.totp.verify({ secret:this.decryptPrivateKey(u.twoFASecret), encoding:'base32', token:code, window:2 })) return { success:false, message:'❌ رمز خطأ' }; await User.updateOne({ userId }, { twoFAEnabled:true }); return { success:true, message:'✅ تم التفعيل' }; } catch(e) { return { success:false }; } }
+    async disable2FA(userId, code) { try { const u = await User.findOne({ userId }); if (!u) return { success:false }; if (u.twoFAEnabled && u.twoFASecret && !speakeasy.totp.verify({ secret:this.decryptPrivateKey(u.twoFASecret), encoding:'base32', token:code, window:2 })) return { success:false }; await User.updateOne({ userId }, { twoFAEnabled:false, twoFASecret:'', twoFABackupCodes:[] }); return { success:true }; } catch(e) { return { success:false }; } }
     async verify2FACode(userId, code) { try { const u = await User.findOne({ userId }); if (!u||!u.twoFAEnabled) return true; return speakeasy.totp.verify({ secret:this.decryptPrivateKey(u.twoFASecret), encoding:'base32', token:code, window:2 }); } catch(e) { return false; } }
 
     // ====================================================================
@@ -303,14 +302,14 @@ class Database {
 
     async sendTradeNotification(userId, type, amount, price) { try { if (global.botInstance) { let m=''; if (type==='buy') m=`✅ شراء ${amount.toFixed(2)} CRYSTAL`; else if (type==='sell') m=`✅ بيع ${amount.toFixed(2)} CRYSTAL`; else if (type==='deposit') m=`✅ إيداع ${amount} USDT`; else if (type==='withdraw') m=`✅ سحب ${amount} USDT`; if (m) await global.botInstance.telegram.sendMessage(userId, m); } } catch(e) {} }
 
-    async cancelOrder(orderId, userId) { try { const o = await Order.findOne({ _id:orderId, userId, status:{$in:['open','partial']} }); if (!o) return { success:false, message:'⚠️ غير موجود' }; if (o.type==='buy') await Wallet.updateOne({ userId }, { $inc:{ usdtBalance:o.amount*o.price*(1+this.tradingFee) } }); else await Wallet.updateOne({ userId }, { $inc:{ crystalBalance:o.amount } }); await Order.updateOne({ _id:orderId }, { status:'cancelled' }); return { success:true, message:'✅ تم الإلغاء' }; } catch(e) { return { success:false, message:'❌ خطأ' }; } }
+    async cancelOrder(orderId, userId) { try { const o = await Order.findOne({ _id:orderId, userId, status:{$in:['open','partial']} }); if (!o) return { success:false, message:'⚠️ غير موجود' }; if (o.type==='buy') await Wallet.updateOne({ userId }, { $inc:{ usdtBalance:o.amount*o.price*(1+this.tradingFee) } }); else await Wallet.updateOne({ userId }, { $inc:{ crystalBalance:o.amount } }); await Order.updateOne({ _id:orderId }, { status:'cancelled' }); return { success:true, message:'✅ تم الإلغاء' }; } catch(e) { return { success:false }; } }
 
     async getActiveOrders(type=null, limit=50) { try { const q = { status:{$in:['open','partial']} }; if (type) q.type=type; const orders = await Order.find(q).sort({ price:type==='buy'?-1:1, createdAt:-1 }).limit(Math.min(limit,100)).lean(); const map = new Map(); for (const o of orders) { const k=`${o.price.toFixed(4)}_${o.type}`; if (map.has(k)) { const e=map.get(k); e.amount+=o.amount; e.totalUsdt=e.amount*e.price; e.orderCount++; } else map.set(k,{...o,orderCount:1}); } let r=Array.from(map.values()); if (type==='buy') r.sort((a,b)=>b.price-a.price); else if (type==='sell') r.sort((a,b)=>a.price-b.price); return r.slice(0,limit); } catch(e) { return []; } }
     async getUserOrders(userId) { try { return await Order.find({ userId, status:{$in:['open','partial']} }).sort({ createdAt:-1 }).limit(50); } catch(e) { return []; } }
     async getUserTradeHistory(userId, limit=50) { try { return await Trade.find({ $or:[{ buyerId:userId },{ sellerId:userId }] }).sort({ createdAt:-1 }).limit(Math.min(limit,100)); } catch(e) { return []; } }
 
     // ====================================================================
-    // ✅ إيداع - عنوان موحد لجميع المستخدمين
+    // ✅ إيداع - عنوان موحد للجميع
     // ====================================================================
     
     async requestDeposit(userId, amount, currency, network) {
@@ -323,13 +322,8 @@ class Database {
             const pendingCount = await DepositRequest.countDocuments({ userId, status: 'pending' });
             if (pendingCount >= 3) return { success: false, message: '⚠️ 3 طلبات معلقة' };
             
-            // ✅ عنوان المحفظة الرئيسية (موحد للجميع)
-            let address;
-            switch(network) {
-                case 'bnb': address = MAIN_WALLET_ADDRESS || (await Wallet.findOne({ userId: ADMIN_IDS[0] }))?.bnbAddress || '0xMAIN_WALLET'; break;
-                case 'polygon': address = MAIN_WALLET_ADDRESS || (await Wallet.findOne({ userId: ADMIN_IDS[0] }))?.polygonAddress || '0xMAIN_WALLET'; break;
-                default: return { success: false, message: '⚠️ شبكة غير مدعومة' };
-            }
+            // ✅ العنوان الموحد لجميع المستخدمين
+            const address = MAIN_WALLET_ADDRESS;
             
             const request = await DepositRequest.create({
                 userId, amount, currency: 'USDT', network, address,
@@ -337,7 +331,7 @@ class Database {
                 expiresAt: new Date(Date.now() + this.depositExpiryHours * 60 * 60 * 1000)
             });
             
-            console.log(`✅ طلب إيداع: ${userId} - ${amount} USDT - ${network}`);
+            console.log(`✅ طلب إيداع: ${userId} - ${amount} USDT - ${network} - ${address}`);
             
             return {
                 success: true,
@@ -358,14 +352,13 @@ class Database {
             await this.checkAndRewardReferrer(request.userId, request.amount);
             this.sendTradeNotification(request.userId, 'deposit', request.amount, 0).catch(() => {});
             
-            const isAuto = adminId === 0;
-            console.log(`✅ إيداع ${isAuto ? 'تلقائي' : 'يدوي'}: ${request.userId} - ${request.amount} USDT`);
-            return { success: true, message: `✅ تم إيداع ${request.amount} USDT${isAuto ? ' تلقائياً' : ''}` };
+            console.log(`✅ إيداع ${adminId === 0 ? 'تلقائي' : 'يدوي'}: ${request.userId} - ${request.amount} USDT`);
+            return { success: true, message: `✅ تم إيداع ${request.amount} USDT${adminId === 0 ? ' تلقائياً' : ''}` };
         } catch(e) { return { success: false, message: '❌ خطأ' }; }
     }
 
     // ====================================================================
-    // مكافأة الإحالة - 5 مدعوين يودعون = 2000 CRYSTAL
+    // مكافأة الإحالة
     // ====================================================================
 
     async checkAndRewardReferrer(userId, depositAmount) {
@@ -386,7 +379,7 @@ class Database {
             if (depositCount >= 5 && !referrer.referralMilestoneReached) {
                 await Wallet.updateOne({ userId: referrerId }, { $inc: { crystalBalance: this.referralDepositReward } });
                 await User.updateOne({ userId: referrerId }, { $set: { referralMilestoneReached: true }, $inc: { referralEarnings: this.referralDepositReward } });
-                if (global.botInstance) { try { await global.botInstance.telegram.sendMessage(referrerId, `🎉 *مبروك!*\n🎁 +${this.referralDepositReward} CRYSTAL (5 مدعوين أودعوا)`, { parse_mode: 'Markdown' }); } catch(e) {} }
+                if (global.botInstance) { try { await global.botInstance.telegram.sendMessage(referrerId, `🎉 +${this.referralDepositReward} CRYSTAL!`, { parse_mode: 'Markdown' }); } catch(e) {} }
             }
         } catch(e) {}
     }
@@ -407,19 +400,15 @@ class Database {
             }
             
             const pf = this.platformWithdrawFee, nf = this.getNetworkFee(network), td = amount + pf + nf;
-            if (wallet.usdtBalance < td) return { success: false, message: `❌ رصيد غير كافٍ! تحتاج ${td.toFixed(2)} USDT` };
+            if (wallet.usdtBalance < td) return { success: false, message: `❌ رصيد غير كافٍ` };
             
-            const request = await WithdrawRequest.create({
-                userId, amount, currency: 'USDT', network, address,
-                fee: pf, networkFee: nf, status: 'pending'
-            });
-            
+            const request = await WithdrawRequest.create({ userId, amount, currency: 'USDT', network, address, fee: pf, networkFee: nf, status: 'pending' });
             console.log(`✅ طلب سحب: ${userId} - ${amount} USDT - ${network}`);
-            return { success: true, requestId: request._id, message: `✅ تم استلام طلب سحب ${amount} USDT (يتطلب موافقة الأدمن)` };
+            return { success: true, requestId: request._id, message: `✅ تم استلام طلب سحب ${amount} USDT` };
         } catch(e) { return { success: false, message: '❌ خطأ' }; }
     }
 
-    // ✅ سحب حقيقي - يرسل USDT من محفظة الأدمن الرئيسية
+    // ✅ سحب حقيقي من محفظة الأدمن
     async confirmWithdraw(requestId, transactionHash, adminId) {
         try {
             const request = await WithdrawRequest.findOne({ _id: requestId, status: 'pending' });
@@ -427,44 +416,28 @@ class Database {
             
             const td = request.amount + request.fee + (request.networkFee || 0);
             const wallet = await Wallet.findOne({ userId: request.userId });
+            if (wallet.usdtBalance < td) return { success: false, message: '❌ رصيد غير كافٍ' };
             
-            if (wallet.usdtBalance < td) return { success: false, message: '❌ رصيد المستخدم غير كافٍ' };
-            
-            // ✅ إرسال USDT حقيقي من محفظة الأدمن الرئيسية
             let tx = transactionHash;
             if (!tx || tx === 'manual_confirm') {
                 try {
                     const adminWallet = await Wallet.findOne({ userId: ADMIN_IDS[0] });
-                    if (!adminWallet) return { success: false, message: '❌ محفظة الأدمن غير موجودة' };
-                    
-                    if (request.network === 'bnb') {
-                        const pk = this.decryptPrivateKey(adminWallet.bnbEncryptedPrivateKey);
-                        const provider = new ethers.providers.JsonRpcProvider('https://bsc-dataseed1.binance.org');
-                        const signer = new ethers.Wallet(pk, provider);
-                        const contract = new ethers.Contract('0x55d398326f99059fF775485246999027B3197955', ['function transfer(address to, uint256 amount) returns (bool)'], signer);
-                        const txObj = await contract.transfer(request.address, ethers.utils.parseUnits(request.amount.toString(), 18));
-                        await txObj.wait();
-                        tx = txObj.hash;
-                    } else if (request.network === 'polygon') {
-                        const pk = this.decryptPrivateKey(adminWallet.polygonEncryptedPrivateKey);
-                        const provider = new ethers.providers.JsonRpcProvider('https://polygon-rpc.com');
-                        const signer = new ethers.Wallet(pk, provider);
-                        const contract = new ethers.Contract('0xc2132D05D31c914a87C6611C10748AEb04B58e8F', ['function transfer(address to, uint256 amount) returns (bool)'], signer);
-                        const txObj = await contract.transfer(request.address, ethers.utils.parseUnits(request.amount.toString(), 6));
-                        await txObj.wait();
-                        tx = txObj.hash;
-                    }
-                } catch(sendError) {
-                    return { success: false, message: `❌ فشل الإرسال: ${sendError.message}` };
-                }
+                    const pk = this.decryptPrivateKey(adminWallet.bnbEncryptedPrivateKey || adminWallet.polygonEncryptedPrivateKey);
+                    const provider = new ethers.providers.JsonRpcProvider(request.network === 'bnb' ? 'https://bsc-dataseed1.binance.org' : 'https://polygon-rpc.com');
+                    const signer = new ethers.Wallet(pk, provider);
+                    const contractAddr = request.network === 'bnb' ? '0x55d398326f99059fF775485246999027B3197955' : '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
+                    const decimals = request.network === 'bnb' ? 18 : 6;
+                    const contract = new ethers.Contract(contractAddr, ['function transfer(address to, uint256 amount) returns (bool)'], signer);
+                    const txObj = await contract.transfer(request.address, ethers.utils.parseUnits(request.amount.toString(), decimals));
+                    await txObj.wait();
+                    tx = txObj.hash;
+                } catch(e) { return { success: false, message: `❌ فشل الإرسال: ${e.message}` }; }
             }
             
-            // ✅ خصم من رصيد المستخدم
             await Wallet.updateOne({ userId: request.userId }, { $inc: { usdtBalance: -td } });
             await WithdrawRequest.updateOne({ _id: requestId }, { status: 'completed', transactionHash: tx, approvedBy: adminId, approvedAt: new Date() });
             this.sendTradeNotification(request.userId, 'withdraw', request.amount, 0).catch(() => {});
-            
-            return { success: true, message: `✅ تم سحب ${request.amount} USDT\n🔗 TX: ${tx.slice(0, 20)}...` };
+            return { success: true, message: `✅ تم سحب ${request.amount} USDT\n🔗 ${tx.slice(0, 20)}...` };
         } catch(e) { return { success: false, message: '❌ خطأ' }; }
     }
 
@@ -489,7 +462,7 @@ class Database {
             await KycRequest.updateOne({ _id: requestId }, { status: 'approved', approvedBy: adminId, approvedAt: new Date() });
             await User.updateOne({ userId: r.userId }, { isVerified: true });
             
-            // ✅ مكافأة التوثيق
+            // مكافأة التوثيق
             const user = await User.findOne({ userId: r.userId });
             if (user && !user.kycRewardClaimed) {
                 await Wallet.updateOne({ userId: r.userId }, { $inc: { crystalBalance: 100 } });
@@ -501,7 +474,7 @@ class Database {
         } catch(e) { return { success: false, message: '❌ خطأ' }; }
     }
     
-    async rejectKyc(requestId, adminId, reason) { try { await KycRequest.updateOne({ _id: requestId, status: 'pending' }, { status: 'rejected', rejectionReason: reason, approvedBy: adminId }); return { success: true, message: '❌ تم الرفض' }; } catch(e) { return { success: false, message: '❌ خطأ' }; } }
+    async rejectKyc(requestId, adminId, reason) { try { await KycRequest.updateOne({ _id: requestId, status: 'pending' }, { status: 'rejected', rejectionReason: reason, approvedBy: adminId }); return { success: true, message: '❌ تم الرفض' }; } catch(e) { return { success: false }; } }
     async getKycStatus(userId) { try { const r = await KycRequest.findOne({ userId }).sort({ createdAt: -1 }); return r ? { status: r.status } : { status: 'not_submitted' }; } catch(e) { return { status: 'not_submitted' }; } }
 
     // ====================================================================
@@ -509,7 +482,7 @@ class Database {
     // ====================================================================
     
     async getReferralData(userId) { try { const u = await User.findOne({ userId }); const bot = process.env.BOT_USERNAME || 'TradeCrystalBot'; return { referralCount: u?.referralCount||0, referralDepositCount: u?.referralDepositCount||0, referralMilestoneReached: u?.referralMilestoneReached||false, referralEarnings: u?.referralEarnings||0, referrals: u?.referrals||[], referralLink: `https://t.me/${bot}?start=${userId}` }; } catch(e) { return { referralCount:0 }; } }
-    async transferReferralEarningsToWallet(userId) { try { const u = await User.findOne({ userId }); if (!u) return { success:false, message:'غير موجود' }; const e = u.referralEarnings||0; if (e<=0) return { success:false, message:'⚠️ لا يوجد رصيد' }; await Wallet.updateOne({ userId }, { $inc:{ crystalBalance:e } }); await User.updateOne({ userId }, { $set:{ referralEarnings:0 } }); return { success:true, message:`✅ تم تحويل ${e.toFixed(2)} CRYSTAL` }; } catch(e) { return { success:false, message:'❌ خطأ' }; } }
+    async transferReferralEarningsToWallet(userId) { try { const u = await User.findOne({ userId }); if (!u) return { success:false }; const e = u.referralEarnings||0; if (e<=0) return { success:false }; await Wallet.updateOne({ userId }, { $inc:{ crystalBalance:e } }); await User.updateOne({ userId }, { $set:{ referralEarnings:0 } }); return { success:true, message:`✅ تم تحويل ${e.toFixed(2)} CRYSTAL` }; } catch(e) { return { success:false }; } }
 
     // ====================================================================
     // عرض وإحصائيات
