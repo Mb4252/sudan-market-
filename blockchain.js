@@ -1,5 +1,4 @@
 const { ethers } = require('ethers');
-const { Connection, PublicKey } = require('@solana/web3.js');
 
 class BlockchainMonitor {
     constructor() {
@@ -7,7 +6,6 @@ class BlockchainMonitor {
         this.providers = {
             bnb: new ethers.providers.JsonRpcProvider('https://bsc-dataseed.binance.org'),
             polygon: new ethers.providers.JsonRpcProvider('https://polygon-rpc.com'),
-            solana: new Connection('https://api.mainnet-beta.solana.com'),
         };
         
         // عنوان عقد USDT على كل شبكة
@@ -25,28 +23,36 @@ class BlockchainMonitor {
         
         this.isMonitoring = false;
         this.monitoredAddresses = new Map();
+        this.lastCheckedBlock = { bnb: 0, polygon: 0 };
+        this.pollingInterval = null;
+        this.db = null;
     }
     
-    // ========== بدء المراقبة ==========
+    // ========== بدء المراقبة بنظام Polling ==========
     
     async startMonitoring(db) {
         if (this.isMonitoring) return;
         this.isMonitoring = true;
         this.db = db;
         
-        console.log('🔍 بدء مراقبة البلوكشين...');
+        console.log('🔍 بدء مراقبة البلوكشين (وضع Polling)...');
         
-        // تحميل العناوين المراقبة من الطلبات المعلقة
+        // تحميل العناوين المراقبة
         await this.loadPendingAddresses();
         
-        // مراقبة كل شبكة
-        this.monitorBNB();
-        this.monitorPolygon();
+        // ✅ استخدام Polling كل 30 ثانية بدل WebSocket
+        this.pollingInterval = setInterval(async () => {
+            await this.checkBNBDeposits();
+            await this.checkPolygonDeposits();
+            // تحديث قائمة العناوين كل 5 دقائق
+            if (Math.random() < 0.1) await this.loadPendingAddresses();
+        }, 30000); // كل 30 ثانية
         
-        // تحديث قائمة العناوين كل 5 دقائق
-        setInterval(() => this.loadPendingAddresses(), 5 * 60 * 1000);
+        // أول فحص فوري
+        await this.checkBNBDeposits();
+        await this.checkPolygonDeposits();
         
-        console.log('✅ مراقب البلوكشين جاهز');
+        console.log('✅ مراقب البلوكشين (Polling) جاهز - يفحص كل 30 ثانية');
     }
     
     // ========== تحميل العناوين المعلقة ==========
@@ -82,34 +88,36 @@ class BlockchainMonitor {
         }
     }
     
-    // ========== مراقبة BNB ==========
+    // ========== فحص إيداعات BNB ==========
     
-    async monitorBNB() {
+    async checkBNBDeposits() {
         try {
+            // ✅ الحصول على آخر بلوك
+            const currentBlock = await this.providers.bnb.getBlockNumber();
+            const fromBlock = Math.max(this.lastCheckedBlock.bnb || currentBlock - 100, currentBlock - 500);
+            
+            if (fromBlock >= currentBlock) return;
+            
             const contract = new ethers.Contract(
                 this.usdtContracts.bnb,
                 this.erc20ABI,
                 this.providers.bnb
             );
             
-            // الاستماع لأحداث Transfer
-            contract.on('Transfer', async (from, to, value, event) => {
-                const toAddress = to.toLowerCase();
+            // ✅ البحث عن أحداث Transfer في البلوكات الجديدة
+            const filter = contract.filters.Transfer();
+            const events = await contract.queryFilter(filter, fromBlock, currentBlock);
+            
+            for (const event of events) {
+                const toAddress = event.args.to.toLowerCase();
                 
                 if (this.monitoredAddresses.has(toAddress)) {
                     const depositInfo = this.monitoredAddresses.get(toAddress);
+                    const receivedAmount = parseFloat(ethers.utils.formatUnits(event.args.value, 18));
                     
-                    // استخدام ethers v5 formatUnits
-                    const decimals = 18;
-                    const receivedAmount = parseFloat(ethers.utils.formatUnits(value, decimals));
+                    console.log(`🔔 معاملة BNB: ${receivedAmount} USDT → ${toAddress.slice(0, 10)}...`);
                     
-                    console.log(`🔔 معاملة واردة على BNB:`);
-                    console.log(`   من: ${from}`);
-                    console.log(`   إلى: ${toAddress}`);
-                    console.log(`   القيمة: ${receivedAmount} USDT`);
-                    console.log(`   المطلوب: ${depositInfo.amount} USDT`);
-                    
-                    if (receivedAmount >= depositInfo.amount * 0.99) { // قبول 99% أو أكثر
+                    if (receivedAmount >= depositInfo.amount * 0.99) {
                         await this.confirmDeposit(
                             depositInfo.requestId,
                             depositInfo.userId,
@@ -117,42 +125,45 @@ class BlockchainMonitor {
                             event.transactionHash,
                             'bnb'
                         );
-                    } else {
-                        console.log(`⚠️ مبلغ غير كافٍ: ${receivedAmount} < ${depositInfo.amount}`);
+                        // إزالة من المراقبة بعد التأكيد
+                        this.monitoredAddresses.delete(toAddress);
                     }
                 }
-            });
+            }
             
-            console.log('✅ مراقبة BNB جاهزة');
+            this.lastCheckedBlock.bnb = currentBlock;
             
         } catch (e) {
-            console.error('❌ monitorBNB error:', e.message);
+            console.error('checkBNBDeposits error:', e.message);
         }
     }
     
-    // ========== مراقبة Polygon ==========
+    // ========== فحص إيداعات Polygon ==========
     
-    async monitorPolygon() {
+    async checkPolygonDeposits() {
         try {
+            const currentBlock = await this.providers.polygon.getBlockNumber();
+            const fromBlock = Math.max(this.lastCheckedBlock.polygon || currentBlock - 100, currentBlock - 500);
+            
+            if (fromBlock >= currentBlock) return;
+            
             const contract = new ethers.Contract(
                 this.usdtContracts.polygon,
                 this.erc20ABI,
                 this.providers.polygon
             );
             
-            contract.on('Transfer', async (from, to, value, event) => {
-                const toAddress = to.toLowerCase();
+            const filter = contract.filters.Transfer();
+            const events = await contract.queryFilter(filter, fromBlock, currentBlock);
+            
+            for (const event of events) {
+                const toAddress = event.args.to.toLowerCase();
                 
                 if (this.monitoredAddresses.has(toAddress)) {
                     const depositInfo = this.monitoredAddresses.get(toAddress);
+                    const receivedAmount = parseFloat(ethers.utils.formatUnits(event.args.value, 6));
                     
-                    const decimals = 6; // USDT on Polygon uses 6 decimals
-                    const receivedAmount = parseFloat(ethers.utils.formatUnits(value, decimals));
-                    
-                    console.log(`🔔 معاملة واردة على Polygon:`);
-                    console.log(`   إلى: ${toAddress}`);
-                    console.log(`   القيمة: ${receivedAmount} USDT`);
-                    console.log(`   المطلوب: ${depositInfo.amount} USDT`);
+                    console.log(`🔔 معاملة Polygon: ${receivedAmount} USDT → ${toAddress.slice(0, 10)}...`);
                     
                     if (receivedAmount >= depositInfo.amount * 0.99) {
                         await this.confirmDeposit(
@@ -162,16 +173,15 @@ class BlockchainMonitor {
                             event.transactionHash,
                             'polygon'
                         );
-                    } else {
-                        console.log(`⚠️ مبلغ غير كافٍ: ${receivedAmount} < ${depositInfo.amount}`);
+                        this.monitoredAddresses.delete(toAddress);
                     }
                 }
-            });
+            }
             
-            console.log('✅ مراقبة Polygon جاهزة');
+            this.lastCheckedBlock.polygon = currentBlock;
             
         } catch (e) {
-            console.error('❌ monitorPolygon error:', e.message);
+            console.error('checkPolygonDeposits error:', e.message);
         }
     }
     
@@ -181,7 +191,6 @@ class BlockchainMonitor {
         try {
             console.log(`✅ تأكيد إيداع تلقائي: ${userId} - ${amount} USDT - ${network}`);
             
-            // تحديث قاعدة البيانات
             const DepositRequest = require('./models').DepositRequest;
             const Wallet = require('./models').Wallet;
             
@@ -196,26 +205,29 @@ class BlockchainMonitor {
                 return;
             }
             
+            // ✅ تحديث الطلب إلى مكتمل
             await DepositRequest.updateOne(
                 { _id: requestId },
                 {
                     status: 'completed',
                     transactionHash: txHash,
                     completedAt: new Date(),
-                    verifiedBy: 0 // 0 يعني تلقائي
+                    verifiedBy: 0 // 0 = تلقائي
                 }
             );
             
-            // إضافة الرصيد للمستخدم
+            // ✅ إضافة الرصيد للمستخدم
             await Wallet.updateOne(
                 { userId: userId },
                 { $inc: { usdtBalance: amount } }
             );
             
-            // إزالة من المراقبة
-            this.monitoredAddresses.delete(requestId);
+            // ✅ مكافأة المحيل إذا كان أول إيداع
+            if (this.db && this.db.checkAndRewardReferrer) {
+                await this.db.checkAndRewardReferrer(userId, amount);
+            }
             
-            // إشعار المستخدم
+            // ✅ إشعار المستخدم
             if (global.botInstance) {
                 try {
                     await global.botInstance.telegram.sendMessage(
@@ -223,30 +235,24 @@ class BlockchainMonitor {
                         `✅ *تم تأكيد الإيداع تلقائياً!*\n\n` +
                         `💰 المبلغ: ${amount.toFixed(2)} USDT\n` +
                         `🌐 الشبكة: ${network.toUpperCase()}\n` +
-                        `🔗 المعاملة: \`${txHash.slice(0, 20)}...\`\n\n` +
+                        `🔗 TX: \`${txHash.slice(0, 20)}...\`\n\n` +
                         `تم إضافة الرصيد إلى حسابك`,
                         { parse_mode: 'Markdown' }
                     );
-                } catch (notifyError) {
-                    console.error('Notification error:', notifyError.message);
-                }
+                } catch (e) {}
             }
             
-            // إشعار الأدمن
+            // ✅ إشعار الأدمن
             if (global.botInstance) {
                 const ADMIN_IDS = (process.env.ADMIN_IDS || '6701743450').split(',').map(Number);
                 for (const adminId of ADMIN_IDS) {
                     try {
                         await global.botInstance.telegram.sendMessage(
                             adminId,
-                            `🤖 *إيداع تلقائي*\n\n` +
-                            `👤 المستخدم: \`${userId}\`\n` +
-                            `💰 المبلغ: ${amount.toFixed(2)} USDT\n` +
-                            `🌐 الشبكة: ${network.toUpperCase()}\n` +
-                            `🔗 TX: \`${txHash.slice(0, 20)}...\``,
+                            `🤖 *إيداع تلقائي*\n\n👤 \`${userId}\`\n💰 ${amount.toFixed(2)} USDT\n🌐 ${network.toUpperCase()}\n🔗 \`${txHash.slice(0, 20)}...\``,
                             { parse_mode: 'Markdown' }
                         );
-                    } catch (adminNotifyError) {}
+                    } catch (e) {}
                 }
             }
             
@@ -254,39 +260,6 @@ class BlockchainMonitor {
             
         } catch (e) {
             console.error('confirmDeposit error:', e.message);
-            console.error(e.stack);
-        }
-    }
-    
-    // ========== فحص رصيد عنوان ==========
-    
-    async checkBalance(address, network = 'bnb') {
-        try {
-            if (network === 'solana') {
-                try {
-                    const publicKey = new PublicKey(address);
-                    const tokenAccounts = await this.providers.solana.getParsedTokenAccountsByOwner(
-                        publicKey,
-                        { mint: new PublicKey('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB') }
-                    );
-                    return tokenAccounts.value[0]?.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0;
-                } catch (solanaError) {
-                    console.error('Solana balance check error:', solanaError.message);
-                    return 0;
-                }
-            } else {
-                const contract = new ethers.Contract(
-                    this.usdtContracts[network],
-                    this.erc20ABI,
-                    this.providers[network]
-                );
-                const balance = await contract.balanceOf(address);
-                const decimals = network === 'polygon' ? 6 : 18;
-                return parseFloat(ethers.utils.formatUnits(balance, decimals));
-            }
-        } catch (e) {
-            console.error(`checkBalance error for ${network}:`, e.message);
-            return 0;
         }
     }
     
@@ -294,8 +267,10 @@ class BlockchainMonitor {
     
     stop() {
         this.isMonitoring = false;
-        this.providers.bnb.removeAllListeners();
-        this.providers.polygon.removeAllListeners();
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+        }
         console.log('🛑 مراقب البلوكشين متوقف');
     }
 }
