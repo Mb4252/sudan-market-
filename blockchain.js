@@ -7,6 +7,7 @@ class BlockchainMonitor {
             polygon: new ethers.providers.JsonRpcProvider('https://polygon-rpc.com'),
         };
         
+        // عنوان عقد USDT على كل شبكة
         this.usdtContracts = {
             bnb: '0x55d398326f99059fF775485246999027B3197955',
             polygon: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
@@ -19,7 +20,7 @@ class BlockchainMonitor {
         ];
         
         this.isMonitoring = false;
-        this.monitoredAddresses = new Map();
+        this.mainWalletAddress = (process.env.MAIN_WALLET_ADDRESS || '').toLowerCase();
         this.lastCheckedBlock = { bnb: 0, polygon: 0 };
         this.pollingInterval = null;
         this.db = null;
@@ -31,14 +32,12 @@ class BlockchainMonitor {
         this.db = db;
         
         console.log('🔍 بدء مراقبة البلوكشين (وضع Polling - كل 60 ثانية)...');
-        await this.loadPendingAddresses();
+        console.log(`📋 عنوان المحفظة الرئيسية: ${this.mainWalletAddress || 'غير محدد - يستخدم عناوين المستخدمين'}`);
         
         // ✅ فحص كل 60 ثانية
         this.pollingInterval = setInterval(async () => {
             await this.checkBNBDeposits();
             await this.checkPolygonDeposits();
-            // تحديث قائمة العناوين كل 10 دورات (10 دقائق)
-            if (Math.random() < 0.05) await this.loadPendingAddresses();
         }, 60000);
         
         // أول فحص بعد 15 ثانية
@@ -50,42 +49,33 @@ class BlockchainMonitor {
         console.log('✅ مراقب البلوكشين جاهز - يفحص كل 60 ثانية');
     }
     
-    async loadPendingAddresses() {
+    // ✅ الحصول على عنوان المحفظة الرئيسية
+    async getMainWalletAddress() {
+        if (this.mainWalletAddress) return this.mainWalletAddress;
+        
+        // إذا لم يحدد في .env، نستخدم عنوان الأدمن
         try {
-            const DepositRequest = require('./models').DepositRequest;
-            const pendingDeposits = await DepositRequest.find({ 
-                status: 'pending',
-                network: { $in: ['bnb', 'polygon'] }
-            });
-            
-            this.monitoredAddresses.clear();
-            
-            for (const deposit of pendingDeposits) {
-                const address = deposit.address?.toLowerCase();
-                if (address) {
-                    this.monitoredAddresses.set(address, {
-                        requestId: deposit._id,
-                        userId: deposit.userId,
-                        amount: deposit.amount,
-                        network: deposit.network
-                    });
-                }
+            const Wallet = require('./models').Wallet;
+            const ADMIN_IDS = (process.env.ADMIN_IDS || '6701743450').split(',').map(Number);
+            const adminWallet = await Wallet.findOne({ userId: ADMIN_IDS[0] });
+            if (adminWallet && adminWallet.bnbAddress) {
+                this.mainWalletAddress = adminWallet.bnbAddress.toLowerCase();
+                console.log(`📋 تم استخدام عنوان الأدمن: ${this.mainWalletAddress}`);
             }
-            
-            if (this.monitoredAddresses.size > 0) {
-                console.log(`📋 ${this.monitoredAddresses.size} عناوين قيد المراقبة`);
-            }
-            
-        } catch (e) {
-            console.error('loadPendingAddresses error:', e.message);
-        }
+        } catch(e) {}
+        
+        return this.mainWalletAddress;
     }
+    
+    // ========== فحص إيداعات BNB ==========
     
     async checkBNBDeposits() {
         try {
+            const mainAddress = await this.getMainWalletAddress();
+            if (!mainAddress) return;
+            
             const currentBlock = await this.providers.bnb.getBlockNumber();
-            // ✅ فحص آخر 30 بلوك فقط (أقل من دقيقة)
-            const fromBlock = currentBlock - 30;
+            const fromBlock = currentBlock - 50; // فحص آخر 50 بلوك
             
             if (!this.lastCheckedBlock.bnb) this.lastCheckedBlock.bnb = fromBlock;
             if (fromBlock <= this.lastCheckedBlock.bnb) return;
@@ -96,47 +86,38 @@ class BlockchainMonitor {
                 this.providers.bnb
             );
             
-            const filter = contract.filters.Transfer();
+            // ✅ البحث عن المعاملات الواردة إلى المحفظة الرئيسية
+            const filter = contract.filters.Transfer(null, mainAddress);
             const events = await contract.queryFilter(filter, this.lastCheckedBlock.bnb, currentBlock);
             
             for (const event of events) {
-                const toAddress = event.args.to.toLowerCase();
+                const fromAddress = event.args.from.toLowerCase();
+                const amount = parseFloat(ethers.utils.formatUnits(event.args.value, 18));
                 
-                if (this.monitoredAddresses.has(toAddress)) {
-                    const depositInfo = this.monitoredAddresses.get(toAddress);
-                    const receivedAmount = parseFloat(ethers.utils.formatUnits(event.args.value, 18));
-                    
-                    console.log(`🔔 معاملة BNB: ${receivedAmount} USDT → ${toAddress.slice(0, 10)}...`);
-                    
-                    if (receivedAmount >= depositInfo.amount * 0.99) {
-                        await this.confirmDeposit(
-                            depositInfo.requestId,
-                            depositInfo.userId,
-                            receivedAmount,
-                            event.transactionHash,
-                            'bnb'
-                        );
-                        this.monitoredAddresses.delete(toAddress);
-                    } else {
-                        console.log(`⚠️ مبلغ غير كافٍ: ${receivedAmount} < ${depositInfo.amount}`);
-                    }
-                }
+                console.log(`🔔 معاملة BNB واردة: ${amount} USDT من ${fromAddress.slice(0, 10)}...`);
+                
+                // ✅ البحث عن طلب إيداع معلق بنفس المبلغ
+                await this.matchDeposit(amount, event.transactionHash, 'bnb');
             }
             
             this.lastCheckedBlock.bnb = currentBlock;
             
         } catch (e) {
-            // ✅ تجاهل أخطاء rate limit
             if (!e.message.includes('limit exceeded')) {
                 console.error('checkBNBDeposits error:', e.message.slice(0, 100));
             }
         }
     }
     
+    // ========== فحص إيداعات Polygon ==========
+    
     async checkPolygonDeposits() {
         try {
+            const mainAddress = await this.getMainWalletAddress();
+            if (!mainAddress) return;
+            
             const currentBlock = await this.providers.polygon.getBlockNumber();
-            const fromBlock = currentBlock - 30;
+            const fromBlock = currentBlock - 50;
             
             if (!this.lastCheckedBlock.polygon) this.lastCheckedBlock.polygon = fromBlock;
             if (fromBlock <= this.lastCheckedBlock.polygon) return;
@@ -147,39 +128,72 @@ class BlockchainMonitor {
                 this.providers.polygon
             );
             
-            const filter = contract.filters.Transfer();
+            const filter = contract.filters.Transfer(null, mainAddress);
             const events = await contract.queryFilter(filter, this.lastCheckedBlock.polygon, currentBlock);
             
             for (const event of events) {
-                const toAddress = event.args.to.toLowerCase();
+                const fromAddress = event.args.from.toLowerCase();
+                const amount = parseFloat(ethers.utils.formatUnits(event.args.value, 6));
                 
-                if (this.monitoredAddresses.has(toAddress)) {
-                    const depositInfo = this.monitoredAddresses.get(toAddress);
-                    const receivedAmount = parseFloat(ethers.utils.formatUnits(event.args.value, 6));
-                    
-                    console.log(`🔔 معاملة Polygon: ${receivedAmount} USDT → ${toAddress.slice(0, 10)}...`);
-                    
-                    if (receivedAmount >= depositInfo.amount * 0.99) {
-                        await this.confirmDeposit(
-                            depositInfo.requestId,
-                            depositInfo.userId,
-                            receivedAmount,
-                            event.transactionHash,
-                            'polygon'
-                        );
-                        this.monitoredAddresses.delete(toAddress);
-                    }
-                }
+                console.log(`🔔 معاملة Polygon واردة: ${amount} USDT من ${fromAddress.slice(0, 10)}...`);
+                
+                await this.matchDeposit(amount, event.transactionHash, 'polygon');
             }
             
             this.lastCheckedBlock.polygon = currentBlock;
             
         } catch (e) {
-            if (!e.message.includes('limit exceeded') && !e.message.includes('NETWORK_ERROR')) {
+            if (!e.message.includes('NETWORK_ERROR') && !e.message.includes('limit exceeded')) {
                 console.error('checkPolygonDeposits error:', e.message.slice(0, 100));
             }
         }
     }
+    
+    // ========== مطابقة الإيداع مع طلب معلق ==========
+    
+    async matchDeposit(amount, txHash, network) {
+        try {
+            const DepositRequest = require('./models').DepositRequest;
+            
+            // ✅ البحث عن طلب معلق بنفس المبلغ (مع هامش خطأ 2%)
+            const pendingRequest = await DepositRequest.findOne({
+                status: 'pending',
+                network: network,
+                amount: { $gte: amount * 0.98, $lte: amount * 1.02 }
+            }).sort({ createdAt: -1 });
+            
+            if (pendingRequest) {
+                console.log(`✅ تم مطابقة الإيداع مع المستخدم ${pendingRequest.userId}`);
+                await this.confirmDeposit(
+                    pendingRequest._id,
+                    pendingRequest.userId,
+                    amount,
+                    txHash,
+                    network
+                );
+            } else {
+                console.log(`⚠️ لم يتم العثور على طلب معلق للمبلغ ${amount} USDT على ${network}`);
+                
+                // ✅ إشعار الأدمن بوجود إيداع غير معروف
+                if (global.botInstance) {
+                    const ADMIN_IDS = (process.env.ADMIN_IDS || '6701743450').split(',').map(Number);
+                    for (const adminId of ADMIN_IDS) {
+                        try {
+                            await global.botInstance.telegram.sendMessage(
+                                adminId,
+                                `⚠️ *إيداع غير معروف*\n\n💰 ${amount.toFixed(2)} USDT\n🌐 ${network.toUpperCase()}\n🔗 \`${txHash.slice(0, 20)}...\`\n\nلم يتم العثور على طلب إيداع مطابق`,
+                                { parse_mode: 'Markdown' }
+                            );
+                        } catch(e) {}
+                    }
+                }
+            }
+        } catch(e) {
+            console.error('matchDeposit error:', e.message);
+        }
+    }
+    
+    // ========== تأكيد الإيداع تلقائياً ==========
     
     async confirmDeposit(requestId, userId, amount, txHash, network) {
         try {
@@ -217,6 +231,7 @@ class BlockchainMonitor {
                 await this.db.checkAndRewardReferrer(userId, amount);
             }
             
+            // إشعار المستخدم
             if (global.botInstance) {
                 try {
                     await global.botInstance.telegram.sendMessage(
@@ -228,9 +243,10 @@ class BlockchainMonitor {
                         `تم إضافة الرصيد إلى حسابك`,
                         { parse_mode: 'Markdown' }
                     );
-                } catch (e) {}
+                } catch(e) {}
             }
             
+            // إشعار الأدمن
             if (global.botInstance) {
                 const ADMIN_IDS = (process.env.ADMIN_IDS || '6701743450').split(',').map(Number);
                 for (const adminId of ADMIN_IDS) {
@@ -240,13 +256,13 @@ class BlockchainMonitor {
                             `🤖 *إيداع تلقائي*\n\n👤 \`${userId}\`\n💰 ${amount.toFixed(2)} USDT\n🌐 ${network.toUpperCase()}\n🔗 \`${txHash.slice(0, 20)}...\``,
                             { parse_mode: 'Markdown' }
                         );
-                    } catch (e) {}
+                    } catch(e) {}
                 }
             }
             
             console.log(`✅ إيداع ${userId} مكتمل`);
             
-        } catch (e) {
+        } catch(e) {
             console.error('confirmDeposit error:', e.message);
         }
     }
