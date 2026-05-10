@@ -6,7 +6,6 @@
     <title>💎 CRYSTAL Exchange - منصة تداول احترافية</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.js"></script>
     <style>
         :root {
             --bg-primary: #0b0e11; --bg-secondary: #1e2329; --bg-tertiary: #2a2e35;
@@ -39,14 +38,14 @@
         .balance-item .label { color: var(--text-secondary); font-size: 10px; }
         .balance-item .value { font-weight: bold; font-size: 14px; margin-top: 2px; }
 
-        .chart-container { background: var(--bg-secondary); border-radius: 8px; padding: 8px; margin-bottom: 6px; height: 300px; position: relative; }
+        .chart-container { background: var(--bg-secondary); border-radius: 8px; padding: 8px; margin-bottom: 6px; height: 260px; position: relative; }
         .timeframe-btns { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
         .tf-btn { background: var(--bg-tertiary); border: none; color: var(--text-secondary); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; }
         .tf-btn.active { background: var(--gold); color: #000; font-weight: bold; }
-        #candlestick-chart { width: 100%; height: calc(100% - 35px); }
 
         .trade-area { display: flex; gap: 6px; margin-bottom: 6px; direction: ltr; }
         
+        /* دفتر الطلبات في اليسار */
         .order-book-mini { width: 44%; background: var(--bg-secondary); border-radius: 8px; padding: 6px; font-size: 10px; max-height: 250px; overflow: hidden; }
         
         .ob-title { font-size: 9px; font-weight: bold; margin-bottom: 3px; text-align: center; padding: 3px; border-radius: 3px; }
@@ -67,6 +66,7 @@
         .ob-row.buy .total-col { color: var(--green); }
         .ob-row.sell .total-col { color: var(--red); }
 
+        /* نموذج التداول في اليمين */
         .trade-form { flex: 1; background: var(--bg-secondary); border-radius: 8px; padding: 8px; }
         .trade-tabs { display: flex; gap: 4px; margin-bottom: 6px; }
         .trade-tab { flex: 1; padding: 6px; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; }
@@ -120,7 +120,7 @@
             <button class="nav-btn" onclick="switchPanel('rewards')">🎁 مكافآت</button>
         </div>
 
-        <!-- ==================== الرئيسية ==================== -->
+        <!-- الرئيسية -->
         <div id="panel-home" class="panel active">
             <div class="header"><div><div class="pair">💎 CRYSTAL/USDT</div><div style="font-size:9px;color:var(--text-secondary)">500 حبة = 1 USDT</div></div><div class="price-info"><div class="current-price" id="headerPrice">0.0020</div></div></div>
             <div class="balance-bar"><div class="balance-item"><div class="label">💎 CRYSTAL</div><div class="value" id="crystalBalance">0</div></div><div class="balance-item"><div class="label">💵 USDT</div><div class="value" id="usdtBalance">0</div></div><div class="balance-item" style="display:flex;align-items:center;justify-content:center;"><span id="kycStatus" style="font-size:18px;">⚠️</span></div></div>
@@ -135,25 +135,19 @@
             </div>
         </div>
 
-        <!-- ==================== التداول مع شموع يابانية ==================== -->
+        <!-- التداول -->
         <div id="panel-trade" class="panel">
-            <div class="header"><div><div class="pair">💎 CRYSTAL/USDT</div><div style="font-size:9px;color:var(--gold);">🕯️ شموع يابانية حقيقية</div></div><div class="price-info"><div class="current-price" id="tradePrice">0.0020</div></div></div>
-            
-            <!-- حاوية الشموع اليابانية -->
+            <div class="header"><div><div class="pair">💎 CRYSTAL/USDT</div></div><div class="price-info"><div class="current-price" id="tradePrice">0.0020</div></div></div>
             <div class="chart-container">
                 <div class="timeframe-btns">
-                    <button class="tf-btn active" data-timeframe="1m">1د</button>
-                    <button class="tf-btn" data-timeframe="5m">5د</button>
-                    <button class="tf-btn" data-timeframe="15m">15د</button>
-                    <button class="tf-btn" data-timeframe="1h">1س</button>
-                    <button class="tf-btn" data-timeframe="4h">4س</button>
-                    <button class="tf-btn" data-timeframe="1d">يوم</button>
+                    <button class="tf-btn active" onclick="setTimeframe('1m')">1د</button><button class="tf-btn" onclick="setTimeframe('5m')">5د</button><button class="tf-btn" onclick="setTimeframe('15m')">15د</button><button class="tf-btn" onclick="setTimeframe('1h')">1س</button><button class="tf-btn" onclick="setTimeframe('4h')">4س</button><button class="tf-btn" onclick="setTimeframe('1d')">يوم</button>
                 </div>
-                <div id="candlestick-chart"></div>
+                <canvas id="priceChart"></canvas>
             </div>
             
             <!-- دفتر الطلبات يسار + نموذج التداول يمين -->
             <div class="trade-area">
+                <!-- ✅ دفتر الطلبات في اليسار -->
                 <div class="order-book-mini">
                     <div class="ob-title sell-title">🔴 طلبات البيع</div>
                     <div class="ob-header"><span>💵 سعر USDT</span><span>📦 كمية CRYSTAL</span><span>💰 إجمالي USDT</span></div>
@@ -165,6 +159,7 @@
                     <div id="buyOrderBook"><div style="color:var(--text-secondary);text-align:center;padding:8px;font-size:9px;">لا توجد طلبات</div></div>
                 </div>
                 
+                <!-- نموذج التداول في اليمين -->
                 <div class="trade-form">
                     <div class="trade-tabs">
                         <button class="trade-tab buy-tab active" id="buyTab" onclick="setOrderType('buy')">🟢 شراء CRYSTAL</button>
@@ -197,6 +192,7 @@
                 </div>
             </div>
             
+            <!-- طلباتي / تاريخي -->
             <div class="trade-bottom-tabs">
                 <button class="trade-bottom-tab active" onclick="switchTradeTab('orders')">📋 طلباتي</button>
                 <button class="trade-bottom-tab" onclick="switchTradeTab('history')">📜 تاريخي</button>
@@ -206,7 +202,7 @@
             <button class="trade-btn buy-btn" onclick="switchPanel('home')" style="background:var(--bg-tertiary);color:#fff;margin-top:6px;">🔙 العودة للرئيسية</button>
         </div>
 
-        <!-- ==================== المكافآت ==================== -->
+        <!-- المكافآت -->
         <div id="panel-rewards" class="panel">
             <div class="reward-card featured"><div style="display:flex;align-items:center;gap:10px;"><div class="reward-icon">🆔</div><div style="flex:1;"><div class="reward-title">✅ مكافأة التوثيق</div><div class="reward-amount">+100 CRYSTAL</div></div></div><div id="kycRewardStatus" style="font-size:10px;margin:4px 0;text-align:center;">⚠️</div><button class="trade-btn buy-btn" onclick="switchPanel('kyc')">🆔 اذهب للتوثيق</button></div>
             <div class="reward-card featured"><div style="display:flex;align-items:center;gap:10px;"><div class="reward-icon">📢</div><div style="flex:1;"><div class="reward-title">🎁 مكافأة القناة</div><div class="reward-amount">+100 CRYSTAL</div></div></div><div id="channelRewardStatus" style="font-size:10px;margin:4px 0;text-align:center;">🔒</div><div style="display:flex;gap:6px;"><button class="trade-btn buy-btn" onclick="openChannel()" style="flex:1;">📢 القناة</button><button class="trade-btn buy-btn" onclick="checkAndClaimReward()" id="claimRewardBtn" style="flex:1;background:var(--gold);color:#000;">🎁 تحقق</button></div></div>
@@ -214,169 +210,24 @@
             <button class="trade-btn buy-btn" onclick="switchPanel('home')" style="background:var(--bg-tertiary);color:#fff;">🔙 الرئيسية</button>
         </div>
 
-        <!-- ==================== لوحات أخرى ==================== -->
+        <!-- لوحات أخرى -->
         <div id="panel-wallet" class="panel"><div class="card"><h4>💼 المحفظة</h4><div><select id="depositNetwork" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;margin:4px 0;"><option value="bnb">BNB</option><option value="polygon">Polygon</option><option value="solana">Solana</option></select><input type="number" id="depositAmount" placeholder="المبلغ (USDT)" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;margin:4px 0;"><button class="trade-btn buy-btn" onclick="deposit()">📥 إيداع</button></div><div style="margin-top:8px;"><input type="number" id="withdrawAmount" placeholder="المبلغ (USDT)" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;margin:4px 0;"><input type="text" id="withdrawAddress" placeholder="عنوان محفظتك" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;margin:4px 0;"><button class="trade-btn sell-btn" onclick="withdraw()">📤 سحب</button></div></div><button class="trade-btn buy-btn" onclick="switchPanel('home')" style="background:var(--bg-tertiary);color:#fff;">🔙 الرئيسية</button></div>
-        
         <div id="panel-referral" class="panel"><div class="card"><h4>👥 الإحالات</h4><div id="referralPanel"><div class="loading">جاري التحميل...</div></div></div><button class="trade-btn buy-btn" onclick="switchPanel('home')" style="background:var(--bg-tertiary);color:#fff;">🔙 الرئيسية</button></div>
-        
         <div id="panel-kyc" class="panel"><div class="card"><h4>🆔 توثيق</h4><div id="kycPanel"><div class="loading">جاري التحميل...</div></div></div><button class="trade-btn buy-btn" onclick="switchPanel('home')" style="background:var(--bg-tertiary);color:#fff;">🔙 الرئيسية</button></div>
-        
         <div id="panel-chat" class="panel"><div class="card" style="height:350px;display:flex;flex-direction:column;"><div id="chatMessages" style="flex:1;overflow-y:auto;margin-bottom:8px;font-size:11px;"></div><div style="display:flex;gap:4px;"><input type="text" id="chatMessage" placeholder="اكتب..." style="flex:1;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:#fff;"><button class="trade-btn buy-btn" onclick="sendChatMessage()" style="width:auto;padding:8px 16px;margin:0;">📤</button></div></div><button class="trade-btn buy-btn" onclick="switchPanel('home')" style="background:var(--bg-tertiary);color:#fff;">🔙 الرئيسية</button></div>
     </div>
 
     <script>
-        const tg = window.Telegram.WebApp; 
-        tg.expand(); 
-        tg.ready();
-        
+        const tg = window.Telegram.WebApp; tg.expand(); tg.ready();
         const API_URL = window.location.origin;
         const CHANNEL_LINK = 'https://t.me/+8pUE4W3aK7lmYzY0';
         let currentTimeframe = '1m', currentOrderType = 'buy', currentOrderSubType = 'limit', priceChart = null, currentTradeTab = 'orders';
         let userId = tg.initDataUnsafe?.user?.id || 6701743450;
         let marketPrice = 0.002, priceManuallyChanged = false, lastManualPriceChange = 0;
-        
-        // ==================== متغيرات الشموع اليابانية ====================
-        let candleChart = null;
-        let candlestickSeries = null;
-        let candleData = [];
-        
-        // ==================== دوال الشموع اليابانية ====================
-        function initCandleChart() {
-            const container = document.getElementById('candlestick-chart');
-            if (!container) return;
-            
-            candleChart = LightweightCharts.createChart(container, {
-                layout: { background: { color: '#1e2329' }, textColor: '#848e9c' },
-                grid: { vertLines: { color: '#2b3139' }, horzLines: { color: '#2b3139' } },
-                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-                rightPriceScale: { borderColor: '#2b3139', textColor: '#848e9c' },
-                timeScale: { borderColor: '#2b3139', textColor: '#848e9c', timeVisible: true, secondsVisible: false },
-                width: container.clientWidth,
-                height: 250,
-            });
-            
-            candlestickSeries = candleChart.addCandlestickSeries({
-                upColor: '#0ecb81', downColor: '#f6465d',
-                borderDownColor: '#f6465d', borderUpColor: '#0ecb81',
-                wickDownColor: '#f6465d', wickUpColor: '#0ecb81',
-            });
-            
-            generateMockCandles();
-            
-            window.addEventListener('resize', () => {
-                if (candleChart) {
-                    candleChart.applyOptions({ width: container.clientWidth });
-                    setTimeout(() => candleChart.timeScale().fitContent(), 100);
-                }
-            });
-            
-            setTimeout(() => candleChart.timeScale().fitContent(), 100);
-        }
-        
-        function getTimeframeSeconds() {
-            const seconds = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400 };
-            return seconds[currentTimeframe] || 60;
-        }
-        
-        function generateMockCandles() {
-            const now = Math.floor(Date.now() / 1000);
-            const interval = getTimeframeSeconds();
-            let price = marketPrice;
-            const newCandles = [];
-            
-            for (let i = 60; i >= 0; i--) {
-                const timestamp = now - (i * interval);
-                const trend = Math.sin(i / 15) * 0.0001;
-                const random = (Math.random() - 0.48) * 0.00015;
-                
-                const open = price;
-                const close = price + trend + random;
-                const high = Math.max(open, close) + (Math.random() * 0.0001);
-                const low = Math.min(open, close) - (Math.random() * 0.0001);
-                
-                newCandles.push({
-                    time: timestamp,
-                    open: Number(open.toFixed(6)),
-                    high: Number(high.toFixed(6)),
-                    low: Number(low.toFixed(6)),
-                    close: Number(close.toFixed(6))
-                });
-                price = close;
-            }
-            
-            candleData = newCandles;
-            if (candlestickSeries) {
-                candlestickSeries.setData(candleData);
-                candleChart.timeScale().fitContent();
-            }
-            marketPrice = candleData[candleData.length - 1].close;
-            updatePriceDisplay();
-        }
-        
-        function updateLastCandleWithPrice(newPrice) {
-            if (!candlestickSeries || candleData.length === 0) return;
-            
-            const now = Math.floor(Date.now() / 1000);
-            const interval = getTimeframeSeconds();
-            const currentCandleTime = Math.floor(now / interval) * interval;
-            let lastCandle = candleData[candleData.length - 1];
-            
-            if (lastCandle.time !== currentCandleTime) {
-                const newCandle = {
-                    time: currentCandleTime,
-                    open: newPrice,
-                    high: newPrice,
-                    low: newPrice,
-                    close: newPrice
-                };
-                candleData.push(newCandle);
-                if (candleData.length > 100) candleData.shift();
-                candlestickSeries.setData(candleData);
-            } else {
-                if (newPrice > lastCandle.high) lastCandle.high = newPrice;
-                if (newPrice < lastCandle.low) lastCandle.low = newPrice;
-                lastCandle.close = newPrice;
-                candlestickSeries.update(lastCandle);
-            }
-            
-            marketPrice = newPrice;
-            updatePriceDisplay();
-        }
-        
-        function updatePriceDisplay() {
-            document.getElementById('headerPrice').textContent = marketPrice.toFixed(4);
-            document.getElementById('tradePrice').textContent = marketPrice.toFixed(4);
-            document.getElementById('midPrice').textContent = marketPrice.toFixed(4);
-        }
-        
-        function setTimeframeManual(tf) {
-            currentTimeframe = tf;
-            generateMockCandles();
-        }
 
-        // ==================== الوظائف الأصلية (لم يتم تغييرها) ====================
         async function init() {
-            try { 
-                const r = await fetch(`${API_URL}/api/market/price`); 
-                const d = await r.json(); 
-                marketPrice = d.price || 0.002; 
-                document.getElementById('orderPrice').value = marketPrice.toFixed(4); 
-                updatePriceDisplay();
-            } catch(e) {}
-            initCandleChart();
-            loadAllData(); 
-            setInterval(loadMarketData, 5000); 
-            setInterval(loadOrderBook, 3000); 
-            updateOrderTotal();
-            
-            // ربط أزرار الإطارات الزمنية
-            document.querySelectorAll('.tf-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    setTimeframeManual(btn.getAttribute('data-timeframe'));
-                });
-            });
+            try { const r = await fetch(`${API_URL}/api/market/price`); const d = await r.json(); marketPrice = d.price || 0.002; document.getElementById('orderPrice').value = marketPrice.toFixed(4); } catch(e) {}
+            loadAllData(); setInterval(loadMarketData, 5000); setInterval(loadOrderBook, 3000); updateOrderTotal();
         }
 
         async function loadAllData() { loadUserData(); loadMarketData(); loadRewardsData(); loadReferralPanel(); loadKycPanel(); loadMyOrders(); }
@@ -386,14 +237,7 @@
             document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
             const navBtns = document.querySelectorAll('.nav-btn');
             if (panel === 'home') navBtns[0].classList.add('active');
-            else if (panel === 'trade') { 
-                navBtns[1].classList.add('active'); 
-                loadOrderBook(); 
-                loadMyOrders(); 
-                setTimeout(() => {
-                    if (candleChart) candleChart.timeScale().fitContent();
-                }, 100);
-            }
+            else if (panel === 'trade') { navBtns[1].classList.add('active'); loadOrderBook(); loadChart(); loadMyOrders(); }
             else if (panel === 'rewards') { navBtns[2].classList.add('active'); loadRewardsData(); }
             else if (panel === 'referral') loadReferralPanel();
             else if (panel === 'kyc') loadKycPanel();
@@ -421,22 +265,13 @@
         }
 
         async function loadUserData() {
-            try { 
-                const r = await fetch(`${API_URL}/api/user/${userId}`); 
-                const d = await r.json(); 
-                document.getElementById('crystalBalance').textContent = (d.crystalBalance||0).toFixed(2); 
-                document.getElementById('usdtBalance').textContent = (d.usdtBalance||0).toFixed(2); 
-                document.getElementById('kycStatus').innerHTML = d.isVerified ? '✅' : '⚠️'; 
-                updateSliderMax(); 
-            } catch(e) {}
+            try { const r = await fetch(`${API_URL}/api/user/${userId}`); const d = await r.json(); document.getElementById('crystalBalance').textContent = (d.crystalBalance||0).toFixed(2); document.getElementById('usdtBalance').textContent = (d.usdtBalance||0).toFixed(2); document.getElementById('kycStatus').innerHTML = d.isVerified ? '✅' : '⚠️'; updateSliderMax(); } catch(e) {}
         }
 
         async function loadRewardsData() {
             try {
-                const ur = await fetch(`${API_URL}/api/user/${userId}`); 
-                const ud = await ur.json();
-                const rr = await fetch(`${API_URL}/api/user/referral/${userId}`); 
-                const rd = await rr.json();
+                const ur = await fetch(`${API_URL}/api/user/${userId}`); const ud = await ur.json();
+                const rr = await fetch(`${API_URL}/api/user/referral/${userId}`); const rd = await rr.json();
                 document.getElementById('homeKycBadge').innerHTML = ud.isVerified ? '✅' : '⚠️';
                 document.getElementById('homeRefBadge').textContent = `${rd.referralDepositCount||0}/5`;
                 const ks = document.getElementById('kycRewardStatus');
@@ -459,60 +294,24 @@
         function openChannel() { tg.openLink(CHANNEL_LINK); }
 
         async function checkAndClaimReward() {
-            const btn = document.getElementById('claimRewardBtn'); 
-            btn.disabled = true; 
-            btn.textContent = '⏳...';
+            const btn = document.getElementById('claimRewardBtn'); btn.disabled = true; btn.textContent = '⏳...';
             try {
-                const res = await fetch(`${API_URL}/api/channel/check`, { 
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'}, 
-                    body:JSON.stringify({user_id:userId})
-                });
+                const res = await fetch(`${API_URL}/api/channel/check`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:userId}) });
                 const r = await res.json();
-                if (r.needKyc) { 
-                    document.getElementById('channelRewardStatus').innerHTML = '🔒 يحتاج توثيق'; 
-                    btn.disabled = false; 
-                    btn.textContent = '🎁 تحقق'; 
-                    tg.showAlert('⚠️ وثق حسابك أولاً'); 
-                }
-                else if (r.subscribed && r.success) { 
-                    document.getElementById('channelRewardStatus').innerHTML = '✅ تم!'; 
-                    btn.textContent = '✅'; 
-                    tg.showAlert('🎁 100 CRYSTAL!'); 
-                    loadUserData(); 
-                    loadRewardsData(); 
-                }
-                else if (r.subscribed) { 
-                    document.getElementById('channelRewardStatus').innerHTML = r.message; 
-                    btn.disabled = false; 
-                    btn.textContent = '🎁 تحقق'; 
-                }
-                else { 
-                    document.getElementById('channelRewardStatus').innerHTML = '❌ اشترك أولاً'; 
-                    btn.disabled = false; 
-                    btn.textContent = '🎁 تحقق'; 
-                    tg.showAlert('⚠️ اشترك بالقناة'); 
-                }
-            } catch(e) { 
-                btn.disabled = false; 
-                btn.textContent = '🎁 تحقق'; 
-            }
+                if (r.needKyc) { document.getElementById('channelRewardStatus').innerHTML = '🔒 يحتاج توثيق'; btn.disabled = false; btn.textContent = '🎁 تحقق'; tg.showAlert('⚠️ وثق حسابك أولاً'); }
+                else if (r.subscribed && r.success) { document.getElementById('channelRewardStatus').innerHTML = '✅ تم!'; btn.textContent = '✅'; tg.showAlert('🎁 100 CRYSTAL!'); loadUserData(); loadRewardsData(); }
+                else if (r.subscribed) { document.getElementById('channelRewardStatus').innerHTML = r.message; btn.disabled = false; btn.textContent = '🎁 تحقق'; }
+                else { document.getElementById('channelRewardStatus').innerHTML = '❌ اشترك أولاً'; btn.disabled = false; btn.textContent = '🎁 تحقق'; tg.showAlert('⚠️ اشترك بالقناة'); }
+            } catch(e) { btn.disabled = false; btn.textContent = '🎁 تحقق'; }
         }
 
         async function loadMarketData() {
-            try { 
-                const r = await fetch(`${API_URL}/api/market/stats`); 
-                const d = await r.json(); 
-                marketPrice = d.price || d.displayPrice || 0.002; 
-                updatePriceDisplay();
-                if(!priceManuallyChanged || (Date.now()-lastManualPriceChange) > 30000){
-                    document.getElementById('orderPrice').value = marketPrice.toFixed(4);
-                    priceManuallyChanged = false;
-                }
-                updateLastCandleWithPrice(marketPrice);
-            } catch(e) {}
+            try { const r=await fetch(`${API_URL}/api/market/stats`); const d=await r.json(); marketPrice=d.price||d.displayPrice||0.002; document.getElementById('headerPrice').textContent=marketPrice.toFixed(4); document.getElementById('tradePrice').textContent=marketPrice.toFixed(4); if(!priceManuallyChanged||(Date.now()-lastManualPriceChange)>30000){document.getElementById('orderPrice').value=marketPrice.toFixed(4);priceManuallyChanged=false;} document.getElementById('midPrice').textContent=marketPrice.toFixed(4); } catch(e) {}
         }
 
+        function onPriceManualChange() { priceManuallyChanged = true; lastManualPriceChange = Date.now(); updateOrderTotal(); updateSliderMax(); }
+
+        // ✅ دفتر طلبات واضح مع عناوين الأعمدة
         async function loadOrderBook() {
             try {
                 const sellRes = await fetch(`${API_URL}/api/orders?type=sell&limit=8`);
@@ -551,67 +350,18 @@
             } catch(e) {}
         }
 
-        function setOrderType(t) { 
-            currentOrderType = t; 
-            document.getElementById('buyTab').classList.toggle('active', t === 'buy'); 
-            document.getElementById('sellTab').classList.toggle('active', t === 'sell'); 
-            const b = document.getElementById('createOrderBtn'); 
-            b.textContent = t === 'buy' ? '✅ شراء CRYSTAL' : '🔴 بيع CRYSTAL'; 
-            b.className = 'trade-btn ' + (t === 'buy' ? 'buy-btn' : 'sell-btn'); 
-            updateSliderMax(); 
-            updateOrderTotal(); 
-        }
-        
-        function updateOrderTotal() { 
-            const p = parseFloat(document.getElementById('orderPrice').value) || 0;
-            const a = parseFloat(document.getElementById('orderAmount').value) || 0; 
-            document.getElementById('orderTotal').textContent = (p * a).toFixed(4); 
-            document.getElementById('orderFee').textContent = (p * a * 0.001).toFixed(4); 
-        }
-        
-        function updateSliderMax() { 
-            const s = document.getElementById('amountSlider'); 
-            if(currentOrderType === 'sell'){
-                const b = parseFloat(document.getElementById('crystalBalance').textContent) || 0;
-                s.max = Math.max(1, Math.floor(b));
-            } else {
-                const p = parseFloat(document.getElementById('orderPrice').value) || 0.002;
-                const b = parseFloat(document.getElementById('usdtBalance').textContent) || 0;
-                s.max = Math.max(1, Math.floor(b / (p * 1.001)));
-            } 
-        }
-        
-        function syncInputFromSlider() { 
-            document.getElementById('orderAmount').value = parseFloat(document.getElementById('amountSlider').value); 
-            updateOrderTotal(); 
-        }
-        
-        function syncSliderFromInput() { 
-            document.getElementById('amountSlider').value = parseFloat(document.getElementById('orderAmount').value) || 1; 
-            updateOrderTotal(); 
-        }
-        
-        function onPriceManualChange() { 
-            priceManuallyChanged = true; 
-            lastManualPriceChange = Date.now(); 
-            updateOrderTotal(); 
-            updateSliderMax(); 
-        }
-        
-        function setAmountPercent(pct) { 
-            const s = document.getElementById('amountSlider');
-            const m = parseFloat(s.max);
-            const a = Math.max(1, Math.floor(m * pct / 100)); 
-            document.getElementById('orderAmount').value = a; 
-            document.getElementById('amountSlider').value = a; 
-            updateOrderTotal(); 
-        }
+        async function loadChart() { try { let l=60; if(currentTimeframe==='4h')l=90; if(currentTimeframe==='1d')l=60; const r=await fetch(`${API_URL}/api/market/candles/${currentTimeframe}?limit=${l}`); const c=await r.json(); if(!c||!c.length)return; if(priceChart){priceChart.destroy();priceChart=null;} const ctx=document.getElementById('priceChart').getContext('2d'); const lbs=c.map(x=>{const d=new Date(x.timestamp); return d.toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'});}); const gr=ctx.createLinearGradient(0,0,0,240); gr.addColorStop(0,'rgba(14,203,129,0.3)'); gr.addColorStop(1,'rgba(14,203,129,0)'); priceChart=new Chart(ctx,{type:'line',data:{labels:lbs,datasets:[{data:c.map(x=>x.close),borderColor:'#0ecb81',borderWidth:2,backgroundColor:gr,fill:true,tension:0.1,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{grid:{color:'rgba(255,255,255,0.08)'},ticks:{color:'#848e9c',font:{size:10}}},x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#848e9c',font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:6}}}}}); } catch(e) {} }
+        function setTimeframe(tf) { currentTimeframe=tf; document.querySelectorAll('.tf-btn').forEach(b=>b.classList.remove('active')); event.target.classList.add('active'); loadChart(); }
+        function setOrderType(t) { currentOrderType=t; document.getElementById('buyTab').classList.toggle('active',t==='buy'); document.getElementById('sellTab').classList.toggle('active',t==='sell'); const b=document.getElementById('createOrderBtn'); b.textContent=t==='buy'?'✅ شراء CRYSTAL':'🔴 بيع CRYSTAL'; b.className='trade-btn '+(t==='buy'?'buy-btn':'sell-btn'); updateSliderMax(); updateOrderTotal(); }
+        function updateOrderTotal() { const p=parseFloat(document.getElementById('orderPrice').value)||0,a=parseFloat(document.getElementById('orderAmount').value)||0; document.getElementById('orderTotal').textContent=(p*a).toFixed(4); document.getElementById('orderFee').textContent=(p*a*0.001).toFixed(4); }
+        function updateSliderMax() { const s=document.getElementById('amountSlider'); if(currentOrderType==='sell'){const b=parseFloat(document.getElementById('crystalBalance').textContent)||0;s.max=Math.max(1,Math.floor(b));}else{const p=parseFloat(document.getElementById('orderPrice').value)||0.002,b=parseFloat(document.getElementById('usdtBalance').textContent)||0;s.max=Math.max(1,Math.floor(b/(p*1.001)));} }
+        function syncInputFromSlider() { document.getElementById('orderAmount').value=parseFloat(document.getElementById('amountSlider').value); updateOrderTotal(); }
+        function syncSliderFromInput() { document.getElementById('amountSlider').value=parseFloat(document.getElementById('orderAmount').value)||1; updateOrderTotal(); }
+        function setAmountPercent(pct) { const s=document.getElementById('amountSlider'),m=parseFloat(s.max),a=Math.max(1,Math.floor(m*pct/100)); document.getElementById('orderAmount').value=a; document.getElementById('amountSlider').value=a; updateOrderTotal(); }
         
         async function createOrder() {
-            const p = parseFloat(document.getElementById('orderPrice').value);
-            const a = parseFloat(document.getElementById('orderAmount').value);
-            const btn = document.getElementById('createOrderBtn');
-            if(!p || p <= 0 || !a || a <= 0){tg.showAlert('⚠️ أدخل السعر والكمية');return;}
+            const p=parseFloat(document.getElementById('orderPrice').value),a=parseFloat(document.getElementById('orderAmount').value),btn=document.getElementById('createOrderBtn');
+            if(!p||p<=0||!a||a<=0){tg.showAlert('⚠️ أدخل السعر والكمية');return;}
             const orderData = { user_id: userId, type: currentOrderType, price: p, amount: a };
             if (currentOrderSubType !== 'limit') {
                 const tp = parseFloat(document.getElementById('triggerPrice').value);
@@ -619,37 +369,15 @@
                 orderData.orderSubType = currentOrderSubType;
                 orderData.triggerPrice = tp;
             }
-            btn.disabled = true; 
-            btn.textContent = '⏳...';
-            try{
-                const r = await fetch(`${API_URL}/api/order/create`, {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify(orderData)
-                });
-                const d = await r.json(); 
-                tg.showAlert(d.message); 
-                if(d.success){
-                    loadAllData();
-                    loadMyOrders();
-                }
-            } catch(e){
-                tg.showAlert('❌ خطأ');
-            } finally{
-                btn.disabled = false;
-                btn.textContent = currentOrderType === 'buy' ? '✅ شراء CRYSTAL' : '🔴 بيع CRYSTAL';
-            }
+            btn.disabled=true; btn.textContent='⏳...';
+            try{const r=await fetch(`${API_URL}/api/order/create`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(orderData)});const d=await r.json(); tg.showAlert(d.message); if(d.success){loadAllData();loadMyOrders();}}catch(e){tg.showAlert('❌ خطأ');}finally{btn.disabled=false;btn.textContent=currentOrderType==='buy'?'✅ شراء CRYSTAL':'🔴 بيع CRYSTAL';}
         }
 
         async function loadMyOrders() {
             try {
-                const r = await fetch(`${API_URL}/api/orders/${userId}`); 
-                const orders = await r.json();
+                const r = await fetch(`${API_URL}/api/orders/${userId}`); const orders = await r.json();
                 const c = document.getElementById('myOrdersList');
-                if (!orders || !orders.length) { 
-                    c.innerHTML = '<div style="color:var(--text-secondary);text-align:center;padding:15px;font-size:11px;">لا توجد طلبات نشطة</div>'; 
-                    return; 
-                }
+                if (!orders || !orders.length) { c.innerHTML = '<div style="color:var(--text-secondary);text-align:center;padding:15px;font-size:11px;">لا توجد طلبات نشطة</div>'; return; }
                 let h = '';
                 for (const o of orders) {
                     const col = o.type === 'buy' ? 'var(--green)' : 'var(--red)';
@@ -666,182 +394,18 @@
             } catch(e) {}
         }
 
-        async function cancelOrder(oid) { 
-            try { 
-                const r = await fetch(`${API_URL}/api/order/cancel`, {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({order_id:oid, user_id:userId})
-                }); 
-                tg.showAlert((await r.json()).message); 
-                loadAllData(); 
-                loadMyOrders(); 
-                loadOrderBook(); 
-            } catch(e){
-                tg.showAlert('❌ خطأ'); 
-            } 
-        }
-        
-        async function loadTradeHistory() { 
-            try { 
-                const r = await fetch(`${API_URL}/api/user/trades/${userId}`); 
-                const t = await r.json();
-                const c = document.getElementById('tradeHistoryList'); 
-                if(!t.length){
-                    c.innerHTML = '<div style="color:var(--text-secondary);text-align:center;padding:15px;">لا توجد صفقات</div>';
-                    return;
-                } 
-                let h = ''; 
-                for(const x of t.slice(0,15)){
-                    const b = x.buyerId == userId;
-                    h += `<div style="padding:5px;margin-bottom:2px;background:var(--bg-tertiary);border-radius:4px;border-right:3px solid ${b?'var(--green)':'var(--red)'};font-size:10px;">
-                        <div>${b?'🟢 شراء':'🔴 بيع'} | ${new Date(x.createdAt).toLocaleString('ar-SA')}</div>
-                        <div>💵 ${x.price} | 📦 ${x.amount} | 💰 ${x.totalUsdt}</div>
-                    </div>`;
-                }
-                c.innerHTML = h;
-            } catch(e){} 
-        }
+        async function cancelOrder(oid) { try { const r=await fetch(`${API_URL}/api/order/cancel`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:oid,user_id:userId})}); tg.showAlert((await r.json()).message); loadAllData(); loadMyOrders(); loadOrderBook(); } catch(e){tg.showAlert('❌ خطأ');} }
+        async function loadTradeHistory() { try { const r=await fetch(`${API_URL}/api/user/trades/${userId}`); const t=await r.json(),c=document.getElementById('tradeHistoryList'); if(!t.length){c.innerHTML='<div style="color:var(--text-secondary);text-align:center;padding:15px;">لا توجد صفقات</div>';return;} let h=''; for(const x of t.slice(0,15)){const b=x.buyerId==userId;h+=`<div style="padding:5px;margin-bottom:2px;background:var(--bg-tertiary);border-radius:4px;border-right:3px solid ${b?'var(--green)':'var(--red)'};font-size:10px;"><div>${b?'🟢 شراء':'🔴 بيع'} | ${new Date(x.createdAt).toLocaleString('ar-SA')}</div><div>💵 ${x.price} | 📦 ${x.amount} | 💰 ${x.totalUsdt}</div></div>`;}c.innerHTML=h;}catch(e){} }
 
-        async function deposit() { 
-            const a = parseFloat(document.getElementById('depositAmount').value);
-            const n = document.getElementById('depositNetwork').value; 
-            if(!a || a < 1){tg.showAlert('⚠️ الحد الأدنى 1 USDT');return;} 
-            try{
-                const r = await fetch(`${API_URL}/api/deposit`, {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({user_id:userId, amount:a, network:n})
-                });
-                const d = await r.json();
-                if(d.address){
-                    await navigator.clipboard.writeText(d.address);
-                    tg.showAlert(`📤 العنوان:\n${d.address}\n\n(تم النسخ)`);
-                } else tg.showAlert(d.message);
-            } catch(e){
-                tg.showAlert('❌ خطأ');
-            } 
-        }
-        
-        async function withdraw() { 
-            const a = parseFloat(document.getElementById('withdrawAmount').value);
-            const ad = document.getElementById('withdrawAddress').value.trim();
-            const n = document.getElementById('depositNetwork').value; 
-            if(!a || a < 5){tg.showAlert('⚠️ الحد الأدنى 5 USDT');return;}
-            if(!ad){tg.showAlert('⚠️ أدخل العنوان');return;} 
-            try{
-                const r = await fetch(`${API_URL}/api/withdraw`, {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({user_id:userId, amount:a, network:n, address:ad})
-                });
-                tg.showAlert((await r.json()).message);
-                loadUserData();
-            } catch(e){
-                tg.showAlert('❌ خطأ');
-            } 
-        }
-        
-        async function loadKycPanel() { 
-            try{
-                const r = await fetch(`${API_URL}/api/kyc/status/${userId}`);
-                const d = await r.json();
-                const c = document.getElementById('kycPanel');
-                if(d.status === 'approved'){
-                    c.innerHTML = '<div style="color:var(--green);font-size:18px;text-align:center;padding:30px;">✅ حساب موثق</div>';
-                } else if(d.status === 'pending'){
-                    c.innerHTML = '<div style="color:var(--gold);font-size:18px;text-align:center;padding:30px;">⏳ قيد المراجعة</div>';
-                } else {
-                    c.innerHTML = `<div style="text-align:center;margin-bottom:15px;color:var(--text-secondary);">📸 ارفق صورتين</div>
-                    <div><div class="photo-upload-box" onclick="document.getElementById('passportPhoto').click()">📷 صورة الهوية</div>
-                    <input type="file" id="passportPhoto" accept="image/*" style="display:none" onchange="previewFile(this,'passportPreview')"><div id="passportPreview"></div></div>
-                    <div><div class="photo-upload-box" onclick="document.getElementById('personalPhoto').click()">🤳 صورة شخصية</div>
-                    <input type="file" id="personalPhoto" accept="image/*" style="display:none" onchange="previewFile(this,'personalPreview')"><div id="personalPreview"></div></div>
-                    <button class="trade-btn buy-btn" onclick="submitKyc()">📤 إرسال</button>`;
-                }
-            } catch(e){} 
-        }
-        
-        function previewFile(input, previewId) { 
-            const f = input.files[0]; 
-            if(f){
-                const r = new FileReader();
-                r.onload = e => {
-                    document.getElementById(previewId).innerHTML = `<img src="${e.target.result}" style="max-width:100%;max-height:200px;border-radius:8px;margin-top:4px;">`;
-                };
-                r.readAsDataURL(f);
-            } 
-        }
-        
-        async function submitKyc() { 
-            const pf = document.getElementById('passportPhoto')?.files[0];
-            const sf = document.getElementById('personalPhoto')?.files[0]; 
-            if(!pf || !sf){tg.showAlert('⚠️ ارفع الصورتين');return;} 
-            const fd = new FormData(); 
-            fd.append('user_id', userId);
-            fd.append('fullName', 'User ' + userId);
-            fd.append('passportPhoto', pf);
-            fd.append('personalPhoto', sf); 
-            try{
-                const r = await fetch(`${API_URL}/api/kyc/submit`, {method:'POST', body:fd});
-                tg.showAlert((await r.json()).message);
-                loadKycPanel();
-                loadRewardsData();
-            } catch(e){
-                tg.showAlert('❌ خطأ');
-            } 
-        }
-        
-        async function loadReferralPanel() { 
-            try{
-                const r = await fetch(`${API_URL}/api/user/referral/${userId}`);
-                const d = await r.json();
-                document.getElementById('referralPanel').innerHTML = `
-                    <div>👥 المدعوين: <b>${d.referralCount}</b></div>
-                    <div>✅ المودعين: <b>${d.referralDepositCount||0}/5</b></div>
-                    <div>💰 الأرباح: <b>${(d.referralEarnings||0).toFixed(2)} CRYSTAL</b></div>
-                    <div style="background:var(--bg-tertiary);padding:6px;border-radius:4px;margin:8px 0;word-break:break-all;font-size:10px;">${d.referralLink}</div>
-                    <button class="trade-btn buy-btn" onclick="copyReferral()">📋 نسخ الرابط</button>
-                `;
-            } catch(e){} 
-        }
-        
-        function copyReferral() { 
-            const l = document.getElementById('referralPanel').querySelector('div:nth-child(4)')?.textContent; 
-            if(l){
-                navigator.clipboard.writeText(l);
-                tg.showAlert('✅ تم النسخ');
-            } 
-        }
-        
-        async function loadChatMessages() { 
-            try{
-                const r = await fetch(`${API_URL}/api/chat/global`);
-                const ms = await r.json();
-                const c = document.getElementById('chatMessages');
-                let h = '';
-                for(const m of (ms||[]).slice(-20)){
-                    const me = m.senderId == userId;
-                    h += `<div style="margin-bottom:4px;padding:4px 8px;border-radius:8px;background:${me?'rgba(59,130,246,0.2)':'var(--bg-tertiary)'};max-width:85%;${me?'margin-right:auto;':''}"><b>${me?'أنت':m.senderId}:</b> ${m.message}</div>`;
-                }
-                c.innerHTML = h || '<div class="loading">لا توجد رسائل</div>';
-                c.scrollTop = c.scrollHeight;
-            } catch(e){} 
-        }
-        
-        async function sendChatMessage() { 
-            const m = document.getElementById('chatMessage').value.trim(); 
-            if(!m) return; 
-            try{
-                await fetch(`${API_URL}/api/chat/send`, {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({senderId:userId, message:m})
-                });
-                document.getElementById('chatMessage').value = '';
-                loadChatMessages();
-            } catch(e){} 
-        }
+        async function deposit() { const a=parseFloat(document.getElementById('depositAmount').value),n=document.getElementById('depositNetwork').value; if(!a||a<1){tg.showAlert('⚠️ الحد الأدنى 1 USDT');return;} try{const r=await fetch(`${API_URL}/api/deposit`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:userId,amount:a,network:n})});const d=await r.json();if(d.address){await navigator.clipboard.writeText(d.address);tg.showAlert(`📤 العنوان:\n${d.address}\n\n(تم النسخ)`);}else tg.showAlert(d.message);}catch(e){tg.showAlert('❌ خطأ');} }
+        async function withdraw() { const a=parseFloat(document.getElementById('withdrawAmount').value),ad=document.getElementById('withdrawAddress').value.trim(),n=document.getElementById('depositNetwork').value; if(!a||a<5){tg.showAlert('⚠️ الحد الأدنى 5 USDT');return;}if(!ad){tg.showAlert('⚠️ أدخل العنوان');return;} try{const r=await fetch(`${API_URL}/api/withdraw`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:userId,amount:a,network:n,address:ad})});tg.showAlert((await r.json()).message);loadUserData();}catch(e){tg.showAlert('❌ خطأ');} }
+        async function loadKycPanel() { try{const r=await fetch(`${API_URL}/api/kyc/status/${userId}`);const d=await r.json(),c=document.getElementById('kycPanel');if(d.status==='approved')c.innerHTML='<div style="color:var(--green);font-size:18px;text-align:center;padding:30px;">✅ حساب موثق</div>';else if(d.status==='pending')c.innerHTML='<div style="color:var(--gold);font-size:18px;text-align:center;padding:30px;">⏳ قيد المراجعة</div>';else c.innerHTML=`<div style="text-align:center;margin-bottom:15px;color:var(--text-secondary);">📸 ارفع صورة الهوية + صورة شخصية</div><div style="margin-bottom:15px;"><div class="photo-upload-box" onclick="document.getElementById('passportPhoto').click()">📷 صورة الهوية</div><input type="file" id="passportPhoto" accept="image/*" style="display:none" onchange="previewFile(this,'passportPreview')"><div id="passportPreview"></div></div><div style="margin-bottom:15px;"><div class="photo-upload-box" onclick="document.getElementById('personalPhoto').click()">🤳 صورة شخصية</div><input type="file" id="personalPhoto" accept="image/*" style="display:none" onchange="previewFile(this,'personalPreview')"><div id="personalPreview"></div></div><button class="trade-btn buy-btn" onclick="submitKyc()">📤 إرسال</button>`;}catch(e){} }
+        function previewFile(input, previewId) { const f=input.files[0]; if(f){const r=new FileReader();r.onload=e=>{document.getElementById(previewId).innerHTML=`<img src="${e.target.result}" style="max-width:100%;max-height:200px;border-radius:8px;margin-top:4px;">`;};r.readAsDataURL(f);} }
+        async function submitKyc() { const pf=document.getElementById('passportPhoto')?.files[0],sf=document.getElementById('personalPhoto')?.files[0]; if(!pf||!sf){tg.showAlert('⚠️ ارفع الصورتين');return;} const fd=new FormData(); fd.append('user_id',userId);fd.append('fullName','User '+userId);fd.append('passportPhoto',pf);fd.append('personalPhoto',sf); try{const r=await fetch(`${API_URL}/api/kyc/submit`,{method:'POST',body:fd});tg.showAlert((await r.json()).message);loadKycPanel();loadRewardsData();}catch(e){tg.showAlert('❌ خطأ');} }
+        async function loadReferralPanel() { try{const r=await fetch(`${API_URL}/api/user/referral/${userId}`);const d=await r.json();document.getElementById('referralPanel').innerHTML=`<div>👥 المدعوين: <b>${d.referralCount}</b></div><div>✅ المودعين: <b>${d.referralDepositCount||0}/5</b></div><div>💰 الأرباح: <b>${(d.referralEarnings||0).toFixed(2)} CRYSTAL</b></div><div style="background:var(--bg-tertiary);padding:6px;border-radius:4px;margin:8px 0;word-break:break-all;font-size:10px;">${d.referralLink}</div><button class="trade-btn buy-btn" onclick="copyReferral()">📋 نسخ الرابط</button>`;}catch(e){} }
+        function copyReferral() { const l=document.getElementById('referralPanel').querySelector('div:nth-child(4)')?.textContent; if(l){navigator.clipboard.writeText(l);tg.showAlert('✅ تم النسخ');} }
+        async function loadChatMessages() { try{const r=await fetch(`${API_URL}/api/chat/global`);const ms=await r.json(),c=document.getElementById('chatMessages');let h='';for(const m of (ms||[]).slice(-20)){const me=m.senderId==userId;h+=`<div style="margin-bottom:4px;padding:4px 8px;border-radius:8px;background:${me?'rgba(59,130,246,0.2)':'var(--bg-tertiary)'};max-width:85%;${me?'margin-right:auto;':''}"><b>${me?'أنت':m.senderId}:</b> ${m.message}</div>`;}c.innerHTML=h||'<div class="loading">لا توجد رسائل</div>';c.scrollTop=c.scrollHeight;}catch(e){} }
+        async function sendChatMessage() { const m=document.getElementById('chatMessage').value.trim(); if(!m)return; try{await fetch(`${API_URL}/api/chat/send`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({senderId:userId,message:m})});document.getElementById('chatMessage').value='';loadChatMessages();}catch(e){} }
 
         init();
     </script>
