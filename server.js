@@ -30,17 +30,14 @@ function isAdmin(userId) {
     return ADMIN_IDS.includes(parseInt(userId));
 }
 
-// ========== Middleware ==========
 app.use((req, res, next) => {
     console.log(`📡 ${new Date().toISOString()} - ${req.method} ${req.url}`);
     next();
 });
 
-// ========== الصفحات ==========
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'mining-app', 'index.html')));
 app.get('/terms', (req, res) => res.sendFile(path.join(__dirname, 'mining-app', 'terms.html')));
 
-// ========== Health ==========
 app.get('/health', async (req, res) => {
     try { const price = await db.getMarketPrice(); res.json({ status: 'ok', timestamp: new Date(), supply: 5000000, price }); } catch (e) { res.json({ status: 'ok', timestamp: new Date() }); }
 });
@@ -130,7 +127,7 @@ app.get('/api/kyc/status/:userId', async (req, res) => {
     try { const status = await db.getKycStatus(parseInt(req.params.userId)); res.json(status); } catch(e) { res.json({ status: 'not_submitted' }); }
 });
 
-// ✅ KYC - إرسال الصور مباشرة للأدمن
+// ✅ KYC Submit - إرسال مباشر للأدمن وحفظ file_id فقط
 app.post('/api/kyc/submit', upload.fields([{ name: 'passportPhoto', maxCount: 1 }, { name: 'personalPhoto', maxCount: 1 }]), async (req, res) => {
     try {
         const { user_id, fullName } = req.body;
@@ -138,46 +135,61 @@ app.post('/api/kyc/submit', upload.fields([{ name: 'passportPhoto', maxCount: 1 
         
         const userId = parseInt(user_id);
         
-        // ✅ إرسال الصور مباشرة للأدمن مع أزرار القبول/الرفض
+        if (!req.files?.passportPhoto?.[0] || !req.files?.personalPhoto?.[0]) {
+            return res.json({ success: false, message: '⚠️ يجب رفع الصورتين' });
+        }
+        
+        let passportFileId = null;
+        let personalFileId = null;
+        let sentToAdmin = false;
+        
+        // ✅ إرسال الصور مباشرة للأدمن في تيليجرام
         if (global.botInstance) {
             try {
-                // إرسال صورة الهوية أولاً
-                if (req.files?.passportPhoto?.[0]) {
-                    await global.botInstance.telegram.sendPhoto(
-                        ADMIN_IDS[0],
-                        { source: req.files.passportPhoto[0].buffer },
-                        {
-                            caption: `📄 *صورة الهوية*\n👤 ${fullName}\n🆔 \`${userId}\`\n\nاضغط على الأزرار أدناه:`,
-                            parse_mode: 'Markdown',
-                            ...Markup.inlineKeyboard([
-                                [Markup.button.callback('✅ قبول', `approve_kyc_user_${userId}`), 
-                                 Markup.button.callback('❌ رفض', `reject_kyc_user_${userId}`)]
-                            ])
-                        }
-                    );
-                }
+                // صورة الهوية مع أزرار
+                const msg1 = await global.botInstance.telegram.sendPhoto(
+                    ADMIN_IDS[0],
+                    { source: req.files.passportPhoto[0].buffer },
+                    {
+                        caption: `📄 *صورة الهوية*\n👤 ${fullName}\n🆔 \`${userId}\`\n📅 ${new Date().toLocaleString('ar-SA')}\n\nاختر الإجراء:`,
+                        parse_mode: 'Markdown',
+                        ...Markup.inlineKeyboard([
+                            [Markup.button.callback('✅ قبول', `approve_kyc_user_${userId}`),
+                             Markup.button.callback('❌ رفض', `reject_kyc_user_${userId}`)]
+                        ])
+                    }
+                );
+                passportFileId = msg1.photo[msg1.photo.length - 1].file_id;
                 
-                // إرسال الصورة الشخصية
-                if (req.files?.personalPhoto?.[0]) {
-                    await global.botInstance.telegram.sendPhoto(
-                        ADMIN_IDS[0],
-                        { source: req.files.personalPhoto[0].buffer },
-                        { caption: `📸 *صورة شخصية*\n👤 ${fullName}\n🆔 \`${userId}\``, parse_mode: 'Markdown' }
-                    );
-                }
+                // الصورة الشخصية
+                const msg2 = await global.botInstance.telegram.sendPhoto(
+                    ADMIN_IDS[0],
+                    { source: req.files.personalPhoto[0].buffer },
+                    { caption: `📸 *صورة شخصية*\n👤 ${fullName}\n🆔 \`${userId}\``, parse_mode: 'Markdown' }
+                );
+                personalFileId = msg2.photo[msg2.photo.length - 1].file_id;
+                
+                sentToAdmin = true;
+                console.log(`✅ صور KYC أرسلت للأدمن: ${userId} - ${fullName}`);
             } catch(e) {
-                console.error('KYC photo send error:', e.message);
+                console.error('KYC send to admin error:', e.message);
             }
         }
         
-        // ✅ حفظ طلب التوثيق في قاعدة البيانات
+        // ✅ حفظ الطلب مع file_id فقط (بدون base64)
         const result = await db.createKycRequest(
             userId, fullName, 'N/A', 'N/A', 'N/A', '', 'SD', '',
-            'sent_to_admin', 'sent_to_admin', '', '', ''
+            passportFileId, personalFileId, '', '', ''
         );
         
-        res.json(result);
-    } catch(e) { res.json({ success: false, message: '❌ حدث خطأ' }); }
+        res.json({ 
+            success: true, 
+            message: sentToAdmin ? '✅ تم إرسال طلب التوثيق بنجاح!' : '✅ تم إرسال الطلب (قد يتأخر ظهور الصور)'
+        });
+    } catch(e) { 
+        console.error('KYC submit error:', e.message);
+        res.json({ success: false, message: '❌ حدث خطأ' }); 
+    }
 });
 
 app.get('/api/user/referral/:userId', async (req, res) => {
@@ -253,9 +265,9 @@ bot.start(async (ctx) => {
 
 bot.command('help', async (ctx) => { let t = '📚 /start /price /balance /stats /supply /orders /buy /sell /cancel /referral /reward'; if (isAdmin(ctx.from.id)) t += '\n\n👑 /admin /admin_balance /kyc_list /pending /fix /maintenance /ban /unban'; await ctx.reply(t, { parse_mode: 'Markdown' }); });
 bot.command('price', async (ctx) => { try { const p = await db.getMarketPrice(); await ctx.reply(`💎 ${p} USDT`); } catch(e) {} });
-bot.command('supply', async (ctx) => { try { const sc = await db.validateTotalSupply(); await ctx.reply(`📊 العرض: ${sc.totalSupply.toLocaleString()}\n🔄 متداول: ${sc.circulating.toFixed(2)}\n👑 أدمن: ${sc.adminBalance.toFixed(2)}`); } catch(e) {} });
+bot.command('supply', async (ctx) => { try { const sc = await db.validateTotalSupply(); await ctx.reply(`📊 ${sc.totalSupply.toLocaleString()} | 🔄 ${sc.circulating.toFixed(2)} | 👑 ${sc.adminBalance.toFixed(2)}`); } catch(e) {} });
 bot.command('balance', async (ctx) => { try { const s = await db.getUserStats(ctx.from.id); if (!s) return ctx.reply('⚠️ /start أولاً'); await ctx.reply(`💰 CRYSTAL: ${s.crystalBalance?.toFixed(2)||0}\n💵 USDT: ${s.usdtBalance?.toFixed(2)||0}`); } catch(e) {} });
-bot.command('stats', async (ctx) => { try { const s = await db.getMarketStats(); await ctx.reply(`📊 💎${s.price} 📈${s.change24h?.toFixed(2)||0}% 🟢${s.buyOrders} 🔴${s.sellOrders}`); } catch(e) {} });
+bot.command('stats', async (ctx) => { try { const s = await db.getMarketStats(); await ctx.reply(`📊 💎${s.price} 📈${s.change24h?.toFixed(2)||0}%`); } catch(e) {} });
 bot.command('referral', async (ctx) => { try { const d = await db.getReferralData(ctx.from.id); await ctx.reply(`👥${d.referralCount} 💰${(d.referralEarnings||0).toFixed(2)}\n🔗${d.referralLink}`); } catch(e) {} });
 bot.command('buy', async (ctx) => { try { const a = ctx.message.text.split(' '); if (a.length<3) return ctx.reply('/buy [سعر] [كمية]'); const r = await db.createOrder(ctx.from.id, 'buy', parseFloat(a[1]), parseFloat(a[2])); await ctx.reply(r.message); } catch(e) {} });
 bot.command('sell', async (ctx) => { try { const a = ctx.message.text.split(' '); if (a.length<3) return ctx.reply('/sell [سعر] [كمية]'); const r = await db.createOrder(ctx.from.id, 'sell', parseFloat(a[1]), parseFloat(a[2])); await ctx.reply(r.message); } catch(e) {} });
@@ -267,7 +279,7 @@ bot.command('orders', async (ctx) => { try { const buys = await db.getActiveOrde
 bot.command('admin', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.reply('⛔');
     const kyc = await db.getPendingKycRequests(), w = await db.getPendingWithdraws();
-    await ctx.reply(`👑 *لوحة الأدمن*\n🆔 توثيق: ${kyc.length}\n💰 سحب: ${w.length}\n\nℹ️ الإيداع تلقائي`, {
+    await ctx.reply(`👑 *لوحة الأدمن*\n🆔 توثيق: ${kyc.length}\n💰 سحب: ${w.length}\n\nℹ️ الإيداع تلقائي\n📸 الصور تصل مباشرة عند طلب التوثيق`, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
             [Markup.button.callback(`🆔 توثيق (${kyc.length})`, 'admin_kyc')],
@@ -281,8 +293,8 @@ bot.command('admin_balance', async (ctx) => { if (!isAdmin(ctx.from.id)) return;
 bot.command('kyc_list', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.reply('⛔');
     const pending = await db.getPendingKycRequests();
-    if (!pending.length) return ctx.reply('📭 لا توجد طلبات توثيق');
-    await ctx.reply(`🆔 *${pending.length} طلبات توثيق*\n\n📸 *الصور تم إرسالها مباشرة عند تقديم الطلب*\n👆 *تفقد المحادثة أعلاه* لرؤية الصور والأزرار`, { parse_mode: 'Markdown' });
+    if (!pending.length) return ctx.reply('📭 لا توجد طلبات');
+    await ctx.reply(`🆔 *${pending.length} طلبات توثيق*\n\n📸 *الصور تصل مباشرة في المحادثة*\n👆 *تفقد المحادثة أعلاه* للعثور على الصور والأزرار`, { parse_mode: 'Markdown' });
 });
 
 bot.command('pending', async (ctx) => {
@@ -304,45 +316,69 @@ bot.command('unban', async (ctx) => { if (!isAdmin(ctx.from.id)) return; await c
 
 // ========== Callbacks ==========
 
-bot.action('admin_kyc', async (ctx) => { await ctx.answerCbQuery(); const p = await db.getPendingKycRequests(); if (!p.length) return ctx.reply('📭 لا توجد طلبات'); await ctx.reply('📸 *الصور تم إرسالها مباشرة*\n👆 *تفقد المحادثة أعلاه*', { parse_mode: 'Markdown' }); });
-bot.action('admin_withdraws', async (ctx) => { await ctx.answerCbQuery(); const p = await db.getPendingWithdraws(); for (const r of p.slice(0,5)) await ctx.reply(`💰 ${r.amount} USDT | 👤 ${r.userId}`, Markup.inlineKeyboard([[Markup.button.callback('✅ إرسال', `confirm_withdraw_${r._id}`)]])); });
+bot.action('admin_kyc', async (ctx) => {
+    await ctx.answerCbQuery();
+    const p = await db.getPendingKycRequests();
+    if (!p.length) return ctx.reply('📭 لا توجد طلبات');
+    await ctx.reply('📸 *الصور تصل مباشرة في المحادثة*\n👆 *تفقد المحادثة أعلاه*', { parse_mode: 'Markdown' });
+});
 
-// ✅ قبول KYC عن طريق userId
+bot.action('admin_withdraws', async (ctx) => {
+    await ctx.answerCbQuery();
+    const p = await db.getPendingWithdraws();
+    for (const r of p.slice(0,5)) {
+        await ctx.reply(`💰 ${r.amount} USDT | 👤 ${r.userId}`, 
+            Markup.inlineKeyboard([[Markup.button.callback('✅ إرسال', `confirm_withdraw_${r._id}`)]])
+        );
+    }
+});
+
+// ✅ قبول KYC
 bot.action(/approve_kyc_user_(.+)/, async (ctx) => {
     const userId = parseInt(ctx.match[1]);
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔');
     await ctx.answerCbQuery('⏳ جاري الموافقة...');
     
-    // البحث عن طلب التوثيق المعلق لهذا المستخدم
-    const pending = await db.getPendingKycRequests();
-    const req = pending.find(r => r.userId === userId);
-    
-    if (req) {
-        const result = await db.approveKyc(req._id, ctx.from.id);
-        await ctx.editMessageCaption({ caption: `✅ *تمت الموافقة*\n👤 المستخدم: \`${userId}\``, parse_mode: 'Markdown' });
-        await ctx.reply(result.message);
-        if (global.botInstance) { try { await global.botInstance.telegram.sendMessage(userId, '🎉 *تم توثيق حسابك!*\n✅ يمكنك الآن التداول\n🎁 +100 CRYSTAL مكافأة', { parse_mode: 'Markdown' }); } catch(e) {} }
-    } else {
-        await ctx.reply('⚠️ الطلب غير موجود');
-    }
+    try {
+        const KycRequest = require('./models').KycRequest;
+        const request = await KycRequest.findOne({ userId, status: 'pending' });
+        if (!request) { await ctx.reply('⚠️ الطلب غير موجود أو تم معالجته'); return; }
+        
+        const result = await db.approveKyc(request._id, ctx.from.id);
+        
+        // تحديث الكابشن
+        try { await ctx.editMessageCaption({ caption: `✅ *تمت الموافقة*\n👤 ${request.fullName}\n🆔 \`${userId}\`\n🎁 +100 CRYSTAL`, parse_mode: 'Markdown' }); } catch(e) {}
+        
+        await ctx.reply(`✅ ${result.message}`);
+        
+        if (global.botInstance) {
+            try { await global.botInstance.telegram.sendMessage(userId, '🎉 *تم توثيق حسابك!*\n✅ يمكنك الآن التداول\n🎁 +100 CRYSTAL مكافأة', { parse_mode: 'Markdown' }); } catch(e) {}
+        }
+    } catch(e) { await ctx.reply('❌ حدث خطأ'); }
 });
 
-// ✅ رفض KYC عن طريق userId
+// ✅ رفض KYC
 bot.action(/reject_kyc_user_(.+)/, async (ctx) => {
     const userId = parseInt(ctx.match[1]);
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔');
     await ctx.answerCbQuery('⏳ جاري الرفض...');
     
-    const pending = await db.getPendingKycRequests();
-    const req = pending.find(r => r.userId === userId);
-    
-    if (req) {
-        const result = await db.rejectKyc(req._id, ctx.from.id, 'الصور غير واضحة - أعد الإرسال');
-        await ctx.editMessageCaption({ caption: `❌ *تم الرفض*\n👤 المستخدم: \`${userId}\``, parse_mode: 'Markdown' });
-        if (global.botInstance) { try { await global.botInstance.telegram.sendMessage(userId, '⚠️ *تم رفض طلب التوثيق*\nالسبب: الصور غير واضحة\n📸 يرجى إعادة الإرسال', { parse_mode: 'Markdown' }); } catch(e) {} }
-    }
+    try {
+        const KycRequest = require('./models').KycRequest;
+        const request = await KycRequest.findOne({ userId, status: 'pending' });
+        if (!request) { await ctx.reply('⚠️ الطلب غير موجود'); return; }
+        
+        const result = await db.rejectKyc(request._id, ctx.from.id, 'الصور غير واضحة - أعد الإرسال');
+        
+        try { await ctx.editMessageCaption({ caption: `❌ *تم الرفض*\n👤 ${request.fullName}\n🆔 \`${userId}\``, parse_mode: 'Markdown' }); } catch(e) {}
+        
+        if (global.botInstance) {
+            try { await global.botInstance.telegram.sendMessage(userId, '⚠️ *تم رفض طلب التوثيق*\nالسبب: الصور غير واضحة\n📸 يرجى إعادة الإرسال', { parse_mode: 'Markdown' }); } catch(e) {}
+        }
+    } catch(e) { await ctx.reply('❌ حدث خطأ'); }
 });
 
+// ✅ تأكيد السحب
 bot.action(/confirm_withdraw_(.+)/, async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔');
     await ctx.answerCbQuery('⏳ جاري الإرسال...');
