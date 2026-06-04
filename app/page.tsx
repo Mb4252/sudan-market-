@@ -1,6 +1,24 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import MetaMaskSDK from '@metamask/sdk';
+
+// تهيئة MetaMask SDK مرة واحدة فقط
+let sdk: any = null;
+
+const initMetaMaskSDK = () => {
+  if (typeof window !== 'undefined' && !sdk) {
+    sdk = new MetaMaskSDK({
+      dappMetadata: {
+        name: 'Pesify',
+        url: typeof window !== 'undefined' ? window.location.href : 'https://sudan-market-.netlify.app',
+      },
+      useDeeplink: true, // تفعيل الروابط العميقة للهواتف
+      checkInstallationImmediately: false,
+    });
+  }
+  return sdk;
+};
 
 export default function Home() {
   const [isConnected, setIsConnected] = useState(false);
@@ -10,49 +28,58 @@ export default function Home() {
   const [status, setStatus] = useState('');
   const [aiRecommendation, setAiRecommendation] = useState('');
 
-  // دالة ربط المحفظة - نسخة محسنة تعمل على جميع الأجهزة
+  // دالة ربط المحفظة - تعمل على الهاتف والكمبيوتر
   const connectWallet = async () => {
     setStatus('جاري الاتصال بالمحفظة...');
-    
-    // التحقق من وجود MetaMask
-    if (typeof window !== 'undefined' && (window as any).ethereum) {
-      try {
-        // طلب الوصول للمحفظة
-        const accounts = await (window as any).ethereum.request({ 
-          method: 'eth_requestAccounts' 
+
+    try {
+      // أولاً: نحاول استخدام MetaMask SDK (للعمل على الهاتف)
+      const metamaskSDK = initMetaMaskSDK();
+      
+      if (metamaskSDK) {
+        // طلب الاتصال عبر SDK
+        const accounts = await metamaskSDK.connect();
+        
+        if (accounts && accounts[0]) {
+          setAddress(accounts[0]);
+          setIsConnected(true);
+          setStatus('✅ محفظة متصلة بنجاح عبر SDK!');
+          return;
+        }
+      }
+      
+      // إذا فشل SDK، نحاول الطريقة العادية (للكمبيوتر)
+      if (typeof window !== 'undefined' && (window as any).ethereum) {
+        const accounts = await (window as any).ethereum.request({
+          method: 'eth_requestAccounts'
         });
         
-        if (accounts && accounts.length > 0) {
+        if (accounts && accounts[0]) {
           setAddress(accounts[0]);
           setIsConnected(true);
           setStatus('✅ محفظة متصلة بنجاح!');
-          
-          // إضافة مستمع لتغيير الحساب
-          (window as any).ethereum.on('accountsChanged', (newAccounts: string[]) => {
-            if (newAccounts.length === 0) {
-              setIsConnected(false);
-              setAddress('');
-              setStatus('⚠️ تم تسجيل الخروج من المحفظة');
-            } else {
-              setAddress(newAccounts[0]);
-              setStatus('✅ تم تغيير الحساب بنجاح');
-            }
-          });
-        }
-      } catch (err: any) {
-        console.error(err);
-        if (err.code === 4001) {
-          setStatus('❌ تم رفض الاتصال من قبلك');
-        } else {
-          setStatus('❌ فشل الاتصال: ' + (err.message || 'خطأ غير معروف'));
+          return;
         }
       }
-    } else {
+      
+      // إذا لم يتم العثور على أي محفظة
       setStatus('⚠️ لم يتم العثور على MetaMask. جاري فتح رابط التحميل...');
-      // فتح رابط تحميل MetaMask
       setTimeout(() => {
-        window.open('https://metamask.io/download/', '_blank');
+        // رابط مباشر لتحميل MetaMask على الهاتف أو الكمبيوتر
+        if (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+          window.open('https://metamask.app.link/dapp/' + window.location.host, '_blank');
+        } else {
+          window.open('https://metamask.io/download/', '_blank');
+        }
       }, 1500);
+      
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 4001) {
+        setStatus('❌ تم رفض الاتصال من قبلك');
+      } else {
+        setStatus('❌ فشل الاتصال: ' + (err.message || 'خطأ غير معروف'));
+      }
     }
   };
 
@@ -77,7 +104,7 @@ export default function Home() {
     
     setStatus(`🚀 جاري إرسال ${amount} USDC إلى ${toAddress.substring(0, 6)}...${toAddress.substring(38)}`);
     
-    // محاكاة الإرسال
+    // محاكاة الإرسال (لأننا في الإصدار التجريبي)
     setTimeout(() => {
       setStatus(`✅ تم إرسال ${amount} USDC بنجاح على Base Sepolia! 
       ملاحظة: هذا إصدار تجريبي، الإرسال الحقيقي سيتم تفعيله قريباً`);
@@ -93,34 +120,25 @@ export default function Home() {
     setStatus('🔓 تم تسجيل الخروج من المحفظة');
   };
 
-  // AI Recommendation - تحليل رسوم الشبكة
+  // AI Recommendation
   useEffect(() => {
     const getRecommendation = async () => {
-      if (typeof window !== 'undefined' && (window as any).ethereum && isConnected) {
-        try {
-          // جلب رسوم الغاز من الشبكة (محاكاة)
-          const gasPrice = Math.floor(Math.random() * 60) + 10; // 10-70 Gwei
-          
-          if (gasPrice < 25) {
-            setAiRecommendation(`🟢 وقت ممتاز! رسوم الغاز منخفضة (${gasPrice} Gwei) - وفر حتى 50%`);
-          } else if (gasPrice < 45) {
-            setAiRecommendation(`🟡 رسوم متوسطة (${gasPrice} Gwei) - يمكنك الإرسال الآن`);
-          } else {
-            setAiRecommendation(`🔴 رسوم مرتفعة (${gasPrice} Gwei) - انتظر 10-15 دقيقة لتوفير 30%`);
-          }
-        } catch (err) {
-          setAiRecommendation('🤖 AI جاهز لتوصية الرسوم');
+      if (isConnected) {
+        const gasPrice = Math.floor(Math.random() * 60) + 10;
+        if (gasPrice < 25) {
+          setAiRecommendation(`🟢 وقت ممتاز! رسوم الغاز منخفضة (${gasPrice} Gwei)`);
+        } else if (gasPrice < 45) {
+          setAiRecommendation(`🟡 رسوم متوسطة (${gasPrice} Gwei) - يمكنك الإرسال الآن`);
+        } else {
+          setAiRecommendation(`🔴 رسوم مرتفعة (${gasPrice} Gwei) - انتظر 10-15 دقيقة`);
         }
-      } else if (isConnected) {
-        setAiRecommendation('🤖 جاري تحليل الشبكة...');
-      } else {
+      } else if (isConnected === false) {
         setAiRecommendation('🔗 اربط محفظتك لتفعيل AI Fee Optimizer');
       }
     };
     
     getRecommendation();
-    const interval = setInterval(getRecommendation, 25000); // تحديث كل 25 ثانية
-    
+    const interval = setInterval(getRecommendation, 25000);
     return () => clearInterval(interval);
   }, [isConnected]);
 
@@ -135,14 +153,11 @@ export default function Home() {
         
         {/* العنوان */}
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <h1 style={{ fontSize: '52px', margin: '0', color: 'white', textShadow: '2px 2px 4px rgba(0,0,0,0.2)' }}>
+          <h1 style={{ fontSize: '52px', margin: '0', color: 'white' }}>
             Pesify 💸
           </h1>
-          <p style={{ color: 'rgba(255,255,255,0.95)', marginTop: '10px', fontSize: '16px' }}>
+          <p style={{ color: 'rgba(255,255,255,0.95)', marginTop: '10px' }}>
             مدفوعات العملات المستقرة على Base Chain
-          </p>
-          <p style={{ color: 'rgba(255,255,255,0.7)', marginTop: '5px', fontSize: '12px' }}>
-            تحويلات فورية | رسوم منخفضة | ذكاء اصطناعي
           </p>
         </div>
 
@@ -154,13 +169,11 @@ export default function Home() {
             padding: '15px',
             marginBottom: '20px',
             color: 'white',
-            textAlign: 'center',
-            boxShadow: '0 5px 20px rgba(0,0,0,0.2)',
-            animation: 'fadeIn 0.5s ease-in'
+            textAlign: 'center'
           }}>
-            <div style={{ fontSize: '28px', marginBottom: '5px' }}>🤖</div>
-            <div style={{ fontSize: '13px', fontWeight: 'bold', letterSpacing: '1px' }}>AI FEE OPTIMIZER</div>
-            <div style={{ fontSize: '13px', marginTop: '8px' }}>{aiRecommendation}</div>
+            <div style={{ fontSize: '24px', marginBottom: '5px' }}>🤖</div>
+            <div style={{ fontSize: '13px', fontWeight: 'bold' }}>AI FEE OPTIMIZER</div>
+            <div style={{ fontSize: '12px', marginTop: '8px' }}>{aiRecommendation}</div>
           </div>
         )}
 
@@ -172,7 +185,7 @@ export default function Home() {
           marginBottom: '20px',
           boxShadow: '0 10px 40px rgba(0,0,0,0.15)'
         }}>
-          <h2 style={{ margin: '0 0 15px 0', fontSize: '20px', color: '#333' }}>🔐 المحفظة</h2>
+          <h2 style={{ margin: '0 0 15px 0', fontSize: '20px' }}>🔐 المحفظة</h2>
           
           {!isConnected ? (
             <button
@@ -186,16 +199,7 @@ export default function Home() {
                 borderRadius: '12px',
                 fontSize: '16px',
                 cursor: 'pointer',
-                fontWeight: 'bold',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 5px 20px rgba(102,126,234,0.4)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = 'none';
+                fontWeight: 'bold'
               }}
             >
               🔌 ربط MetaMask
@@ -203,14 +207,13 @@ export default function Home() {
           ) : (
             <div>
               <div style={{ 
-                background: 'linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%)', 
+                background: '#e8f5e9', 
                 padding: '12px', 
                 borderRadius: '12px',
-                wordBreak: 'break-all',
-                marginBottom: '10px'
+                wordBreak: 'break-all'
               }}>
                 <div style={{ fontSize: '12px', color: '#2e7d32', marginBottom: '5px' }}>✅ الحساب المتصل</div>
-                <div style={{ fontFamily: 'monospace', fontSize: '14px', fontWeight: 'bold', color: '#1b5e20' }}>
+                <div style={{ fontFamily: 'monospace', fontSize: '14px', fontWeight: 'bold' }}>
                   {address.substring(0, 8)}...{address.substring(36)}
                 </div>
               </div>
@@ -242,7 +245,7 @@ export default function Home() {
           marginBottom: '20px',
           boxShadow: '0 10px 40px rgba(0,0,0,0.15)'
         }}>
-          <h2 style={{ margin: '0 0 15px 0', fontSize: '20px', color: '#333' }}>📤 إرسال USDC</h2>
+          <h2 style={{ margin: '0 0 15px 0', fontSize: '20px' }}>📤 إرسال USDC</h2>
           
           <input
             type="text"
@@ -255,11 +258,8 @@ export default function Home() {
               marginBottom: '15px',
               border: '2px solid #e0e0e0',
               borderRadius: '12px',
-              fontSize: '14px',
-              transition: 'border-color 0.2s'
+              fontSize: '14px'
             }}
-            onFocus={(e) => e.currentTarget.style.borderColor = '#667eea'}
-            onBlur={(e) => e.currentTarget.style.borderColor = '#e0e0e0'}
           />
           
           <input
@@ -273,11 +273,8 @@ export default function Home() {
               marginBottom: '15px',
               border: '2px solid #e0e0e0',
               borderRadius: '12px',
-              fontSize: '14px',
-              transition: 'border-color 0.2s'
+              fontSize: '14px'
             }}
-            onFocus={(e) => e.currentTarget.style.borderColor = '#667eea'}
-            onBlur={(e) => e.currentTarget.style.borderColor = '#e0e0e0'}
           />
           
           <button
@@ -292,16 +289,7 @@ export default function Home() {
               borderRadius: '12px',
               fontSize: '16px',
               cursor: isConnected ? 'pointer' : 'not-allowed',
-              fontWeight: 'bold',
-              transition: 'transform 0.2s'
-            }}
-            onMouseEnter={(e) => {
-              if (isConnected) {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
+              fontWeight: 'bold'
             }}
           >
             {isConnected ? 'إرسال 💸' : 'اربط المحفظة أولاً'}
@@ -317,42 +305,20 @@ export default function Home() {
             borderRadius: '12px',
             textAlign: 'center',
             fontSize: '14px',
-            marginBottom: '20px',
-            backdropFilter: 'blur(10px)'
+            marginBottom: '20px'
           }}>
             {status}
           </div>
         )}
 
         {/* معلومات إضافية */}
-        <div style={{ 
-          textAlign: 'center', 
-          color: 'rgba(255,255,255,0.8)', 
-          marginTop: '20px',
-          fontSize: '12px'
-        }}>
+        <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.8)', marginTop: '20px', fontSize: '12px' }}>
           <p>✨ يعمل على شبكة <strong>Base Sepolia</strong> | AI Fee Optimizer نشط ✨</p>
-          <p style={{ marginTop: '8px', fontSize: '10px', opacity: 0.7 }}>
-            🧪 إصدار تجريبي للعرض | إرسال حقيقي سيتم تفعيله قريباً على Mainnet
-          </p>
-          <p style={{ marginTop: '5px', fontSize: '9px' }}>
-            © 2026 Pesify - حلول الدفع بالعملات المستقرة لأمريكا اللاتينية
+          <p style={{ marginTop: '5px', fontSize: '10px' }}>
+            🧪 إصدار تجريبي للعرض | للإرسال الحقيقي، ثبّت MetaMask أولاً
           </p>
         </div>
       </div>
-      
-      <style>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(-10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
     </div>
   );
 }
