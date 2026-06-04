@@ -1,24 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import MetaMaskSDK from '@metamask/sdk';
+import { ethers } from 'ethers';
 
-// تهيئة MetaMask SDK مرة واحدة فقط
-let sdk: any = null;
-
-const initMetaMaskSDK = () => {
-  if (typeof window !== 'undefined' && !sdk) {
-    sdk = new MetaMaskSDK({
-      dappMetadata: {
-        name: 'Pesify',
-        url: typeof window !== 'undefined' ? window.location.href : 'https://sudan-market-.netlify.app',
-      },
-      useDeeplink: true, // تفعيل الروابط العميقة للهواتف
-      checkInstallationImmediately: false,
-    });
+declare global {
+  interface Window {
+    ethereum?: any;
   }
-  return sdk;
-};
+}
 
 export default function Home() {
   const [isConnected, setIsConnected] = useState(false);
@@ -27,120 +16,165 @@ export default function Home() {
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState('');
   const [aiRecommendation, setAiRecommendation] = useState('');
+  const [balance, setBalance] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  // دالة ربط المحفظة - تعمل على الهاتف والكمبيوتر
+  // عنوان عقد USDC على Base Sepolia
+  const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+  
+  // ABI المبسط لنقل USDC
+  const USDC_ABI = [
+    'function transfer(address to, uint256 amount) external returns (bool)',
+    'function balanceOf(address account) external view returns (uint256)',
+    'function decimals() external view returns (uint8)'
+  ];
+
+  // ربط المحفظة
   const connectWallet = async () => {
-    setStatus('جاري الاتصال بالمحفظة...');
+    if (!window.ethereum) {
+      setStatus('⚠️ الرجاء تثبيت MetaMask أولاً');
+      window.open('https://metamask.io/download/', '_blank');
+      return;
+    }
 
     try {
-      // أولاً: نحاول استخدام MetaMask SDK (للعمل على الهاتف)
-      const metamaskSDK = initMetaMaskSDK();
-      
-      if (metamaskSDK) {
-        // طلب الاتصال عبر SDK
-        const accounts = await metamaskSDK.connect();
-        
-        if (accounts && accounts[0]) {
-          setAddress(accounts[0]);
-          setIsConnected(true);
-          setStatus('✅ محفظة متصلة بنجاح عبر SDK!');
-          return;
-        }
-      }
-      
-      // إذا فشل SDK، نحاول الطريقة العادية (للكمبيوتر)
-      if (typeof window !== 'undefined' && (window as any).ethereum) {
-        const accounts = await (window as any).ethereum.request({
-          method: 'eth_requestAccounts'
-        });
-        
-        if (accounts && accounts[0]) {
-          setAddress(accounts[0]);
-          setIsConnected(true);
-          setStatus('✅ محفظة متصلة بنجاح!');
-          return;
-        }
-      }
-      
-      // إذا لم يتم العثور على أي محفظة
-      setStatus('⚠️ لم يتم العثور على MetaMask. جاري فتح رابط التحميل...');
-      setTimeout(() => {
-        // رابط مباشر لتحميل MetaMask على الهاتف أو الكمبيوتر
-        if (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-          window.open('https://metamask.app.link/dapp/' + window.location.host, '_blank');
-        } else {
-          window.open('https://metamask.io/download/', '_blank');
-        }
-      }, 1500);
-      
+      setStatus('جاري الاتصال بالمحفظة...');
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      setAddress(accounts[0]);
+      setIsConnected(true);
+      setStatus('✅ محفظة متصلة بنجاح!');
+      await getBalance(accounts[0]);
     } catch (err: any) {
-      console.error(err);
-      if (err.code === 4001) {
-        setStatus('❌ تم رفض الاتصال من قبلك');
-      } else {
-        setStatus('❌ فشل الاتصال: ' + (err.message || 'خطأ غير معروف'));
-      }
+      setStatus('❌ فشل الاتصال: ' + (err.message || 'خطأ غير معروف'));
     }
   };
 
-  // دالة إرسال USDC
-  const sendPayment = () => {
-    if (!isConnected) {
-      setStatus('⚠️ الرجاء ربط المحفظة أولاً');
-      return;
+  // الحصول على رصيد USDC
+  const getBalance = async (walletAddress: string) => {
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const contract = new ethers.Contract(USDC_ADDRESS, USDC_ABI, provider);
+      const decimals = await contract.decimals();
+      const rawBalance = await contract.balanceOf(walletAddress);
+      const formattedBalance = ethers.formatUnits(rawBalance, decimals);
+      setBalance(formattedBalance);
+    } catch (err) {
+      console.error('خطأ في جلب الرصيد:', err);
     }
-    if (!toAddress || !amount) {
-      setStatus('⚠️ الرجاء إدخال العنوان والمبلغ');
-      return;
-    }
-    if (!toAddress.startsWith('0x') || toAddress.length !== 42) {
-      setStatus('⚠️ العنوان غير صالح. يجب أن يبدأ بـ 0x ويتكون من 42 حرفاً');
-      return;
-    }
-    if (Number(amount) <= 0) {
-      setStatus('⚠️ المبلغ يجب أن يكون أكبر من 0');
-      return;
-    }
-    
-    setStatus(`🚀 جاري إرسال ${amount} USDC إلى ${toAddress.substring(0, 6)}...${toAddress.substring(38)}`);
-    
-    // محاكاة الإرسال (لأننا في الإصدار التجريبي)
-    setTimeout(() => {
-      setStatus(`✅ تم إرسال ${amount} USDC بنجاح على Base Sepolia! 
-      ملاحظة: هذا إصدار تجريبي، الإرسال الحقيقي سيتم تفعيله قريباً`);
-      setToAddress('');
-      setAmount('');
-    }, 3000);
   };
 
-  // دالة تسجيل الخروج
-  const disconnectWallet = () => {
-    setIsConnected(false);
-    setAddress('');
-    setStatus('🔓 تم تسجيل الخروج من المحفظة');
-  };
+  // تحديث الرصيد عند تغيير الحساب
+  useEffect(() => {
+    if (isConnected && window.ethereum) {
+      window.ethereum.on('accountsChanged', (accounts: string[]) => {
+        if (accounts.length === 0) {
+          setIsConnected(false);
+          setAddress('');
+          setBalance('');
+        } else {
+          setAddress(accounts[0]);
+          getBalance(accounts[0]);
+        }
+      });
+    }
+  }, [isConnected]);
 
   // AI Recommendation
   useEffect(() => {
     const getRecommendation = async () => {
-      if (isConnected) {
-        const gasPrice = Math.floor(Math.random() * 60) + 10;
-        if (gasPrice < 25) {
-          setAiRecommendation(`🟢 وقت ممتاز! رسوم الغاز منخفضة (${gasPrice} Gwei)`);
-        } else if (gasPrice < 45) {
-          setAiRecommendation(`🟡 رسوم متوسطة (${gasPrice} Gwei) - يمكنك الإرسال الآن`);
-        } else {
-          setAiRecommendation(`🔴 رسوم مرتفعة (${gasPrice} Gwei) - انتظر 10-15 دقيقة`);
+      if (isConnected && window.ethereum) {
+        try {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const feeData = await provider.getFeeData();
+          const gasPrice = feeData.gasPrice;
+          const gasPriceGwei = gasPrice ? Number(ethers.formatUnits(gasPrice, 'gwei')) : 30;
+          
+          if (gasPriceGwei < 25) {
+            setAiRecommendation(`🟢 وقت ممتاز! رسوم الغاز منخفضة (${gasPriceGwei.toFixed(0)} Gwei)`);
+          } else if (gasPriceGwei < 45) {
+            setAiRecommendation(`🟡 رسوم متوسطة (${gasPriceGwei.toFixed(0)} Gwei) - يمكنك الإرسال الآن`);
+          } else {
+            setAiRecommendation(`🔴 رسوم مرتفعة (${gasPriceGwei.toFixed(0)} Gwei) - انتظر 10-15 دقيقة`);
+          }
+        } catch (err) {
+          setAiRecommendation('🤖 AI جاهز لتوصية الرسوم');
         }
-      } else if (isConnected === false) {
+      } else if (!isConnected) {
         setAiRecommendation('🔗 اربط محفظتك لتفعيل AI Fee Optimizer');
       }
     };
     
     getRecommendation();
-    const interval = setInterval(getRecommendation, 25000);
+    const interval = setInterval(getRecommendation, 30000);
     return () => clearInterval(interval);
   }, [isConnected]);
+
+  // الإرسال الحقيقي لـ USDC
+  const sendUSDC = async () => {
+    if (!isConnected) {
+      setStatus('⚠️ الرجاء ربط المحفظة أولاً');
+      return;
+    }
+    
+    if (!toAddress || !amount) {
+      setStatus('⚠️ الرجاء إدخال العنوان والمبلغ');
+      return;
+    }
+    
+    if (!toAddress.startsWith('0x') || toAddress.length !== 42) {
+      setStatus('⚠️ العنوان غير صالح. يجب أن يبدأ بـ 0x ويتكون من 42 حرفاً');
+      return;
+    }
+    
+    if (Number(amount) <= 0) {
+      setStatus('⚠️ المبلغ يجب أن يكون أكبر من 0');
+      return;
+    }
+
+    setIsLoading(true);
+    setStatus('🚀 جاري تجهيز المعاملة...');
+
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      
+      const contract = new ethers.Contract(USDC_ADDRESS, USDC_ABI, signer);
+      const decimals = await contract.decimals();
+      const amountWithDecimals = ethers.parseUnits(amount, decimals);
+      
+      setStatus('⏳ جاري إرسال المعاملة إلى الشبكة...');
+      const tx = await contract.transfer(toAddress, amountWithDecimals);
+      
+      setStatus(`⏳ في انتظار التأكيدات... (Hash: ${tx.hash.substring(0, 10)}...)`);
+      await tx.wait();
+      
+      setStatus(`✅ تم إرسال ${amount} USDC بنجاح إلى ${toAddress.substring(0, 8)}...`);
+      setToAddress('');
+      setAmount('');
+      
+      await getBalance(address);
+      
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 'ACTION_REJECTED') {
+        setStatus('❌ تم رفض المعاملة من قبلك');
+      } else if (err.message?.includes('insufficient funds')) {
+        setStatus('❌ رصيد غير كافٍ. تأكد من وجود USDC و ETH في محفظتك');
+      } else {
+        setStatus('❌ فشل الإرسال: ' + (err.message || 'خطأ غير معروف'));
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // تسجيل الخروج
+  const disconnectWallet = () => {
+    setIsConnected(false);
+    setAddress('');
+    setBalance('');
+    setStatus('🔓 تم تسجيل الخروج من المحفظة');
+  };
 
   return (
     <div style={{ 
@@ -216,6 +250,11 @@ export default function Home() {
                 <div style={{ fontFamily: 'monospace', fontSize: '14px', fontWeight: 'bold' }}>
                   {address.substring(0, 8)}...{address.substring(36)}
                 </div>
+                {balance && (
+                  <div style={{ fontSize: '13px', marginTop: '8px', color: '#1b5e20' }}>
+                    الرصيد: {balance} USDC
+                  </div>
+                )}
               </div>
               <button
                 onClick={disconnectWallet}
@@ -252,13 +291,15 @@ export default function Home() {
             placeholder="عنوان المستلم (0x...)"
             value={toAddress}
             onChange={(e) => setToAddress(e.target.value)}
+            disabled={isLoading}
             style={{
               width: '100%',
               padding: '14px',
               marginBottom: '15px',
               border: '2px solid #e0e0e0',
               borderRadius: '12px',
-              fontSize: '14px'
+              fontSize: '14px',
+              opacity: isLoading ? 0.6 : 1
             }}
           />
           
@@ -267,32 +308,34 @@ export default function Home() {
             placeholder="المبلغ (USDC)"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
+            disabled={isLoading}
             style={{
               width: '100%',
               padding: '14px',
               marginBottom: '15px',
               border: '2px solid #e0e0e0',
               borderRadius: '12px',
-              fontSize: '14px'
+              fontSize: '14px',
+              opacity: isLoading ? 0.6 : 1
             }}
           />
           
           <button
-            onClick={sendPayment}
-            disabled={!isConnected}
+            onClick={sendUSDC}
+            disabled={!isConnected || isLoading}
             style={{
               width: '100%',
               padding: '14px',
-              background: isConnected ? 'linear-gradient(135deg, #4caf50 0%, #45a049 100%)' : '#cccccc',
+              background: (isConnected && !isLoading) ? 'linear-gradient(135deg, #4caf50 0%, #45a049 100%)' : '#cccccc',
               color: 'white',
               border: 'none',
               borderRadius: '12px',
               fontSize: '16px',
-              cursor: isConnected ? 'pointer' : 'not-allowed',
+              cursor: (isConnected && !isLoading) ? 'pointer' : 'not-allowed',
               fontWeight: 'bold'
             }}
           >
-            {isConnected ? 'إرسال 💸' : 'اربط المحفظة أولاً'}
+            {isLoading ? 'جاري الإرسال...' : (isConnected ? 'إرسال 💸' : 'اربط المحفظة أولاً')}
           </button>
         </div>
 
@@ -305,7 +348,8 @@ export default function Home() {
             borderRadius: '12px',
             textAlign: 'center',
             fontSize: '14px',
-            marginBottom: '20px'
+            marginBottom: '20px',
+            wordBreak: 'break-word'
           }}>
             {status}
           </div>
@@ -315,7 +359,7 @@ export default function Home() {
         <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.8)', marginTop: '20px', fontSize: '12px' }}>
           <p>✨ يعمل على شبكة <strong>Base Sepolia</strong> | AI Fee Optimizer نشط ✨</p>
           <p style={{ marginTop: '5px', fontSize: '10px' }}>
-            🧪 إصدار تجريبي للعرض | للإرسال الحقيقي، ثبّت MetaMask أولاً
+            💰 الإرسال حقيقي | يتطلب USDC و ETH تجريبيين
           </p>
         </div>
       </div>
