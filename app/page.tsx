@@ -19,61 +19,115 @@ export default function Home() {
   const [balance, setBalance] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+  // عنوان عقد USDC على Base Mainnet (للعملات الحقيقية)
+  const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+  
+  // ABI المبسط لنقل USDC
   const USDC_ABI = [
     'function transfer(address to, uint256 amount) external returns (bool)',
     'function balanceOf(address account) external view returns (uint256)',
     'function decimals() external view returns (uint8)'
   ];
 
-  // دالة ربط المحفظة - الطريقة المباشرة التي لا تحتاج SDK
+  // ✅ طريقة الربط المتطورة (التي طلبتها)
   const connectWallet = async () => {
-    // التحقق من وجود MetaMask
-    if (!window.ethereum) {
-      setStatus('⚠️ لم يتم العثور على MetaMask');
-      // فتح رابط التحميل يدوياً
-      if (confirm('MetaMask غير مثبت. هل تريد تثبيته الآن؟')) {
-        window.open('https://metamask.io/download/', '_blank');
-      }
-      return;
-    }
-
     try {
-      setStatus('جاري الاتصال بالمحفظة...');
-      
-      // طلب الوصول إلى الحسابات - هذه الطريقة تفتح نافذة MetaMask مباشرة
-      const accounts = await window.ethereum.request({ 
-        method: 'eth_requestAccounts' 
-      });
-      
-      if (accounts && accounts[0]) {
-        setAddress(accounts[0]);
-        setIsConnected(true);
-        setStatus('✅ محفظة متصلة بنجاح!');
-        await getBalance(accounts[0]);
-        
-        // إضافة مستمع لتغيير الحساب
-        window.ethereum.on('accountsChanged', (newAccounts: string[]) => {
-          if (newAccounts.length === 0) {
-            setIsConnected(false);
-            setAddress('');
-            setBalance('');
-          } else {
-            setAddress(newAccounts[0]);
-            getBalance(newAccounts[0]);
-          }
-        });
+      // 1. التحقق من وجود MetaMask
+      if (!window.ethereum) {
+        setStatus("⚠️ MetaMask غير مثبت");
+
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+        if (isMobile) {
+          // للهواتف: استخدام الرابط العميق لفتح MetaMask
+          window.location.href = "https://metamask.app.link/dapp/" + window.location.host;
+        } else {
+          // للكمبيوتر: فتح رابط التحميل
+          window.open("https://metamask.io/download/", "_blank");
+        }
+
+        return;
       }
+
+      setStatus("جاري الاتصال بالمحفظة...");
+
+      // 2. طلب الوصول إلى الحسابات
+      const accounts = await window.ethereum.request({
+        method: "eth_requestAccounts",
+      });
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const network = await provider.getNetwork();
+
+      // 3. التحقق من الشبكة (Base Mainnet Chain ID: 8453 = 0x2105)
+      if (network.chainId !== 8453n) {
+        setStatus("جاري التبديل إلى شبكة Base...");
+        
+        try {
+          // محاولة التبديل إلى Base
+          await window.ethereum.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: "0x2105" }], // 8453 بالـ Hexadecimal
+          });
+        } catch (switchError: any) {
+          // إذا لم تكن الشبكة موجودة، نضيفها
+          if (switchError.code === 4902) {
+            await window.ethereum.request({
+              method: "wallet_addEthereumChain",
+              params: [
+                {
+                  chainId: "0x2105",
+                  chainName: "Base",
+                  nativeCurrency: {
+                    name: "Ether",
+                    symbol: "ETH",
+                    decimals: 18,
+                  },
+                  rpcUrls: ["https://mainnet.base.org"],
+                  blockExplorerUrls: ["https://basescan.org"],
+                },
+              ],
+            });
+          } else {
+            throw switchError;
+          }
+        }
+      }
+
+      // 4. تخزين البيانات
+      setAddress(accounts[0]);
+      setIsConnected(true);
+      await getBalance(accounts[0]);
+      setStatus("✅ تم الاتصال بالمحفظة بنجاح على شبكة Base");
+
+      // 5. إضافة مستمع لتغيير الحساب
+      window.ethereum.on('accountsChanged', (newAccounts: string[]) => {
+        if (newAccounts.length === 0) {
+          setIsConnected(false);
+          setAddress('');
+          setBalance('');
+        } else {
+          setAddress(newAccounts[0]);
+          getBalance(newAccounts[0]);
+        }
+      });
+
+      // 6. إضافة مستمع لتغيير الشبكة
+      window.ethereum.on('chainChanged', () => {
+        window.location.reload();
+      });
+
     } catch (err: any) {
       console.error(err);
       if (err.code === 4001) {
-        setStatus('❌ تم رفض الاتصال من قبلك');
+        setStatus("❌ تم رفض الاتصال من قبلك");
       } else {
-        setStatus('❌ فشل الاتصال: ' + (err.message || 'خطأ غير معروف'));
+        setStatus("❌ " + (err.message || "خطأ غير معروف"));
       }
     }
   };
 
+  // الحصول على رصيد USDC
   const getBalance = async (walletAddress: string) => {
     try {
       const provider = new ethers.BrowserProvider(window.ethereum);
@@ -87,6 +141,7 @@ export default function Home() {
     }
   };
 
+  // AI Recommendation
   useEffect(() => {
     const getRecommendation = async () => {
       if (isConnected && window.ethereum) {
@@ -96,12 +151,12 @@ export default function Home() {
           const gasPrice = feeData.gasPrice;
           const gasPriceGwei = gasPrice ? Number(ethers.formatUnits(gasPrice, 'gwei')) : 30;
           
-          if (gasPriceGwei < 25) {
-            setAiRecommendation(`🟢 وقت ممتاز! رسوم الغاز منخفضة (${gasPriceGwei.toFixed(0)} Gwei)`);
-          } else if (gasPriceGwei < 45) {
+          if (gasPriceGwei < 15) {
+            setAiRecommendation(`🟢 وقت ممتاز! رسوم الغاز منخفضة جداً (${gasPriceGwei.toFixed(0)} Gwei)`);
+          } else if (gasPriceGwei < 30) {
             setAiRecommendation(`🟡 رسوم متوسطة (${gasPriceGwei.toFixed(0)} Gwei) - يمكنك الإرسال الآن`);
           } else {
-            setAiRecommendation(`🔴 رسوم مرتفعة (${gasPriceGwei.toFixed(0)} Gwei) - انتظر 10-15 دقيقة`);
+            setAiRecommendation(`🔴 رسوم مرتفعة (${gasPriceGwei.toFixed(0)} Gwei) - انتظر قليلاً لتوفير الرسوم`);
           }
         } catch (err) {
           setAiRecommendation('🤖 AI جاهز لتوصية الرسوم');
@@ -116,6 +171,7 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [isConnected]);
 
+  // إرسال USDC
   const sendUSDC = async () => {
     if (!isConnected) {
       setStatus('⚠️ الرجاء ربط المحفظة أولاً');
@@ -151,7 +207,7 @@ export default function Home() {
       setStatus('⏳ جاري إرسال المعاملة إلى الشبكة...');
       const tx = await contract.transfer(toAddress, amountWithDecimals);
       
-      setStatus(`⏳ في انتظار التأكيدات... (Hash: ${tx.hash.substring(0, 10)}...)`);
+      setStatus(`⏳ في انتظار التأكيدات... (Hash: ${tx.hash.substring(0, 12)}...)`);
       await tx.wait();
       
       setStatus(`✅ تم إرسال ${amount} USDC بنجاح إلى ${toAddress.substring(0, 8)}...`);
@@ -174,6 +230,7 @@ export default function Home() {
     }
   };
 
+  // تسجيل الخروج
   const disconnectWallet = () => {
     setIsConnected(false);
     setAddress('');
@@ -190,6 +247,7 @@ export default function Home() {
     }}>
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         
+        {/* العنوان */}
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
           <h1 style={{ fontSize: '52px', margin: '0', color: 'white' }}>
             Pesify 💸
@@ -199,6 +257,7 @@ export default function Home() {
           </p>
         </div>
 
+        {/* AI Recommendation Card */}
         {aiRecommendation && (
           <div style={{ 
             background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
@@ -214,6 +273,7 @@ export default function Home() {
           </div>
         )}
 
+        {/* بطاقة المحفظة */}
         <div style={{ 
           background: 'white', 
           borderRadius: '20px', 
@@ -278,6 +338,7 @@ export default function Home() {
           )}
         </div>
 
+        {/* بطاقة الإرسال */}
         <div style={{ 
           background: 'white', 
           borderRadius: '20px', 
@@ -340,6 +401,7 @@ export default function Home() {
           </button>
         </div>
 
+        {/* حالة التطبيق */}
         {status && (
           <div style={{ 
             background: 'rgba(0,0,0,0.85)', 
@@ -354,8 +416,12 @@ export default function Home() {
           </div>
         )}
 
+        {/* معلومات إضافية */}
         <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.8)', marginTop: '20px', fontSize: '12px' }}>
-          <p>✨ يعمل على شبكة <strong>Base Sepolia</strong> | AI Fee Optimizer نشط ✨</p>
+          <p>✨ يعمل على شبكة <strong>Base Mainnet</strong> | AI Fee Optimizer نشط ✨</p>
+          <p style={{ marginTop: '5px', fontSize: '10px' }}>
+            💰 الإرسال حقيقي | يتطلب USDC و ETH حقيقيين في محفظتك
+          </p>
         </div>
       </div>
     </div>
