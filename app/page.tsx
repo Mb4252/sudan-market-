@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
-import QRCode from 'qrcode.react';
+// استيراد المكون الجديد الذي أنشأناه
+import QRCodeComponent from './components/QRCodeComponent';
 
 declare global {
   interface Window {
@@ -11,6 +12,7 @@ declare global {
 }
 
 export default function Home() {
+  // ... (جميع الـ state declarations كما هي، لم تتغير)
   const [isConnected, setIsConnected] = useState(false);
   const [address, setAddress] = useState('');
   const [toAddress, setToAddress] = useState('');
@@ -21,7 +23,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [showQr, setShowQr] = useState(false);
 
-  // عنوان USDC على Base Mainnet (للعملات الحقيقية)
+  // عنوان USDC على Base Mainnet (للعرض الحقيقي)
   const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
   
   const USDC_ABI = [
@@ -293,14 +295,8 @@ export default function Home() {
                     justifyContent: 'center',
                     alignItems: 'center'
                   }}>
-                    <QRCode 
-                      value={getDeeplink()} 
-                      size={200}
-                      bgColor="#ffffff"
-                      fgColor="#000000"
-                      level="L"
-                      includeMargin={true}
-                    />
+                    {/* استخدم المكون الجديد هنا */}
+                    <QRCodeComponent value={getDeeplink()} />
                   </div>
                   <p style={{ fontSize: '14px', color: '#666', marginBottom: '15px' }}>
                     1️⃣ افتح تطبيق MetaMask<br/>
