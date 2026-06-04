@@ -2,12 +2,23 @@
 
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
+import { MetaMaskSDK } from '@metamask/sdk';
 
 declare global {
   interface Window {
     ethereum?: any;
   }
 }
+
+// MetaMask SDK (للهاتف)
+const MMSDK = typeof window !== 'undefined'
+  ? new MetaMaskSDK({
+      dappMetadata: {
+        name: 'Pesify',
+        url: typeof window.location !== 'undefined' ? window.location.href : '',
+      },
+    })
+  : null;
 
 export default function Home() {
   const [isConnected, setIsConnected] = useState(false);
@@ -19,94 +30,114 @@ export default function Home() {
   const [balance, setBalance] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // عنوان USDC على Base Mainnet (للعملات الحقيقية)
   const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-  
+
   const USDC_ABI = [
-    'function transfer(address to, uint256 amount) external returns (bool)',
-    'function balanceOf(address account) external view returns (uint256)',
-    'function decimals() external view returns (uint8)'
+    'function transfer(address to, uint256 amount) returns (bool)',
+    'function balanceOf(address account) view returns (uint256)',
+    'function decimals() view returns (uint8)'
   ];
 
-  // ربط المحفظة
-  const connectWallet = async () => {
-    if (!window.ethereum) {
-      setStatus("⚠️ MetaMask غير مثبت. جاري فتح رابط التحميل...");
-      window.open("https://metamask.io/download/", "_blank");
-      return;
-    }
+  const getProvider = () => {
+    const ethereum = MMSDK?.getProvider() || window.ethereum;
+    if (!ethereum) throw new Error('MetaMask not found');
+    return ethereum;
+  };
 
+  const connectWallet = async () => {
     try {
-      setStatus("جاري الاتصال بالمحفظة...");
-      
-      const accounts = await window.ethereum.request({ 
-        method: "eth_requestAccounts" 
+      const ethereum = getProvider();
+
+      setStatus('جاري الاتصال...');
+
+      const accounts = await ethereum.request({
+        method: 'eth_requestAccounts'
       });
-      
-      if (accounts && accounts[0]) {
-        setAddress(accounts[0]);
-        setIsConnected(true);
-        setStatus("✅ تم الاتصال بنجاح");
-        
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const contract = new ethers.Contract(USDC_ADDRESS, USDC_ABI, provider);
-        const decimals = await contract.decimals();
-        const rawBalance = await contract.balanceOf(accounts[0]);
-        const formattedBalance = ethers.formatUnits(rawBalance, decimals);
-        setBalance(formattedBalance);
-      }
+
+      const userAddress = accounts[0];
+      setAddress(userAddress);
+      setIsConnected(true);
+
+      await switchToBase(ethereum);
+
+      await getBalance(userAddress);
+
+      setStatus('✅ تم الاتصال بنجاح');
     } catch (err: any) {
-      console.error(err);
-      if (err.code === 4001) {
-        setStatus("❌ تم رفض الاتصال");
-      } else {
-        setStatus("❌ فشل الاتصال: " + (err.message || "خطأ غير معروف"));
-      }
+      setStatus('❌ ' + (err.message || 'فشل الاتصال'));
     }
   };
 
-  // إرسال USDC
-  const sendUSDC = async () => {
-    if (!isConnected) {
-      setStatus('⚠️ الرجاء ربط المحفظة أولاً');
-      return;
+  const switchToBase = async (ethereum: any) => {
+    try {
+      await ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: '0x2105' }],
+      });
+    } catch (switchError) {
+      await ethereum.request({
+        method: 'wallet_addEthereumChain',
+        params: [{
+          chainId: '0x2105',
+          chainName: 'Base Mainnet',
+          nativeCurrency: {
+            name: 'ETH',
+            symbol: 'ETH',
+            decimals: 18
+          },
+          rpcUrls: ['https://mainnet.base.org'],
+          blockExplorerUrls: ['https://basescan.org']
+        }]
+      });
     }
-    
-    if (!toAddress || !amount) {
-      setStatus('⚠️ الرجاء إدخال العنوان والمبلغ');
-      return;
-    }
-    
-    if (!toAddress.startsWith('0x') || toAddress.length !== 42) {
-      setStatus('⚠️ العنوان غير صالح. يجب أن يبدأ بـ 0x ويتكون من 42 حرفاً');
-      return;
-    }
+  };
 
-    setIsLoading(true);
-    setStatus('🚀 جاري الإرسال...');
+  const getBalance = async (wallet: string) => {
+    try {
+      const ethereum = getProvider();
+      const provider = new ethers.BrowserProvider(ethereum);
+
+      const contract = new ethers.Contract(USDC_ADDRESS, USDC_ABI, provider);
+      const decimals = await contract.decimals();
+      const raw = await contract.balanceOf(wallet);
+
+      setBalance(ethers.formatUnits(raw, decimals));
+    } catch (e) {
+      console.log(e);
+    }
+  };
+
+  const sendUSDC = async () => {
+    if (!isConnected) return setStatus('اربط المحفظة أولاً');
+    if (!toAddress || !amount) return setStatus('أدخل البيانات');
 
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      setIsLoading(true);
+      setStatus('جاري الإرسال...');
+
+      const ethereum = getProvider();
+      const provider = new ethers.BrowserProvider(ethereum);
       const signer = await provider.getSigner();
-      
+
       const contract = new ethers.Contract(USDC_ADDRESS, USDC_ABI, signer);
       const decimals = await contract.decimals();
-      const amountWithDecimals = ethers.parseUnits(amount, decimals);
-      
-      const tx = await contract.transfer(toAddress, amountWithDecimals);
-      setStatus(`⏳ جاري التأكيد...`);
+
+      const tx = await contract.transfer(
+        toAddress,
+        ethers.parseUnits(amount, decimals)
+      );
+
+      setStatus('⏳ انتظار التأكيد...');
       await tx.wait();
-      
-      setStatus(`✅ تم إرسال ${amount} USDC بنجاح`);
+
+      setStatus('✅ تم الإرسال بنجاح');
+
+      await getBalance(address);
+
       setToAddress('');
       setAmount('');
-      
-      const rawBalance = await contract.balanceOf(address);
-      const formattedBalance = ethers.formatUnits(rawBalance, decimals);
-      setBalance(formattedBalance);
-      
     } catch (err: any) {
-      setStatus('❌ فشل الإرسال: ' + (err.message || 'خطأ'));
+      setStatus('❌ ' + (err.message || 'فشل الإرسال'));
     } finally {
       setIsLoading(false);
     }
@@ -116,204 +147,60 @@ export default function Home() {
     setIsConnected(false);
     setAddress('');
     setBalance('');
-    setStatus('🔓 تم تسجيل الخروج');
+    setStatus('تم تسجيل الخروج');
   };
 
-  // AI Recommendation
   useEffect(() => {
-    const getRecommendation = async () => {
+    const interval = setInterval(() => {
       if (isConnected && window.ethereum) {
-        try {
-          const provider = new ethers.BrowserProvider(window.ethereum);
-          const feeData = await provider.getFeeData();
-          const gasPrice = feeData.gasPrice;
-          const gasPriceGwei = gasPrice ? Number(ethers.formatUnits(gasPrice, 'gwei')) : 30;
-          
-          if (gasPriceGwei < 15) {
-            setAiRecommendation(`🟢 ممتاز! رسوم منخفضة (${gasPriceGwei.toFixed(0)} Gwei)`);
-          } else if (gasPriceGwei < 30) {
-            setAiRecommendation(`🟡 رسوم متوسطة (${gasPriceGwei.toFixed(0)} Gwei)`);
-          } else {
-            setAiRecommendation(`🔴 رسوم مرتفعة (${gasPriceGwei.toFixed(0)} Gwei)`);
-          }
-        } catch (err) {
-          setAiRecommendation('🤖 AI جاهز');
-        }
-      } else if (!isConnected) {
-        setAiRecommendation('🔗 اربط محفظتك');
+        setAiRecommendation('🟢 الشبكة جاهزة');
+      } else {
+        setAiRecommendation('🔗 اربط المحفظة');
       }
-    };
-    
-    getRecommendation();
-    const interval = setInterval(getRecommendation, 30000);
+    }, 30000);
+
     return () => clearInterval(interval);
   }, [isConnected]);
 
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      padding: '20px',
-      fontFamily: 'sans-serif'
-    }}>
-      <div style={{ maxWidth: '500px', margin: '0 auto' }}>
-        
-        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <h1 style={{ fontSize: '52px', margin: '0', color: 'white' }}>
-            Pesify 💸
-          </h1>
-          <p style={{ color: 'white', marginTop: '10px' }}>
-            مدفوعات العملات المستقرة على Base Chain
-          </p>
-        </div>
+    <div style={{ padding: 20 }}>
+      <h1>Pesify 💸</h1>
 
-        {aiRecommendation && (
-          <div style={{ 
-            background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-            borderRadius: '15px', 
-            padding: '15px',
-            marginBottom: '20px',
-            color: 'white',
-            textAlign: 'center'
-          }}>
-            <div style={{ fontSize: '24px' }}>🤖</div>
-            <div style={{ fontSize: '12px' }}>AI FEE OPTIMIZER</div>
-            <div style={{ fontSize: '11px', marginTop: '5px' }}>{aiRecommendation}</div>
-          </div>
-        )}
+      {aiRecommendation && <p>{aiRecommendation}</p>}
 
-        <div style={{ 
-          background: 'white', 
-          borderRadius: '20px', 
-          padding: '25px',
-          marginBottom: '20px'
-        }}>
-          <h2 style={{ margin: '0 0 15px 0' }}>🔐 المحفظة</h2>
-          
-          {!isConnected ? (
-            <button
-              onClick={connectWallet}
-              style={{
-                width: '100%',
-                padding: '14px',
-                background: '#667eea',
-                color: 'white',
-                border: 'none',
-                borderRadius: '12px',
-                fontSize: '16px',
-                cursor: 'pointer'
-              }}
-            >
-              ربط MetaMask
-            </button>
-          ) : (
-            <div>
-              <div style={{ 
-                background: '#e8f5e9', 
-                padding: '12px', 
-                borderRadius: '12px'
-              }}>
-                <div style={{ fontSize: '12px', color: '#2e7d32' }}>✅ متصل</div>
-                <div style={{ fontSize: '13px' }}>
-                  {address.substring(0, 8)}...{address.substring(36)}
-                </div>
-                {balance && (
-                  <div style={{ fontSize: '13px', marginTop: '5px' }}>
-                    الرصيد: {balance} USDC
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={disconnectWallet}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  background: '#f44336',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '10px',
-                  marginTop: '10px',
-                  cursor: 'pointer'
-                }}
-              >
-                تسجيل الخروج
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div style={{ 
-          background: 'white', 
-          borderRadius: '20px', 
-          padding: '25px',
-          marginBottom: '20px'
-        }}>
-          <h2 style={{ margin: '0 0 15px 0' }}>📤 إرسال USDC</h2>
-          
-          <input
-            type="text"
-            placeholder="عنوان المستلم (0x...)"
-            value={toAddress}
-            onChange={(e) => setToAddress(e.target.value)}
-            disabled={isLoading}
-            style={{
-              width: '100%',
-              padding: '12px',
-              marginBottom: '15px',
-              border: '1px solid #ddd',
-              borderRadius: '10px'
-            }}
-          />
-          
-          <input
-            type="number"
-            placeholder="المبلغ (USDC)"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            disabled={isLoading}
-            style={{
-              width: '100%',
-              padding: '12px',
-              marginBottom: '15px',
-              border: '1px solid #ddd',
-              borderRadius: '10px'
-            }}
-          />
-          
-          <button
-            onClick={sendUSDC}
-            disabled={!isConnected || isLoading}
-            style={{
-              width: '100%',
-              padding: '14px',
-              background: (isConnected && !isLoading) ? '#4caf50' : '#ccc',
-              color: 'white',
-              border: 'none',
-              borderRadius: '12px',
-              cursor: (isConnected && !isLoading) ? 'pointer' : 'not-allowed'
-            }}
-          >
-            {isLoading ? 'جاري الإرسال...' : (isConnected ? 'إرسال 💸' : 'اربط المحفظة أولاً')}
+      <div>
+        {!isConnected ? (
+          <button onClick={connectWallet}>
+            ربط MetaMask
           </button>
-        </div>
-
-        {status && (
-          <div style={{ 
-            background: 'rgba(0,0,0,0.8)', 
-            color: 'white', 
-            padding: '12px', 
-            borderRadius: '10px',
-            textAlign: 'center',
-            fontSize: '13px'
-          }}>
-            {status}
-          </div>
+        ) : (
+          <>
+            <p>Connected: {address}</p>
+            <p>Balance: {balance} USDC</p>
+            <button onClick={disconnectWallet}>Disconnect</button>
+          </>
         )}
-
-        <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.7)', marginTop: '20px', fontSize: '11px' }}>
-          <p>✨ Base Mainnet | AI Fee Optimizer ✨</p>
-        </div>
       </div>
+
+      <hr />
+
+      <input
+        placeholder="To address"
+        value={toAddress}
+        onChange={(e) => setToAddress(e.target.value)}
+      />
+
+      <input
+        placeholder="Amount"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+      />
+
+      <button onClick={sendUSDC} disabled={isLoading || !isConnected}>
+        Send USDC
+      </button>
+
+      <p>{status}</p>
     </div>
   );
 }
