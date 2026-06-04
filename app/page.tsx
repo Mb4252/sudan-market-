@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export default function Home() {
   const [isConnected, setIsConnected] = useState(false);
@@ -9,11 +9,10 @@ export default function Home() {
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState('');
 
-  // ربط المحفظة (محاكاة بسيطة)
   const connectWallet = async () => {
-    if (typeof window !== 'undefined' && window.ethereum) {
+    if (typeof window !== 'undefined' && (window as any).ethereum) {
       try {
-        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
         setAddress(accounts[0]);
         setIsConnected(true);
         setStatus('✅ محفظة متصلة!');
@@ -25,7 +24,6 @@ export default function Home() {
     }
   };
 
-  // إرسال العملة (محاكاة)
   const sendPayment = () => {
     if (!isConnected) {
       setStatus('⚠️ الرجاء ربط المحفظة أولاً');
@@ -50,7 +48,6 @@ export default function Home() {
     }}>
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         
-        {/* العنوان */}
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
           <h1 style={{ fontSize: '48px', margin: '0', color: 'white' }}>
             Pesify 💸
@@ -60,7 +57,6 @@ export default function Home() {
           </p>
         </div>
 
-        {/* بطاقة المحفظة */}
         <div style={{ 
           background: 'white', 
           borderRadius: '20px', 
@@ -98,7 +94,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* بطاقة الإرسال */}
         <div style={{ 
           background: 'white', 
           borderRadius: '20px', 
@@ -155,7 +150,6 @@ export default function Home() {
           </button>
         </div>
 
-        {/* حالة التطبيق */}
         {status && (
           <div style={{ 
             background: 'rgba(0,0,0,0.7)', 
@@ -168,7 +162,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* معلومات إضافية */}
         <div style={{ 
           textAlign: 'center', 
           color: 'rgba(255,255,255,0.7)', 
