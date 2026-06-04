@@ -19,37 +19,61 @@ export default function Home() {
   const [balance, setBalance] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // عنوان عقد USDC على Base Sepolia
   const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
-  
-  // ABI المبسط لنقل USDC
   const USDC_ABI = [
     'function transfer(address to, uint256 amount) external returns (bool)',
     'function balanceOf(address account) external view returns (uint256)',
     'function decimals() external view returns (uint8)'
   ];
 
-  // ربط المحفظة
+  // دالة ربط المحفظة - الطريقة المباشرة التي لا تحتاج SDK
   const connectWallet = async () => {
+    // التحقق من وجود MetaMask
     if (!window.ethereum) {
-      setStatus('⚠️ الرجاء تثبيت MetaMask أولاً');
-      window.open('https://metamask.io/download/', '_blank');
+      setStatus('⚠️ لم يتم العثور على MetaMask');
+      // فتح رابط التحميل يدوياً
+      if (confirm('MetaMask غير مثبت. هل تريد تثبيته الآن؟')) {
+        window.open('https://metamask.io/download/', '_blank');
+      }
       return;
     }
 
     try {
       setStatus('جاري الاتصال بالمحفظة...');
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      setAddress(accounts[0]);
-      setIsConnected(true);
-      setStatus('✅ محفظة متصلة بنجاح!');
-      await getBalance(accounts[0]);
+      
+      // طلب الوصول إلى الحسابات - هذه الطريقة تفتح نافذة MetaMask مباشرة
+      const accounts = await window.ethereum.request({ 
+        method: 'eth_requestAccounts' 
+      });
+      
+      if (accounts && accounts[0]) {
+        setAddress(accounts[0]);
+        setIsConnected(true);
+        setStatus('✅ محفظة متصلة بنجاح!');
+        await getBalance(accounts[0]);
+        
+        // إضافة مستمع لتغيير الحساب
+        window.ethereum.on('accountsChanged', (newAccounts: string[]) => {
+          if (newAccounts.length === 0) {
+            setIsConnected(false);
+            setAddress('');
+            setBalance('');
+          } else {
+            setAddress(newAccounts[0]);
+            getBalance(newAccounts[0]);
+          }
+        });
+      }
     } catch (err: any) {
-      setStatus('❌ فشل الاتصال: ' + (err.message || 'خطأ غير معروف'));
+      console.error(err);
+      if (err.code === 4001) {
+        setStatus('❌ تم رفض الاتصال من قبلك');
+      } else {
+        setStatus('❌ فشل الاتصال: ' + (err.message || 'خطأ غير معروف'));
+      }
     }
   };
 
-  // الحصول على رصيد USDC
   const getBalance = async (walletAddress: string) => {
     try {
       const provider = new ethers.BrowserProvider(window.ethereum);
@@ -63,23 +87,6 @@ export default function Home() {
     }
   };
 
-  // تحديث الرصيد عند تغيير الحساب
-  useEffect(() => {
-    if (isConnected && window.ethereum) {
-      window.ethereum.on('accountsChanged', (accounts: string[]) => {
-        if (accounts.length === 0) {
-          setIsConnected(false);
-          setAddress('');
-          setBalance('');
-        } else {
-          setAddress(accounts[0]);
-          getBalance(accounts[0]);
-        }
-      });
-    }
-  }, [isConnected]);
-
-  // AI Recommendation
   useEffect(() => {
     const getRecommendation = async () => {
       if (isConnected && window.ethereum) {
@@ -109,7 +116,6 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [isConnected]);
 
-  // الإرسال الحقيقي لـ USDC
   const sendUSDC = async () => {
     if (!isConnected) {
       setStatus('⚠️ الرجاء ربط المحفظة أولاً');
@@ -168,7 +174,6 @@ export default function Home() {
     }
   };
 
-  // تسجيل الخروج
   const disconnectWallet = () => {
     setIsConnected(false);
     setAddress('');
@@ -185,7 +190,6 @@ export default function Home() {
     }}>
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         
-        {/* العنوان */}
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
           <h1 style={{ fontSize: '52px', margin: '0', color: 'white' }}>
             Pesify 💸
@@ -195,7 +199,6 @@ export default function Home() {
           </p>
         </div>
 
-        {/* AI Recommendation Card */}
         {aiRecommendation && (
           <div style={{ 
             background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
@@ -211,7 +214,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* بطاقة المحفظة */}
         <div style={{ 
           background: 'white', 
           borderRadius: '20px', 
@@ -276,7 +278,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* بطاقة الإرسال */}
         <div style={{ 
           background: 'white', 
           borderRadius: '20px', 
@@ -339,7 +340,6 @@ export default function Home() {
           </button>
         </div>
 
-        {/* حالة التطبيق */}
         {status && (
           <div style={{ 
             background: 'rgba(0,0,0,0.85)', 
@@ -348,19 +348,14 @@ export default function Home() {
             borderRadius: '12px',
             textAlign: 'center',
             fontSize: '14px',
-            marginBottom: '20px',
-            wordBreak: 'break-word'
+            marginBottom: '20px'
           }}>
             {status}
           </div>
         )}
 
-        {/* معلومات إضافية */}
         <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.8)', marginTop: '20px', fontSize: '12px' }}>
           <p>✨ يعمل على شبكة <strong>Base Sepolia</strong> | AI Fee Optimizer نشط ✨</p>
-          <p style={{ marginTop: '5px', fontSize: '10px' }}>
-            💰 الإرسال حقيقي | يتطلب USDC و ETH تجريبيين
-          </p>
         </div>
       </div>
     </div>
