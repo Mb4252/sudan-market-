@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
-import QRCode from 'qrcode';
+import QRCode from 'qrcode.react';
 
 declare global {
   interface Window {
@@ -19,11 +19,7 @@ export default function Home() {
   const [aiRecommendation, setAiRecommendation] = useState('');
   const [balance, setBalance] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [qrCode, setQrCode] = useState('');
   const [showQr, setShowQr] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // عنوان USDC على Base Mainnet (للعملات الحقيقية)
   const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
@@ -34,28 +30,9 @@ export default function Home() {
     'function decimals() external view returns (uint8)'
   ];
 
-  // إنشاء باركود QR لربط المحفظة
-  const generateQRCode = async () => {
-    // الرابط العميق لفتح التطبيق في MetaMask
-    const dappUrl = `https://metamask.app.link/dapp/${window.location.host}`;
-    
-    try {
-      const canvas = qrCanvasRef.current;
-      if (canvas) {
-        await QRCode.toCanvas(canvas, dappUrl, {
-          width: 250,
-          margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#ffffff'
-          }
-        });
-        setQrCode(dappUrl);
-      }
-    } catch (err) {
-      console.error('خطأ في إنشاء الباركود:', err);
-      setStatus('❌ فشل في إنشاء الباركود');
-    }
+  // رابط الربط العميق
+  const getDeeplink = () => {
+    return `https://metamask.app.link/dapp/${window.location.host}`;
   };
 
   // التحقق من الاتصال (يتم استدعاؤها كل ثانية للكشف عن الربط)
@@ -71,14 +48,11 @@ export default function Home() {
             });
             
             if (accounts && accounts.length > 0 && !isConnected) {
-              // تم الربط! إخفاء الباركود وتسجيل الدخول
               setShowQr(false);
               setAddress(accounts[0]);
               setIsConnected(true);
               setStatus('✅ تم الاتصال بالمحفظة بنجاح!');
-              setIsConnecting(false);
               
-              // جلب الرصيد
               const provider = new ethers.BrowserProvider(window.ethereum);
               const contract = new ethers.Contract(USDC_ADDRESS, USDC_ABI, provider);
               const decimals = await contract.decimals();
@@ -100,21 +74,18 @@ export default function Home() {
   }, [showQr, isConnected]);
 
   // ربط المحفظة بالباركود
-  const connectWithQR = async () => {
+  const connectWithQR = () => {
     setShowQr(true);
-    setIsConnecting(true);
     setStatus('📱 افتح MetaMask → اضغط على Scan → امسح الباركود');
-    await generateQRCode();
   };
 
   // إلغاء الباركود
   const cancelQR = () => {
     setShowQr(false);
-    setIsConnecting(false);
     setStatus('');
   };
 
-  // ربط المحفظة بالطريقة العادية (للاختبار على الكمبيوتر)
+  // ربط المحفظة بالطريقة العادية (للكمبيوتر)
   const connectWalletDirect = async () => {
     if (!window.ethereum) {
       setStatus("⚠️ MetaMask غير مثبت");
@@ -141,19 +112,6 @@ export default function Home() {
       }
     } catch (err: any) {
       setStatus("❌ فشل الاتصال: " + (err.message || "خطأ غير معروف"));
-    }
-  };
-
-  // الحصول على رصيد USDC
-  const getBalance = async (walletAddress: string) => {
-    try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const contract = new ethers.Contract(USDC_ADDRESS, USDC_ABI, provider);
-      const decimals = await contract.decimals();
-      const rawBalance = await contract.balanceOf(walletAddress);
-      setBalance(ethers.formatUnits(rawBalance, decimals));
-    } catch (err) {
-      console.error('خطأ في جلب الرصيد:', err);
     }
   };
 
@@ -184,17 +142,16 @@ export default function Home() {
       const decimals = await contract.decimals();
       const amountWithDecimals = ethers.parseUnits(amount, decimals);
       
-      setStatus('⏳ جاري إرسال المعاملة إلى الشبكة...');
+      setStatus('⏳ جاري إرسال المعاملة...');
       const tx = await contract.transfer(toAddress, amountWithDecimals);
       
-      setStatus(`⏳ في انتظار التأكيدات... (Hash: ${tx.hash.substring(0, 12)}...)`);
+      setStatus(`⏳ في انتظار التأكيدات...`);
       await tx.wait();
       
-      setStatus(`✅ تم إرسال ${amount} USDC بنجاح إلى ${toAddress.substring(0, 8)}...`);
+      setStatus(`✅ تم إرسال ${amount} USDC بنجاح`);
       setToAddress('');
       setAmount('');
       
-      // تحديث الرصيد
       const provider2 = new ethers.BrowserProvider(window.ethereum);
       const contract2 = new ethers.Contract(USDC_ADDRESS, USDC_ABI, provider2);
       const decimals2 = await contract2.decimals();
@@ -202,14 +159,7 @@ export default function Home() {
       setBalance(ethers.formatUnits(rawBalance, decimals2));
       
     } catch (err: any) {
-      console.error(err);
-      if (err.code === 'ACTION_REJECTED') {
-        setStatus('❌ تم رفض المعاملة من قبلك');
-      } else if (err.message?.includes('insufficient funds')) {
-        setStatus('❌ رصيد غير كافٍ. تأكد من وجود USDC و ETH في محفظتك');
-      } else {
-        setStatus('❌ فشل الإرسال: ' + (err.message || 'خطأ غير معروف'));
-      }
+      setStatus('❌ فشل الإرسال: ' + (err.message || 'خطأ'));
     } finally {
       setIsLoading(false);
     }
@@ -220,7 +170,7 @@ export default function Home() {
     setIsConnected(false);
     setAddress('');
     setBalance('');
-    setStatus('🔓 تم تسجيل الخروج من المحفظة');
+    setStatus('🔓 تم تسجيل الخروج');
   };
 
   // AI Recommendation
@@ -234,17 +184,17 @@ export default function Home() {
           const gasPriceGwei = gasPrice ? Number(ethers.formatUnits(gasPrice, 'gwei')) : 30;
           
           if (gasPriceGwei < 15) {
-            setAiRecommendation(`🟢 وقت ممتاز! رسوم الغاز منخفضة (${gasPriceGwei.toFixed(0)} Gwei)`);
+            setAiRecommendation(`🟢 وقت ممتاز! رسوم منخفضة (${gasPriceGwei.toFixed(0)} Gwei)`);
           } else if (gasPriceGwei < 30) {
-            setAiRecommendation(`🟡 رسوم متوسطة (${gasPriceGwei.toFixed(0)} Gwei) - يمكنك الإرسال الآن`);
+            setAiRecommendation(`🟡 رسوم متوسطة (${gasPriceGwei.toFixed(0)} Gwei)`);
           } else {
-            setAiRecommendation(`🔴 رسوم مرتفعة (${gasPriceGwei.toFixed(0)} Gwei) - انتظر قليلاً`);
+            setAiRecommendation(`🔴 رسوم مرتفعة (${gasPriceGwei.toFixed(0)} Gwei)`);
           }
         } catch (err) {
-          setAiRecommendation('🤖 AI جاهز لتوصية الرسوم');
+          setAiRecommendation('🤖 AI جاهز');
         }
       } else if (!isConnected) {
-        setAiRecommendation('🔗 اربط محفظتك لتفعيل AI Fee Optimizer');
+        setAiRecommendation('🔗 اربط محفظتك');
       }
     };
     
@@ -253,27 +203,24 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [isConnected]);
 
-  // واجهة المستخدم
   return (
     <div style={{ 
       minHeight: '100vh', 
       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
       padding: '20px',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      fontFamily: 'sans-serif'
     }}>
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         
-        {/* العنوان */}
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
           <h1 style={{ fontSize: '52px', margin: '0', color: 'white' }}>
             Pesify 💸
           </h1>
-          <p style={{ color: 'rgba(255,255,255,0.95)', marginTop: '10px' }}>
+          <p style={{ color: 'white', marginTop: '10px' }}>
             مدفوعات العملات المستقرة على Base Chain
           </p>
         </div>
 
-        {/* AI Recommendation Card */}
         {aiRecommendation && (
           <div style={{ 
             background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
@@ -283,21 +230,19 @@ export default function Home() {
             color: 'white',
             textAlign: 'center'
           }}>
-            <div style={{ fontSize: '24px', marginBottom: '5px' }}>🤖</div>
-            <div style={{ fontSize: '13px', fontWeight: 'bold' }}>AI FEE OPTIMIZER</div>
-            <div style={{ fontSize: '12px', marginTop: '8px' }}>{aiRecommendation}</div>
+            <div style={{ fontSize: '24px' }}>🤖</div>
+            <div style={{ fontSize: '12px' }}>AI FEE OPTIMIZER</div>
+            <div style={{ fontSize: '11px', marginTop: '5px' }}>{aiRecommendation}</div>
           </div>
         )}
 
-        {/* بطاقة المحفظة */}
         <div style={{ 
           background: 'white', 
           borderRadius: '20px', 
           padding: '25px',
-          marginBottom: '20px',
-          boxShadow: '0 10px 40px rgba(0,0,0,0.15)'
+          marginBottom: '20px'
         }}>
-          <h2 style={{ margin: '0 0 15px 0', fontSize: '20px' }}>🔐 المحفظة</h2>
+          <h2 style={{ margin: '0 0 15px 0' }}>🔐 المحفظة</h2>
           
           {!isConnected ? (
             <div>
@@ -308,7 +253,7 @@ export default function Home() {
                     style={{
                       width: '100%',
                       padding: '14px',
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      background: '#667eea',
                       color: 'white',
                       border: 'none',
                       borderRadius: '12px',
@@ -343,15 +288,25 @@ export default function Home() {
                     background: 'white',
                     padding: '20px',
                     borderRadius: '16px',
-                    marginBottom: '15px'
+                    marginBottom: '15px',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center'
                   }}>
-                    <canvas ref={qrCanvasRef} style={{ width: '250px', height: '250px', margin: '0 auto', display: 'block' }}></canvas>
+                    <QRCode 
+                      value={getDeeplink()} 
+                      size={200}
+                      bgColor="#ffffff"
+                      fgColor="#000000"
+                      level="L"
+                      includeMargin={true}
+                    />
                   </div>
                   <p style={{ fontSize: '14px', color: '#666', marginBottom: '15px' }}>
-                    1. افتح تطبيق MetaMask<br/>
-                    2. اضغط على زر Scan (الماسح الضوئي)<br/>
-                    3. امسح الباركود<br/>
-                    4. وافق على الاتصال
+                    1️⃣ افتح تطبيق MetaMask<br/>
+                    2️⃣ اضغط على زر Scan (الماسح الضوئي)<br/>
+                    3️⃣ امسح الباركود<br/>
+                    4️⃣ وافق على الاتصال
                   </p>
                   <button
                     onClick={cancelQR}
@@ -376,18 +331,11 @@ export default function Home() {
               <div style={{ 
                 background: '#e8f5e9', 
                 padding: '12px', 
-                borderRadius: '12px',
-                wordBreak: 'break-all'
+                borderRadius: '12px'
               }}>
-                <div style={{ fontSize: '12px', color: '#2e7d32', marginBottom: '5px' }}>✅ الحساب المتصل</div>
-                <div style={{ fontFamily: 'monospace', fontSize: '14px', fontWeight: 'bold' }}>
-                  {address.substring(0, 8)}...{address.substring(36)}
-                </div>
-                {balance && (
-                  <div style={{ fontSize: '13px', marginTop: '8px', color: '#1b5e20' }}>
-                    الرصيد: {balance} USDC
-                  </div>
-                )}
+                <div style={{ fontSize: '12px', color: '#2e7d32' }}>✅ متصل</div>
+                <div>{address.substring(0, 8)}...{address.substring(36)}</div>
+                {balance && <div>الرصيد: {balance} USDC</div>}
               </div>
               <button
                 onClick={disconnectWallet}
@@ -398,9 +346,8 @@ export default function Home() {
                   color: 'white',
                   border: 'none',
                   borderRadius: '10px',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  marginTop: '10px'
+                  marginTop: '10px',
+                  cursor: 'pointer'
                 }}
               >
                 تسجيل الخروج
@@ -409,15 +356,13 @@ export default function Home() {
           )}
         </div>
 
-        {/* بطاقة الإرسال */}
         <div style={{ 
           background: 'white', 
           borderRadius: '20px', 
           padding: '25px',
-          marginBottom: '20px',
-          boxShadow: '0 10px 40px rgba(0,0,0,0.15)'
+          marginBottom: '20px'
         }}>
-          <h2 style={{ margin: '0 0 15px 0', fontSize: '20px' }}>📤 إرسال USDC</h2>
+          <h2 style={{ margin: '0 0 15px 0' }}>📤 إرسال USDC</h2>
           
           <input
             type="text"
@@ -427,12 +372,10 @@ export default function Home() {
             disabled={isLoading}
             style={{
               width: '100%',
-              padding: '14px',
+              padding: '12px',
               marginBottom: '15px',
-              border: '2px solid #e0e0e0',
-              borderRadius: '12px',
-              fontSize: '14px',
-              opacity: isLoading ? 0.6 : 1
+              border: '1px solid #ddd',
+              borderRadius: '10px'
             }}
           />
           
@@ -444,12 +387,10 @@ export default function Home() {
             disabled={isLoading}
             style={{
               width: '100%',
-              padding: '14px',
+              padding: '12px',
               marginBottom: '15px',
-              border: '2px solid #e0e0e0',
-              borderRadius: '12px',
-              fontSize: '14px',
-              opacity: isLoading ? 0.6 : 1
+              border: '1px solid #ddd',
+              borderRadius: '10px'
             }}
           />
           
@@ -459,40 +400,32 @@ export default function Home() {
             style={{
               width: '100%',
               padding: '14px',
-              background: (isConnected && !isLoading) ? 'linear-gradient(135deg, #4caf50 0%, #45a049 100%)' : '#cccccc',
+              background: (isConnected && !isLoading) ? '#4caf50' : '#ccc',
               color: 'white',
               border: 'none',
               borderRadius: '12px',
-              fontSize: '16px',
-              cursor: (isConnected && !isLoading) ? 'pointer' : 'not-allowed',
-              fontWeight: 'bold'
+              cursor: (isConnected && !isLoading) ? 'pointer' : 'not-allowed'
             }}
           >
             {isLoading ? 'جاري الإرسال...' : (isConnected ? 'إرسال 💸' : 'اربط المحفظة أولاً')}
           </button>
         </div>
 
-        {/* حالة التطبيق */}
         {status && (
           <div style={{ 
-            background: 'rgba(0,0,0,0.85)', 
-            color: '#fff', 
-            padding: '15px', 
-            borderRadius: '12px',
+            background: 'rgba(0,0,0,0.8)', 
+            color: 'white', 
+            padding: '12px', 
+            borderRadius: '10px',
             textAlign: 'center',
-            fontSize: '14px',
-            marginBottom: '20px'
+            fontSize: '13px'
           }}>
             {status}
           </div>
         )}
 
-        {/* معلومات إضافية */}
-        <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.8)', marginTop: '20px', fontSize: '12px' }}>
-          <p>✨ يعمل على شبكة <strong>Base Mainnet</strong> | AI Fee Optimizer نشط ✨</p>
-          <p style={{ marginTop: '5px', fontSize: '10px' }}>
-            💰 الإرسال حقيقي | يتطلب USDC و ETH حقيقيين في محفظتك
-          </p>
+        <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.7)', marginTop: '20px', fontSize: '11px' }}>
+          <p>✨ Base Mainnet | AI Fee Optimizer ✨</p>
         </div>
       </div>
     </div>
