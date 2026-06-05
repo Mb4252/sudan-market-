@@ -1,4 +1,3 @@
-# WAFv2 Web ACL
 resource "aws_wafv2_web_acl" "main" {
   name        = "sudan-market-waf-${random_string.suffix.result}"
   description = "WAF rules for Sudan Market Video Analyzer"
@@ -8,33 +7,27 @@ resource "aws_wafv2_web_acl" "main" {
     allow {}
   }
 
-  # Rule 1: Block requests with body size > 100MB
   rule {
     name     = "BlockLargeBodySize"
     priority = 1
-
     override_action {
       none {}
     }
-
     statement {
       size_constraint_statement {
         comparison_operator = "GT"
         size                = var.max_video_size_mb * 1024 * 1024
-
         field_to_match {
           body {
             oversize_handling = "CONTINUE"
           }
         }
-
         text_transformation {
           priority = 0
           type     = "NONE"
         }
       }
     }
-
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "BlockLargeBodySize"
@@ -42,22 +35,18 @@ resource "aws_wafv2_web_acl" "main" {
     }
   }
 
-  # Rule 2: AWS Managed Rule - IP Reputation
   rule {
     name     = "AWSManagedIPReputation"
     priority = 2
-
     override_action {
       none {}
     }
-
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesAmazonIpReputationList"
         vendor_name = "AWS"
       }
     }
-
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "AWSManagedIPReputation"
@@ -65,22 +54,18 @@ resource "aws_wafv2_web_acl" "main" {
     }
   }
 
-  # Rule 3: Rate-based rule for DDoS protection
   rule {
     name     = "RateLimit"
     priority = 3
-
     action {
       block {}
     }
-
     statement {
       rate_based_statement {
         limit              = 2000
         aggregate_key_type = "IP"
       }
     }
-
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "RateLimit"
