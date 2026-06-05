@@ -1,19 +1,19 @@
 # OpenSearch Serverless Collection
 resource "aws_opensearchserverless_collection" "main" {
-  name = "${var.project_name}-${random_string.suffix.result}"
+  name = "sudan-market-${random_string.suffix.result}"
   type = "TIMESERIES"
-  
+
   tags = {
-    Name = "${var.project_name}-opensearch"
+    Name = "sudan-market-opensearch"
   }
 }
 
-# OpenSearch Serverless Encryption Policy
+# Encryption Policy
 resource "aws_opensearchserverless_security_policy" "encryption" {
-  name        = "${var.project_name}-encryption-policy"
+  name        = "sudan-market-encryption"
   type        = "encryption"
-  description = "Encryption policy for Video Analyzer collection"
-  
+  description = "Encryption policy for Sudan Market"
+
   policy = jsonencode({
     Rules = [
       {
@@ -27,12 +27,12 @@ resource "aws_opensearchserverless_security_policy" "encryption" {
   })
 }
 
-# OpenSearch Serverless Network Policy
+# Network Policy
 resource "aws_opensearchserverless_security_policy" "network" {
-  name        = "${var.project_name}-network-policy"
+  name        = "sudan-market-network"
   type        = "network"
-  description = "Network access policy for Video Analyzer"
-  
+  description = "Network access policy"
+
   policy = jsonencode([
     {
       Rules = [
@@ -54,12 +54,12 @@ resource "aws_opensearchserverless_security_policy" "network" {
   ])
 }
 
-# OpenSearch Serverless Data Access Policy
-resource "aws_opensearchserverless_access_policy" "data_access" {
-  name        = "${var.project_name}-data-access-policy"
+# Data Access Policy
+resource "aws_opensearchserverless_access_policy" "data" {
+  name        = "sudan-market-data-access"
   type        = "data"
-  description = "Data access policy for Lambda and developers"
-  
+  description = "Data access policy for Lambda"
+
   policy = jsonencode([
     {
       Rules = [
@@ -89,8 +89,7 @@ resource "aws_opensearchserverless_access_policy" "data_access" {
         }
       ]
       Principal = [
-        aws_iam_role.lambda_execution.arn,
-        aws_iam_role.opensearch_access.arn
+        aws_iam_role.lambda_role.arn
       ]
     }
   ])
