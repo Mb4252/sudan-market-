@@ -1,19 +1,15 @@
-# OpenSearch Serverless Collection
 resource "aws_opensearchserverless_collection" "main" {
   name = "sudan-market-${random_string.suffix.result}"
   type = "TIMESERIES"
-
   tags = {
     Name = "sudan-market-opensearch"
   }
 }
 
-# Encryption Policy
 resource "aws_opensearchserverless_security_policy" "encryption" {
   name        = "sudan-market-encryption"
   type        = "encryption"
   description = "Encryption policy for Sudan Market"
-
   policy = jsonencode({
     Rules = [
       {
@@ -27,12 +23,10 @@ resource "aws_opensearchserverless_security_policy" "encryption" {
   })
 }
 
-# Network Policy
 resource "aws_opensearchserverless_security_policy" "network" {
   name        = "sudan-market-network"
   type        = "network"
   description = "Network access policy"
-
   policy = jsonencode([
     {
       Rules = [
@@ -54,12 +48,10 @@ resource "aws_opensearchserverless_security_policy" "network" {
   ])
 }
 
-# Data Access Policy
 resource "aws_opensearchserverless_access_policy" "data" {
   name        = "sudan-market-data-access"
   type        = "data"
   description = "Data access policy for Lambda"
-
   policy = jsonencode([
     {
       Rules = [
