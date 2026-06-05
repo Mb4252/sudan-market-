@@ -1,4 +1,3 @@
-# KMS Key for encryption
 resource "aws_kms_key" "main" {
   description             = "Sudan Market encryption key"
   deletion_window_in_days = 30
@@ -20,7 +19,7 @@ resource "aws_kms_key" "main" {
         Sid    = "AllowCloudWatchLogs"
         Effect = "Allow"
         Principal = {
-          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+          Service = "logs.${data.aws_region.current.region}.amazonaws.com"
         }
         Action = [
           "kms:Encrypt*",
