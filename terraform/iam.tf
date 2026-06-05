@@ -1,7 +1,5 @@
-# Lambda Execution Role
 resource "aws_iam_role" "lambda_role" {
   name = "sudan-market-lambda-${random_string.suffix.result}"
-
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -14,17 +12,14 @@ resource "aws_iam_role" "lambda_role" {
       }
     ]
   })
-
   tags = {
     Name = "sudan-market-lambda-role"
   }
 }
 
-# IAM Policy - Strict Least Privilege
 resource "aws_iam_policy" "lambda_policy" {
   name        = "sudan-market-policy-${random_string.suffix.result}"
   description = "Custom policy for Sudan Market Lambda"
-
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -66,7 +61,7 @@ resource "aws_iam_policy" "lambda_policy" {
         Effect = "Allow"
         Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
         Resource = [
-          "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/*"
+          "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/*"
         ]
       },
       {
