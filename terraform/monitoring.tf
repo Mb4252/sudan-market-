@@ -1,18 +1,14 @@
-# CloudWatch Log Group for Lambda
 resource "aws_cloudwatch_log_group" "lambda_logs" {
   name              = "/aws/lambda/sudan-market-${random_string.suffix.result}"
   retention_in_days = var.log_retention_days
   kms_key_id        = aws_kms_key.main.arn
-
   tags = {
     Name = "sudan-market-lambda-logs"
   }
 }
 
-# CloudWatch Dashboard
 resource "aws_cloudwatch_dashboard" "main" {
   dashboard_name = "sudan-market-${random_string.suffix.result}"
-
   dashboard_body = jsonencode({
     widgets = [
       {
@@ -29,7 +25,7 @@ resource "aws_cloudwatch_dashboard" "main" {
           ]
           view    = "timeSeries"
           stacked = false
-          region  = data.aws_region.current.name
+          region  = data.aws_region.current.region
           title   = "Lambda Metrics"
           period  = 300
         }
@@ -65,7 +61,7 @@ resource "aws_cloudwatch_dashboard" "main" {
           ]
           view    = "timeSeries"
           stacked = false
-          region  = data.aws_region.current.name
+          region  = data.aws_region.current.region
           title   = "DynamoDB Metrics"
           period  = 300
         }
