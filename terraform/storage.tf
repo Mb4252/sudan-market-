@@ -1,4 +1,3 @@
-# S3 Bucket for video uploads
 resource "aws_s3_bucket" "video_uploads" {
   bucket        = "sudan-market-${random_string.suffix.result}"
   force_destroy = true
@@ -66,37 +65,30 @@ resource "aws_s3_bucket_policy" "video_uploads" {
   })
 }
 
-# DynamoDB Table for analysis results
 resource "aws_dynamodb_table" "results" {
   name         = "sudan-market-results-${random_string.suffix.result}"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "video_id"
   range_key    = "timestamp"
-
   attribute {
     name = "video_id"
     type = "S"
   }
-
   attribute {
     name = "timestamp"
     type = "S"
   }
-
   server_side_encryption {
     enabled     = true
     kms_key_arn = aws_kms_key.main.arn
   }
-
   point_in_time_recovery {
     enabled = true
   }
-
   ttl {
     attribute_name = "ttl"
     enabled        = true
   }
-
   tags = {
     Name = "sudan-market-dynamodb"
   }
