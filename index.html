@@ -7,14 +7,65 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <style>
-    html {
-      scroll-behavior: smooth;
-    }
+    html { scroll-behavior: smooth; }
     body {
       font-family: 'Cairo', sans-serif;
       background-color: #eef5f0;
       color: #0f172a;
     }
+    /* === تحسينات المغناطيس === */
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(27, 122, 67, 0.4); }
+      50% { box-shadow: 0 0 0 8px rgba(27, 122, 67, 0); }
+    }
+    @keyframes slideIn {
+      from { transform: translateY(-10px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes tickerScroll {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+    @keyframes countUp {
+      from { opacity: 0; transform: scale(0.8); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .pulse-glow { animation: pulseGlow 2s infinite; }
+    .slide-in { animation: slideIn 0.3s ease-out; }
+    .count-up { animation: countUp 0.4s ease-out; }
+    .ticker-track {
+      display: inline-flex;
+      gap: 1.5rem;
+      animation: tickerScroll 30s linear infinite;
+      white-space: nowrap;
+    }
+    .ticker-track:hover { animation-play-state: paused; }
+    .savings-banner {
+      background: linear-gradient(135deg, #1b7a43 0%, #156235 50%, #0f4d29 100%);
+      background-size: 200% 200%;
+      animation: gradientShift 6s ease infinite;
+    }
+    @keyframes gradientShift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+    .badge-shine {
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+      background-size: 200% 100%;
+      animation: shine 3s infinite;
+    }
+    @keyframes shine {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .card-hover {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .card-hover:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px -5px rgba(27, 122, 67, 0.15);
+    }
+    .fav-active { color: #f59e0b !important; }
   </style>
 </head>
 <body class="min-h-screen pb-20">
@@ -112,6 +163,69 @@
       </div>
     </section>
 
+    <!-- 🧲 شريط التوفير الذكي -->
+    <section id="savingsBanner" class="savings-banner rounded-2xl p-4 text-white shadow-lg slide-in">
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">💰</span>
+          <div>
+            <div class="text-[11px] font-bold text-emerald-100">لو اشتريت من أرخص حي اليوم</div>
+            <div id="savingsAmount" class="text-xl font-extrabold count-up">جاري الحساب...</div>
+          </div>
+        </div>
+        <button onclick="scrollToFeedback()" class="bg-white/20 hover:bg-white/30 backdrop-blur text-white text-xs font-extrabold px-3 py-2 rounded-xl transition">
+          شارك سعرك →
+        </button>
+      </div>
+      <div id="savingsDetail" class="text-[10px] font-bold text-emerald-100 mt-1.5"></div>
+    </section>
+
+    <!-- 📡 نبض الأسعار الحيّ -->
+    <section class="bg-slate-900 text-white rounded-2xl px-3 py-2 overflow-hidden">
+      <div class="flex items-center gap-2">
+        <span class="relative flex h-2 w-2 shrink-0">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+        </span>
+        <span class="text-[10px] font-extrabold text-red-400 shrink-0">مباشر</span>
+        <div class="overflow-hidden flex-1">
+          <div id="tickerTrack" class="ticker-track text-[11px] font-bold"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 🎯 تحدي اليوم + لوحة الصدارة -->
+    <section class="grid grid-cols-2 gap-2">
+      <button onclick="openDailyChallenge()" class="card-hover bg-gradient-to-br from-amber-400 to-orange-500 text-white rounded-2xl p-3 text-right">
+        <div class="text-[10px] font-extrabold opacity-90">🎯 تحدي اليوم</div>
+        <div id="challengeText" class="text-sm font-extrabold mt-0.5">هل تعرف سعر السكر؟</div>
+        <div class="text-[10px] font-bold opacity-90 mt-1">اضغط للعب</div>
+      </button>
+      <button onclick="openLeaderboard()" class="card-hover bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-2xl p-3 text-right">
+        <div class="text-[10px] font-extrabold opacity-90">🏆 لوحة الصدارة</div>
+        <div id="topUserText" class="text-sm font-extrabold mt-0.5 truncate">جاري التحميل...</div>
+        <div class="text-[10px] font-bold opacity-90 mt-1">شاهد المتصدرين</div>
+      </button>
+    </section>
+
+    <!-- 🏅 شاراتك + نقاطك -->
+    <section id="userStatsBox" class="bg-white rounded-2xl border border-emerald-700/20 p-3 shadow-2xs">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white text-sm font-extrabold" id="userLevelIcon">1</div>
+          <div>
+            <div class="text-xs font-extrabold text-slate-900">مستواك: <span id="userLevelName" class="text-[#1b7a43]">مستكشف</span></div>
+            <div class="text-[10px] font-bold text-slate-500"><span id="userPoints">0</span> نقطة</div>
+          </div>
+        </div>
+        <div id="userBadges" class="flex gap-1"></div>
+      </div>
+      <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div id="levelProgress" class="h-full bg-gradient-to-r from-[#1b7a43] to-emerald-400 transition-all duration-500" style="width: 0%"></div>
+      </div>
+      <div id="levelHint" class="text-[10px] font-bold text-slate-500 mt-1.5 text-center">أضف 3 أسعار للحصول على شارة "خبير أسعار" 🏅</div>
+    </section>
+
     <!-- شريط ذكي مختصر -->
     <div id="smartStrip" class="flex items-center gap-2 overflow-x-auto pb-1 text-xs"></div>
 
@@ -130,10 +244,8 @@
         </span>
       </div>
 
-      <!-- أزرار التصويت التفاعلية -->
       <div id="pollOptionsContainer" class="space-y-2"></div>
 
-      <!-- نموذج إضافة اقتراح أو تعليق -->
       <form onsubmit="submitSuggestion(event)" class="space-y-2 pt-2 border-t border-slate-100">
         <label class="block text-xs font-extrabold text-slate-800">اكتب اقتراحك أو ملاحظتك لتطوير الموقع:</label>
         <div class="flex gap-2">
@@ -154,7 +266,6 @@
         </div>
       </form>
 
-      <!-- قائمة الاقتراحات الحية -->
       <div class="space-y-2">
         <div class="flex items-center justify-between">
           <span class="text-[11px] font-extrabold text-slate-600">آخر اقتراحات الزوار</span>
@@ -169,6 +280,30 @@
     </section>
 
   </main>
+
+  <!-- 🎯 نافذة تحدي اليوم -->
+  <div id="challengeModal" class="fixed inset-0 z-50 bg-slate-950/70 hidden items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-4 slide-in">
+      <div class="text-center">
+        <div class="text-5xl mb-2">🎯</div>
+        <h2 class="font-extrabold text-lg text-slate-900">تحدي اليوم</h2>
+        <p class="text-xs text-slate-500 mt-1">أجب صح واكسب 10 نقاط!</p>
+      </div>
+      <div id="challengeBody" class="space-y-3"></div>
+      <button onclick="closeChallenge()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm py-2.5 rounded-xl">إغلاق</button>
+    </div>
+  </div>
+
+  <!-- 🏆 نافذة لوحة الصدارة -->
+  <div id="leaderboardModal" class="fixed inset-0 z-50 bg-slate-950/70 hidden items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-3 slide-in">
+      <div class="flex items-center justify-between border-b pb-2.5">
+        <h2 class="font-extrabold text-base text-slate-900">🏆 لوحة الصدارة</h2>
+        <button onclick="closeLeaderboard()" class="text-slate-400 hover:text-slate-700 text-lg font-bold">✕</button>
+      </div>
+      <div id="leaderboardBody" class="space-y-2 max-h-80 overflow-y-auto"></div>
+    </div>
+  </div>
 
   <!-- نافذة نشر سعر جديد -->
   <div id="addModal" class="fixed inset-0 z-50 bg-slate-950/50 hidden items-center justify-center p-4">
@@ -370,6 +505,13 @@
 
   <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg hidden"></div>
 
+  <!-- زر واتساب عائم -->
+  <a href="https://wa.me/?text=شوف%20رادار%20أسعار%20الحي%20-%20بتعرف%20أسعار%20منطقتك%3F%20شارك%20وصوّت%3A%20" 
+     target="_blank"
+     class="fixed bottom-6 right-4 z-40 w-14 h-14 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center text-white text-2xl shadow-lg pulse-glow transition">
+    📱
+  </a>
+
   <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
   <script>
     const RENDER_RELAY_URL = "https://sudan-market-2.onrender.com/gun";
@@ -384,11 +526,21 @@
     const GUIDE_KEY = "radar_simple_guide_hidden_v8";
     const VOTES_KEY = "radar_project_votes_v8";
     const SUGGESTIONS_KEY = "radar_project_suggestions_v8";
+    const POINTS_KEY = "radar_points_v8";
+    const FAV_KEY = "radar_favorites_v8";
 
     const POLL_CHOICES = [
       { id: "great", icon: "👍", label: "فكرة ممتازة ومفيدة" },
       { id: "more_goods", icon: "🔥", label: "محتاجين إضافة سلع أكثر" },
       { id: "have_idea", icon: "💡", label: "عندي اقتراح للتطوير" }
+    ];
+
+    const LEVELS = [
+      { min: 0,   name: "مستكشف",     icon: "1", color: "from-slate-400 to-slate-500" },
+      { min: 10,  name: "متابع",       icon: "2", color: "from-sky-400 to-sky-600" },
+      { min: 30,  name: "نشيط",        icon: "3", color: "from-emerald-400 to-emerald-600" },
+      { min: 60,  name: "خبير أسعار",  icon: "4", color: "from-amber-400 to-amber-600" },
+      { min: 100, name: "سفير الحي",   icon: "5", color: "from-purple-500 to-purple-700" }
     ];
 
     const STARTER_ITEMS = [
@@ -800,6 +952,234 @@
       }
     });
 
+    /* ============================================
+       🧲 نظام النقاط والشارات والمستويات
+       ============================================ */
+    function getUserPoints() {
+      return Number(localStorage.getItem(POINTS_KEY) || 0);
+    }
+    function addPoints(n) {
+      const cur = getUserPoints();
+      localStorage.setItem(POINTS_KEY, String(cur + n));
+      updateUserStats();
+    }
+    function getLevel() {
+      const p = getUserPoints();
+      let lvl = LEVELS[0];
+      for (const L of LEVELS) if (p >= L.min) lvl = L;
+      return lvl;
+    }
+    function getNextLevel() {
+      const p = getUserPoints();
+      return LEVELS.find(L => L.min > p);
+    }
+    function updateUserStats() {
+      const p = getUserPoints();
+      const lvl = getLevel();
+      const next = getNextLevel();
+      const icon = document.getElementById("userLevelIcon");
+      const name = document.getElementById("userLevelName");
+      const pts = document.getElementById("userPoints");
+      const prog = document.getElementById("levelProgress");
+      const hint = document.getElementById("levelHint");
+      if (!icon) return;
+      icon.textContent = lvl.icon;
+      icon.className = `w-8 h-8 rounded-full bg-gradient-to-br ${lvl.color} flex items-center justify-center text-white text-sm font-extrabold`;
+      name.textContent = lvl.name;
+      pts.textContent = p;
+      if (next) {
+        const start = lvl.min;
+        const pct = Math.min(100, Math.round(((p - start) / (next.min - start)) * 100));
+        prog.style.width = pct + "%";
+        hint.textContent = `أضف ${next.min - p} نقطة للوصول إلى "${next.name}" ${next.icon === "5" ? "👑" : "🏅"}`;
+      } else {
+        prog.style.width = "100%";
+        hint.textContent = "🎉 وصلت لأعلى مستوى! أنت سفير الحي";
+      }
+      const badges = [];
+      if (p >= 10) badges.push("🌱");
+      if (p >= 30) badges.push("⚡");
+      if (p >= 60) badges.push("🏅");
+      if (p >= 100) badges.push("👑");
+      const bEl = document.getElementById("userBadges");
+      if (bEl) bEl.innerHTML = badges.map(b => `<span class="text-lg">${b}</span>`).join("");
+    }
+
+    /* ============================================
+       💰 حساب التوفير الذكي
+       ============================================ */
+    function updateSavingsBanner(allList) {
+      const valid = allList.filter(it => Number(it.price || 0) > 0);
+      const amtEl = document.getElementById("savingsAmount");
+      const detEl = document.getElementById("savingsDetail");
+      if (!amtEl || !detEl) return;
+      if (valid.length === 0) {
+        amtEl.textContent = "سجّل أول سعر!";
+        detEl.textContent = "كن أول من يضيف سعراً في منطقتك";
+        return;
+      }
+      const byGood = {};
+      valid.forEach(it => {
+        const k = norm(it.name);
+        if (!byGood[k]) byGood[k] = { name: it.name, prices: [], areas: [] };
+        byGood[k].prices.push(Number(it.price));
+        byGood[k].areas.push(it.area);
+      });
+      let totalSaving = 0;
+      let goodsCount = 0;
+      Object.values(byGood).forEach(g => {
+        if (g.prices.length >= 2) {
+          const diff = Math.max(...g.prices) - Math.min(...g.prices);
+          if (diff > 0) { totalSaving += diff; goodsCount++; }
+        }
+      });
+      if (totalSaving > 0) {
+        amtEl.textContent = totalSaving.toLocaleString() + " ج.س";
+        detEl.textContent = `عبر ${goodsCount} سلعة • قارن الأسعار قبل الشراء`;
+        amtEl.classList.add("count-up");
+        setTimeout(() => amtEl.classList.remove("count-up"), 500);
+      } else {
+        amtEl.textContent = "وفّر أكثر";
+        detEl.textContent = "أضف أسعاراً من أحياء مختلفة لرؤية الفرق";
+      }
+    }
+
+    /* ============================================
+       📡 نبض الأسعار الحيّ (Ticker)
+       ============================================ */
+    function updateTicker(allList) {
+      const track = document.getElementById("tickerTrack");
+      if (!track) return;
+      const recent = allList
+        .filter(it => Number(it.price || 0) > 0)
+        .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
+        .slice(0, 8);
+      if (recent.length === 0) {
+        track.innerHTML = '<span class="opacity-70">لا توجد تحديثات بعد — كن الأول!</span>';
+        return;
+      }
+      const items = recent.map(it =>
+        `<span class="inline-flex items-center gap-1.5">
+          <span class="text-emerald-400">●</span>
+          <span class="text-white">${esc(it.name)}</span>
+          <span class="text-amber-300 font-extrabold">${Number(it.price).toLocaleString()}</span>
+          <span class="text-slate-400 text-[10px]">${esc(it.area)}</span>
+          <span class="text-slate-500 text-[10px]">${timeAgo(it.updatedAt)}</span>
+        </span>`
+      ).join('<span class="text-slate-700">|</span>');
+      track.innerHTML = items + '<span class="text-slate-700 mx-2">|</span>' + items;
+    }
+
+    /* ============================================
+       🎯 تحدي اليوم
+       ============================================ */
+    function openDailyChallenge() {
+      const body = document.getElementById("challengeBody");
+      const allList = Object.values(itemsMap).filter(it => Number(it.price || 0) > 0);
+      if (allList.length === 0) {
+        body.innerHTML = '<p class="text-center text-sm text-slate-500">لا توجد أسعار كافية للعب — أضف سعراً أولاً!</p>';
+        showModal("challengeModal");
+        return;
+      }
+      const item = allList[Math.floor(Math.random() * allList.length)];
+      const actualPrice = Number(item.price);
+      const options = [actualPrice];
+      while (options.length < 4) {
+        const fake = Math.round(actualPrice * (0.7 + Math.random() * 0.6));
+        if (!options.includes(fake) && fake > 0) options.push(fake);
+      }
+      options.sort(() => Math.random() - 0.5);
+      const correctIdx = options.indexOf(actualPrice);
+
+      body.innerHTML = `
+        <div class="text-center bg-slate-50 rounded-xl p-3">
+          <div class="text-xs text-slate-500 font-bold">ما سعر</div>
+          <div class="text-lg font-extrabold text-slate-900">${esc(item.name)}</div>
+          <div class="text-[11px] text-slate-500">في ${esc(item.area)} (${esc(item.unit)})</div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          ${options.map((p, i) => `
+            <button onclick="answerChallenge(${i}, ${correctIdx}, ${actualPrice})"
+              class="bg-slate-100 hover:bg-emerald-100 text-slate-800 font-extrabold text-sm py-3 rounded-xl transition">
+              ${p.toLocaleString()} ج.س
+            </button>
+          `).join("")}
+        </div>
+      `;
+      showModal("challengeModal");
+    }
+    function answerChallenge(selected, correct, actual) {
+      const body = document.getElementById("challengeBody");
+      if (selected === correct) {
+        addPoints(10);
+        body.innerHTML = `<div class="text-center py-6">
+          <div class="text-6xl mb-2">🎉</div>
+          <div class="text-lg font-extrabold text-emerald-700">إجابة صحيحة!</div>
+          <div class="text-sm text-slate-600 mt-1">+10 نقاط</div>
+          <div class="text-[11px] text-slate-400 mt-1">السعر الفعلي: ${actual.toLocaleString()} ج.س</div>
+        </div>`;
+        showToast("🎉 +10 نقاط!");
+      } else {
+        body.innerHTML = `<div class="text-center py-6">
+          <div class="text-6xl mb-2">😅</div>
+          <div class="text-lg font-extrabold text-rose-600">ليست صحيحة</div>
+          <div class="text-sm text-slate-600 mt-1">السعر الفعلي: ${actual.toLocaleString()} ج.س</div>
+          <div class="text-[11px] text-slate-400 mt-1">جرّب مرة أخرى غداً</div>
+        </div>`;
+      }
+      setTimeout(closeChallenge, 2500);
+    }
+    function closeChallenge() { hideModal("challengeModal"); }
+
+    /* ============================================
+       🏆 لوحة الصدارة
+       ============================================ */
+    function openLeaderboard() {
+      const body = document.getElementById("leaderboardBody");
+      const allList = Object.values(itemsMap);
+      const userMap = {};
+      allList.forEach(it => {
+        const uid = it.publisherId || "anon";
+        if (!userMap[uid]) userMap[uid] = { uid, name: it.publisherName || "زائر", points: 0, updates: 0 };
+        userMap[uid].points += 5;
+        userMap[uid].updates++;
+      });
+      if (!userMap[myUserId]) {
+        userMap[myUserId] = { uid: myUserId, name: getPublisherName(), points: getUserPoints(), updates: 0, isMe: true };
+      } else {
+        userMap[myUserId].isMe = true;
+        userMap[myUserId].points = Math.max(userMap[myUserId].points, getUserPoints());
+      }
+      const list = Object.values(userMap).sort((a, b) => b.points - a.points).slice(0, 10);
+      const medals = ["🥇", "🥈", "🥉"];
+      body.innerHTML = list.map((u, i) => `
+        <div class="flex items-center justify-between ${u.isMe ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'} border rounded-xl px-3 py-2">
+          <div class="flex items-center gap-2">
+            <span class="text-lg w-6 text-center">${medals[i] || (i + 1)}</span>
+            <div>
+              <div class="text-xs font-extrabold text-slate-900">${esc(u.name)} ${u.isMe ? '(أنت)' : ''}</div>
+              <div class="text-[10px] text-slate-500">${u.updates} تحديث</div>
+            </div>
+          </div>
+          <div class="text-sm font-extrabold text-[#1b7a43]">${u.points}</div>
+        </div>
+      `).join("");
+      showModal("leaderboardModal");
+    }
+    function closeLeaderboard() { hideModal("leaderboardModal"); }
+
+    function showModal(id) {
+      const m = document.getElementById(id);
+      if (m) { m.classList.remove("hidden"); m.classList.add("flex"); }
+    }
+    function hideModal(id) {
+      const m = document.getElementById(id);
+      if (m) { m.classList.add("hidden"); m.classList.remove("flex"); }
+    }
+    function scrollToFeedback() {
+      document.getElementById("feedbackSection").scrollIntoView({ behavior: "smooth" });
+    }
+
     function castProjectVote(choiceId) {
       const voteObj = {
         userId: myUserId,
@@ -810,6 +1190,7 @@
       saveState();
       renderPoll();
       showToast("شكراً لتصويتك على المشروع ✓");
+      addPoints(1);
 
       if (votesNode) {
         try { votesNode.get(myUserId).put(voteObj); } catch (e) {}
@@ -871,6 +1252,7 @@
       inp.value = "";
       renderSuggestions();
       showToast("تم إرسال اقتراحك بنجاح ✓");
+      addPoints(2);
 
       if (suggestionsNode) {
         try { suggestionsNode.get(id).put(entry); } catch (err) {}
@@ -959,6 +1341,7 @@
       }
       renderAll();
       showToast("تم تأكيد السعر ✓");
+      addPoints(1);
     }
 
     function deleteItem(id) {
@@ -1027,6 +1410,7 @@
       closeAddModal();
       renderAll();
       showToast("تم النشر بنجاح ✓");
+      addPoints(5);
 
       if (itemsNode) {
         try { itemsNode.get(id).put(newItem); } catch (err) {}
@@ -1085,6 +1469,7 @@
       closeUpdateModal();
       renderAll();
       showToast("تم نشر وتحديث السعر ✓");
+      addPoints(3);
 
       if (itemsNode) {
         try { itemsNode.get(id).put(updated); } catch (err) {}
@@ -1312,87 +1697,109 @@
             '<p class="text-sm font-extrabold text-slate-800">لا توجد نتائج مطابقة حالياً</p>' +
             '<p class="text-xs text-slate-500">جرّب مسح البحث أو أضف سعراً جديداً في منطقتك.</p>' +
           '</div>';
-        return;
-      }
+      } else {
+        container.innerHTML = bannerHtml + list.map(function(item) {
+          const gKey = norm(item.name);
+          const price = Number(item.price || 0);
+          const hasPrice = price > 0;
+          const lowest = lowestPriceByGood[gKey];
+          const isLowest = hasPrice && lowest === price;
+          const diffPct = (!isLowest && hasPrice && lowest > 0)
+            ? Math.round(((price - lowest) / lowest) * 100)
+            : 0;
+          const trust = computeTrust(item, workingList);
+          const confirmedByMe = Boolean(normalizeVoters(item.voters, item.confirmations, item.publisherId)[myUserId]);
+          const isMine = !item.isStarter && String(item.publisherId) === String(myUserId);
 
-      container.innerHTML = bannerHtml + list.map(function(item) {
-        const gKey = norm(item.name);
-        const price = Number(item.price || 0);
-        const hasPrice = price > 0;
-        const lowest = lowestPriceByGood[gKey];
-        const isLowest = hasPrice && lowest === price;
-        const diffPct = (!isLowest && hasPrice && lowest > 0)
-          ? Math.round(((price - lowest) / lowest) * 100)
-          : 0;
-        const trust = computeTrust(item, workingList);
-        const confirmedByMe = Boolean(normalizeVoters(item.voters, item.confirmations, item.publisherId)[myUserId]);
-        const isMine = !item.isStarter && String(item.publisherId) === String(myUserId);
+          const badge = !hasPrice
+            ? '<div class="bg-slate-200 text-slate-800 rounded-xl px-3 py-1.5 text-right shrink-0">' +
+                '<div class="text-[10px] font-extrabold">بانتظار السعر</div>' +
+                '<div class="text-xs font-bold">' + esc(item.area) + '</div>' +
+              '</div>'
+            : (isLowest
+                ? '<div class="bg-[#1b7a43] text-white rounded-xl px-3 py-1.5 text-right shrink-0">' +
+                    '<div class="text-[10px] font-extrabold">أقل سعر الآن</div>' +
+                    '<div class="text-xs font-bold">' + esc(item.area) + '</div>' +
+                    '<div class="text-[10px] text-emerald-100">' + timeAgo(item.updatedAt) + '</div>' +
+                  '</div>'
+                : '<div class="bg-amber-500 text-slate-950 rounded-xl px-3 py-1.5 text-right shrink-0">' +
+                    '<div class="text-[10px] font-extrabold">' + (diffPct > 0 ? ('أعلى بـ ' + diffPct + '%') : 'سعر مسجّل') + '</div>' +
+                    '<div class="text-xs font-bold">' + esc(item.area) + '</div>' +
+                    '<div class="text-[10px] text-slate-900/80">' + timeAgo(item.updatedAt) + '</div>' +
+                  '</div>');
 
-        const badge = !hasPrice
-          ? '<div class="bg-slate-200 text-slate-800 rounded-xl px-3 py-1.5 text-right shrink-0">' +
-              '<div class="text-[10px] font-extrabold">بانتظار السعر</div>' +
-              '<div class="text-xs font-bold">' + esc(item.area) + '</div>' +
-            '</div>'
-          : (isLowest
-              ? '<div class="bg-[#1b7a43] text-white rounded-xl px-3 py-1.5 text-right shrink-0">' +
-                  '<div class="text-[10px] font-extrabold">أقل سعر الآن</div>' +
-                  '<div class="text-xs font-bold">' + esc(item.area) + '</div>' +
-                  '<div class="text-[10px] text-emerald-100">' + timeAgo(item.updatedAt) + '</div>' +
-                '</div>'
-              : '<div class="bg-amber-500 text-slate-950 rounded-xl px-3 py-1.5 text-right shrink-0">' +
-                  '<div class="text-[10px] font-extrabold">' + (diffPct > 0 ? ('أعلى بـ ' + diffPct + '%') : 'سعر مسجّل') + '</div>' +
-                  '<div class="text-xs font-bold">' + esc(item.area) + '</div>' +
-                  '<div class="text-[10px] text-slate-900/80">' + timeAgo(item.updatedAt) + '</div>' +
-                '</div>');
+          const deleteBtn = isMine
+            ? '<button type="button" onclick="deleteItem(\'' + escJs(item.id) + '\')" class="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-extrabold py-2.5 rounded-xl transition">حذف</button>'
+            : '';
 
-        const deleteBtn = isMine
-          ? '<button type="button" onclick="deleteItem(\'' + escJs(item.id) + '\')" class="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-extrabold py-2.5 rounded-xl transition">حذف</button>'
-          : '';
+          return (
+            '<article class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-2xs">' +
+              '<div class="flex items-start justify-between gap-2.5">' +
+                '<div class="flex items-center gap-2.5 min-w-0">' +
+                  '<div class="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200/70 flex items-center justify-center text-lg shrink-0">🛒</div>' +
+                  '<div class="min-w-0">' +
+                    '<h2 class="text-base font-extrabold text-slate-900 truncate">' + esc(item.name) + '</h2>' +
+                    '<p class="text-[11px] text-slate-500 truncate">' + esc(item.unit) + ' • ' + esc(item.publisherName) + '</p>' +
+                  '</div>' +
+                '</div>' +
+                badge +
+              '</div>' +
 
-        return (
-          '<article class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-2xs">' +
-            '<div class="flex items-start justify-between gap-2.5">' +
-              '<div class="flex items-center gap-2.5 min-w-0">' +
-                '<div class="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200/70 flex items-center justify-center text-lg shrink-0">🛒</div>' +
-                '<div class="min-w-0">' +
-                  '<h2 class="text-base font-extrabold text-slate-900 truncate">' + esc(item.name) + '</h2>' +
-                  '<p class="text-[11px] text-slate-500 truncate">' + esc(item.unit) + ' • ' + esc(item.publisherName) + '</p>' +
+              '<div class="flex items-baseline justify-between bg-slate-50 rounded-xl px-3.5 py-2 border border-slate-100">' +
+                '<span class="text-xs font-bold text-slate-500">السعر</span>' +
+                '<div class="text-2xl font-extrabold text-slate-900">' +
+                  (hasPrice ? price.toLocaleString() : "—") +
+                  ' <span class="text-xs font-bold text-slate-600">' + esc(item.currency) + '</span>' +
                 '</div>' +
               '</div>' +
-              badge +
-            '</div>' +
 
-            '<div class="flex items-baseline justify-between bg-slate-50 rounded-xl px-3.5 py-2 border border-slate-100">' +
-              '<span class="text-xs font-bold text-slate-500">السعر</span>' +
-              '<div class="text-2xl font-extrabold text-slate-900">' +
-                (hasPrice ? price.toLocaleString() : "—") +
-                ' <span class="text-xs font-bold text-slate-600">' + esc(item.currency) + '</span>' +
+              '<div class="space-y-1">' +
+                '<div class="flex items-center justify-between text-[11px] font-bold text-slate-700">' +
+                  '<span>ثقة المجتمع: ' + (hasPrice ? (trust.pct + '%') : 'بانتظار أول مشاركة') + ' • <span class="text-[#1b7a43]">' + esc(item.area) + '</span></span>' +
+                  '<span class="text-slate-500">' + trust.conf + ' تأكيد</span>' +
+                '</div>' +
+                '<div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">' +
+                  '<div class="h-full bg-[#1b7a43]" style="width: ' + (hasPrice ? trust.pct : 15) + '%"></div>' +
+                '</div>' +
               '</div>' +
-            '</div>' +
 
-            '<div class="space-y-1">' +
-              '<div class="flex items-center justify-between text-[11px] font-bold text-slate-700">' +
-                '<span>ثقة المجتمع: ' + (hasPrice ? (trust.pct + '%') : 'بانتظار أول مشاركة') + ' • <span class="text-[#1b7a43]">' + esc(item.area) + '</span></span>' +
-                '<span class="text-slate-500">' + trust.conf + ' تأكيد</span>' +
+              '<div class="grid ' + (isMine ? "grid-cols-3" : "grid-cols-2") + ' gap-2">' +
+                '<button type="button" onclick="confirmItem(\'' + escJs(item.id) + '\')" class="' + (confirmedByMe ? "bg-[#1b7a43] hover:bg-[#156235]" : "bg-[#235d9f] hover:bg-[#1b4b82]") + ' text-white text-xs font-extrabold py-2.5 rounded-xl transition">' +
+                  (confirmedByMe ? "مؤكّد ✓" : "تأكيد") +
+                '</button>' +
+                '<button type="button" onclick="openUpdateModal(\'' + escJs(item.id) + '\')" class="bg-[#1b7a43]/10 hover:bg-[#1b7a43]/20 text-[#1b7a43] border border-[#1b7a43]/20 text-xs font-extrabold py-2.5 rounded-xl transition">' +
+                  (hasPrice ? "تحديث" : "سجّل السعر") +
+                '</button>' +
+                deleteBtn +
               '</div>' +
-              '<div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">' +
-                '<div class="h-full bg-[#1b7a43]" style="width: ' + (hasPrice ? trust.pct : 15) + '%"></div>' +
-              '</div>' +
-            '</div>' +
+            '</article>'
+          );
+        }).join("");
+      }
 
-            '<div class="grid ' + (isMine ? "grid-cols-3" : "grid-cols-2") + ' gap-2">' +
-              '<button type="button" onclick="confirmItem(\'' + escJs(item.id) + '\')" class="' + (confirmedByMe ? "bg-[#1b7a43] hover:bg-[#156235]" : "bg-[#235d9f] hover:bg-[#1b4b82]") + ' text-white text-xs font-extrabold py-2.5 rounded-xl transition">' +
-                (confirmedByMe ? "مؤكّد ✓" : "تأكيد") +
-              '</button>' +
-              '<button type="button" onclick="openUpdateModal(\'' + escJs(item.id) + '\')" class="bg-[#1b7a43]/10 hover:bg-[#1b7a43]/20 text-[#1b7a43] border border-[#1b7a43]/20 text-xs font-extrabold py-2.5 rounded-xl transition">' +
-                (hasPrice ? "تحديث" : "سجّل السعر") +
-              '</button>' +
-              deleteBtn +
-            '</div>' +
-          '</article>'
-        );
-      }).join("");
+      // 🧲 تحديث ميزات المغناطيس
+      updateSavingsBanner(workingList);
+      updateTicker(workingList);
+      updateUserStats();
     }
+
+    /* 🔔 إشعارات ذكية كل 45 ثانية */
+    const SMART_TOASTS = [
+      "🔥 3 أشخاص حدّثوا أسعارهم الآن",
+      "💰 وفّر أكثر بمقارنة الأحياء",
+      "🎯 هل جربت تحدي اليوم؟",
+      "🏆 تصدّر لوحة الصدارة بنقاطك",
+      "📢 شارك سعرك وساعد جيرانك",
+      "⭐ كل تأكيد = نقطة مجانية"
+    ];
+    let toastIdx = 0;
+    setInterval(() => {
+      if (document.hidden) return;
+      if (Math.random() > 0.5) {
+        showToast(SMART_TOASTS[toastIdx % SMART_TOASTS.length]);
+        toastIdx++;
+      }
+    }, 45000);
 
     renderAll();
   </script>
