@@ -39,6 +39,13 @@
       <div class="flex items-center gap-1.5 shrink-0">
         <button
           type="button"
+          onclick="toggleGuideBox()"
+          class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs font-bold px-2.5 py-2 rounded-xl transition"
+        >
+          كيف يعمل؟
+        </button>
+        <button
+          type="button"
           onclick="openProfileModal()"
           class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs font-bold px-2.5 py-2 rounded-xl transition"
         >
@@ -74,8 +81,39 @@
   </header>
 
   <main class="max-w-xl mx-auto px-4 mt-4 space-y-3.5">
+
+    <!-- صندوق التعليمات السريعة للمستخدم الجديد -->
+    <section id="guideBox" class="bg-white rounded-2xl border border-emerald-700/20 p-3.5 shadow-2xs space-y-2.5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xs font-extrabold text-[#1b7a43]">دليل المشاركة السريع في دقيقة</h2>
+        <button type="button" onclick="toggleGuideBox()" class="text-[11px] font-bold text-slate-400 hover:text-slate-700">إخفاء ✕</button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+        <div class="bg-[#eef5f0] rounded-xl p-2.5">
+          <div class="font-extrabold text-slate-900">1. اطّلع وقارن</div>
+          <div class="text-slate-600 mt-0.5">شاهد أقل سعر مسجّل لكل سلعة وفارق السعر بين الأحياء.</div>
+        </div>
+        <div class="bg-[#eef5f0] rounded-xl p-2.5">
+          <div class="font-extrabold text-slate-900">2. أكّد أو حدّث</div>
+          <div class="text-slate-600 mt-0.5">اضغط "تأكيد" إذا السعر صحيح، أو "تحديث" إذا تغيّر في منطقتك.</div>
+        </div>
+        <div class="bg-[#eef5f0] rounded-xl p-2.5">
+          <div class="font-extrabold text-slate-900">3. انشر سعر حيك</div>
+          <div class="text-slate-600 mt-0.5">اضغط "+ نشر سعر" وساعد جيرانك بمعرفة أرخص مكان.</div>
+        </div>
+      </div>
+      <div class="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px]">
+        <span class="text-slate-500">شارك نبض الأسعار مع قروبك لزيادة دقة المؤشرات</span>
+        <button type="button" onclick="shareRadarSummary()" class="font-extrabold text-[#235d9f] hover:underline">
+          نسخ ملخص للمشاركة
+        </button>
+      </div>
+    </section>
+
+    <!-- شريط ذكي مختصر -->
     <div id="smartStrip" class="flex items-center gap-2 overflow-x-auto pb-1 text-xs"></div>
 
+    <!-- قائمة الأسعار المباشرة -->
     <section id="cardsContainer" class="space-y-3">
       <div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500">
         لا توجد أسعار معروضة بعد. اضغط "+ نشر سعر" لإضافة أول سعر.
@@ -89,6 +127,19 @@
       <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
         <h2 class="font-extrabold text-base text-slate-900">نشر سعر جديد</h2>
         <button type="button" onclick="closeAddModal()" class="text-slate-400 hover:text-slate-700 text-lg font-bold">✕</button>
+      </div>
+
+      <!-- أزرار سلع شائعة لتسريع المشاركة -->
+      <div>
+        <div class="text-[11px] font-bold text-slate-500 mb-1.5">اختيار سريع لسلعة شائعة:</div>
+        <div class="flex flex-wrap gap-1.5">
+          <button type="button" onclick="pickQuickGood('سكر')" class="text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-2.5 py-1 rounded-lg">سكر</button>
+          <button type="button" onclick="pickQuickGood('دقيق')" class="text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-2.5 py-1 rounded-lg">دقيق</button>
+          <button type="button" onclick="pickQuickGood('زيت نباتي')" class="text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-2.5 py-1 rounded-lg">زيت نباتي</button>
+          <button type="button" onclick="pickQuickGood('عدس')" class="text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-2.5 py-1 rounded-lg">عدس</button>
+          <button type="button" onclick="pickQuickGood('أرز')" class="text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-2.5 py-1 rounded-lg">أرز</button>
+          <button type="button" onclick="pickQuickGood('صابون')" class="text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-2.5 py-1 rounded-lg">صابون</button>
+        </div>
       </div>
 
       <form onsubmit="submitNewItem(event)" class="space-y-3">
@@ -268,12 +319,13 @@
     const RENDER_RELAY_URL = "https://sudan-market-2.onrender.com/gun";
     const RENDER_BASE_URL = "https://sudan-market-2.onrender.com";
 
-    const ITEMS_KEY = "radar_simple_items_v4";
-    const DELETED_KEY = "radar_simple_deleted_v4";
-    const UID_KEY = "radar_simple_uid_v4";
-    const NAME_KEY = "radar_simple_name_v4";
-    const ZONE_KEY = "radar_simple_zone_v4";
-    const ONLY_ZONE_KEY = "radar_simple_only_zone_v4";
+    const ITEMS_KEY = "radar_simple_items_v5";
+    const DELETED_KEY = "radar_simple_deleted_v5";
+    const UID_KEY = "radar_simple_uid_v5";
+    const NAME_KEY = "radar_simple_name_v5";
+    const ZONE_KEY = "radar_simple_zone_v5";
+    const ONLY_ZONE_KEY = "radar_simple_only_zone_v5";
+    const GUIDE_KEY = "radar_simple_guide_hidden_v5";
 
     function norm(str) {
       return String(str || "")
@@ -300,6 +352,32 @@
     let itemsMap = loadJson(ITEMS_KEY, {});
     let deletedMap = loadJson(DELETED_KEY, {});
 
+    function applyGuideVisibility() {
+      const box = document.getElementById("guideBox");
+      if (!box) return;
+      const hidden = localStorage.getItem(GUIDE_KEY) === "true";
+      if (hidden) box.classList.add("hidden");
+      else box.classList.remove("hidden");
+    }
+
+    function toggleGuideBox() {
+      const box = document.getElementById("guideBox");
+      if (!box) return;
+      const willHide = !box.classList.contains("hidden");
+      localStorage.setItem(GUIDE_KEY, String(willHide));
+      applyGuideVisibility();
+    }
+
+    applyGuideVisibility();
+
+    function pickQuickGood(goodName) {
+      const inp = document.getElementById("addName");
+      if (inp) {
+        inp.value = goodName;
+        document.getElementById("addPrice").focus();
+      }
+    }
+
     function loadJson(key, fallback) {
       try {
         const raw = localStorage.getItem(key);
@@ -321,7 +399,7 @@
       el.textContent = msg;
       el.classList.remove("hidden");
       clearTimeout(window._t);
-      window._t = setTimeout(() => el.classList.add("hidden"), 2400);
+      window._t = setTimeout(function() { el.classList.add("hidden"); }, 2500);
     }
 
     function getPublisherName() {
@@ -450,9 +528,10 @@
 
     setConnectedState(false);
 
+    // نافذة حضور مستقرة (45 ثانية) لتفادي الاختفاء العابر عند ضعف الشبكة
     const peersAlive = {};
     peersAlive[myUserId] = Date.now();
-    const ALIVE_MS = 25000;
+    const ALIVE_MS = 45000;
 
     function renderOnlineBadge() {
       const now = Date.now();
@@ -495,8 +574,8 @@
     if (typeof Gun !== "undefined") {
       try {
         const gun = Gun({ peers: [RENDER_RELAY_URL], retry: 2000 });
-        itemsNode = gun.get("sudan_radar_v4").get("items");
-        presenceNode = gun.get("sudan_radar_v4").get("presence");
+        itemsNode = gun.get("sudan_radar_v5").get("items");
+        presenceNode = gun.get("sudan_radar_v5").get("presence");
 
         gun.on("hi", function() {
           setConnectedState(true);
@@ -520,7 +599,7 @@
           }
           const ts = Number((data && data.lastSeen) || 0);
           if (ts > 0 && Date.now() - ts <= ALIVE_MS) {
-            peersAlive[uid] = ts;
+            peersAlive[uid] = Math.max(Number(peersAlive[uid] || 0), ts);
             renderOnlineBadge();
           }
         });
@@ -539,8 +618,8 @@
     checkRenderHealth();
     sendHeartbeat();
     setInterval(checkRenderHealth, 12000);
-    setInterval(sendHeartbeat, 10000);
-    setInterval(renderOnlineBadge, 5000);
+    setInterval(sendHeartbeat, 12000);
+    setInterval(renderOnlineBadge, 6000);
 
     window.addEventListener("beforeunload", function() {
       if (presenceNode) {
@@ -752,6 +831,30 @@
       showToast("تم حفظ إعداداتك ✓");
     }
 
+    function shareRadarSummary() {
+      const list = Object.values(itemsMap).filter(function(it) {
+        return !it.deleted && !(deletedMap[it.id] && deletedMap[it.id].deleted);
+      });
+      const topThree = list.slice(0, 3).map(function(it) {
+        return "• " + it.name + ": " + Number(it.price || 0).toLocaleString() + " " + (it.currency || "ج.س") + " (" + it.area + ")";
+      });
+      const text = [
+        "رادار أسعار الحي — شارك وأكّد أسعار منطقتك:",
+        topThree.length ? topThree.join("\n") : "أضف أول سعر في منطقتك الآن.",
+        window.location.href
+      ].join("\n");
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+          showToast("تم نسخ ملخص للمشاركة في القروب ✓");
+        }).catch(function() {
+          showToast("انسخ رابط الصفحة لمشاركته");
+        });
+      } else {
+        showToast("انسخ رابط الصفحة لمشاركته");
+      }
+    }
+
     function exportData() {
       const blob = new Blob([JSON.stringify(Object.values(itemsMap), null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -904,7 +1007,11 @@
       container.innerHTML = list.map(function(item) {
         const gKey = norm(item.name);
         const price = Number(item.price || 0);
-        const isLowest = price > 0 && lowestPriceByGood[gKey] === price;
+        const lowest = lowestPriceByGood[gKey];
+        const isLowest = price > 0 && lowest === price;
+        const diffPct = (!isLowest && price > 0 && lowest > 0)
+          ? Math.round(((price - lowest) / lowest) * 100)
+          : 0;
         const trust = computeTrust(item, allList);
         const confirmedByMe = Boolean(normalizeVoters(item.voters, item.confirmations, item.publisherId)[myUserId]);
         const isMine = String(item.publisherId) === String(myUserId);
@@ -916,7 +1023,7 @@
               '<div class="text-[10px] text-emerald-100">' + timeAgo(item.updatedAt) + '</div>' +
             '</div>'
           : '<div class="bg-amber-500 text-slate-950 rounded-xl px-3 py-1.5 text-right shrink-0">' +
-              '<div class="text-[10px] font-extrabold">سعر مسجّل</div>' +
+              '<div class="text-[10px] font-extrabold">' + (diffPct > 0 ? ('أعلى بـ ' + diffPct + '%') : 'سعر مسجّل') + '</div>' +
               '<div class="text-xs font-bold">' + esc(item.area) + '</div>' +
               '<div class="text-[10px] text-slate-900/80">' + timeAgo(item.updatedAt) + '</div>' +
             '</div>';
