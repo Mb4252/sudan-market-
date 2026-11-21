@@ -25,15 +25,10 @@
         </div>
         <div class="min-w-0">
           <h1 class="text-base font-extrabold text-slate-900 leading-tight truncate">رادار أسعار الحي</h1>
-          <div class="flex flex-wrap items-center gap-1.5 mt-0.5">
-            <p class="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 truncate">
-              <span id="relayDot" class="w-2 h-2 rounded-full bg-amber-500 inline-block shrink-0"></span>
-              <span id="relayStatus" class="truncate">جاري الاتصال بجسر Render...</span>
-            </p>
-            <span id="onlineCountBadge" class="text-[10px] font-extrabold bg-white/90 text-[#1b7a43] border border-emerald-700/20 px-2 py-0.5 rounded-full shrink-0">
-              المتصلون الآن: 1
-            </span>
-          </div>
+          <p class="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 mt-0.5 truncate">
+            <span id="relayDot" class="w-2 h-2 rounded-full bg-amber-500 inline-block shrink-0"></span>
+            <span id="relayStatus" class="truncate">جاري الاتصال بجسر Render...</span>
+          </p>
         </div>
       </div>
 
@@ -338,10 +333,9 @@
   <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
 
   <script>
-    const RENDER_RELAY_URL = "https://sudan-market-2.onrender.com/gun";[span_1](start_span)[span_1](end_span)
+    const RENDER_RELAY_URL = "https://sudan-market-2.onrender.com/gun";[span_0](start_span)[span_0](end_span)
 
     const STORAGE_KEY = "radar_smart_zone_items_v2";
-    const DELETED_KEY = "radar_smart_deleted_items_v2";
     const USER_ID_KEY = "radar_smart_user_id_v2";
     const USERNAME_KEY = "radar_smart_username_v2";
     const ZONE_KEY = "radar_smart_my_zone_v2";
@@ -433,7 +427,6 @@
     updateScopeButton();
 
     let itemsMap = loadLocalItems();
-    let deletedMap = loadDeletedItems();
 
     function loadLocalItems() {
       try {
@@ -444,18 +437,8 @@
       }
     }
 
-    function loadDeletedItems() {
-      try {
-        const raw = localStorage.getItem(DELETED_KEY);
-        return raw ? JSON.parse(raw) : {};
-      } catch {
-        return {};
-      }
-    }
-
     function saveLocalItems() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(itemsMap));
-      localStorage.setItem(DELETED_KEY, JSON.stringify(deletedMap));
     }
 
     function showToast(msg) {
@@ -479,48 +462,10 @@
       return map;
     }
 
-    function applyDeletionTombstone(itemId, deletedAt, deletedBy) {
-      const id = String(itemId);
-      const delTs = Number(deletedAt || Date.now());
-      const prevDelTs = Number(deletedMap[id]?.deletedAt || 0);
-      const effectiveDelTs = Math.max(delTs, prevDelTs);
-
-      deletedMap[id] = {
-        deleted: true,
-        deletedAt: effectiveDelTs,
-        deletedBy: String(deletedBy || myUserId)
-      };
-
-      if (itemsMap[id] && Number(itemsMap[id].updatedAt || 0) <= effectiveDelTs) {
-        delete itemsMap[id];
-      }
-    }
-
     function mergeItem(incoming) {
-      if (!incoming || !incoming.id) return false;
-      const id = String(incoming.id);
+      if (!incoming || !incoming.id || !incoming.name) return false;
+      const existing = itemsMap[incoming.id];
       const incTime = Number(incoming.updatedAt || 0);
-      const delTs = Number(incoming.deletedAt || deletedMap[id]?.deletedAt || 0);
-
-      if (incoming.deleted) {
-        if (delTs > Number(deletedMap[id]?.deletedAt || 0) || itemsMap[id]) {
-          applyDeletionTombstone(id, delTs || Date.now(), incoming.deletedBy);
-          return true;
-        }
-        return false;
-      }
-
-      if (delTs > 0 && incTime <= delTs) {
-        if (itemsMap[id]) {
-          delete itemsMap[id];
-          return true;
-        }
-        return false;
-      }
-
-      if (!incoming.name) return false;
-
-      const existing = itemsMap[id];
       const extTime = Number(existing?.updatedAt || 0);
 
       const mergedVoters = {
@@ -534,8 +479,8 @@
       );
 
       if (!existing || incTime >= extTime) {
-        itemsMap[id] = {
-          id,
+        itemsMap[incoming.id] = {
+          id: String(incoming.id),
           name: String(incoming.name).trim(),
           unit: String(incoming.unit || "وحدة").trim(),
           currency: String(incoming.currency || "ج.س").trim(),
@@ -546,8 +491,7 @@
           disputes: Math.max(Number(incoming.disputes || 0), Number(existing?.disputes || 0)),
           publisherName: String(incoming.publisherName || existing?.publisherName || "مستخدم الحي").trim(),
           publisherId: String(incoming.publisherId || existing?.publisherId || myUserId).trim(),
-          updatedAt: incTime || Date.now(),
-          deleted: false
+          updatedAt: incTime || Date.now()
         };
         return true;
       } else if (Object.keys(mergedVoters).length > Object.keys(existing.voters || {}).length) {
@@ -560,66 +504,6 @@
 
     const gun = Gun({ peers: [RENDER_RELAY_URL] });
     const radarNode = gun.get("sudan_radar_smart_v2").get("items");
-    const presenceNode = gun.get("sudan_radar_smart_v2").get("presence");
-
-    const activePeersMap = { [myUserId]: Date.now() };
-    const ONLINE_WINDOW_MS = 25000;
-
-    function sendPresenceHeartbeat() {
-      const now = Date.now();
-      activePeersMap[myUserId] = now;
-      presenceNode.get(myUserId).put({
-        userId: myUserId,
-        lastSeen: now,
-        online: true
-      });
-      renderOnlineCount();
-    }
-
-    function renderOnlineCount() {
-      const now = Date.now();
-      activePeersMap[myUserId] = now;
-      let count = 0;
-      Object.keys(activePeersMap).forEach((uid) => {
-        const ts = Number(activePeersMap[uid] || 0);
-        if (now - ts <= ONLINE_WINDOW_MS) {
-          count += 1;
-        } else {
-          delete activePeersMap[uid];
-        }
-      });
-      const badge = document.getElementById("onlineCountBadge");
-      if (badge) {
-        badge.textContent = `المتصلون الآن: ${Math.max(1, count)}`;
-      }
-    }
-
-    presenceNode.map().on((data, key) => {
-      const uid = String(data?.userId || key || "").trim();
-      if (!uid) return;
-      if (data && data.online === false) {
-        delete activePeersMap[uid];
-        renderOnlineCount();
-        return;
-      }
-      const ts = Number(data?.lastSeen || 0);
-      if (ts > 0 && Date.now() - ts <= ONLINE_WINDOW_MS) {
-        activePeersMap[uid] = ts;
-        renderOnlineCount();
-      }
-    });
-
-    sendPresenceHeartbeat();
-    setInterval(sendPresenceHeartbeat, 10000);
-    setInterval(renderOnlineCount, 5000);
-
-    window.addEventListener("beforeunload", () => {
-      presenceNode.get(myUserId).put({
-        userId: myUserId,
-        lastSeen: Date.now(),
-        online: false
-      });
-    });
 
     const dotEl = document.getElementById("relayDot");
     const statusEl = document.getElementById("relayStatus");
@@ -627,22 +511,10 @@
     gun.on("hi", () => {
       dotEl.className = "w-2 h-2 rounded-full bg-[#1b7a43] inline-block animate-pulse";
       statusEl.textContent = "متصل عبر Render — بث مباشر للعامة";
-      sendPresenceHeartbeat();
     });
 
     Object.values(itemsMap).forEach((item) => {
-      if (!item.deleted) radarNode.get(item.id).put(item);
-    });
-
-    Object.entries(deletedMap).forEach(([id, delInfo]) => {
-      if (delInfo?.deleted) {
-        radarNode.get(id).put({
-          id,
-          deleted: true,
-          deletedAt: Number(delInfo.deletedAt || Date.now()),
-          deletedBy: String(delInfo.deletedBy || myUserId)
-        });
-      }
+      radarNode.get(item.id).put(item);
     });
 
     radarNode.map().on((data, key) => {
@@ -653,30 +525,6 @@
         renderAll();
       }
     });
-
-    function deleteMyPost(itemId) {
-      const item = itemsMap[itemId];
-      if (!item) return;
-
-      if (String(item.publisherId) !== String(myUserId)) {
-        showToast("يمكن لصاحب المنشور فقط حذفه");
-        return;
-      }
-
-      const now = Date.now();
-      applyDeletionTombstone(itemId, now, myUserId);
-      saveLocalItems();
-
-      radarNode.get(itemId).put({
-        id: itemId,
-        deleted: true,
-        deletedAt: now,
-        deletedBy: myUserId
-      });
-
-      renderAll();
-      showToast("تم حذف منشورك بنجاح ✓");
-    }
 
     function calculateRealCommunityTrust(item, allList) {
       const votersCount = Object.keys(item.voters || {}).length;
@@ -832,11 +680,9 @@
         disputes: 0,
         publisherName: currentPublisherName(),
         publisherId: myUserId,
-        updatedAt: now,
-        deleted: false
+        updatedAt: now
       };
 
-      delete deletedMap[id];
       itemsMap[id] = newItem;
       saveLocalItems();
       radarNode.get(id).put(newItem);
@@ -1004,7 +850,7 @@
     }
 
     function exportBundle() {
-      const list = Object.values(itemsMap).filter((it) => !it.deleted);
+      const list = Object.values(itemsMap);
       const payload = {
         exportedAt: new Date().toISOString(),
         fromUserId: myUserId,
@@ -1076,7 +922,7 @@
       const myZoneNorm = normalizeText(myZoneRaw);
       const qNorm = normalizeText(document.getElementById("filterInput").value);
 
-      const allList = Object.values(itemsMap).filter((it) => !it.deleted && !deletedMap[it.id]?.deleted);
+      const allList = Object.values(itemsMap);
       renderSmartInsights(allList);
 
       const lowestPriceByGood = {};
@@ -1131,7 +977,6 @@
 
         const { trustPct, realConfirmations, isSpike } = calculateRealCommunityTrust(item, allList);
         const alreadyConfirmed = Boolean(normalizeVoters(item.voters, item.confirmations, item.publisherId)[myUserId]);
-        const isOwner = String(item.publisherId) === String(myUserId);
         const zoneDisplay = (item.area || myZoneRaw || "غير محدد").trim();
 
         const statusBox = isLowest
@@ -1145,15 +990,6 @@
                <div class="text-xs font-bold mt-0.5 truncate">${escapeHtml(zoneDisplay)}</div>
                <div class="text-[10px] font-semibold text-slate-900/80 mt-0.5">${timeAgo(item.updatedAt)}</div>
              </div>`;
-
-        const ownerDeleteBtn = isOwner
-          ? `<button
-               onclick="deleteMyPost('${item.id}')"
-               class="col-span-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-extrabold py-2 rounded-xl transition"
-             >
-               حذف منشوري
-             </button>`
-          : "";
 
         return `
           <article class="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3">
@@ -1194,7 +1030,7 @@
               </div>
             </div>
 
-            <!-- أزرار تأكيد السعر وتحديث السعر وحذف المنشور لصاحبه -->
+            <!-- أزرار تأكيد السعر وتحديث السعر -->
             <div class="grid grid-cols-2 gap-2.5 pt-0.5">
               <button
                 onclick="confirmPrice('${item.id}')"
@@ -1208,7 +1044,6 @@
               >
                 تحديث السعر
               </button>
-              ${ownerDeleteBtn}
             </div>
           </article>
         `;
