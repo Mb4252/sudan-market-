@@ -95,11 +95,11 @@
         </div>
         <div class="bg-[#eef5f0] rounded-xl p-2.5">
           <div class="font-extrabold text-slate-900">2. أكّد أو حدّث</div>
-          <div class="text-slate-600 mt-0.5">اضغط "تأكيد" إذا السعر صحيح، أو "تحديث" إذا تغيّر في منطقتك.</div>
+          <div class="text-slate-600 mt-0.5">اضغط "تأكيد" إذا السعر صحيح، أو "تحديث" لتسجيل سعر منطقتك.</div>
         </div>
         <div class="bg-[#eef5f0] rounded-xl p-2.5">
           <div class="font-extrabold text-slate-900">3. انشر سعر حيك</div>
-          <div class="text-slate-600 mt-0.5">اضغط "+ نشر سعر" وساعد جيرانك بمعرفة أرخص مكان.</div>
+          <div class="text-slate-600 mt-0.5">اضغط "+ نشر سعر" وساعد أهل القروب بمعرفة أرخص مكان.</div>
         </div>
       </div>
       <div class="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px]">
@@ -114,11 +114,7 @@
     <div id="smartStrip" class="flex items-center gap-2 overflow-x-auto pb-1 text-xs"></div>
 
     <!-- قائمة الأسعار المباشرة -->
-    <section id="cardsContainer" class="space-y-3">
-      <div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500">
-        لا توجد أسعار معروضة بعد. اضغط "+ نشر سعر" لإضافة أول سعر.
-      </div>
-    </section>
+    <section id="cardsContainer" class="space-y-3"></section>
   </main>
 
   <!-- نافذة نشر سعر جديد -->
@@ -129,7 +125,6 @@
         <button type="button" onclick="closeAddModal()" class="text-slate-400 hover:text-slate-700 text-lg font-bold">✕</button>
       </div>
 
-      <!-- أزرار سلع شائعة لتسريع المشاركة -->
       <div>
         <div class="text-[11px] font-bold text-slate-500 mb-1.5">اختيار سريع لسلعة شائعة:</div>
         <div class="flex flex-wrap gap-1.5">
@@ -319,13 +314,65 @@
     const RENDER_RELAY_URL = "https://sudan-market-2.onrender.com/gun";
     const RENDER_BASE_URL = "https://sudan-market-2.onrender.com";
 
-    const ITEMS_KEY = "radar_simple_items_v5";
-    const DELETED_KEY = "radar_simple_deleted_v5";
-    const UID_KEY = "radar_simple_uid_v5";
-    const NAME_KEY = "radar_simple_name_v5";
-    const ZONE_KEY = "radar_simple_zone_v5";
-    const ONLY_ZONE_KEY = "radar_simple_only_zone_v5";
-    const GUIDE_KEY = "radar_simple_guide_hidden_v5";
+    const ITEMS_KEY = "radar_simple_items_v6";
+    const DELETED_KEY = "radar_simple_deleted_v6";
+    const UID_KEY = "radar_simple_uid_v6";
+    const NAME_KEY = "radar_simple_name_v6";
+    const ZONE_KEY = "radar_simple_zone_v6";
+    const ONLY_ZONE_KEY = "radar_simple_only_zone_v6";
+    const GUIDE_KEY = "radar_simple_guide_hidden_v6";
+
+    // سلع افتتاحية جاهزة للتفاعل السريع عند خلو القائمة تماماً
+    const STARTER_ITEMS = [
+      {
+        id: "starter_sugar",
+        name: "سكر",
+        unit: "كيلو / كيس",
+        currency: "ج.س",
+        price: 0,
+        area: "أضف منطقتك",
+        voters: {},
+        confirmations: 0,
+        disputes: 0,
+        publisherName: "نموذج جاهز للتحديث",
+        publisherId: "starter",
+        updatedAt: Date.now(),
+        deleted: false,
+        isStarter: true
+      },
+      {
+        id: "starter_flour",
+        name: "دقيق",
+        unit: "كيلو / جوال",
+        currency: "ج.س",
+        price: 0,
+        area: "أضف منطقتك",
+        voters: {},
+        confirmations: 0,
+        disputes: 0,
+        publisherName: "نموذج جاهز للتحديث",
+        publisherId: "starter",
+        updatedAt: Date.now() - 1000,
+        deleted: false,
+        isStarter: true
+      },
+      {
+        id: "starter_oil",
+        name: "زيت نباتي",
+        unit: "لتر / جركان",
+        currency: "ج.س",
+        price: 0,
+        area: "أضف منطقتك",
+        voters: {},
+        confirmations: 0,
+        disputes: 0,
+        publisherName: "نموذج جاهز للتحديث",
+        publisherId: "starter",
+        updatedAt: Date.now() - 2000,
+        deleted: false,
+        isStarter: true
+      }
+    ];
 
     function norm(str) {
       return String(str || "")
@@ -573,8 +620,8 @@
     if (typeof Gun !== "undefined") {
       try {
         const gun = Gun({ peers: [RENDER_RELAY_URL], retry: 2000 });
-        itemsNode = gun.get("sudan_radar_v5").get("items");
-        presenceNode = gun.get("sudan_radar_v5").get("presence");
+        itemsNode = gun.get("sudan_radar_v6").get("items");
+        presenceNode = gun.get("sudan_radar_v6").get("presence");
 
         gun.on("hi", function() {
           setConnectedState(true);
@@ -655,7 +702,11 @@
 
     function confirmItem(id) {
       const item = itemsMap[id];
-      if (!item) return;
+      if (!item || Number(item.price || 0) <= 0) {
+        showToast("أدخل السعر أولاً عبر زر تحديث");
+        openUpdateModal(id);
+        return;
+      }
       const voters = normalizeVoters(item.voters, item.confirmations, item.publisherId);
       if (voters[myUserId]) {
         showToast("أكّدت هذا السعر مسبقاً");
@@ -749,12 +800,18 @@
     }
 
     function openUpdateModal(id) {
-      const item = itemsMap[id];
+      const starter = STARTER_ITEMS.find(function(s) { return s.id === id; });
+      const item = itemsMap[id] || starter;
       if (!item) return;
+
+      if (!itemsMap[id] && starter) {
+        itemsMap[id] = Object.assign({}, starter, { id: id, isStarter: false });
+      }
+
       document.getElementById("updateItemId").value = item.id;
-      document.getElementById("updateTitle").textContent = "تحديث: " + item.name;
-      document.getElementById("updatePrice").value = item.price;
-      document.getElementById("updateArea").value = getSavedZone() || item.area || "";
+      document.getElementById("updateTitle").textContent = "سجّل سعر: " + item.name;
+      document.getElementById("updatePrice").value = Number(item.price || 0) > 0 ? item.price : "";
+      document.getElementById("updateArea").value = getSavedZone() || (item.area === "أضف منطقتك" ? "" : item.area) || "";
       const m = document.getElementById("updateModal");
       m.classList.remove("hidden");
       m.classList.add("flex");
@@ -772,7 +829,8 @@
       const id = document.getElementById("updateItemId").value;
       const price = Number(document.getElementById("updatePrice").value);
       const area = document.getElementById("updateArea").value.trim();
-      const item = itemsMap[id];
+      const starter = STARTER_ITEMS.find(function(s) { return s.id === id; });
+      const item = itemsMap[id] || starter;
       if (!item || !price || price <= 0 || !area) return;
 
       const updated = Object.assign({}, item, {
@@ -783,14 +841,16 @@
         disputes: Number(item.disputes || 0) + 1,
         publisherName: getPublisherName(),
         publisherId: myUserId,
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        deleted: false,
+        isStarter: false
       });
 
       itemsMap[id] = updated;
       saveState();
       closeUpdateModal();
       renderAll();
-      showToast("تم تحديث السعر ✓");
+      showToast("تم نشر وتحديث السعر ✓");
 
       if (itemsNode) {
         try { itemsNode.get(id).put(updated); } catch (err) {}
@@ -832,14 +892,14 @@
 
     function shareRadarSummary() {
       const list = Object.values(itemsMap).filter(function(it) {
-        return !it.deleted && !(deletedMap[it.id] && deletedMap[it.id].deleted);
+        return !it.deleted && !(deletedMap[it.id] && deletedMap[it.id].deleted) && Number(it.price || 0) > 0;
       });
       const topThree = list.slice(0, 3).map(function(it) {
         return "• " + it.name + ": " + Number(it.price || 0).toLocaleString() + " " + (it.currency || "ج.س") + " (" + it.area + ")";
       });
       const text = [
-        "رادار أسعار الحي — شارك وأكّد أسعار منطقتك:",
-        topThree.length ? topThree.join("\n") : "أضف أول سعر في منطقتك الآن.",
+        "رادار أسعار الحي — كم سعر السكر والدقيق والزيت في منطقتك اليوم؟ شارك هنا:",
+        topThree.length ? topThree.join("\n") : "سجّل أول سعر في منطقتك الآن وساعد جيرانك.",
         window.location.href
       ].join("\n");
 
@@ -914,10 +974,11 @@
 
     function renderSmartStrip(allList) {
       const strip = document.getElementById("smartStrip");
+      const validList = allList.filter(function(it) { return Number(it.price || 0) > 0; });
       const lowestByGood = {};
       const zoneCounts = {};
 
-      allList.forEach(function(it) {
+      validList.forEach(function(it) {
         const gKey = norm(it.name);
         const zKey = norm(it.area);
         const p = Number(it.price || 0);
@@ -961,16 +1022,20 @@
     }
 
     function renderAll() {
-      const allList = Object.values(itemsMap).filter(function(it) {
+      const realList = Object.values(itemsMap).filter(function(it) {
         return !it.deleted && !(deletedMap[it.id] && deletedMap[it.id].deleted);
       });
-      renderSmartStrip(allList);
+
+      const hasAnyRealItems = realList.some(function(it) { return Number(it.price || 0) > 0; });
+      const workingList = hasAnyRealItems ? realList : STARTER_ITEMS;
+
+      renderSmartStrip(workingList);
 
       const q = norm(document.getElementById("searchInput").value);
       const savedZone = norm(getSavedZone());
 
       const lowestPriceByGood = {};
-      allList.forEach(function(it) {
+      workingList.forEach(function(it) {
         const gKey = norm(it.name);
         const p = Number(it.price || 0);
         if (gKey && p > 0 && (!lowestPriceByGood[gKey] || p < lowestPriceByGood[gKey])) {
@@ -978,9 +1043,9 @@
         }
       });
 
-      const list = allList
+      const list = workingList
         .filter(function(it) {
-          if (onlyMyZone && savedZone && norm(it.area) !== savedZone) return false;
+          if (onlyMyZone && savedZone && !it.isStarter && norm(it.area) !== savedZone) return false;
           if (!q) return true;
           return norm((it.name || "") + " " + (it.area || "") + " " + (it.publisherName || "")).includes(q);
         })
@@ -994,38 +1059,55 @@
         });
 
       const container = document.getElementById("cardsContainer");
+      const bannerHtml = !hasAnyRealItems
+        ? '<div class="bg-emerald-900 text-white rounded-2xl p-3.5 flex items-center justify-between gap-3">' +
+            '<div class="text-xs leading-relaxed">' +
+              '<div class="font-extrabold">كن أول من يضع سعر حيه في القروب!</div>' +
+              '<div class="text-emerald-100 text-[11px]">اضغط "سجّل السعر" على أي بطاقة أدناه أو "+ نشر سعر".</div>' +
+            '</div>' +
+            '<button type="button" onclick="openAddModal()" class="bg-white text-[#1b7a43] text-xs font-extrabold px-3 py-2 rounded-xl shrink-0">+ نشر سعر</button>' +
+          '</div>'
+        : '';
+
       if (list.length === 0) {
         container.innerHTML =
+          bannerHtml +
           '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-2">' +
-            '<p class="text-sm font-extrabold text-slate-800">لا توجد أسعار معروضة بعد</p>' +
-            '<p class="text-xs text-slate-500">اضغط "+ نشر سعر" لإضافة أول سعر في منطقتك.</p>' +
+            '<p class="text-sm font-extrabold text-slate-800">لا توجد نتائج مطابقة حالياً</p>' +
+            '<p class="text-xs text-slate-500">جرّب مسح البحث أو أضف سعراً جديداً في منطقتك.</p>' +
           '</div>';
         return;
       }
 
-      container.innerHTML = list.map(function(item) {
+      container.innerHTML = bannerHtml + list.map(function(item) {
         const gKey = norm(item.name);
         const price = Number(item.price || 0);
+        const hasPrice = price > 0;
         const lowest = lowestPriceByGood[gKey];
-        const isLowest = price > 0 && lowest === price;
-        const diffPct = (!isLowest && price > 0 && lowest > 0)
+        const isLowest = hasPrice && lowest === price;
+        const diffPct = (!isLowest && hasPrice && lowest > 0)
           ? Math.round(((price - lowest) / lowest) * 100)
           : 0;
-        const trust = computeTrust(item, allList);
+        const trust = computeTrust(item, workingList);
         const confirmedByMe = Boolean(normalizeVoters(item.voters, item.confirmations, item.publisherId)[myUserId]);
-        const isMine = String(item.publisherId) === String(myUserId);
+        const isMine = !item.isStarter && String(item.publisherId) === String(myUserId);
 
-        const badge = isLowest
-          ? '<div class="bg-[#1b7a43] text-white rounded-xl px-3 py-1.5 text-right shrink-0">' +
-              '<div class="text-[10px] font-extrabold">أقل سعر الآن</div>' +
+        const badge = !hasPrice
+          ? '<div class="bg-slate-200 text-slate-800 rounded-xl px-3 py-1.5 text-right shrink-0">' +
+              '<div class="text-[10px] font-extrabold">بانتظار السعر</div>' +
               '<div class="text-xs font-bold">' + esc(item.area) + '</div>' +
-              '<div class="text-[10px] text-emerald-100">' + timeAgo(item.updatedAt) + '</div>' +
             '</div>'
-          : '<div class="bg-amber-500 text-slate-950 rounded-xl px-3 py-1.5 text-right shrink-0">' +
-              '<div class="text-[10px] font-extrabold">' + (diffPct > 0 ? ('أعلى بـ ' + diffPct + '%') : 'سعر مسجّل') + '</div>' +
-              '<div class="text-xs font-bold">' + esc(item.area) + '</div>' +
-              '<div class="text-[10px] text-slate-900/80">' + timeAgo(item.updatedAt) + '</div>' +
-            '</div>';
+          : (isLowest
+              ? '<div class="bg-[#1b7a43] text-white rounded-xl px-3 py-1.5 text-right shrink-0">' +
+                  '<div class="text-[10px] font-extrabold">أقل سعر الآن</div>' +
+                  '<div class="text-xs font-bold">' + esc(item.area) + '</div>' +
+                  '<div class="text-[10px] text-emerald-100">' + timeAgo(item.updatedAt) + '</div>' +
+                '</div>'
+              : '<div class="bg-amber-500 text-slate-950 rounded-xl px-3 py-1.5 text-right shrink-0">' +
+                  '<div class="text-[10px] font-extrabold">' + (diffPct > 0 ? ('أعلى بـ ' + diffPct + '%') : 'سعر مسجّل') + '</div>' +
+                  '<div class="text-xs font-bold">' + esc(item.area) + '</div>' +
+                  '<div class="text-[10px] text-slate-900/80">' + timeAgo(item.updatedAt) + '</div>' +
+                '</div>');
 
         const deleteBtn = isMine
           ? '<button type="button" onclick="deleteItem(\'' + escJs(item.id) + '\')" class="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-extrabold py-2.5 rounded-xl transition">حذف</button>'
@@ -1047,18 +1129,18 @@
             '<div class="flex items-baseline justify-between bg-slate-50 rounded-xl px-3.5 py-2 border border-slate-100">' +
               '<span class="text-xs font-bold text-slate-500">السعر</span>' +
               '<div class="text-2xl font-extrabold text-slate-900">' +
-                price.toLocaleString() +
+                (hasPrice ? price.toLocaleString() : "—") +
                 ' <span class="text-xs font-bold text-slate-600">' + esc(item.currency) + '</span>' +
               '</div>' +
             '</div>' +
 
             '<div class="space-y-1">' +
               '<div class="flex items-center justify-between text-[11px] font-bold text-slate-700">' +
-                '<span>ثقة المجتمع: ' + trust.pct + '% • <span class="text-[#1b7a43]">' + esc(item.area) + '</span></span>' +
+                '<span>ثقة المجتمع: ' + (hasPrice ? (trust.pct + '%') : 'بانتظار أول مشاركة') + ' • <span class="text-[#1b7a43]">' + esc(item.area) + '</span></span>' +
                 '<span class="text-slate-500">' + trust.conf + ' تأكيد</span>' +
               '</div>' +
               '<div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">' +
-                '<div class="h-full bg-[#1b7a43]" style="width: ' + trust.pct + '%"></div>' +
+                '<div class="h-full bg-[#1b7a43]" style="width: ' + (hasPrice ? trust.pct : 15) + '%"></div>' +
               '</div>' +
             '</div>' +
 
@@ -1066,7 +1148,9 @@
               '<button type="button" onclick="confirmItem(\'' + escJs(item.id) + '\')" class="' + (confirmedByMe ? "bg-[#1b7a43] hover:bg-[#156235]" : "bg-[#235d9f] hover:bg-[#1b4b82]") + ' text-white text-xs font-extrabold py-2.5 rounded-xl transition">' +
                 (confirmedByMe ? "مؤكّد ✓" : "تأكيد") +
               '</button>' +
-              '<button type="button" onclick="openUpdateModal(\'' + escJs(item.id) + '\')" class="bg-slate-200/80 hover:bg-slate-300 text-slate-800 text-xs font-extrabold py-2.5 rounded-xl transition">تحديث</button>' +
+              '<button type="button" onclick="openUpdateModal(\'' + escJs(item.id) + '\')" class="bg-[#1b7a43]/10 hover:bg-[#1b7a43]/20 text-[#1b7a43] border border-[#1b7a43]/20 text-xs font-extrabold py-2.5 rounded-xl transition">' +
+                (hasPrice ? "تحديث" : "سجّل السعر") +
+              '</button>' +
               deleteBtn +
             '</div>' +
           '</article>'
