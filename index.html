@@ -3,41 +3,50 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>الجسر العام — تبادل مباشر وخوارزمية استكشاف تلقائية</title>
+  <title>رادار أسعار الحي — نبض الأسعار الفوري</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <style>
     body {
       font-family: 'Cairo', sans-serif;
-      background-color: #f1f5f9;
+      background-color: #eef5f0;
       color: #0f172a;
     }
   </style>
 </head>
-<body class="min-h-screen pb-14">
+<body class="min-h-screen pb-20">
 
-  <!-- الشريط العلوي -->
-  <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200">
+  <!-- الشريط العلوي المطابق لروح رادار أسعار الحي -->
+  <header class="sticky top-0 z-30 bg-[#e4f0e8]/95 backdrop-blur border-b border-emerald-900/10">
     <div class="max-w-xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
-      <div>
-        <h1 class="text-base font-extrabold text-slate-900">الجسر العام للمنشورات والأسعار</h1>
-        <p class="text-[11px] text-slate-600 flex items-center gap-1.5">
-          <span id="peerDot" class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
-          <span id="peerStatus">جاري تهيئة جسر المتصفحات...</span>
-        </p>
+      <div class="flex items-center gap-2.5">
+        <div class="w-10 h-10 rounded-full bg-white border border-emerald-700/20 flex items-center justify-center text-emerald-700 font-extrabold text-base shadow-2xs">
+          🌾
+        </div>
+        <div>
+          <h1 class="text-base font-extrabold text-slate-900 leading-tight">رادار أسعار الحي</h1>
+          <p class="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 mt-0.5">
+            <span id="relayDot" class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+            <span id="relayStatus">جاري الاتصال بجسر Render...</span>
+          </p>
+        </div>
       </div>
 
       <div class="flex items-center gap-1.5">
         <button
+          onclick="openAddModal()"
+          class="bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white text-xs font-extrabold px-3 py-2 rounded-xl transition shadow-2xs"
+        >
+          + إضافة سلعة
+        </button>
+        <button
           onclick="exportBundle()"
-          title="تصدير حزمة التحديثات"
-          class="text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 px-2.5 py-2 rounded-xl transition"
+          class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs font-bold px-2.5 py-2 rounded-xl transition"
         >
           تصدير
         </button>
         <label
-          title="استيراد حزمة تحديثات"
-          class="text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 px-2.5 py-2 rounded-xl transition cursor-pointer"
+          class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs font-bold px-2.5 py-2 rounded-xl transition cursor-pointer"
         >
           استيراد
           <input type="file" accept=".json,application/json" onchange="importBundle(event)" class="hidden" />
@@ -45,52 +54,58 @@
       </div>
     </div>
 
-    <!-- شريط الفلترة -->
-    <div class="max-w-xl mx-auto px-4 pb-3">
+    <!-- بحث وفلترة حسب الحي أو السلعة -->
+    <div class="max-w-xl mx-auto px-4 pb-3 flex gap-2">
       <input
-        id="searchInput"
+        id="filterInput"
         type="text"
-        oninput="renderFeed()"
-        placeholder="ابحث بالسلعة، الحي/المنطقة، اسم المستخدم، أو المعرّف..."
-        class="w-full text-xs bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-600 focus:bg-white transition"
+        oninput="renderAll()"
+        placeholder="اكتب اسم الحي أو السلعة للفلترة (مثال: ام القرى/مهيلة، سكر، دقيق...)"
+        class="w-full text-xs bg-white border border-emerald-900/15 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-600 transition"
       />
+      <button
+        onclick="clearFilter()"
+        class="text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 px-3 rounded-xl transition shrink-0"
+      >
+        الكل
+      </button>
     </div>
   </header>
 
   <main class="max-w-xl mx-auto px-4 mt-4 space-y-4">
 
     <!-- لوحة الخوارزمية التلقائية: الأرخص والأكثر تداولاً -->
-    <section id="insightsPanel" class="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3.5">
-      <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+    <section class="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs space-y-3">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
         <h2 class="text-sm font-extrabold text-slate-900">استكشاف تلقائي من المنشورات المدمجة</h2>
-        <span id="insightsStatsBadge" class="text-[11px] font-bold bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full">
-          0 منشور
+        <span id="totalItemsBadge" class="text-[11px] font-bold bg-emerald-50 text-emerald-800 px-2.5 py-0.5 rounded-full">
+          0 بند
         </span>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <!-- أرخص الأسعار المسجلة -->
-        <div class="bg-emerald-50/60 border border-emerald-200/80 rounded-xl p-3 space-y-2">
-          <div class="text-xs font-extrabold text-emerald-900 flex items-center justify-between">
-            <span>أرخص الأسعار المسجّلة</span>
-            <span class="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full">تلقائي</span>
+        <!-- أرخص الأسعار المسجلة تلقائياً -->
+        <div class="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-extrabold text-emerald-950">أرخص الأسعار المسجّلة</span>
+            <span class="text-[10px] font-bold bg-emerald-700 text-white px-2 py-0.5 rounded-full">تلقائي</span>
           </div>
-          <div id="cheapestList" class="space-y-1.5 text-xs text-slate-700">
+          <div id="cheapestInsights" class="space-y-1.5 text-xs">
             <p class="text-[11px] text-slate-500">لا توجد أسعار مسجّلة بعد.</p>
           </div>
         </div>
 
         <!-- أكثر الأحياء والسلع تداولاً -->
-        <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-2.5">
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2.5">
           <div>
             <div class="text-xs font-extrabold text-slate-900 mb-1.5">أكثر الأحياء تداولاً</div>
-            <div id="topAreasList" class="flex flex-wrap gap-1.5">
+            <div id="topAreasInsights" class="flex flex-wrap gap-1.5">
               <span class="text-[11px] text-slate-500">لا توجد بيانات بعد.</span>
             </div>
           </div>
-          <div class="pt-1 border-t border-slate-200/70">
-            <div class="text-xs font-extrabold text-slate-900 mb-1.5">أكثر السلع/المواضيع تداولاً</div>
-            <div id="topTopicsList" class="flex flex-wrap gap-1.5">
+          <div class="pt-1.5 border-t border-slate-200">
+            <div class="text-xs font-extrabold text-slate-900 mb-1.5">أكثر السلع تداولاً</div>
+            <div id="topGoodsInsights" class="flex flex-wrap gap-1.5">
               <span class="text-[11px] text-slate-500">لا توجد بيانات بعد.</span>
             </div>
           </div>
@@ -98,99 +113,208 @@
       </div>
     </section>
 
-    <!-- بطاقة هوية المستخدم والنشر السريع للعامة -->
-    <section class="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
-      <div class="flex items-center justify-between">
-        <h2 class="text-sm font-extrabold text-slate-900">نشر أو تحديث للعامة</h2>
-        <span class="text-[11px] font-bold bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full">
-          معرّفك: <span id="myUserIdBadge"></span>
-        </span>
+    <!-- إعداد هوية الناشر (الاسم والمعرّف الظاهر للعامة) -->
+    <section class="bg-white rounded-2xl border border-slate-200 px-4 py-3 shadow-2xs flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+        <span class="text-xs font-bold text-slate-600 shrink-0">اسمك للعامة:</span>
+        <input
+          id="publisherNameInput"
+          type="text"
+          oninput="savePublisherName()"
+          placeholder="اكتب اسمك..."
+          class="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-600"
+        />
       </div>
-
-      <form onsubmit="publishPost(event)" class="space-y-2.5">
-        <div class="grid grid-cols-2 gap-2">
-          <div>
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">اسم المستخدم (يظهر للعامة)</label>
-            <input
-              id="usernameInput"
-              type="text"
-              required
-              placeholder="مثال: محمد"
-              class="w-full text-xs border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600"
-            />
-          </div>
-          <div>
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">اسم الحي / المنطقة</label>
-            <input
-              id="areaInput"
-              type="text"
-              required
-              placeholder="اكتب الحي أو المنطقة"
-              class="w-full text-xs border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600"
-            />
-          </div>
-        </div>
-
-        <div class="grid grid-cols-3 gap-2">
-          <div class="col-span-2">
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">السلعة أو العنوان</label>
-            <input
-              id="titleInput"
-              type="text"
-              required
-              placeholder="مثال: دقيق 1 كجم / حالة السوق"
-              class="w-full text-xs border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600"
-            />
-          </div>
-          <div>
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">السعر (اختياري)</label>
-            <input
-              id="priceInput"
-              type="number"
-              step="any"
-              placeholder="0"
-              class="w-full text-xs border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-[11px] font-bold text-slate-600 mb-1">التفاصيل أو المنشور</label>
-          <textarea
-            id="bodyInput"
-            rows="2"
-            required
-            placeholder="اكتب ما تريد إيصاله للعامة..."
-            class="w-full text-xs border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600"
-          ></textarea>
-        </div>
-
-        <button
-          type="submit"
-          class="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white text-xs font-extrabold py-2.5 rounded-xl transition shadow-xs"
-        >
-          نشر وبث عبر الجسر العام
-        </button>
-      </form>
+      <span class="text-[11px] font-bold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg">
+        المعرّف: <span id="myUserIdText"></span>
+      </span>
     </section>
 
-    <!-- سجل المنشورات والتحديثات العامة -->
-    <section class="space-y-3" id="feedContainer">
-      <div class="text-center py-8 text-xs text-slate-500">لا توجد منشورات بعد. أضف أول تحديث للعامة.</div>
+    <!-- عنوان قسم الأسعار -->
+    <div class="flex items-center justify-between px-1">
+      <h2 class="text-lg font-extrabold text-slate-900">أسعار السلع الأساسية الآن</h2>
+      <span id="filteredCountText" class="text-xs font-bold text-slate-500"></span>
+    </div>
+
+    <!-- حاوية بطاقات السلع -->
+    <section id="cardsContainer" class="space-y-3.5">
+      <div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500">
+        جاري تحميل الأسعار...
+      </div>
     </section>
 
   </main>
 
-  <!-- تنبيه سريع -->
-  <div id="toast" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg hidden"></div>
+  <!-- نافذة تحديث السعر (يكتب فيها المستخدم اسم الحي يدوياً) -->
+  <div id="updateModal" class="fixed inset-0 z-50 bg-slate-950/50 hidden items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="font-extrabold text-base text-slate-900" id="updateModalTitle">تحديث السعر</h3>
+        <button onclick="closeUpdateModal()" class="text-slate-400 hover:text-slate-700 text-lg font-bold">✕</button>
+      </div>
 
-  <!-- مكتبة Gun.js للمزامنة المباشرة بين المتصفحات/الأجهزة -->
+      <form onsubmit="submitPriceUpdate(event)" class="space-y-3">
+        <input type="hidden" id="updateItemId" />
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">السعر الجديد</label>
+          <input
+            id="newPriceInput"
+            type="number"
+            step="any"
+            required
+            placeholder="أدخل السعر الجديد"
+            class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-700"
+          />
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">اسم الحي أو المنطقة (يكتبه المستخدم)</label>
+          <input
+            id="newAreaInput"
+            type="text"
+            required
+            placeholder="مثال: ام القرى/مهيلة أو السوق..."
+            class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-700"
+          />
+        </div>
+
+        <div class="flex gap-2 pt-2">
+          <button
+            type="submit"
+            class="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm py-2.5 rounded-xl transition"
+          >
+            نشر التحديث للعامة
+          </button>
+          <button
+            type="button"
+            onclick="closeUpdateModal()"
+            class="px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm py-2.5 rounded-xl transition"
+          >
+            إلغاء
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- نافذة إضافة سلعة جديدة -->
+  <div id="addModal" class="fixed inset-0 z-50 bg-slate-950/50 hidden items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="font-extrabold text-base text-slate-900">إضافة سلعة جديدة</h3>
+        <button onclick="closeAddModal()" class="text-slate-400 hover:text-slate-700 text-lg font-bold">✕</button>
+      </div>
+
+      <form onsubmit="submitNewItem(event)" class="space-y-3">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">اسم السلعة</label>
+          <input
+            id="addNameInput"
+            type="text"
+            required
+            placeholder="مثال: دقيق أبيض فاخر، زيت نباتي، سكر..."
+            class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-700"
+          />
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">الوحدة</label>
+            <input
+              id="addUnitInput"
+              type="text"
+              required
+              placeholder="مثال: الكيس 1 كجم / لتر"
+              class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-700"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">العملة</label>
+            <input
+              id="addCurrencyInput"
+              type="text"
+              value="ج.س"
+              required
+              class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-700"
+            />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">السعر</label>
+            <input
+              id="addPriceInput"
+              type="number"
+              step="any"
+              required
+              placeholder="0"
+              class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-700"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">اسم الحي / المنطقة</label>
+            <input
+              id="addAreaInput"
+              type="text"
+              required
+              placeholder="اكتب الحي هنا"
+              class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-700"
+            />
+          </div>
+        </div>
+
+        <div class="flex gap-2 pt-2">
+          <button
+            type="submit"
+            class="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm py-2.5 rounded-xl transition"
+          >
+            إضافة ونشر للعامة
+          </button>
+          <button
+            type="button"
+            onclick="closeAddModal()"
+            class="px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm py-2.5 rounded-xl transition"
+          >
+            إلغاء
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- شريط تنقل سفلي خفيف -->
+  <nav class="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200">
+    <div class="max-w-xl mx-auto px-4 py-2 grid grid-cols-3 text-center text-[11px] font-bold">
+      <button onclick="setQuickFilter('')" class="py-1 text-emerald-800 flex flex-col items-center gap-0.5">
+        <span>🏠</span>
+        <span>الرئيسية</span>
+      </button>
+      <button onclick="openAddModal()" class="py-1 text-slate-600 hover:text-emerald-800 flex flex-col items-center gap-0.5">
+        <span>➕</span>
+        <span>إبلاغ / إضافة</span>
+      </button>
+      <button onclick="scrollToInsights()" class="py-1 text-slate-600 hover:text-emerald-800 flex flex-col items-center gap-0.5">
+        <span>📊</span>
+        <span>المؤشرات</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- تنبيه عائم -->
+  <div id="toast" class="fixed bottom-16 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg hidden"></div>
+
+  <!-- Gun.js للمزامنة المباشرة بين الهواتف عبر خادم الترحيل على Render -->
   <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
 
   <script>
-    const STORAGE_KEY = "public_bridge_posts_v1";
-    const USER_ID_KEY = "public_bridge_user_id_v1";
-    const USERNAME_KEY = "public_bridge_username_v1";
+    // استبدل هذا الرابط برابط خدمة Render الخاصة بك (مع إبقاء /gun في النهاية)
+    const RENDER_RELAY_URL = "https://YOUR-RENDER-SERVICE.onrender.com/gun";
+
+    const STORAGE_KEY = "radar_render_items_v1";
+    const USER_ID_KEY = "radar_render_user_id_v1";
+    const USERNAME_KEY = "radar_render_username_v1";
 
     function getOrCreateUserId() {
       let id = localStorage.getItem(USER_ID_KEY);
@@ -202,16 +326,23 @@
     }
 
     const myUserId = getOrCreateUserId();
-    document.getElementById("myUserIdBadge").textContent = myUserId;
+    document.getElementById("myUserIdText").textContent = myUserId;
 
-    const savedUsername = localStorage.getItem(USERNAME_KEY);
-    if (savedUsername) {
-      document.getElementById("usernameInput").value = savedUsername;
+    const nameInputEl = document.getElementById("publisherNameInput");
+    nameInputEl.value = localStorage.getItem(USERNAME_KEY) || "مستخدم الحي";
+
+    function savePublisherName() {
+      const clean = nameInputEl.value.trim();
+      localStorage.setItem(USERNAME_KEY, clean || "مستخدم الحي");
     }
 
-    let postsMap = loadLocalPosts();
+    function currentPublisherName() {
+      return (nameInputEl.value || "").trim() || "مستخدم الحي";
+    }
 
-    function loadLocalPosts() {
+    let itemsMap = loadLocalItems();
+
+    function loadLocalItems() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         return raw ? JSON.parse(raw) : {};
@@ -220,8 +351,8 @@
       }
     }
 
-    function saveLocalPosts() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(postsMap));
+    function saveLocalItems() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(itemsMap));
     }
 
     function showToast(msg) {
@@ -232,236 +363,332 @@
       window.toastTimer = setTimeout(() => toast.classList.add("hidden"), 2500);
     }
 
-    function mergePost(incoming) {
-      if (!incoming || !incoming.id || !incoming.title || !incoming.body) return false;
+    function mergeItem(incoming) {
+      if (!incoming || !incoming.id || !incoming.name) return false;
+      const existing = itemsMap[incoming.id];
+      const incTime = Number(incoming.updatedAt || 0);
+      const extTime = Number(existing?.updatedAt || 0);
 
-      const existing = postsMap[incoming.id];
-      const incomingTime = Number(incoming.updatedAt || incoming.createdAt || 0);
-      const existingTime = Number(existing?.updatedAt || existing?.createdAt || 0);
-
-      if (!existing || incomingTime >= existingTime) {
-        postsMap[incoming.id] = {
+      if (!existing || incTime >= extTime) {
+        itemsMap[incoming.id] = {
           id: String(incoming.id),
-          username: String(incoming.username || "مجهول").trim(),
-          userId: String(incoming.userId || "unknown").trim(),
+          name: String(incoming.name).trim(),
+          unit: String(incoming.unit || "وحدة").trim(),
+          currency: String(incoming.currency || "ج.س").trim(),
+          price: Number(incoming.price || 0),
           area: String(incoming.area || "غير محدد").trim(),
-          title: String(incoming.title).trim(),
-          price: incoming.price !== undefined && incoming.price !== null && incoming.price !== "" ? Number(incoming.price) : null,
-          body: String(incoming.body).trim(),
-          createdAt: Number(incoming.createdAt || incomingTime || Date.now()),
-          updatedAt: incomingTime || Date.now()
+          confirmations: Math.max(Number(incoming.confirmations || 0), Number(existing?.confirmations || 0)),
+          disputes: Math.max(Number(incoming.disputes || 0), Number(existing?.disputes || 0)),
+          publisherName: String(incoming.publisherName || existing?.publisherName || "مستخدم الحي").trim(),
+          publisherId: String(incoming.publisherId || existing?.publisherId || myUserId).trim(),
+          updatedAt: incTime || Date.now()
         };
         return true;
       }
       return false;
     }
 
-    // خوارزمية الاستكشاف التلقائي من المنشورات المدمجة
-    function runInsightsAlgorithm(postsList) {
-      const cheapestMap = {}; // [normalizedTitle]: cheapestPost
-      const areaCounts = {};  // [normalizedArea]: { label, count }
-      const topicCounts = {}; // [normalizedTitle]: { label, count }
+    // تهيئة Gun.js بالربط مع خادم Render الخاص بك
+    const peersList = [];
+    if (RENDER_RELAY_URL && !RENDER_RELAY_URL.includes("YOUR-RENDER-SERVICE")) {
+      peersList.push(RENDER_RELAY_URL);
+    }
 
-      postsList.forEach((post) => {
-        const cleanTitle = (post.title || "").trim();
-        const titleKey = cleanTitle.toLowerCase();
-        const cleanArea = (post.area || "غير محدد").trim();
+    const gun = Gun({ peers: peersList });
+    const radarNode = gun.get("sudan_radar_render_v1").get("items");
+
+    const dotEl = document.getElementById("relayDot");
+    const statusEl = document.getElementById("relayStatus");
+
+    if (peersList.length === 0) {
+      dotEl.className = "w-2 h-2 rounded-full bg-amber-500 inline-block";
+      statusEl.textContent = "ضع رابط Render في RENDER_RELAY_URL للمزامنة العامة";
+    } else {
+      gun.on("hi", () => {
+        dotEl.className = "w-2 h-2 rounded-full bg-emerald-600 inline-block animate-pulse";
+        statusEl.textContent = "متصل عبر Render — بث مباشر للعامة";
+      });
+    }
+
+    // بث العناصر المحلية إلى الشبكة عند الفتح
+    Object.values(itemsMap).forEach((item) => {
+      radarNode.get(item.id).put(item);
+    });
+
+    // استقبال التحديثات الفورية القادمة من الأجهزة الأخرى عبر Render
+    radarNode.map().on((data, key) => {
+      if (!data || !key) return;
+      const changed = mergeItem({ ...data, id: data.id || key });
+      if (changed) {
+        saveLocalItems();
+        renderAll();
+      }
+    });
+
+    function hasVotedRecently(itemId) {
+      const lastVote = Number(localStorage.getItem(`voted_${itemId}`) || 0);
+      return Date.now() - lastVote < 1000 * 60 * 30;
+    }
+
+    function markVoted(itemId) {
+      localStorage.setItem(`voted_${itemId}`, String(Date.now()));
+    }
+
+    function confirmPrice(itemId) {
+      if (hasVotedRecently(itemId)) {
+        showToast("تم تسجيل تأكيدك مسبقاً لهذا البند");
+        return;
+      }
+      const item = itemsMap[itemId];
+      if (!item) return;
+
+      const updated = {
+        ...item,
+        confirmations: (Number(item.confirmations) || 0) + 1,
+        publisherName: currentPublisherName(),
+        publisherId: myUserId,
+        updatedAt: Date.now()
+      };
+
+      itemsMap[itemId] = updated;
+      saveLocalItems();
+      radarNode.get(itemId).put(updated);
+      markVoted(itemId);
+      renderAll();
+      showToast("تم تأكيد السعر وبثه للعامة ✓");
+    }
+
+    function openUpdateModal(itemId) {
+      const item = itemsMap[itemId];
+      if (!item) return;
+      document.getElementById("updateItemId").value = item.id;
+      document.getElementById("updateModalTitle").textContent = `تحديث سعر: ${item.name}`;
+      document.getElementById("newPriceInput").value = item.price;
+      // يترك حقل الحي فارغاً ليكتب المستخدم اسم الحي الذي رصد فيه السعر
+      document.getElementById("newAreaInput").value = "";
+      const modal = document.getElementById("updateModal");
+      modal.classList.remove("hidden");
+      modal.classList.add("flex");
+      document.getElementById("newAreaInput").focus();
+    }
+
+    function closeUpdateModal() {
+      const modal = document.getElementById("updateModal");
+      modal.classList.add("hidden");
+      modal.classList.remove("flex");
+    }
+
+    function submitPriceUpdate(e) {
+      e.preventDefault();
+      const itemId = document.getElementById("updateItemId").value;
+      const newPrice = Number(document.getElementById("newPriceInput").value);
+      const areaName = document.getElementById("newAreaInput").value.trim();
+      const item = itemsMap[itemId];
+      if (!item || !newPrice || newPrice <= 0 || !areaName) return;
+
+      const updated = {
+        ...item,
+        price: newPrice,
+        area: areaName,
+        confirmations: 1,
+        disputes: (Number(item.disputes) || 0) + 1,
+        publisherName: currentPublisherName(),
+        publisherId: myUserId,
+        updatedAt: Date.now()
+      };
+
+      itemsMap[itemId] = updated;
+      saveLocalItems();
+      radarNode.get(itemId).put(updated);
+      markVoted(itemId);
+      closeUpdateModal();
+      renderAll();
+      showToast(`تم تحديث السعر في (${areaName}) وبثه ✓`);
+    }
+
+    function openAddModal() {
+      const modal = document.getElementById("addModal");
+      modal.classList.remove("hidden");
+      modal.classList.add("flex");
+    }
+
+    function closeAddModal() {
+      const modal = document.getElementById("addModal");
+      modal.classList.add("hidden");
+      modal.classList.remove("flex");
+    }
+
+    function submitNewItem(e) {
+      e.preventDefault();
+      const name = document.getElementById("addNameInput").value.trim();
+      const unit = document.getElementById("addUnitInput").value.trim();
+      const currency = document.getElementById("addCurrencyInput").value.trim() || "ج.س";
+      const price = Number(document.getElementById("addPriceInput").value);
+      const area = document.getElementById("addAreaInput").value.trim();
+
+      if (!name || !unit || !price || price <= 0 || !area) return;
+
+      const now = Date.now();
+      const id = "item_" + now + "_" + Math.random().toString(36).substring(2, 6);
+      const newItem = {
+        id,
+        name,
+        unit,
+        currency,
+        price,
+        area,
+        confirmations: 1,
+        disputes: 0,
+        publisherName: currentPublisherName(),
+        publisherId: myUserId,
+        updatedAt: now
+      };
+
+      itemsMap[id] = newItem;
+      saveLocalItems();
+      radarNode.get(id).put(newItem);
+
+      e.target.reset();
+      document.getElementById("addCurrencyInput").value = currency;
+      closeAddModal();
+      renderAll();
+      showToast("تمت إضافة السلعة وبثها للعامة ✓");
+    }
+
+    // خوارزمية الاستكشاف التلقائي: أرخص سعر لكل سلعة + أكثر الأحياء تداولاً + أكثر السلع تداولاً
+    function runInsights(list) {
+      const cheapestByGood = {};
+      const areaStats = {};
+      const goodStats = {};
+
+      list.forEach((item) => {
+        const cleanName = (item.name || "").trim();
+        const nameKey = cleanName.toLowerCase();
+        const cleanArea = (item.area || "غير محدد").trim();
         const areaKey = cleanArea.toLowerCase();
+        const priceNum = Number(item.price || 0);
 
-        // 1) تتبّع أكثر الأحياء تداولاً
         if (areaKey) {
-          if (!areaCounts[areaKey]) areaCounts[areaKey] = { label: cleanArea, count: 0 };
-          areaCounts[areaKey].count += 1;
+          if (!areaStats[areaKey]) areaStats[areaKey] = { label: cleanArea, count: 0 };
+          areaStats[areaKey].count += 1;
         }
 
-        // 2) تتبّع أكثر السلع/المواضيع تداولاً
-        if (titleKey) {
-          if (!topicCounts[titleKey]) topicCounts[titleKey] = { label: cleanTitle, count: 0 };
-          topicCounts[titleKey].count += 1;
-        }
+        if (nameKey) {
+          if (!goodStats[nameKey]) goodStats[nameKey] = { label: cleanName, count: 0 };
+          goodStats[nameKey].count += 1;
 
-        // 3) استخراج أرخص سعر مسجّل لكل سلعة/عنوان ذي سعر رقمي موجب
-        const numericPrice = (post.price !== null && post.price !== undefined && post.price !== "")
-          ? Number(post.price)
-          : NaN;
-
-        if (titleKey && !Number.isNaN(numericPrice) && numericPrice > 0) {
-          if (!cheapestMap[titleKey] || numericPrice < Number(cheapestMap[titleKey].price)) {
-            cheapestMap[titleKey] = {
-              ...post,
-              price: numericPrice
-            };
+          if (priceNum > 0 && (!cheapestByGood[nameKey] || priceNum < Number(cheapestByGood[nameKey].price))) {
+            cheapestByGood[nameKey] = { ...item, price: priceNum };
           }
         }
       });
 
-      const cheapestItems = Object.values(cheapestMap)
-        .sort((a, b) => a.price - b.price)
-        .slice(0, 5);
-
-      const topAreas = Object.values(areaCounts)
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-
-      const topTopics = Object.values(topicCounts)
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-
-      return { cheapestItems, topAreas, topTopics, totalCount: postsList.length };
-    }
-
-    function renderInsights(postsList) {
-      const { cheapestItems, topAreas, topTopics, totalCount } = runInsightsAlgorithm(postsList);
-
-      document.getElementById("insightsStatsBadge").textContent = `${totalCount} منشور مدمج`;
-
-      const cheapestEl = document.getElementById("cheapestList");
-      if (cheapestItems.length === 0) {
-        cheapestEl.innerHTML = `<p class="text-[11px] text-slate-500">أضف سعراً في أي منشور ليظهر الأرخص تلقائياً.</p>`;
-      } else {
-        cheapestEl.innerHTML = cheapestItems.map((item) => `
-          <div class="bg-white border border-emerald-200/70 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2">
-            <div class="min-w-0">
-              <div class="font-bold text-slate-900 truncate">${escapeHtml(item.title)}</div>
-              <div class="text-[10px] text-slate-500 truncate">الحي: ${escapeHtml(item.area)} • ${escapeHtml(item.username)}</div>
-            </div>
-            <span class="font-extrabold text-emerald-700 shrink-0">${Number(item.price).toLocaleString()}</span>
-          </div>
-        `).join("");
-      }
-
-      const topAreasEl = document.getElementById("topAreasList");
-      if (topAreas.length === 0) {
-        topAreasEl.innerHTML = `<span class="text-[11px] text-slate-500">لا توجد بيانات بعد.</span>`;
-      } else {
-        topAreasEl.innerHTML = topAreas.map((a) => `
-          <span class="text-[11px] font-bold bg-white border border-slate-200 text-slate-800 px-2 py-0.5 rounded-full">
-            ${escapeHtml(a.label)} (${a.count})
-          </span>
-        `).join("");
-      }
-
-      const topTopicsEl = document.getElementById("topTopicsList");
-      if (topTopics.length === 0) {
-        topTopicsEl.innerHTML = `<span class="text-[11px] text-slate-500">لا توجد بيانات بعد.</span>`;
-      } else {
-        topTopicsEl.innerHTML = topTopics.map((t) => `
-          <span class="text-[11px] font-bold bg-white border border-slate-200 text-slate-800 px-2 py-0.5 rounded-full">
-            ${escapeHtml(t.label)} (${t.count})
-          </span>
-        `).join("");
-      }
-    }
-
-    // تهيئة Gun.js للجسر العام بين الأجهزة المتصلة
-    const gun = Gun({
-      peers: [
-        "https://gun-manhattan.herokuapp.com/gun",
-        "https://relay.peer.ooo/gun"
-      ]
-    });
-
-    const publicFeedNode = gun.get("sudan_public_bridge_feed_v1").get("posts");
-
-    gun.on("hi", () => {
-      document.getElementById("peerDot").className = "w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse";
-      document.getElementById("peerStatus").textContent = "الجسر العام متصل — مزامنة حية بين الأجهزة";
-    });
-
-    Object.values(postsMap).forEach((post) => {
-      publicFeedNode.get(post.id).put(post);
-    });
-
-    publicFeedNode.map().on((data, key) => {
-      if (!data || !key) return;
-      const candidate = { ...data, id: data.id || key };
-      const changed = mergePost(candidate);
-      if (changed) {
-        saveLocalPosts();
-        renderFeed();
-      }
-    });
-
-    function publishPost(e) {
-      e.preventDefault();
-
-      const username = document.getElementById("usernameInput").value.trim();
-      const area = document.getElementById("areaInput").value.trim();
-      const title = document.getElementById("titleInput").value.trim();
-      const priceRaw = document.getElementById("priceInput").value.trim();
-      const body = document.getElementById("bodyInput").value.trim();
-
-      if (!username || !area || !title || !body) return;
-
-      localStorage.setItem(USERNAME_KEY, username);
-
-      const now = Date.now();
-      const post = {
-        id: "post_" + now + "_" + Math.random().toString(36).substring(2, 6),
-        username,
-        userId: myUserId,
-        area,
-        title,
-        price: priceRaw !== "" ? Number(priceRaw) : null,
-        body,
-        createdAt: now,
-        updatedAt: now
+      return {
+        cheapestList: Object.values(cheapestByGood).sort((a, b) => a.price - b.price).slice(0, 5),
+        topAreas: Object.values(areaStats).sort((a, b) => b.count - a.count).slice(0, 5),
+        topGoods: Object.values(goodStats).sort((a, b) => b.count - a.count).slice(0, 5)
       };
+    }
 
-      mergePost(post);
-      saveLocalPosts();
-      publicFeedNode.get(post.id).put(post);
+    function renderInsights(list) {
+      const { cheapestList, topAreas, topGoods } = runInsights(list);
+      document.getElementById("totalItemsBadge").textContent = `${list.length} بند مدمج`;
 
-      document.getElementById("titleInput").value = "";
-      document.getElementById("priceInput").value = "";
-      document.getElementById("bodyInput").value = "";
+      const cheapestEl = document.getElementById("cheapestInsights");
+      if (cheapestList.length === 0) {
+        cheapestEl.innerHTML = `<p class="text-[11px] text-slate-500">أضف سلعة بسعر ليظهر الأرخص تلقائياً.</p>`;
+      } else {
+        cheapestEl.innerHTML = cheapestList.map((c) => `
+          <button
+            onclick="setQuickFilter('${escapeAttr(c.name)}')"
+            class="w-full text-right bg-white hover:bg-emerald-100/50 border border-emerald-200/80 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2 transition"
+          >
+            <div class="min-w-0">
+              <div class="font-extrabold text-slate-900 truncate">${escapeHtml(c.name)}</div>
+              <div class="text-[10px] text-slate-500 truncate">${escapeHtml(c.area)} • ${escapeHtml(c.publisherName || "")}</div>
+            </div>
+            <span class="font-extrabold text-emerald-700 shrink-0">${Number(c.price).toLocaleString()}</span>
+          </button>
+        `).join("");
+      }
 
-      renderFeed();
-      showToast("تم النشر وبثه عبر الجسر العام ✓");
+      const areasEl = document.getElementById("topAreasInsights");
+      areasEl.innerHTML = topAreas.length === 0
+        ? `<span class="text-[11px] text-slate-500">لا توجد بيانات بعد.</span>`
+        : topAreas.map((a) => `
+            <button
+              onclick="setQuickFilter('${escapeAttr(a.label)}')"
+              class="text-[11px] font-bold bg-white hover:bg-slate-100 border border-slate-200 text-slate-800 px-2.5 py-0.5 rounded-full transition"
+            >
+              ${escapeHtml(a.label)} (${a.count})
+            </button>
+          `).join("");
+
+      const goodsEl = document.getElementById("topGoodsInsights");
+      goodsEl.innerHTML = topGoods.length === 0
+        ? `<span class="text-[11px] text-slate-500">لا توجد بيانات بعد.</span>`
+        : topGoods.map((g) => `
+            <button
+              onclick="setQuickFilter('${escapeAttr(g.label)}')"
+              class="text-[11px] font-bold bg-white hover:bg-slate-100 border border-slate-200 text-slate-800 px-2.5 py-0.5 rounded-full transition"
+            >
+              ${escapeHtml(g.label)} (${g.count})
+            </button>
+          `).join("");
+    }
+
+    function setQuickFilter(term) {
+      document.getElementById("filterInput").value = term;
+      renderAll();
+    }
+
+    function clearFilter() {
+      document.getElementById("filterInput").value = "";
+      renderAll();
+    }
+
+    function scrollToInsights() {
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
     function exportBundle() {
-      const allList = Object.values(postsMap);
-      const insights = runInsightsAlgorithm(allList);
+      const list = Object.values(itemsMap);
       const payload = {
         exportedAt: new Date().toISOString(),
         fromUserId: myUserId,
-        posts: allList,
-        insights
+        items: list,
+        insights: runInsights(list)
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `bridge-update-${Date.now()}.json`;
+      a.download = `radar-bundle-${Date.now()}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      showToast("تم تصدير حزمة التحديثات والتحليلات");
+      showToast("تم تصدير حزمة الأسعار والتحليلات");
     }
 
     function importBundle(event) {
       const file = event.target.files?.[0];
       if (!file) return;
-
       const reader = new FileReader();
       reader.onload = () => {
         try {
           const parsed = JSON.parse(String(reader.result || "{}"));
-          const list = Array.isArray(parsed) ? parsed : (parsed.posts || []);
-          let mergedCount = 0;
-
-          list.forEach((item) => {
-            if (mergePost(item)) {
-              mergedCount++;
-              publicFeedNode.get(item.id).put(postsMap[item.id]);
+          const arr = Array.isArray(parsed) ? parsed : (parsed.items || []);
+          let merged = 0;
+          arr.forEach((entry) => {
+            if (mergeItem(entry)) {
+              merged++;
+              radarNode.get(entry.id).put(itemsMap[entry.id]);
             }
           });
-
-          saveLocalPosts();
-          renderFeed();
-          showToast(`تم دمج ${mergedCount} تحديث جديد وتحديث الخوارزمية ✓`);
+          saveLocalItems();
+          renderAll();
+          showToast(`تم دمج ${merged} بند جديد ✓`);
         } catch {
-          showToast("ملف التحديث غير صالح");
+          showToast("ملف الاستيراد غير صالح");
         }
         event.target.value = "";
       };
@@ -471,12 +698,12 @@
     function timeAgo(ts) {
       if (!ts) return "الآن";
       const diffSec = Math.max(1, Math.floor((Date.now() - Number(ts)) / 1000));
-      if (diffSec < 60) return `منذ ${diffSec} ثانية`;
+      if (diffSec < 60) return `محدّث منذ ${diffSec} ثانية`;
       const diffMin = Math.floor(diffSec / 60);
-      if (diffMin < 60) return `منذ ${diffMin} دقيقة`;
+      if (diffMin < 60) return `محدّث منذ ${diffMin} دقيقة`;
       const diffHr = Math.floor(diffMin / 60);
-      if (diffHr < 24) return `منذ ${diffHr} ساعة`;
-      return `منذ ${Math.floor(diffHr / 24)} يوم`;
+      if (diffHr < 24) return `محدّث منذ ${diffHr} ساعة`;
+      return `محدّث منذ ${Math.floor(diffHr / 24)} يوم`;
     }
 
     function escapeHtml(str = "") {
@@ -487,63 +714,130 @@
         .replace(/"/g, "&quot;");
     }
 
-    function renderFeed() {
-      const allPosts = Object.values(postsMap);
-      // تحديث الخوارزمية التلقائية على كامل البيانات المدمجة
-      renderInsights(allPosts);
+    function escapeAttr(str = "") {
+      return String(str).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    }
 
-      const container = document.getElementById("feedContainer");
-      const query = document.getElementById("searchInput").value.trim().toLowerCase();
+    function renderAll() {
+      const allList = Object.values(itemsMap).sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+      renderInsights(allList);
 
-      const list = allPosts
-        .filter((p) => {
-          if (!query) return true;
-          return (
-            (p.title || "").toLowerCase().includes(query) ||
-            (p.body || "").toLowerCase().includes(query) ||
-            (p.area || "").toLowerCase().includes(query) ||
-            (p.username || "").toLowerCase().includes(query) ||
-            (p.userId || "").toLowerCase().includes(query)
-          );
-        })
-        .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+      // تحديد أرخص سعر لكل سلعة لإظهار شارة "أقل سعر مسجل الآن" على البطاقة المطابقة
+      const lowestPriceByName = {};
+      allList.forEach((it) => {
+        const k = (it.name || "").trim().toLowerCase();
+        const p = Number(it.price || 0);
+        if (k && p > 0 && (!lowestPriceByName[k] || p < lowestPriceByName[k])) {
+          lowestPriceByName[k] = p;
+        }
+      });
 
-      if (list.length === 0) {
+      const q = document.getElementById("filterInput").value.trim().toLowerCase();
+      const filtered = allList.filter((item) => {
+        if (!q) return true;
+        return (
+          (item.name || "").toLowerCase().includes(q) ||
+          (item.area || "").toLowerCase().includes(q) ||
+          (item.publisherName || "").toLowerCase().includes(q) ||
+          (item.publisherId || "").toLowerCase().includes(q)
+        );
+      });
+
+      document.getElementById("filteredCountText").textContent = `عرض ${filtered.length} من ${allList.length}`;
+      const container = document.getElementById("cardsContainer");
+
+      if (filtered.length === 0) {
         container.innerHTML = `
-          <div class="bg-white rounded-2xl border border-slate-200 p-6 text-center text-xs text-slate-500">
-            لا توجد منشورات مطابقة للعرض حالياً.
+          <div class="bg-white rounded-2xl border border-slate-200 p-7 text-center space-y-2">
+            <p class="text-sm font-bold text-slate-800">لا توجد سلع مطابقة حالياً</p>
+            <p class="text-xs text-slate-500">اضغط "+ إضافة سلعة" لإضافة أول سعر باسم الحي الذي تريده.</p>
           </div>
         `;
         return;
       }
 
-      container.innerHTML = list.map((post) => {
-        const priceBadge = (post.price !== null && post.price !== undefined && !Number.isNaN(Number(post.price)))
-          ? `<span class="text-xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-lg">${Number(post.price).toLocaleString()}</span>`
-          : "";
+      container.innerHTML = filtered.map((item) => {
+        const nameKey = (item.name || "").trim().toLowerCase();
+        const priceNum = Number(item.price || 0);
+        const isLowest = priceNum > 0 && lowestPriceByName[nameKey] === priceNum;
+
+        const conf = Number(item.confirmations || 0);
+        const disp = Number(item.disputes || 0);
+        const total = Math.max(1, conf + disp);
+        const confidencePct = Math.min(99, Math.max(20, Math.round((conf / total) * 100)));
+
+        const statusBox = isLowest
+          ? `<div class="bg-[#1b7a43] text-white rounded-xl px-3 py-2 text-right min-w-[128px] shadow-2xs">
+               <div class="text-[11px] font-extrabold leading-tight">أقل سعر مسجل الآن</div>
+               <div class="text-xs font-bold mt-0.5 truncate">${escapeHtml(item.area)}</div>
+               <div class="text-[10px] text-emerald-100 mt-0.5">${timeAgo(item.updatedAt)}</div>
+             </div>`
+          : `<div class="bg-amber-500 text-slate-950 rounded-xl px-3 py-2 text-right min-w-[128px] shadow-2xs">
+               <div class="text-[11px] font-extrabold leading-tight">سعر مسجّل</div>
+               <div class="text-xs font-bold mt-0.5 truncate">${escapeHtml(item.area)}</div>
+               <div class="text-[10px] font-semibold text-slate-900/80 mt-0.5">${timeAgo(item.updatedAt)}</div>
+             </div>`;
 
         return `
-          <article class="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2.5">
-            <div class="flex items-start justify-between gap-2">
-              <div>
-                <h3 class="text-sm font-extrabold text-slate-900">${escapeHtml(post.title)}</h3>
-                <p class="text-[11px] text-slate-500 mt-0.5">
-                  بواسطة: <span class="font-bold text-slate-700">${escapeHtml(post.username)}</span>
-                  <span class="text-slate-400">(${escapeHtml(post.userId)})</span>
-                  • الحي: <span class="font-bold text-slate-700">${escapeHtml(post.area)}</span>
-                  • ${timeAgo(post.updatedAt)}
-                </p>
+          <article class="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-start gap-3 min-w-0">
+                <div class="w-11 h-11 rounded-xl bg-amber-50 border border-amber-200/70 flex items-center justify-center text-xl shrink-0">
+                  🛒
+                </div>
+                <div class="min-w-0">
+                  <h3 class="text-base font-extrabold text-slate-900 truncate">${escapeHtml(item.name)}</h3>
+                  <p class="text-xs text-slate-500 font-semibold">${escapeHtml(item.unit)}</p>
+                  <p class="text-[11px] text-slate-500 mt-1 truncate">
+                    بواسطة: <span class="font-bold text-slate-700">${escapeHtml(item.publisherName || "مستخدم الحي")}</span>
+                    <span class="text-slate-400">(${escapeHtml(item.publisherId || "")})</span>
+                  </p>
+                </div>
               </div>
-              ${priceBadge}
+
+              ${statusBox}
             </div>
 
-            <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">${escapeHtml(post.body)}</p>
+            <div class="flex items-baseline justify-between bg-slate-50/90 rounded-xl px-3.5 py-2 border border-slate-100">
+              <span class="text-xs font-bold text-slate-500">السعر</span>
+              <div class="text-2xl font-extrabold text-slate-900">
+                ${priceNum.toLocaleString()}
+                <span class="text-xs font-bold text-slate-600">${escapeHtml(item.currency || "")}</span>
+              </div>
+            </div>
+
+            <!-- شريط نسبة الثقة -->
+            <div class="space-y-1">
+              <div class="flex items-center justify-between text-[11px] font-bold text-slate-600">
+                <span>ثقة المجتمع: ${confidencePct}%</span>
+                <span>${conf} تأكيد</span>
+              </div>
+              <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-full bg-[#1b7a43] transition-all duration-300" style="width: ${confidencePct}%"></div>
+              </div>
+            </div>
+
+            <!-- أزرار تأكيد السعر وتحديث السعر -->
+            <div class="grid grid-cols-2 gap-2.5 pt-0.5">
+              <button
+                onclick="confirmPrice('${item.id}')"
+                class="bg-[#235d9f] hover:bg-[#1b4b82] active:scale-[0.99] text-white text-xs font-extrabold py-2.5 rounded-xl transition"
+              >
+                تأكيد السعر
+              </button>
+              <button
+                onclick="openUpdateModal('${item.id}')"
+                class="bg-slate-200/80 hover:bg-slate-300 active:scale-[0.99] text-slate-800 text-xs font-extrabold py-2.5 rounded-xl transition"
+              >
+                تحديث السعر
+              </button>
+            </div>
           </article>
         `;
       }).join("");
     }
 
-    renderFeed();
+    renderAll();
   </script>
 </body>
 </html>
