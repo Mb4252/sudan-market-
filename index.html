@@ -7,6 +7,9 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <style>
+    html {
+      scroll-behavior: smooth;
+    }
     body {
       font-family: 'Cairo', sans-serif;
       background-color: #eef5f0;
@@ -70,17 +73,16 @@
       >
         منطقتي
       </button>
-      <button
-        type="button"
-        onclick="toggleGuideBox()"
-        class="text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-2.5 py-2 rounded-xl transition shrink-0"
+      <a
+        href="#feedbackSection"
+        class="text-xs font-bold bg-white hover:bg-slate-50 text-[#235d9f] border border-slate-300 px-2.5 py-2 rounded-xl transition shrink-0"
       >
-        كيف يعمل؟
-      </button>
+        رأيك
+      </a>
     </div>
   </header>
 
-  <main class="max-w-xl mx-auto px-4 mt-4 space-y-3.5">
+  <main class="max-w-xl mx-auto px-4 mt-4 space-y-4">
 
     <!-- صندوق التعليمات السريعة للمستخدم الجديد -->
     <section id="guideBox" class="bg-white rounded-2xl border border-emerald-700/20 p-3.5 shadow-2xs space-y-2.5">
@@ -98,8 +100,8 @@
           <div class="text-slate-600 mt-0.5">اضغط "تأكيد" إذا السعر صحيح، أو "تحديث" لتسجيل سعر منطقتك.</div>
         </div>
         <div class="bg-[#eef5f0] rounded-xl p-2.5">
-          <div class="font-extrabold text-slate-900">3. انشر سعر حيك</div>
-          <div class="text-slate-600 mt-0.5">اضغط "+ نشر سعر" وساعد أهل القروب بمعرفة أرخص مكان.</div>
+          <div class="font-extrabold text-slate-900">3. صوّت واقترح</div>
+          <div class="text-slate-600 mt-0.5">شاركنا تقييمك واقتراحاتك في الأسفل لنطوّر المنصة معاً.</div>
         </div>
       </div>
       <div class="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px]">
@@ -115,6 +117,57 @@
 
     <!-- قائمة الأسعار المباشرة -->
     <section id="cardsContainer" class="space-y-3"></section>
+
+    <!-- قسم التصويت على المشروع والاقتراحات المباشرة -->
+    <section id="feedbackSection" class="bg-white rounded-2xl border border-emerald-700/20 p-4 shadow-2xs space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+        <div>
+          <h2 class="text-sm font-extrabold text-slate-900">صوّت للمشروع وشارك اقتراحك</h2>
+          <p class="text-[11px] text-slate-500 mt-0.5">رأيك يوجّه التحديثات القادمة لرادار الأسعار</p>
+        </div>
+        <span id="totalVotesBadge" class="text-[11px] font-extrabold bg-emerald-50 text-[#1b7a43] border border-emerald-200 px-2.5 py-1 rounded-full">
+          0 صوت
+        </span>
+      </div>
+
+      <!-- أزرار التصويت التفاعلية -->
+      <div id="pollOptionsContainer" class="space-y-2"></div>
+
+      <!-- نموذج إضافة اقتراح أو تعليق -->
+      <form onsubmit="submitSuggestion(event)" class="space-y-2 pt-2 border-t border-slate-100">
+        <label class="block text-xs font-extrabold text-slate-800">اكتب اقتراحك أو ملاحظتك لتطوير الموقع:</label>
+        <div class="flex gap-2">
+          <input
+            id="suggestionInput"
+            type="text"
+            maxlength="180"
+            required
+            placeholder="مثال: أضيفوا أسعار اللحوم والخضار، أو خريطة للأحياء..."
+            class="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:bg-white focus:border-emerald-700"
+          />
+          <button
+            type="submit"
+            class="bg-[#235d9f] hover:bg-[#1b4b82] active:scale-95 text-white text-xs font-extrabold px-4 py-2.5 rounded-xl transition shrink-0"
+          >
+            إرسال
+          </button>
+        </div>
+      </form>
+
+      <!-- قائمة الاقتراحات الحية -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-extrabold text-slate-600">آخر اقتراحات الزوار</span>
+          <span id="suggestionsCount" class="text-[11px] text-slate-400">0 اقتراح</span>
+        </div>
+        <div id="suggestionsList" class="space-y-2 max-h-64 overflow-y-auto">
+          <div class="text-center text-[11px] text-slate-400 py-3 bg-slate-50 rounded-xl">
+            كن أول من يترك اقتراحاً لتطوير المشروع!
+          </div>
+        </div>
+      </div>
+    </section>
+
   </main>
 
   <!-- نافذة نشر سعر جديد -->
@@ -304,6 +357,14 @@
           <input type="file" accept=".json,application/json" onchange="importData(event)" class="hidden" />
         </label>
       </div>
+
+      <button
+        type="button"
+        onclick="closeProfileModal(); toggleGuideBox();"
+        class="w-full bg-emerald-50 hover:bg-emerald-100 text-[#1b7a43] text-xs font-extrabold py-2 rounded-xl transition"
+      >
+        إظهار / إخفاء دليل المشاركة
+      </button>
     </div>
   </div>
 
@@ -314,15 +375,22 @@
     const RENDER_RELAY_URL = "https://sudan-market-2.onrender.com/gun";
     const RENDER_BASE_URL = "https://sudan-market-2.onrender.com";
 
-    const ITEMS_KEY = "radar_simple_items_v6";
-    const DELETED_KEY = "radar_simple_deleted_v6";
-    const UID_KEY = "radar_simple_uid_v6";
-    const NAME_KEY = "radar_simple_name_v6";
-    const ZONE_KEY = "radar_simple_zone_v6";
-    const ONLY_ZONE_KEY = "radar_simple_only_zone_v6";
-    const GUIDE_KEY = "radar_simple_guide_hidden_v6";
+    const ITEMS_KEY = "radar_simple_items_v7";
+    const DELETED_KEY = "radar_simple_deleted_v7";
+    const UID_KEY = "radar_simple_uid_v7";
+    const NAME_KEY = "radar_simple_name_v7";
+    const ZONE_KEY = "radar_simple_zone_v7";
+    const ONLY_ZONE_KEY = "radar_simple_only_zone_v7";
+    const GUIDE_KEY = "radar_simple_guide_hidden_v7";
+    const VOTES_KEY = "radar_project_votes_v7";
+    const SUGGESTIONS_KEY = "radar_project_suggestions_v7";
 
-    // سلع افتتاحية جاهزة للتفاعل السريع عند خلو القائمة تماماً
+    const POLL_CHOICES = [
+      { id: "great", icon: "👍", label: "فكرة ممتازة ومفيدة" },
+      { id: "more_goods", icon: "🔥", label: "محتاجين إضافة سلع أكثر" },
+      { id: "have_idea", icon: "💡", label: "عندي اقتراح للتطوير" }
+    ];
+
     const STARTER_ITEMS = [
       {
         id: "starter_sugar",
@@ -398,6 +466,8 @@
     let onlyMyZone = localStorage.getItem(ONLY_ZONE_KEY) === "true";
     let itemsMap = loadJson(ITEMS_KEY, {});
     let deletedMap = loadJson(DELETED_KEY, {});
+    let votesMap = loadJson(VOTES_KEY, {});
+    let suggestionsMap = loadJson(SUGGESTIONS_KEY, {});
 
     function applyGuideVisibility() {
       const box = document.getElementById("guideBox");
@@ -438,6 +508,8 @@
       try {
         localStorage.setItem(ITEMS_KEY, JSON.stringify(itemsMap));
         localStorage.setItem(DELETED_KEY, JSON.stringify(deletedMap));
+        localStorage.setItem(VOTES_KEY, JSON.stringify(votesMap));
+        localStorage.setItem(SUGGESTIONS_KEY, JSON.stringify(suggestionsMap));
       } catch (e) {}
     }
 
@@ -450,7 +522,7 @@
     }
 
     function getPublisherName() {
-      return (localStorage.getItem(NAME_KEY) || "").trim() || "مستخدم";
+      return (localStorage.getItem(NAME_KEY) || "").trim() || "زائر";
     }
 
     function getSavedZone() {
@@ -594,6 +666,8 @@
 
     let itemsNode = null;
     let presenceNode = null;
+    let votesNode = null;
+    let suggestionsNode = null;
 
     function sendHeartbeat() {
       const now = Date.now();
@@ -620,14 +694,23 @@
     if (typeof Gun !== "undefined") {
       try {
         const gun = Gun({ peers: [RENDER_RELAY_URL], retry: 2000 });
-        itemsNode = gun.get("sudan_radar_v6").get("items");
-        presenceNode = gun.get("sudan_radar_v6").get("presence");
+        const rootNode = gun.get("sudan_radar_v7");
+        itemsNode = rootNode.get("items");
+        presenceNode = rootNode.get("presence");
+        votesNode = rootNode.get("project_votes");
+        suggestionsNode = rootNode.get("project_suggestions");
 
         gun.on("hi", function() {
           setConnectedState(true);
           sendHeartbeat();
           Object.values(itemsMap).forEach(function(it) {
             if (!it.deleted) itemsNode.get(it.id).put(it);
+          });
+          Object.values(votesMap).forEach(function(v) {
+            if (v && v.userId) votesNode.get(v.userId).put(v);
+          });
+          Object.values(suggestionsMap).forEach(function(s) {
+            if (s && s.id) suggestionsNode.get(s.id).put(s);
           });
         });
 
@@ -658,6 +741,39 @@
             renderAll();
           }
         });
+
+        votesNode.map().on(function(data, key) {
+          if (!data || !key) return;
+          const uid = String(data.userId || key).trim();
+          const choice = String(data.choice || "").trim();
+          if (!uid || !choice) return;
+          const ts = Number(data.updatedAt || Date.now());
+          if (!votesMap[uid] || ts >= Number(votesMap[uid].updatedAt || 0)) {
+            votesMap[uid] = { userId: uid, choice: choice, updatedAt: ts };
+            saveState();
+            renderPoll();
+          }
+        });
+
+        suggestionsNode.map().on(function(data, key) {
+          if (!data || !key) return;
+          const sid = String(data.id || key).trim();
+          const text = String(data.text || "").trim();
+          if (!sid || !text) return;
+          const ts = Number(data.createdAt || Date.now());
+          if (!suggestionsMap[sid]) {
+            suggestionsMap[sid] = {
+              id: sid,
+              text: text,
+              author: String(data.author || "زائر").trim(),
+              zone: String(data.zone || "").trim(),
+              userId: String(data.userId || "").trim(),
+              createdAt: ts
+            };
+            saveState();
+            renderSuggestions();
+          }
+        });
       } catch (e) {}
     }
 
@@ -674,6 +790,117 @@
         } catch (e) {}
       }
     });
+
+    // التصويت على المشروع
+    function castProjectVote(choiceId) {
+      const voteObj = {
+        userId: myUserId,
+        choice: choiceId,
+        updatedAt: Date.now()
+      };
+      votesMap[myUserId] = voteObj;
+      saveState();
+      renderPoll();
+      showToast("شكراً لتصويتك على المشروع ✓");
+
+      if (votesNode) {
+        try { votesNode.get(myUserId).put(voteObj); } catch (e) {}
+      }
+
+      if (choiceId === "have_idea") {
+        const inp = document.getElementById("suggestionInput");
+        if (inp) inp.focus();
+      }
+    }
+
+    function renderPoll() {
+      const container = document.getElementById("pollOptionsContainer");
+      const badge = document.getElementById("totalVotesBadge");
+      if (!container || !badge) return;
+
+      const allVotes = Object.values(votesMap).filter(function(v) { return v && v.choice; });
+      const total = allVotes.length;
+      const myChoice = votesMap[myUserId] && votesMap[myUserId].choice;
+
+      badge.textContent = total + (total === 1 ? " صوت" : " أصوات");
+
+      container.innerHTML = POLL_CHOICES.map(function(opt) {
+        const count = allVotes.filter(function(v) { return v.choice === opt.id; }).length;
+        const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+        const selected = myChoice === opt.id;
+
+        return (
+          '<button type="button" onclick="castProjectVote(\'' + opt.id + '\')" class="w-full text-right relative overflow-hidden rounded-xl border ' + (selected ? 'border-[#1b7a43] bg-emerald-50/40' : 'border-slate-200 bg-slate-50 hover:bg-slate-100/70') + ' px-3.5 py-2.5 transition">' +
+            '<div class="absolute inset-y-0 right-0 ' + (selected ? 'bg-emerald-500/15' : 'bg-slate-300/20') + ' transition-all duration-300" style="width: ' + pct + '%"></div>' +
+            '<div class="relative flex items-center justify-between gap-2 text-xs">' +
+              '<span class="font-extrabold text-slate-900">' + opt.icon + ' ' + esc(opt.label) + (selected ? ' <span class="text-[#1b7a43]">(اختيارك)</span>' : '') + '</span>' +
+              '<span class="font-extrabold text-slate-700 shrink-0">' + pct + '% <span class="text-[10px] font-bold text-slate-500">(' + count + ')</span></span>' +
+            '</div>' +
+          '</button>'
+        );
+      }).join("");
+    }
+
+    // إرسال وعرض الاقتراحات
+    function submitSuggestion(e) {
+      e.preventDefault();
+      const inp = document.getElementById("suggestionInput");
+      const text = inp.value.trim();
+      if (!text) return;
+
+      const now = Date.now();
+      const id = "sug_" + now + "_" + Math.random().toString(36).substring(2, 6);
+      const entry = {
+        id: id,
+        text: text,
+        author: getPublisherName(),
+        zone: getSavedZone(),
+        userId: myUserId,
+        createdAt: now
+      };
+
+      suggestionsMap[id] = entry;
+      saveState();
+      inp.value = "";
+      renderSuggestions();
+      showToast("تم إرسال اقتراحك بنجاح ✓");
+
+      if (suggestionsNode) {
+        try { suggestionsNode.get(id).put(entry); } catch (err) {}
+      }
+    }
+
+    function renderSuggestions() {
+      const listEl = document.getElementById("suggestionsList");
+      const countEl = document.getElementById("suggestionsCount");
+      if (!listEl || !countEl) return;
+
+      const list = Object.values(suggestionsMap)
+        .filter(function(s) { return s && s.text; })
+        .sort(function(a, b) { return Number(b.createdAt || 0) - Number(a.createdAt || 0); });
+
+      countEl.textContent = list.length + (list.length === 1 ? " اقتراح" : " اقتراحات");
+
+      if (list.length === 0) {
+        listEl.innerHTML =
+          '<div class="text-center text-[11px] text-slate-400 py-3 bg-slate-50 rounded-xl">' +
+            'كن أول من يترك اقتراحاً لتطوير المشروع!' +
+          '</div>';
+        return;
+      }
+
+      listEl.innerHTML = list.map(function(s) {
+        const meta = [esc(s.author || "زائر"), s.zone ? esc(s.zone) : "", timeAgo(s.createdAt)]
+          .filter(Boolean)
+          .join(" • ");
+        return (
+          '<div class="bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2.5 space-y-1">' +
+            '<p class="text-xs font-bold text-slate-800 leading-relaxed">' + esc(s.text) + '</p>' +
+            '<div class="text-[10px] font-bold text-slate-400">' + meta + '</div>' +
+          '</div>'
+        );
+      }).join("");
+    }
 
     function computeTrust(item, allList) {
       const votersCount = Object.keys(item.voters || {}).length;
@@ -898,8 +1125,8 @@
         return "• " + it.name + ": " + Number(it.price || 0).toLocaleString() + " " + (it.currency || "ج.س") + " (" + it.area + ")";
       });
       const text = [
-        "رادار أسعار الحي — كم سعر السكر والدقيق والزيت في منطقتك اليوم؟ شارك هنا:",
-        topThree.length ? topThree.join("\n") : "سجّل أول سعر في منطقتك الآن وساعد جيرانك.",
+        "رادار أسعار الحي — كم سعر السكر والدقيق والزيت في منطقتك اليوم؟ شارك وصوّت هنا:",
+        topThree.length ? topThree.join("\n") : "سجّل أول سعر في منطقتك الآن أو صوّت لتطوير المنصة.",
         window.location.href
       ].join("\n");
 
@@ -1030,6 +1257,8 @@
       const workingList = hasAnyRealItems ? realList : STARTER_ITEMS;
 
       renderSmartStrip(workingList);
+      renderPoll();
+      renderSuggestions();
 
       const q = norm(document.getElementById("searchInput").value);
       const savedZone = norm(getSavedZone());
