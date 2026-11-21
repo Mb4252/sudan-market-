@@ -375,15 +375,15 @@
     const RENDER_RELAY_URL = "https://sudan-market-2.onrender.com/gun";
     const RENDER_BASE_URL = "https://sudan-market-2.onrender.com";
 
-    const ITEMS_KEY = "radar_simple_items_v7";
-    const DELETED_KEY = "radar_simple_deleted_v7";
-    const UID_KEY = "radar_simple_uid_v7";
-    const NAME_KEY = "radar_simple_name_v7";
-    const ZONE_KEY = "radar_simple_zone_v7";
-    const ONLY_ZONE_KEY = "radar_simple_only_zone_v7";
-    const GUIDE_KEY = "radar_simple_guide_hidden_v7";
-    const VOTES_KEY = "radar_project_votes_v7";
-    const SUGGESTIONS_KEY = "radar_project_suggestions_v7";
+    const ITEMS_KEY = "radar_simple_items_v8";
+    const DELETED_KEY = "radar_simple_deleted_v8";
+    const UID_KEY = "radar_simple_uid_v8";
+    const NAME_KEY = "radar_simple_name_v8";
+    const ZONE_KEY = "radar_simple_zone_v8";
+    const ONLY_ZONE_KEY = "radar_simple_only_zone_v8";
+    const GUIDE_KEY = "radar_simple_guide_hidden_v8";
+    const VOTES_KEY = "radar_project_votes_v8";
+    const SUGGESTIONS_KEY = "radar_project_suggestions_v8";
 
     const POLL_CHOICES = [
       { id: "great", icon: "👍", label: "فكرة ممتازة ومفيدة" },
@@ -680,27 +680,36 @@
       }
     }
 
+    let failedHealthChecks = 0;
+
     function checkRenderHealth() {
       fetch(RENDER_BASE_URL, { cache: "no-store" })
         .then(function(res) {
-          if (res.ok) setConnectedState(true);
-          else setConnectedState(false);
+          if (res.ok) {
+            failedHealthChecks = 0;
+            setConnectedState(true);
+          } else {
+            failedHealthChecks++;
+            if (failedHealthChecks >= 3) setConnectedState(false);
+          }
         })
         .catch(function() {
-          setConnectedState(false);
+          failedHealthChecks++;
+          if (failedHealthChecks >= 3) setConnectedState(false);
         });
     }
 
     if (typeof Gun !== "undefined") {
       try {
         const gun = Gun({ peers: [RENDER_RELAY_URL], retry: 2000 });
-        const rootNode = gun.get("sudan_radar_v7");
+        const rootNode = gun.get("sudan_radar_v8");
         itemsNode = rootNode.get("items");
         presenceNode = rootNode.get("presence");
         votesNode = rootNode.get("project_votes");
         suggestionsNode = rootNode.get("project_suggestions");
 
         gun.on("hi", function() {
+          failedHealthChecks = 0;
           setConnectedState(true);
           sendHeartbeat();
           Object.values(itemsMap).forEach(function(it) {
@@ -791,7 +800,6 @@
       }
     });
 
-    // التصويت على المشروع
     function castProjectVote(choiceId) {
       const voteObj = {
         userId: myUserId,
@@ -841,7 +849,6 @@
       }).join("");
     }
 
-    // إرسال وعرض الاقتراحات
     function submitSuggestion(e) {
       e.preventDefault();
       const inp = document.getElementById("suggestionInput");
