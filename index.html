@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>رادار أسعار الحي — خوارزمية الثقة والمناطق الذكية</title>
+  <title>رادار أسعار الحي</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <style>
@@ -14,156 +14,71 @@
     }
   </style>
 </head>
-<body class="min-h-screen pb-24">
+<body class="min-h-screen pb-20">
 
-  <!-- الشريط العلوي -->
+  <!-- شريط علوي نظيف ومختصر -->
   <header class="sticky top-0 z-30 bg-[#e4f0e8]/95 backdrop-blur border-b border-emerald-900/10">
     <div class="max-w-xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
       <div class="flex items-center gap-2.5 min-w-0">
-        <div class="w-10 h-10 rounded-full bg-white border border-emerald-700/20 flex items-center justify-center text-lg shrink-0 shadow-2xs">
+        <div class="w-10 h-10 rounded-full bg-white border border-emerald-700/20 flex items-center justify-center text-lg shrink-0">
           🌾
         </div>
         <div class="min-w-0">
           <h1 class="text-base font-extrabold text-slate-900 leading-tight truncate">رادار أسعار الحي</h1>
-          <p class="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 mt-0.5 truncate">
-            <span id="relayDot" class="w-2 h-2 rounded-full bg-amber-500 inline-block shrink-0"></span>
-            <span id="relayStatus" class="truncate">جاري الاتصال بجسر Render...</span>
-          </p>
+          <div class="flex items-center gap-2 mt-0.5 text-[11px] font-bold text-slate-700">
+            <span class="inline-flex items-center gap-1 truncate">
+              <span id="relayDot" class="w-2 h-2 rounded-full bg-amber-500 inline-block shrink-0"></span>
+              <span id="relayStatus" class="truncate">جاري الربط...</span>
+            </span>
+            <span id="onlineCountBadge" class="text-[10px] font-extrabold bg-white text-[#1b7a43] border border-emerald-700/20 px-2 py-0.5 rounded-full shrink-0">
+              متصل: 1
+            </span>
+          </div>
         </div>
       </div>
 
       <div class="flex items-center gap-1.5 shrink-0">
         <button
-          onclick="openAddModal()"
-          class="bg-[#1b7a43] hover:bg-[#156235] active:scale-95 text-white text-xs font-extrabold px-3 py-2 rounded-xl transition shadow-2xs"
-        >
-          + إضافة سلعة
-        </button>
-        <button
-          onclick="exportBundle()"
+          onclick="openProfileModal()"
           class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs font-bold px-2.5 py-2 rounded-xl transition"
         >
-          تصدير
+          حسابي
         </button>
-        <label
-          class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs font-bold px-2.5 py-2 rounded-xl transition cursor-pointer"
+        <button
+          onclick="openAddModal()"
+          class="bg-[#1b7a43] hover:bg-[#156235] active:scale-95 text-white text-xs font-extrabold px-3 py-2 rounded-xl transition"
         >
-          استيراد
-          <input type="file" accept=".json,application/json" onchange="importBundle(event)" class="hidden" />
-        </label>
+          + نشر سعر
+        </button>
       </div>
     </div>
 
-    <!-- نطاق المنطقة + البحث -->
-    <div class="max-w-xl mx-auto px-4 pb-3 space-y-2">
-      <div class="flex items-center gap-2">
-        <div class="flex-1 flex items-center bg-white border border-emerald-900/15 rounded-xl px-3 py-1.5 gap-2">
-          <span class="text-[11px] font-extrabold text-emerald-900 shrink-0">منطقتي:</span>
-          <input
-            id="myZoneInput"
-            type="text"
-            oninput="onZoneChange()"
-            placeholder="اكتب اسم منطقتك أو حيّك..."
-            class="w-full text-xs font-bold text-slate-900 focus:outline-none bg-transparent"
-          />
-        </div>
-        <button
-          id="scopeToggleBtn"
-          onclick="toggleScopeMode()"
-          class="text-xs font-extrabold bg-[#1b7a43] text-white px-3 py-2 rounded-xl transition shrink-0"
-        >
-          منطقتي أولاً
-        </button>
-      </div>
-
-      <div class="flex gap-2">
-        <input
-          id="filterInput"
-          type="text"
-          oninput="renderAll()"
-          placeholder="ابحث بالسلعة، المنطقة، الاسم، أو المعرّف..."
-          class="w-full text-xs bg-white border border-emerald-900/15 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-600 transition"
-        />
-        <button
-          onclick="clearFilter()"
-          class="text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 px-3 rounded-xl transition shrink-0"
-        >
-          الكل
-        </button>
-      </div>
+    <!-- شريط بحث سريع وخيار منطقتي فقط عند الحاجة -->
+    <div class="max-w-xl mx-auto px-4 pb-2.5 flex items-center gap-2">
+      <input
+        id="searchInput"
+        type="text"
+        oninput="renderAll()"
+        placeholder="ابحث عن سلعة أو منطقة..."
+        class="w-full text-xs bg-white border border-emerald-900/15 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-600"
+      />
+      <button
+        id="myZoneBtn"
+        onclick="toggleMyZoneOnly()"
+        class="text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3 py-2 rounded-xl transition shrink-0"
+      >
+        منطقتي
+      </button>
     </div>
   </header>
 
-  <main class="max-w-xl mx-auto px-4 mt-4 space-y-4">
+  <main class="max-w-xl mx-auto px-4 mt-4 space-y-3.5">
 
-    <!-- لوحة الخوارزمية الذكية والقابلة للتوسع -->
-    <section id="insightsSection" class="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs space-y-3">
-      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-        <div>
-          <h2 class="text-sm font-extrabold text-slate-900">محرك الاستكشاف الذكي والمناطق</h2>
-          <p id="zoneSummarySub" class="text-[11px] text-slate-500">تحليل فوري يتوسع مع كثافة المستخدمين والبلاغات</p>
-        </div>
-        <span id="totalItemsBadge" class="text-[11px] font-bold bg-emerald-50 text-emerald-800 px-2.5 py-0.5 rounded-full shrink-0">
-          0 رصد
-        </span>
-      </div>
+    <!-- شريط ذكي مختصر يبرز الأرخص والأكثر نشاطاً دون إطالة -->
+    <div id="smartStrip" class="flex items-center gap-2 overflow-x-auto pb-1 text-xs"></div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <!-- أقل المناطق سعراً لكل سلعة -->
-        <div class="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 space-y-2">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-extrabold text-emerald-950">أقل المناطق سعراً</span>
-            <span class="text-[10px] font-bold bg-[#1b7a43] text-white px-2 py-0.5 rounded-full">ذكاء مقارن</span>
-          </div>
-          <div id="cheapestZonesInsights" class="space-y-1.5 text-xs">
-            <p class="text-[11px] text-slate-500">أضف أسعاراً في مناطق مختلفة لإبراز الأقل سعراً.</p>
-          </div>
-        </div>
-
-        <!-- نطاق منطقتي ونشاط المناطق والسلع -->
-        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2.5">
-          <div>
-            <div class="text-xs font-extrabold text-slate-900 mb-1">ملخص منطقتك الحالية</div>
-            <div id="myZoneInsights" class="text-[11px] text-slate-700 bg-white border border-slate-200 rounded-lg p-2">
-              حدد منطقتك لحصر رصدك وإظهار أفضل العروض فيها.
-            </div>
-          </div>
-
-          <div>
-            <div class="text-xs font-extrabold text-slate-900 mb-1">المناطق الأعلى كثافة بالبلاغات</div>
-            <div id="topZonesInsights" class="flex flex-wrap gap-1.5">
-              <span class="text-[11px] text-slate-500">لا توجد بيانات بعد.</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- هوية المستخدم -->
-    <section class="bg-white rounded-2xl border border-slate-200 px-4 py-2.5 shadow-2xs flex flex-wrap items-center justify-between gap-2">
-      <div class="flex items-center gap-2 flex-1 min-w-[180px]">
-        <span class="text-xs font-bold text-slate-600 shrink-0">اسمك للعامة:</span>
-        <input
-          id="publisherNameInput"
-          type="text"
-          oninput="savePublisherName()"
-          placeholder="اكتب اسمك..."
-          class="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-600"
-        />
-      </div>
-      <span class="text-[11px] font-bold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg">
-        المعرّف: <span id="myUserIdText"></span>
-      </span>
-    </section>
-
-    <!-- عنوان القسم -->
-    <div class="flex items-center justify-between px-1">
-      <h2 id="sectionHeading" class="text-lg font-extrabold text-slate-900">أسعار السلع الأساسية الآن</h2>
-      <span id="filteredCountText" class="text-xs font-bold text-slate-500"></span>
-    </div>
-
-    <!-- بطاقات السلع -->
-    <section id="cardsContainer" class="space-y-3.5">
+    <!-- قائمة الأسعار المباشرة -->
+    <section id="cardsContainer" class="space-y-3">
       <div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500">
         جاري تحميل الأسعار...
       </div>
@@ -171,132 +86,66 @@
 
   </main>
 
-  <!-- نافذة تحديث السعر -->
-  <div id="updateModal" class="fixed inset-0 z-50 bg-slate-950/50 hidden items-center justify-center p-4">
-    <div class="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl space-y-4">
-      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
-        <h3 class="font-extrabold text-base text-slate-900" id="updateModalTitle">تحديث السعر</h3>
-        <button onclick="closeUpdateModal()" class="text-slate-400 hover:text-slate-700 text-lg font-bold">✕</button>
-      </div>
-
-      <form onsubmit="submitPriceUpdate(event)" class="space-y-3">
-        <input type="hidden" id="updateItemId" />
-
-        <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">السعر الجديد</label>
-          <input
-            id="newPriceInput"
-            type="number"
-            step="any"
-            required
-            placeholder="أدخل السعر الجديد"
-            class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-700"
-          />
-        </div>
-
-        <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">اسم الحي أو المنطقة</label>
-          <input
-            id="newAreaInput"
-            type="text"
-            required
-            placeholder="اكتب اسم الحي أو المنطقة"
-            class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-700"
-          />
-        </div>
-
-        <div class="flex gap-2 pt-2">
-          <button
-            type="submit"
-            class="flex-1 bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl transition"
-          >
-            نشر التحديث للعامة
-          </button>
-          <button
-            type="button"
-            onclick="closeUpdateModal()"
-            class="px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm py-2.5 rounded-xl transition"
-          >
-            إلغاء
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- نافذة إضافة سلعة جديدة -->
+  <!-- نافذة نشر سلعة / سعر جديد -->
   <div id="addModal" class="fixed inset-0 z-50 bg-slate-950/50 hidden items-center justify-center p-4">
-    <div class="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl space-y-4">
-      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
-        <h3 class="font-extrabold text-base text-slate-900">إضافة سلعة جديدة</h3>
+    <div class="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl space-y-3.5">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+        <h2 class="font-extrabold text-base text-slate-900">نشر سعر جديد</h2>
         <button onclick="closeAddModal()" class="text-slate-400 hover:text-slate-700 text-lg font-bold">✕</button>
       </div>
 
       <form onsubmit="submitNewItem(event)" class="space-y-3">
         <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">اسم السلعة</label>
+          <label class="block text-xs font-bold text-slate-700 mb-1">السلعة</label>
           <input
-            id="addNameInput"
+            id="addName"
             type="text"
             required
-            placeholder="مثال: سكر، دقيق، زيت نباتي..."
-            class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-700"
+            placeholder="مثال: سكر، دقيق، زيت..."
+            class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700"
           />
-        </div>
-
-        <div class="grid grid-cols-2 gap-2.5">
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">الوحدة</label>
-            <input
-              id="addUnitInput"
-              type="text"
-              required
-              placeholder="مثال: شوال / كيس 1 كجم"
-              class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-700"
-            />
-          </div>
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">العملة</label>
-            <input
-              id="addCurrencyInput"
-              type="text"
-              value="ج.س"
-              required
-              class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-700"
-            />
-          </div>
         </div>
 
         <div class="grid grid-cols-2 gap-2.5">
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1">السعر</label>
             <input
-              id="addPriceInput"
+              id="addPrice"
               type="number"
               step="any"
               required
               placeholder="0"
-              class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-700"
+              class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700"
             />
           </div>
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">اسم الحي أو المنطقة</label>
+            <label class="block text-xs font-bold text-slate-700 mb-1">الوحدة</label>
             <input
-              id="addAreaInput"
+              id="addUnit"
               type="text"
-              required
-              placeholder="اكتب اسم الحي أو المنطقة"
-              class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-emerald-700"
+              value="كيس / وحدة"
+              class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700"
             />
           </div>
         </div>
 
-        <div class="flex gap-2 pt-2">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">المنطقة أو الحي</label>
+          <input
+            id="addArea"
+            type="text"
+            required
+            placeholder="اكتب اسم المنطقة أو الحي"
+            class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700"
+          />
+        </div>
+
+        <div class="flex gap-2 pt-1">
           <button
             type="submit"
             class="flex-1 bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl transition"
           >
-            إضافة ونشر للعامة
+            نشر الآن
           </button>
           <button
             type="button"
@@ -310,188 +159,270 @@
     </div>
   </div>
 
-  <!-- شريط سفلي -->
-  <nav class="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200">
-    <div class="max-w-xl mx-auto px-4 py-2 grid grid-cols-3 text-center text-[11px] font-bold">
-      <button onclick="setStrictZoneFilter(false)" class="py-1 text-[#1b7a43] flex flex-col items-center gap-0.5">
-        <span>🏠</span>
-        <span>الرئيسية</span>
-      </button>
-      <button onclick="setStrictZoneFilter(true)" class="py-1 text-slate-600 hover:text-[#1b7a43] flex flex-col items-center gap-0.5">
-        <span>📍</span>
-        <span>حصر منطقتي</span>
-      </button>
-      <button onclick="scrollToInsights()" class="py-1 text-slate-600 hover:text-[#1b7a43] flex flex-col items-center gap-0.5">
-        <span>📊</span>
-        <span>الذكاء والمناطق</span>
-      </button>
-    </div>
-  </nav>
+  <!-- نافذة تحديث سعر موجود -->
+  <div id="updateModal" class="fixed inset-0 z-50 bg-slate-950/50 hidden items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl space-y-3.5">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+        <h2 id="updateTitle" class="font-extrabold text-base text-slate-900">تحديث السعر</h2>
+        <button onclick="closeUpdateModal()" class="text-slate-400 hover:text-slate-700 text-lg font-bold">✕</button>
+      </div>
 
-  <div id="toast" class="fixed bottom-16 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg hidden"></div>
+      <form onsubmit="submitPriceUpdate(event)" class="space-y-3">
+        <input type="hidden" id="updateItemId" />
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">السعر الجديد</label>
+          <input
+            id="updatePrice"
+            type="number"
+            step="any"
+            required
+            class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700"
+          />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">المنطقة أو الحي</label>
+          <input
+            id="updateArea"
+            type="text"
+            required
+            placeholder="اكتب اسم المنطقة أو الحي"
+            class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700"
+          />
+        </div>
+        <div class="flex gap-2 pt-1">
+          <button
+            type="submit"
+            class="flex-1 bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl transition"
+          >
+            حفظ وبث التحديث
+          </button>
+          <button
+            type="button"
+            onclick="closeUpdateModal()"
+            class="px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm py-2.5 rounded-xl transition"
+          >
+            إلغاء
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- نافذة حسابي (الاسم والمنطقة اختيارياً + تصدير/استيراد) -->
+  <div id="profileModal" class="fixed inset-0 z-50 bg-slate-950/50 hidden items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl space-y-3.5">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+        <h2 class="font-extrabold text-base text-slate-900">إعداداتي السريعة</h2>
+        <button onclick="closeProfileModal()" class="text-slate-400 hover:text-slate-700 text-lg font-bold">✕</button>
+      </div>
+
+      <div class="space-y-2.5">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">اسمك الظاهر (اختياري)</label>
+          <input
+            id="profileName"
+            type="text"
+            placeholder="مثال: محمد"
+            class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700"
+          />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">منطقتي المفضلة (اختياري)</label>
+          <input
+            id="profileZone"
+            type="text"
+            placeholder="اكتب منطقتك"
+            class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700"
+          />
+        </div>
+        <div class="text-[11px] text-slate-500 bg-slate-50 px-3 py-2 rounded-xl flex items-center justify-between">
+          <span>معرّفك الفريد:</span>
+          <span id="profileUserId" class="font-bold text-slate-800"></span>
+        </div>
+        <button
+          onclick="saveProfile()"
+          class="w-full bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl transition"
+        >
+          حفظ الإعدادات
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+        <button
+          onclick="exportData()"
+          class="bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold py-2 rounded-xl transition"
+        >
+          تصدير نسخة JSON
+        </button>
+        <label class="bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold py-2 rounded-xl text-center transition cursor-pointer">
+          استيراد JSON
+          <input type="file" accept=".json,application/json" onchange="importData(event)" class="hidden" />
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- تنبيه عائم -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg hidden"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
-
   <script>
-    const RENDER_RELAY_URL = "https://sudan-market-2.onrender.com/gun";[span_0](start_span)[span_0](end_span)
+    const RENDER_RELAY_URL = "https://sudan-market-2.onrender.com/gun";[span_5](start_span)[span_5](end_span)
 
-    const STORAGE_KEY = "radar_smart_zone_items_v2";
-    const USER_ID_KEY = "radar_smart_user_id_v2";
-    const USERNAME_KEY = "radar_smart_username_v2";
-    const ZONE_KEY = "radar_smart_my_zone_v2";
-    const STRICT_ZONE_KEY = "radar_smart_strict_zone_v2";
+    const ITEMS_KEY = "radar_simple_items_v3";
+    const DELETED_KEY = "radar_simple_deleted_v3";
+    const UID_KEY = "radar_simple_uid_v3";
+    const NAME_KEY = "radar_simple_name_v3";
+    const ZONE_KEY = "radar_simple_zone_v3";
+    const ONLY_ZONE_KEY = "radar_simple_only_zone_v3";
 
-    function normalizeText(str = "") {
+    function norm(str = "") {
       return String(str)
         .toLowerCase()
         .replace(/[\u064B-\u065F\u0670]/g, "")
         .replace(/[إأآا]/g, "ا")
         .replace(/ى/g, "ي")
         .replace(/ة/g, "ه")
-        .replace(/[\/\-_،,.]+/g, " ")
         .replace(/\s+/g, " ")
         .trim();
     }
 
-    function getOrCreateUserId() {
-      let id = localStorage.getItem(USER_ID_KEY);
+    function getUserId() {
+      let id = localStorage.getItem(UID_KEY);
       if (!id) {
-        id = "usr_" + Math.random().toString(36).substring(2, 8);
-        localStorage.setItem(USER_ID_KEY, id);
+        id = "u_" + Math.random().toString(36).substring(2, 8);
+        localStorage.setItem(UID_KEY, id);
       }
       return id;
     }
 
-    const myUserId = getOrCreateUserId();
-    document.getElementById("myUserIdText").textContent = myUserId;
+    const myUserId = getUserId();
+    let onlyMyZone = localStorage.getItem(ONLY_ZONE_KEY) === "true";
+    let itemsMap = loadJson(ITEMS_KEY, {});
+    let deletedMap = loadJson(DELETED_KEY, {});
 
-    const nameInputEl = document.getElementById("publisherNameInput");
-    nameInputEl.value = localStorage.getItem(USERNAME_KEY) || "مستخدم الحي";
-
-    const zoneInputEl = document.getElementById("myZoneInput");
-    zoneInputEl.value = localStorage.getItem(ZONE_KEY) || "";
-
-    let strictMyZone = localStorage.getItem(STRICT_ZONE_KEY) === "true";
-
-    function savePublisherName() {
-      localStorage.setItem(USERNAME_KEY, (nameInputEl.value || "").trim() || "مستخدم الحي");
-    }
-
-    function currentPublisherName() {
-      return (nameInputEl.value || "").trim() || "مستخدم الحي";
-    }
-
-    function currentMyZone() {
-      return (zoneInputEl.value || "").trim();
-    }
-
-    function onZoneChange() {
-      localStorage.setItem(ZONE_KEY, currentMyZone());
-      const addArea = document.getElementById("addAreaInput");
-      if (addArea && !addArea.dataset.touched) {
-        addArea.value = currentMyZone();
-      }
-      renderAll();
-    }
-
-    function toggleScopeMode() {
-      strictMyZone = !strictMyZone;
-      localStorage.setItem(STRICT_ZONE_KEY, String(strictMyZone));
-      updateScopeButton();
-      renderAll();
-    }
-
-    function setStrictZoneFilter(val) {
-      if (val && !currentMyZone()) {
-        showToast("اكتب اسم منطقتك أولاً في خانة منطقتي");
-        zoneInputEl.focus();
-        return;
-      }
-      strictMyZone = Boolean(val);
-      localStorage.setItem(STRICT_ZONE_KEY, String(strictMyZone));
-      updateScopeButton();
-      renderAll();
-    }
-
-    function updateScopeButton() {
-      const btn = document.getElementById("scopeToggleBtn");
-      if (strictMyZone) {
-        btn.textContent = "محصور في منطقتي";
-        btn.className = "text-xs font-extrabold bg-amber-500 text-slate-950 px-3 py-2 rounded-xl transition shrink-0";
-      } else {
-        btn.textContent = "منطقتي أولاً";
-        btn.className = "text-xs font-extrabold bg-[#1b7a43] text-white px-3 py-2 rounded-xl transition shrink-0";
-      }
-    }
-
-    updateScopeButton();
-
-    let itemsMap = loadLocalItems();
-
-    function loadLocalItems() {
+    function loadJson(key, fallback) {
       try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        return raw ? JSON.parse(raw) : {};
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
       } catch {
-        return {};
+        return fallback;
       }
     }
 
-    function saveLocalItems() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(itemsMap));
+    function saveState() {
+      localStorage.setItem(ITEMS_KEY, JSON.stringify(itemsMap));
+      localStorage.setItem(DELETED_KEY, JSON.stringify(deletedMap));
     }
 
     function showToast(msg) {
-      const toast = document.getElementById("toast");
-      toast.textContent = msg;
-      toast.classList.remove("hidden");
-      clearTimeout(window.toastTimer);
-      window.toastTimer = setTimeout(() => toast.classList.add("hidden"), 2500);
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.remove("hidden");
+      clearTimeout(window._t);
+      window._t = setTimeout(() => el.classList.add("hidden"), 2400);
     }
 
-    function normalizeVoters(rawVoters, fallbackConf, fallbackPubId) {
+    function getPublisherName() {
+      return (localStorage.getItem(NAME_KEY) || "").trim() || "مستخدم";
+    }
+
+    function getSavedZone() {
+      return (localStorage.getItem(ZONE_KEY) || "").trim();
+    }
+
+    function updateMyZoneBtn() {
+      const btn = document.getElementById("myZoneBtn");
+      if (onlyMyZone) {
+        btn.textContent = "منطقتي ✓";
+        btn.className = "text-xs font-extrabold bg-[#1b7a43] text-white px-3 py-2 rounded-xl transition shrink-0";
+      } else {
+        btn.textContent = "منطقتي";
+        btn.className = "text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3 py-2 rounded-xl transition shrink-0";
+      }
+    }
+
+    function toggleMyZoneOnly() {
+      const z = getSavedZone();
+      if (!onlyMyZone && !z) {
+        openProfileModal();
+        showToast("اكتب منطقتك أولاً في إعداداتي السريعة");
+        return;
+      }
+      onlyMyZone = !onlyMyZone;
+      localStorage.setItem(ONLY_ZONE_KEY, String(onlyMyZone));
+      updateMyZoneBtn();
+      renderAll();
+    }
+
+    updateMyZoneBtn();
+
+    function normalizeVoters(votersObj, confCount, pubId) {
       const map = {};
-      if (rawVoters && typeof rawVoters === "object") {
-        Object.keys(rawVoters).forEach((uid) => {
-          if (rawVoters[uid]) map[String(uid)] = true;
+      if (votersObj && typeof votersObj === "object") {
+        Object.keys(votersObj).forEach((k) => {
+          if (votersObj[k]) map[String(k)] = true;
         });
       }
-      if (Object.keys(map).length === 0 && Number(fallbackConf || 0) > 0 && fallbackPubId) {
-        map[String(fallbackPubId)] = true;
+      if (Object.keys(map).length === 0 && Number(confCount || 0) > 0 && pubId) {
+        map[String(pubId)] = true;
       }
       return map;
     }
 
-    function mergeItem(incoming) {
-      if (!incoming || !incoming.id || !incoming.name) return false;
-      const existing = itemsMap[incoming.id];
-      const incTime = Number(incoming.updatedAt || 0);
-      const extTime = Number(existing?.updatedAt || 0);
+    function mergeEntry(entry) {
+      if (!entry || !entry.id) return false;
+      const id = String(entry.id);
+      const incTs = Number(entry.updatedAt || 0);
+      const delTs = Math.max(Number(entry.deletedAt || 0), Number(deletedMap[id]?.deletedAt || 0));
 
+      if (entry.deleted) {
+        if (delTs > Number(deletedMap[id]?.deletedAt || 0) || itemsMap[id]) {
+          deletedMap[id] = { deleted: true, deletedAt: delTs || Date.now() };
+          if (itemsMap[id] && Number(itemsMap[id].updatedAt || 0) <= deletedMap[id].deletedAt) {
+            delete itemsMap[id];
+          }
+          return true;
+        }
+        return false;
+      }
+
+      if (delTs > 0 && incTs <= delTs) {
+        if (itemsMap[id]) {
+          delete itemsMap[id];
+          return true;
+        }
+        return false;
+      }
+
+      if (!entry.name) return false;
+
+      const existing = itemsMap[id];
+      const extTs = Number(existing?.updatedAt || 0);
       const mergedVoters = {
         ...normalizeVoters(existing?.voters, existing?.confirmations, existing?.publisherId),
-        ...normalizeVoters(incoming.voters, incoming.confirmations, incoming.publisherId)
+        ...normalizeVoters(entry.voters, entry.confirmations, entry.publisherId)
       };
-
-      const realConfirmCount = Math.max(
+      const conf = Math.max(
         Object.keys(mergedVoters).length,
-        (!existing || incTime >= extTime) ? Number(incoming.confirmations || 0) : Number(existing?.confirmations || 0)
+        (!existing || incTs >= extTs) ? Number(entry.confirmations || 0) : Number(existing?.confirmations || 0)
       );
 
-      if (!existing || incTime >= extTime) {
-        itemsMap[incoming.id] = {
-          id: String(incoming.id),
-          name: String(incoming.name).trim(),
-          unit: String(incoming.unit || "وحدة").trim(),
-          currency: String(incoming.currency || "ج.س").trim(),
-          price: Number(incoming.price || 0),
-          area: String(incoming.area || currentMyZone() || "غير محدد").trim(),
+      if (!existing || incTs >= extTs) {
+        itemsMap[id] = {
+          id,
+          name: String(entry.name).trim(),
+          unit: String(entry.unit || "وحدة").trim(),
+          currency: String(entry.currency || "ج.س").trim(),
+          price: Number(entry.price || 0),
+          area: String(entry.area || "غير محدد").trim(),
           voters: mergedVoters,
-          confirmations: realConfirmCount,
-          disputes: Math.max(Number(incoming.disputes || 0), Number(existing?.disputes || 0)),
-          publisherName: String(incoming.publisherName || existing?.publisherName || "مستخدم الحي").trim(),
-          publisherId: String(incoming.publisherId || existing?.publisherId || myUserId).trim(),
-          updatedAt: incTime || Date.now()
+          confirmations: conf,
+          disputes: Math.max(Number(entry.disputes || 0), Number(existing?.disputes || 0)),
+          publisherName: String(entry.publisherName || existing?.publisherName || "مستخدم").trim(),
+          publisherId: String(entry.publisherId || existing?.publisherId || myUserId).trim(),
+          updatedAt: incTs || Date.now(),
+          deleted: false
         };
         return true;
       } else if (Object.keys(mergedVoters).length > Object.keys(existing.voters || {}).length) {
@@ -502,81 +433,138 @@
       return false;
     }
 
-    const gun = Gun({ peers: [RENDER_RELAY_URL] });
-    const radarNode = gun.get("sudan_radar_smart_v2").get("items");
+    // تهيئة Gun.js مع إظهار حالة الاتصال بوضوح
+    const gun = Gun({ peers: [RENDER_RELAY_URL], retry: 2000 });
+    const itemsNode = gun.get("sudan_radar_v3").get("items");
+    const presenceNode = gun.get("sudan_radar_v3").get("presence");
 
     const dotEl = document.getElementById("relayDot");
     const statusEl = document.getElementById("relayStatus");
 
+    function setConnectedState(isConnected) {
+      if (isConnected) {
+        dotEl.className = "w-2 h-2 rounded-full bg-[#1b7a43] inline-block shrink-0";
+        statusEl.textContent = "متصل بـ Render";
+      } else {
+        dotEl.className = "w-2 h-2 rounded-full bg-amber-500 inline-block shrink-0";
+        statusEl.textContent = "غير متصل بـ Render (حفظ محلي)";
+      }
+    }
+
+    setConnectedState(false);
+
     gun.on("hi", () => {
-      dotEl.className = "w-2 h-2 rounded-full bg-[#1b7a43] inline-block animate-pulse";
-      statusEl.textContent = "متصل عبر Render — بث مباشر للعامة";
+      setConnectedState(true);
+      sendHeartbeat();
+      Object.values(itemsMap).forEach((it) => {
+        if (!it.deleted) itemsNode.get(it.id).put(it);
+      });
     });
 
-    Object.values(itemsMap).forEach((item) => {
-      radarNode.get(item.id).put(item);
+    gun.on("bye", () => {
+      setConnectedState(false);
     });
 
-    radarNode.map().on((data, key) => {
+    // فحص مباشر لاستجابة خدمة Render لإظهار متصل / غير متصل بدقة
+    function checkRenderHealth() {
+      const baseUrl = RENDER_RELAY_URL.replace(/\/gun\/?$/, "");
+      fetch(baseUrl, { cache: "no-store" })
+        .then((res) => {
+          if (res.ok) setConnectedState(true);
+        })
+        .catch(() => {});
+    }
+
+    checkRenderHealth();
+    setInterval(checkRenderHealth, 15000);
+
+    // حضور المتصلين الآن (نافذة 25 ثانية)
+    const peersAlive = { [myUserId]: Date.now() };
+    const ALIVE_MS = 25000;
+
+    function sendHeartbeat() {
+      const now = Date.now();
+      peersAlive[myUserId] = now;
+      presenceNode.get(myUserId).put({ userId: myUserId, lastSeen: now, online: true });
+      renderOnlineBadge();
+    }
+
+    function renderOnlineBadge() {
+      const now = Date.now();
+      peersAlive[myUserId] = now;
+      let n = 0;
+      Object.keys(peersAlive).forEach((uid) => {
+        if (now - Number(peersAlive[uid] || 0) <= ALIVE_MS) n++;
+        else delete peersAlive[uid];
+      });
+      document.getElementById("onlineCountBadge").textContent = `متصل: ${Math.max(1, n)}`;
+    }
+
+    presenceNode.map().on((data, key) => {
+      const uid = String(data?.userId || key || "").trim();
+      if (!uid) return;
+      if (data && data.online === false) {
+        delete peersAlive[uid];
+        renderOnlineBadge();
+        return;
+      }
+      const ts = Number(data?.lastSeen || 0);
+      if (ts > 0 && Date.now() - ts <= ALIVE_MS) {
+        peersAlive[uid] = ts;
+        renderOnlineBadge();
+      }
+    });
+
+    sendHeartbeat();
+    setInterval(sendHeartbeat, 10000);
+    setInterval(renderOnlineBadge, 5000);
+
+    window.addEventListener("beforeunload", () => {
+      presenceNode.get(myUserId).put({ userId: myUserId, lastSeen: Date.now(), online: false });
+    });
+
+    itemsNode.map().on((data, key) => {
       if (!data || !key) return;
-      const changed = mergeItem({ ...data, id: data.id || key });
+      const changed = mergeEntry({ ...data, id: data.id || key });
       if (changed) {
-        saveLocalItems();
+        saveState();
         renderAll();
       }
     });
 
-    function calculateRealCommunityTrust(item, allList) {
+    function computeTrust(item, allList) {
       const votersCount = Object.keys(item.voters || {}).length;
-      const confCount = Math.max(votersCount, Number(item.confirmations || 0));
-      const dispCount = Math.max(0, Number(item.disputes || 0));
+      const conf = Math.max(votersCount, Number(item.confirmations || 0));
+      const disp = Math.max(0, Number(item.disputes || 0));
+      const consensus = (conf + disp) > 0 ? conf / (conf + disp) : 0.5;
+      const ageHours = Math.max(0, (Date.now() - Number(item.updatedAt || Date.now())) / 3600000);
+      const freshness = Math.exp(-ageHours / 72);
+      const crowd = 1 - Math.exp(-conf / 4);
 
-      const totalVotes = confCount + dispCount;
-      const consensusRatio = totalVotes > 0 ? confCount / totalVotes : 0.5;
-
-      const ageHours = Math.max(0, (Date.now() - Number(item.updatedAt || Date.now())) / (1000 * 3600));
-      const freshnessFactor = Math.exp(-ageHours / 72);
-
-      const normGood = normalizeText(item.name);
-      const normArea = normalizeText(item.area);
-      const peerPrices = allList
-        .filter((x) => normalizeText(x.name) === normGood && normalizeText(x.area) === normArea && Number(x.price) > 0)
+      const gKey = norm(item.name);
+      const zKey = norm(item.area);
+      const peers = allList
+        .filter((x) => norm(x.name) === gKey && norm(x.area) === zKey && Number(x.price) > 0)
         .map((x) => Number(x.price));
 
-      let priceConsistency = 1;
-      if (peerPrices.length >= 2 && Number(item.price) > 0) {
-        const avg = peerPrices.reduce((a, b) => a + b, 0) / peerPrices.length;
-        const deviation = Math.abs(Number(item.price) - avg) / avg;
-        priceConsistency = Math.max(0.55, 1 - Math.min(0.45, deviation));
+      let consistency = 1;
+      if (peers.length >= 2 && Number(item.price) > 0) {
+        const avg = peers.reduce((a, b) => a + b, 0) / peers.length;
+        consistency = Math.max(0.55, 1 - Math.min(0.45, Math.abs(Number(item.price) - avg) / avg));
       }
 
-      const crowdDepthScore = 1 - Math.exp(-confCount / 4);
-
-      const rawScore =
-        (consensusRatio * 0.45 + crowdDepthScore * 0.25 + freshnessFactor * 0.15 + priceConsistency * 0.15) * 100;
-
-      const trustPct = Math.min(99, Math.max(15, Math.round(rawScore)));
-      const isSpike = peerPrices.length >= 2 && Number(item.price) > 0
-        ? (Number(item.price) / (peerPrices.reduce((a, b) => a + b, 0) / peerPrices.length)) > 1.35
-        : false;
-
-      return {
-        trustPct,
-        realConfirmations: confCount,
-        isSpike
-      };
+      const pct = Math.min(99, Math.max(15, Math.round((consensus * 0.45 + crowd * 0.25 + freshness * 0.15 + consistency * 0.15) * 100)));
+      return { pct, conf };
     }
 
-    function confirmPrice(itemId) {
-      const item = itemsMap[itemId];
+    function confirmItem(id) {
+      const item = itemsMap[id];
       if (!item) return;
-
       const voters = normalizeVoters(item.voters, item.confirmations, item.publisherId);
       if (voters[myUserId]) {
-        showToast("لقد أكدت هذا السعر مسبقاً بمعرّفك");
+        showToast("أكّدت هذا السعر مسبقاً");
         return;
       }
-
       voters[myUserId] = true;
       const updated = {
         ...item,
@@ -584,466 +572,389 @@
         confirmations: Object.keys(voters).length,
         updatedAt: Date.now()
       };
-
-      itemsMap[itemId] = updated;
-      saveLocalItems();
-      radarNode.get(itemId).put(updated);
+      itemsMap[id] = updated;
+      saveState();
+      itemsNode.get(id).put(updated);
       renderAll();
-      showToast(`تم تسجيل تأكيدك الحقيقي (${updated.confirmations} مؤكد) ✓`);
+      showToast("تم تأكيد السعر ✓");
     }
 
-    function openUpdateModal(itemId) {
-      const item = itemsMap[itemId];
-      if (!item) return;
-      document.getElementById("updateItemId").value = item.id;
-      document.getElementById("updateModalTitle").textContent = `تحديث سعر: ${item.name}`;
-      document.getElementById("newPriceInput").value = item.price;
-      document.getElementById("newAreaInput").value = currentMyZone() || item.area || "";
-      const modal = document.getElementById("updateModal");
-      modal.classList.remove("hidden");
-      modal.classList.add("flex");
-      document.getElementById("newAreaInput").focus();
-    }
-
-    function closeUpdateModal() {
-      const modal = document.getElementById("updateModal");
-      modal.classList.add("hidden");
-      modal.classList.remove("flex");
-    }
-
-    function submitPriceUpdate(e) {
-      e.preventDefault();
-      const itemId = document.getElementById("updateItemId").value;
-      const newPrice = Number(document.getElementById("newPriceInput").value);
-      const areaName = document.getElementById("newAreaInput").value.trim();
-      const item = itemsMap[itemId];
-      if (!item || !newPrice || newPrice <= 0 || !areaName) return;
-
-      const voters = { [myUserId]: true };
-      const updated = {
-        ...item,
-        price: newPrice,
-        area: areaName,
-        voters,
-        confirmations: 1,
-        disputes: Number(item.disputes || 0) + 1,
-        publisherName: currentPublisherName(),
-        publisherId: myUserId,
-        updatedAt: Date.now()
-      };
-
-      itemsMap[itemId] = updated;
-      saveLocalItems();
-      radarNode.get(itemId).put(updated);
-      closeUpdateModal();
+    function deleteItem(id) {
+      const item = itemsMap[id];
+      if (!item || String(item.publisherId) !== String(myUserId)) return;
+      const now = Date.now();
+      deletedMap[id] = { deleted: true, deletedAt: now };
+      delete itemsMap[id];
+      saveState();
+      itemsNode.get(id).put({ id, deleted: true, deletedAt: now, deletedBy: myUserId });
       renderAll();
-      showToast(`تم تحديث السعر في (${areaName}) وبثه للعامة ✓`);
+      showToast("تم حذف منشورك ✓");
     }
 
     function openAddModal() {
-      const addArea = document.getElementById("addAreaInput");
-      if (addArea && !addArea.value && currentMyZone()) {
-        addArea.value = currentMyZone();
+      const z = getSavedZone();
+      if (z && !document.getElementById("addArea").value) {
+        document.getElementById("addArea").value = z;
       }
-      const modal = document.getElementById("addModal");
-      modal.classList.remove("hidden");
-      modal.classList.add("flex");
+      const m = document.getElementById("addModal");
+      m.classList.remove("hidden");
+      m.classList.add("flex");
+      document.getElementById("addName").focus();
     }
 
     function closeAddModal() {
-      const modal = document.getElementById("addModal");
-      modal.classList.add("hidden");
-      modal.classList.remove("flex");
+      const m = document.getElementById("addModal");
+      m.classList.add("hidden");
+      m.classList.remove("flex");
     }
 
     function submitNewItem(e) {
       e.preventDefault();
-      const name = document.getElementById("addNameInput").value.trim();
-      const unit = document.getElementById("addUnitInput").value.trim();
-      const currency = document.getElementById("addCurrencyInput").value.trim() || "ج.س";
-      const price = Number(document.getElementById("addPriceInput").value);
-      const area = document.getElementById("addAreaInput").value.trim();
-
-      if (!name || !unit || !price || price <= 0 || !area) return;
+      const name = document.getElementById("addName").value.trim();
+      const price = Number(document.getElementById("addPrice").value);
+      const unit = document.getElementById("addUnit").value.trim() || "وحدة";
+      const area = document.getElementById("addArea").value.trim();
+      if (!name || !price || price <= 0 || !area) return;
 
       const now = Date.now();
       const id = "item_" + now + "_" + Math.random().toString(36).substring(2, 6);
       const newItem = {
         id,
         name,
-        unit,
-        currency,
         price,
+        unit,
+        currency: "ج.س",
         area,
         voters: { [myUserId]: true },
         confirmations: 1,
         disputes: 0,
-        publisherName: currentPublisherName(),
+        publisherName: getPublisherName(),
         publisherId: myUserId,
-        updatedAt: now
+        updatedAt: now,
+        deleted: false
       };
 
+      delete deletedMap[id];
       itemsMap[id] = newItem;
-      saveLocalItems();
-      radarNode.get(id).put(newItem);
+      saveState();
 
+      // حفظ فوري وعرض مباشر ثم بث للشبكة
       e.target.reset();
-      document.getElementById("addCurrencyInput").value = currency;
-      if (currentMyZone()) {
-        document.getElementById("addAreaInput").value = currentMyZone();
-      }
+      document.getElementById("addUnit").value = "كيس / وحدة";
       closeAddModal();
       renderAll();
-      showToast("تمت إضافة السلعة وبثها للعامة ✓");
+      showToast("تم النشر بنجاح ✓");
+
+      try {
+        itemsNode.get(id).put(newItem);
+      } catch {}
     }
 
-    function runSmartEngine(list, myZoneRaw) {
-      const myZoneNorm = normalizeText(myZoneRaw);
+    function openUpdateModal(id) {
+      const item = itemsMap[id];
+      if (!item) return;
+      document.getElementById("updateItemId").value = item.id;
+      document.getElementById("updateTitle").textContent = `تحديث: ${item.name}`;
+      document.getElementById("updatePrice").value = item.price;
+      document.getElementById("updateArea").value = getSavedZone() || item.area || "";
+      const m = document.getElementById("updateModal");
+      m.classList.remove("hidden");
+      m.classList.add("flex");
+      document.getElementById("updatePrice").focus();
+    }
 
-      const goodZoneBest = {};
-      const zoneActivity = {};
+    function closeUpdateModal() {
+      const m = document.getElementById("updateModal");
+      m.classList.add("hidden");
+      m.classList.remove("flex");
+    }
 
-      list.forEach((item) => {
-        const price = Number(item.price || 0);
-        if (price <= 0) return;
+    function submitPriceUpdate(e) {
+      e.preventDefault();
+      const id = document.getElementById("updateItemId").value;
+      const price = Number(document.getElementById("updatePrice").value);
+      const area = document.getElementById("updateArea").value.trim();
+      const item = itemsMap[id];
+      if (!item || !price || price <= 0 || !area) return;
 
-        const gNorm = normalizeText(item.name);
-        const zNorm = normalizeText(item.area || "غير محدد");
-        const zLabel = (item.area || "غير محدد").trim();
-        const gLabel = (item.name || "").trim();
-
-        if (!zoneActivity[zNorm]) {
-          zoneActivity[zNorm] = { key: zNorm, label: zLabel, count: 0, goodsSet: new Set() };
-        }
-        zoneActivity[zNorm].count += 1;
-        zoneActivity[zNorm].goodsSet.add(gNorm);
-
-        if (!goodZoneBest[gNorm]) goodZoneBest[gNorm] = {};
-        const prev = goodZoneBest[gNorm][zNorm];
-        const trustInfo = calculateRealCommunityTrust(item, list);
-
-        const effectiveRankPrice = (trustInfo.isSpike && trustInfo.realConfirmations === 1) ? price * 1.5 : price;
-        const prevRankPrice = prev ? prev.effectiveRankPrice : Infinity;
-
-        if (!prev || effectiveRankPrice < prevRankPrice || (effectiveRankPrice === prevRankPrice && Number(item.updatedAt) > Number(prev.updatedAt))) {
-          goodZoneBest[gNorm][zNorm] = {
-            ...item,
-            goodLabel: gLabel,
-            zoneLabel: zLabel,
-            goodNorm: gNorm,
-            zoneNorm: zNorm,
-            price,
-            effectiveRankPrice,
-            trustPct: trustInfo.trustPct
-          };
-        }
-      });
-
-      const cheapestZones = [];
-      Object.values(goodZoneBest).forEach((zonesObj) => {
-        const entries = Object.values(zonesObj).sort((a, b) => a.price - b.price);
-        if (entries.length === 0) return;
-        const cheapest = entries[0];
-        const highest = entries[entries.length - 1];
-        const savingPct = highest.price > cheapest.price
-          ? Math.round(((highest.price - cheapest.price) / highest.price) * 100)
-          : 0;
-        cheapestZones.push({
-          ...cheapest,
-          savingPct,
-          zonesCompared: entries.length
-        });
-      });
-
-      cheapestZones.sort((a, b) => b.savingPct - a.savingPct || a.price - b.price);
-
-      const myZoneItems = myZoneNorm
-        ? list.filter((it) => normalizeText(it.area) === myZoneNorm && Number(it.price) > 0)
-        : [];
-
-      const topZones = Object.values(zoneActivity)
-        .sort((a, b) => b.count - a.count || b.goodsSet.size - a.goodsSet.size)
-        .slice(0, 6);
-
-      return {
-        cheapestZones: cheapestZones.slice(0, 5),
-        myZoneSummary: {
-          zoneName: myZoneRaw,
-          itemsCount: myZoneItems.length,
-          cheapestInMyZone: myZoneItems.length > 0
-            ? [...myZoneItems].sort((a, b) => Number(a.price) - Number(b.price))[0]
-            : null
-        },
-        topZones
+      const updated = {
+        ...item,
+        price,
+        area,
+        voters: { [myUserId]: true },
+        confirmations: 1,
+        disputes: Number(item.disputes || 0) + 1,
+        publisherName: getPublisherName(),
+        publisherId: myUserId,
+        updatedAt: Date.now()
       };
-    }
 
-    function renderSmartInsights(list) {
-      const myZoneRaw = currentMyZone();
-      const { cheapestZones, myZoneSummary, topZones } = runSmartEngine(list, myZoneRaw);
-
-      document.getElementById("totalItemsBadge").textContent = `${list.length} رصد • ${topZones.length} منطقة`;
-      document.getElementById("zoneSummarySub").textContent = myZoneRaw
-        ? `نطاقك النشط: ${myZoneRaw} (${strictMyZone ? "حصر صارم" : "أولوية مع إظهار بقية المناطق"})`
-        : "أدخل منطقتك لحصر رصدك ومقارنة أقل المناطق سعراً";
-
-      const cheapestEl = document.getElementById("cheapestZonesInsights");
-      if (cheapestZones.length === 0) {
-        cheapestEl.innerHTML = `<p class="text-[11px] text-slate-500">أضف سلعاً بأسعار لتبرز أقل المناطق سعراً تلقائياً.</p>`;
-      } else {
-        cheapestEl.innerHTML = cheapestZones.map((cz) => `
-          <button
-            onclick="setQuickFilter('${escapeAttr(cz.zoneLabel)}')"
-            class="w-full text-right bg-white hover:bg-emerald-100/60 border border-emerald-200/80 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2 transition"
-          >
-            <div class="min-w-0">
-              <div class="font-extrabold text-slate-900 truncate">${escapeHtml(cz.goodLabel)} — <span class="text-[#1b7a43]">${escapeHtml(cz.zoneLabel)}</span></div>
-              <div class="text-[10px] text-slate-500 truncate">
-                ثقة ${cz.trustPct}%${cz.savingPct > 0 ? ` • أوفر بـ ${cz.savingPct}%` : ""}
-              </div>
-            </div>
-            <span class="font-extrabold text-[#1b7a43] shrink-0">${Number(cz.price).toLocaleString()}</span>
-          </button>
-        `).join("");
-      }
-
-      const myZoneEl = document.getElementById("myZoneInsights");
-      if (!myZoneRaw) {
-        myZoneEl.innerHTML = `اكتب اسم منطقتك في الأعلى لحصر بياناتك ومقارنة الأسعار فيها.`;
-      } else if (myZoneSummary.itemsCount === 0) {
-        myZoneEl.innerHTML = `لا توجد أسعار مسجّلة في <span class="font-bold text-slate-900">${escapeHtml(myZoneRaw)}</span> بعد. أضف أول رصد لمنطقتك.`;
-      } else {
-        const best = myZoneSummary.cheapestInMyZone;
-        myZoneEl.innerHTML = `
-          <div class="font-bold text-slate-900">${escapeHtml(myZoneRaw)}: ${myZoneSummary.itemsCount} رصد نشط</div>
-          <div class="text-[10px] text-slate-600 mt-0.5">
-            أقل سعر في منطقتك: <span class="font-extrabold text-[#1b7a43]">${escapeHtml(best.name)} (${Number(best.price).toLocaleString()} ${escapeHtml(best.currency)})</span>
-          </div>
-        `;
-      }
-
-      const topZonesEl = document.getElementById("topZonesInsights");
-      topZonesEl.innerHTML = topZones.length === 0
-        ? `<span class="text-[11px] text-slate-500">لا توجد بيانات بعد.</span>`
-        : topZones.map((z) => `
-            <button
-              onclick="setQuickFilter('${escapeAttr(z.label)}')"
-              class="text-[11px] font-bold bg-white hover:bg-slate-100 border border-slate-200 text-slate-800 px-2.5 py-0.5 rounded-full transition"
-            >
-              ${escapeHtml(z.label)} (${z.count})
-            </button>
-          `).join("");
-    }
-
-    function setQuickFilter(term) {
-      document.getElementById("filterInput").value = term;
+      itemsMap[id] = updated;
+      saveState();
+      closeUpdateModal();
       renderAll();
+      showToast("تم تحديث السعر ✓");
+
+      try {
+        itemsNode.get(id).put(updated);
+      } catch {}
     }
 
-    function clearFilter() {
-      document.getElementById("filterInput").value = "";
+    function openProfileModal() {
+      document.getElementById("profileName").value = localStorage.getItem(NAME_KEY) || "";
+      document.getElementById("profileZone").value = getSavedZone();
+      document.getElementById("profileUserId").textContent = myUserId;
+      const m = document.getElementById("profileModal");
+      m.classList.remove("hidden");
+      m.classList.add("flex");
+    }
+
+    function closeProfileModal() {
+      const m = document.getElementById("profileModal");
+      m.classList.add("hidden");
+      m.classList.remove("flex");
+    }
+
+    function saveProfile() {
+      const n = document.getElementById("profileName").value.trim();
+      const z = document.getElementById("profileZone").value.trim();
+      if (n) localStorage.setItem(NAME_KEY, n);
+      else localStorage.removeItem(NAME_KEY);
+
+      if (z) localStorage.setItem(ZONE_KEY, z);
+      else {
+        localStorage.removeItem(ZONE_KEY);
+        onlyMyZone = false;
+        localStorage.setItem(ONLY_ZONE_KEY, "false");
+        updateMyZoneBtn();
+      }
+      closeProfileModal();
       renderAll();
+      showToast("تم حفظ إعداداتك ✓");
     }
 
-    function scrollToInsights() {
-      document.getElementById("insightsSection")?.scrollIntoView({ behavior: "smooth" });
-    }
-
-    function exportBundle() {
-      const list = Object.values(itemsMap);
-      const payload = {
-        exportedAt: new Date().toISOString(),
-        fromUserId: myUserId,
-        activeZone: currentMyZone(),
-        items: list,
-        smartEngine: runSmartEngine(list, currentMyZone())
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    function exportData() {
+      const blob = new Blob([JSON.stringify(Object.values(itemsMap), null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `radar-smart-bundle-${Date.now()}.json`;
+      a.download = `radar-prices-${Date.now()}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      showToast("تم تصدير الحزمة الذكية بنجاح");
     }
 
-    function importBundle(event) {
-      const file = event.target.files?.[0];
+    function importData(e) {
+      const file = e.target.files?.[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          const parsed = JSON.parse(String(reader.result || "{}"));
-          const arr = Array.isArray(parsed) ? parsed : (parsed.items || []);
-          let merged = 0;
-          arr.forEach((entry) => {
-            if (mergeItem(entry)) {
-              merged++;
-              radarNode.get(entry.id).put(itemsMap[entry.id]);
+          const parsed = JSON.parse(String(reader.result || "[]"));
+          const list = Array.isArray(parsed) ? parsed : (parsed.items || []);
+          let count = 0;
+          list.forEach((entry) => {
+            if (mergeEntry(entry)) {
+              count++;
+              itemsNode.get(entry.id).put(itemsMap[entry.id]);
             }
           });
-          saveLocalItems();
+          saveState();
           renderAll();
-          showToast(`تم دمج ${merged} رصد جديد وتحديث الذكاء ✓`);
+          showToast(`تم استيراد ${count} بند ✓`);
         } catch {
-          showToast("ملف الاستيراد غير صالح");
+          showToast("ملف غير صالح");
         }
-        event.target.value = "";
+        e.target.value = "";
       };
       reader.readAsText(file);
     }
 
     function timeAgo(ts) {
-      if (!ts) return "الآن";
-      const diffSec = Math.max(1, Math.floor((Date.now() - Number(ts)) / 1000));
-      if (diffSec < 60) return `محدّث منذ ${diffSec} ثانية`;
-      const diffMin = Math.floor(diffSec / 60);
-      if (diffMin < 60) return `محدّث منذ ${diffMin} دقيقة`;
-      const diffHr = Math.floor(diffMin / 60);
-      if (diffHr < 24) return `محدّث منذ ${diffHr} ساعة`;
-      return `محدّث منذ ${Math.floor(diffHr / 24)} يوم`;
+      const sec = Math.max(1, Math.floor((Date.now() - Number(ts || Date.now())) / 1000));
+      if (sec < 60) return `منذ ${sec} ث`;
+      const min = Math.floor(sec / 60);
+      if (min < 60) return `منذ ${min} د`;
+      const hr = Math.floor(min / 60);
+      if (hr < 24) return `منذ ${hr} س`;
+      return `منذ ${Math.floor(hr / 24)} ي`;
     }
 
-    function escapeHtml(str = "") {
-      return String(str)
+    function esc(s = "") {
+      return String(s)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
     }
 
-    function escapeAttr(str = "") {
-      return String(str).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    function escJs(s = "") {
+      return String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    }
+
+    function renderSmartStrip(allList) {
+      const strip = document.getElementById("smartStrip");
+      const lowestByGood = {};
+      const zoneCounts = {};
+
+      allList.forEach((it) => {
+        const gKey = norm(it.name);
+        const zKey = norm(it.area);
+        const p = Number(it.price || 0);
+        if (zKey) {
+          zoneCounts[zKey] = zoneCounts[zKey] || { label: it.area, count: 0 };
+          zoneCounts[zKey].count++;
+        }
+        if (gKey && p > 0 && (!lowestByGood[gKey] || p < lowestByGood[gKey].price)) {
+          lowestByGood[gKey] = { ...it, price: p };
+        }
+      });
+
+      const cheapest = Object.values(lowestByGood).sort((a, b) => a.price - b.price).slice(0, 3);
+      const topZone = Object.values(zoneCounts).sort((a, b) => b.count - a.count)[0];
+
+      const chips = [];
+      cheapest.forEach((c) => {
+        chips.push(`
+          <button onclick="quickSearch('${escJs(c.name)}')" class="bg-white border border-emerald-200 text-slate-800 px-3 py-1.5 rounded-full shrink-0 font-bold flex items-center gap-1.5">
+            <span class="text-[#1b7a43]">أقل ${esc(c.name)}:</span>
+            <span>${Number(c.price).toLocaleString()}</span>
+            <span class="text-[10px] text-slate-500">(${esc(c.area)})</span>
+          </button>
+        `);
+      });
+
+      if (topZone) {
+        chips.push(`
+          <button onclick="quickSearch('${escJs(topZone.label)}')" class="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-full shrink-0 font-bold">
+            الأكثر نشاطاً: ${esc(topZone.label)} (${topZone.count})
+          </button>
+        `);
+      }
+
+      strip.innerHTML = chips.join("");
+    }
+
+    function quickSearch(val) {
+      document.getElementById("searchInput").value = val;
+      renderAll();
     }
 
     function renderAll() {
-      const myZoneRaw = currentMyZone();
-      const myZoneNorm = normalizeText(myZoneRaw);
-      const qNorm = normalizeText(document.getElementById("filterInput").value);
+      const allList = Object.values(itemsMap).filter((it) => !it.deleted && !deletedMap[it.id]?.deleted);
+      renderSmartStrip(allList);
 
-      const allList = Object.values(itemsMap);
-      renderSmartInsights(allList);
+      const q = norm(document.getElementById("searchInput").value);
+      const savedZone = norm(getSavedZone());
 
       const lowestPriceByGood = {};
       allList.forEach((it) => {
-        const gKey = normalizeText(it.name);
+        const gKey = norm(it.name);
         const p = Number(it.price || 0);
         if (gKey && p > 0 && (!lowestPriceByGood[gKey] || p < lowestPriceByGood[gKey])) {
           lowestPriceByGood[gKey] = p;
         }
       });
 
-      const headingEl = document.getElementById("sectionHeading");
-      headingEl.textContent = strictMyZone && myZoneRaw
-        ? `أسعار منطقتك: ${myZoneRaw}`
-        : "أسعار السلع الأساسية الآن";
-
-      const filtered = allList
-        .filter((item) => {
-          if (strictMyZone && myZoneNorm) {
-            if (normalizeText(item.area) !== myZoneNorm) return false;
-          }
-          if (!qNorm) return true;
-          const hay = normalizeText(`${item.name} ${item.area} ${item.publisherName} ${item.publisherId}`);
-          return hay.includes(qNorm);
+      const list = allList
+        .filter((it) => {
+          if (onlyMyZone && savedZone && norm(it.area) !== savedZone) return false;
+          if (!q) return true;
+          return norm(`${it.name} ${it.area} ${it.publisherName}`).includes(q);
         })
         .sort((a, b) => {
-          if (!strictMyZone && myZoneNorm) {
-            const aInZone = normalizeText(a.area) === myZoneNorm ? 1 : 0;
-            const bInZone = normalizeText(b.area) === myZoneNorm ? 1 : 0;
-            if (aInZone !== bInZone) return bInZone - aInZone;
+          if (!onlyMyZone && savedZone) {
+            const aZ = norm(a.area) === savedZone ? 1 : 0;
+            const bZ = norm(b.area) === savedZone ? 1 : 0;
+            if (aZ !== bZ) return bZ - aZ;
           }
           return Number(b.updatedAt || 0) - Number(a.updatedAt || 0);
         });
 
-      document.getElementById("filteredCountText").textContent = `عرض ${filtered.length} من ${allList.length}`;
       const container = document.getElementById("cardsContainer");
-
-      if (filtered.length === 0) {
+      if (list.length === 0) {
         container.innerHTML = `
-          <div class="bg-white rounded-2xl border border-slate-200 p-7 text-center space-y-2">
-            <p class="text-sm font-bold text-slate-800">لا توجد سلع مطابقة لنطاق العرض الحالي</p>
-            <p class="text-xs text-slate-500">أضف سلعة جديدة أو اضغط "الرئيسية" لعرض كافة المناطق.</p>
+          <div class="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-2">
+            <p class="text-sm font-extrabold text-slate-800">لا توجد أسعار معروضة بعد</p>
+            <p class="text-xs text-slate-500">اضغط "+ نشر سعر" لإضافة أول سعر في منطقتك.</p>
           </div>
         `;
         return;
       }
 
-      container.innerHTML = filtered.map((item) => {
-        const gKey = normalizeText(item.name);
-        const priceNum = Number(item.price || 0);
-        const isLowest = priceNum > 0 && lowestPriceByGood[gKey] === priceNum;
+      container.innerHTML = list.map((item) => {
+        const gKey = norm(item.name);
+        const price = Number(item.price || 0);
+        const isLowest = price > 0 && lowestPriceByGood[gKey] === price;
+        const { pct, conf } = computeTrust(item, allList);
+        const confirmedByMe = Boolean(normalizeVoters(item.voters, item.confirmations, item.publisherId)[myUserId]);
+        const isMine = String(item.publisherId) === String(myUserId);
 
-        const { trustPct, realConfirmations, isSpike } = calculateRealCommunityTrust(item, allList);
-        const alreadyConfirmed = Boolean(normalizeVoters(item.voters, item.confirmations, item.publisherId)[myUserId]);
-        const zoneDisplay = (item.area || myZoneRaw || "غير محدد").trim();
-
-        const statusBox = isLowest
-          ? `<div class="bg-[#1b7a43] text-white rounded-xl px-3 py-2 text-right min-w-[128px] shadow-2xs">
-               <div class="text-[11px] font-extrabold leading-tight">أقل سعر مسجل الآن</div>
-               <div class="text-xs font-bold mt-0.5 truncate">${escapeHtml(zoneDisplay)}</div>
-               <div class="text-[10px] text-emerald-100 mt-0.5">${timeAgo(item.updatedAt)}</div>
+        const badge = isLowest
+          ? `<div class="bg-[#1b7a43] text-white rounded-xl px-3 py-1.5 text-right shrink-0">
+               <div class="text-[10px] font-extrabold">أقل سعر الآن</div>
+               <div class="text-xs font-bold">${esc(item.area)}</div>
+               <div class="text-[10px] text-emerald-100">${timeAgo(item.updatedAt)}</div>
              </div>`
-          : `<div class="bg-amber-500 text-slate-950 rounded-xl px-3 py-2 text-right min-w-[128px] shadow-2xs">
-               <div class="text-[11px] font-extrabold leading-tight">${isSpike ? "سعر مرتفع نسبياً" : "سعر مسجّل"}</div>
-               <div class="text-xs font-bold mt-0.5 truncate">${escapeHtml(zoneDisplay)}</div>
-               <div class="text-[10px] font-semibold text-slate-900/80 mt-0.5">${timeAgo(item.updatedAt)}</div>
+          : `<div class="bg-amber-500 text-slate-950 rounded-xl px-3 py-1.5 text-right shrink-0">
+               <div class="text-[10px] font-extrabold">سعر مسجّل</div>
+               <div class="text-xs font-bold">${esc(item.area)}</div>
+               <div class="text-[10px] text-slate-900/80">${timeAgo(item.updatedAt)}</div>
              </div>`;
 
         return `
-          <article class="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3">
-            <div class="flex items-start justify-between gap-3">
-              <div class="flex items-start gap-3 min-w-0">
-                <div class="w-11 h-11 rounded-xl bg-amber-50 border border-amber-200/70 flex items-center justify-center text-xl shrink-0">
+          <article class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-2xs">
+            <div class="flex items-start justify-between gap-2.5">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200/70 flex items-center justify-center text-lg shrink-0">
                   🛒
                 </div>
                 <div class="min-w-0">
-                  <h3 class="text-base font-extrabold text-slate-900 truncate">${escapeHtml(item.name)}</h3>
-                  <p class="text-xs text-slate-500 font-semibold">${escapeHtml(item.unit)}</p>
-                  <p class="text-[11px] text-slate-500 mt-1 truncate">
-                    بواسطة: <span class="font-bold text-slate-700">${escapeHtml(item.publisherName || "مستخدم الحي")}</span>
-                    <span class="text-slate-400">(${escapeHtml(item.publisherId || "")})</span>
-                  </p>
+                  <h2 class="text-base font-extrabold text-slate-900 truncate">${esc(item.name)}</h2>
+                  <p class="text-[11px] text-slate-500 truncate">${esc(item.unit)} • ${esc(item.publisherName)}</p>
                 </div>
               </div>
-
-              ${statusBox}
+              ${badge}
             </div>
 
-            <div class="flex items-baseline justify-between bg-slate-50/90 rounded-xl px-3.5 py-2 border border-slate-100">
+            <div class="flex items-baseline justify-between bg-slate-50 rounded-xl px-3.5 py-2 border border-slate-100">
               <span class="text-xs font-bold text-slate-500">السعر</span>
               <div class="text-2xl font-extrabold text-slate-900">
-                ${priceNum.toLocaleString()}
-                <span class="text-xs font-bold text-slate-600">${escapeHtml(item.currency || "")}</span>
+                ${price.toLocaleString()}
+                <span class="text-xs font-bold text-slate-600">${esc(item.currency)}</span>
               </div>
             </div>
 
-            <!-- شريط ثقة المجتمع الحقيقية واسم المنطقة -->
             <div class="space-y-1">
-              <div class="flex items-center justify-between gap-2 text-[11px] font-bold text-slate-700">
-                <span class="truncate">ثقة المجتمع: ${trustPct}% • <span class="text-[#1b7a43]">${escapeHtml(zoneDisplay)}</span></span>
-                <span class="shrink-0 text-slate-600">${realConfirmations} تأكيد حقيقي</span>
+              <div class="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                <span>ثقة المجتمع: ${pct}% • <span class="text-[#1b7a43]">${esc(item.area)}</span></span>
+                <span class="text-slate-500">${conf} تأكيد</span>
               </div>
               <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div class="h-full bg-[#1b7a43] transition-all duration-300" style="width: ${trustPct}%"></div>
+                <div class="h-full bg-[#1b7a43]" style="width: ${pct}%"></div>
               </div>
             </div>
 
-            <!-- أزرار تأكيد السعر وتحديث السعر -->
-            <div class="grid grid-cols-2 gap-2.5 pt-0.5">
+            <div class="grid ${isMine ? "grid-cols-3" : "grid-cols-2"} gap-2">
               <button
-                onclick="confirmPrice('${item.id}')"
-                class="${alreadyConfirmed ? "bg-[#1b7a43] hover:bg-[#156235]" : "bg-[#235d9f] hover:bg-[#1b4b82]"} active:scale-[0.99] text-white text-xs font-extrabold py-2.5 rounded-xl transition"
+                onclick="confirmItem('${item.id}')"
+                class="${confirmedByMe ? "bg-[#1b7a43] hover:bg-[#156235]" : "bg-[#235d9f] hover:bg-[#1b4b82]"} text-white text-xs font-extrabold py-2.5 rounded-xl transition"
               >
-                ${alreadyConfirmed ? "مؤكّد منك ✓" : "تأكيد السعر"}
+                ${confirmedByMe ? "مؤكّد ✓" : "تأكيد"}
               </button>
               <button
                 onclick="openUpdateModal('${item.id}')"
-                class="bg-slate-200/80 hover:bg-slate-300 active:scale-[0.99] text-slate-800 text-xs font-extrabold py-2.5 rounded-xl transition"
+                class="bg-slate-200/80 hover:bg-slate-300 text-slate-800 text-xs font-extrabold py-2.5 rounded-xl transition"
               >
-                تحديث السعر
+                تحديث
               </button>
+              ${isMine ? `
+                <button
+                  onclick="deleteItem('${item.id}')"
+                  class="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-extrabold py-2.5 rounded-xl transition"
+                >
+                  حذف
+                </button>
+              ` : ""}
             </div>
           </article>
         `;
