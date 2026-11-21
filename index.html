@@ -16,7 +16,7 @@
 </head>
 <body class="min-h-screen pb-20">
 
-  <!-- الشريط العلوي المطابق لروح رادار أسعار الحي -->
+  <!-- الشريط العلوي -->
   <header class="sticky top-0 z-30 bg-[#e4f0e8]/95 backdrop-blur border-b border-emerald-900/10">
     <div class="max-w-xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
       <div class="flex items-center gap-2.5">
@@ -145,7 +145,7 @@
 
   </main>
 
-  <!-- نافذة تحديث السعر (يكتب فيها المستخدم اسم الحي يدوياً) -->
+  <!-- نافذة تحديث السعر -->
   <div id="updateModal" class="fixed inset-0 z-50 bg-slate-950/50 hidden items-center justify-center p-4">
     <div class="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl space-y-4">
       <div class="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -309,8 +309,7 @@
   <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
 
   <script>
-    // استبدل هذا الرابط برابط خدمة Render الخاصة بك (مع إبقاء /gun في النهاية)
-    const RENDER_RELAY_URL = "https://YOUR-RENDER-SERVICE.onrender.com/gun";
+    const RENDER_RELAY_URL = "https://sudan-market-2.onrender.com/gun";
 
     const STORAGE_KEY = "radar_render_items_v1";
     const USER_ID_KEY = "radar_render_user_id_v1";
@@ -388,34 +387,21 @@
       return false;
     }
 
-    // تهيئة Gun.js بالربط مع خادم Render الخاص بك
-    const peersList = [];
-    if (RENDER_RELAY_URL && !RENDER_RELAY_URL.includes("YOUR-RENDER-SERVICE")) {
-      peersList.push(RENDER_RELAY_URL);
-    }
-
-    const gun = Gun({ peers: peersList });
+    const gun = Gun({ peers: [RENDER_RELAY_URL] });
     const radarNode = gun.get("sudan_radar_render_v1").get("items");
 
     const dotEl = document.getElementById("relayDot");
     const statusEl = document.getElementById("relayStatus");
 
-    if (peersList.length === 0) {
-      dotEl.className = "w-2 h-2 rounded-full bg-amber-500 inline-block";
-      statusEl.textContent = "ضع رابط Render في RENDER_RELAY_URL للمزامنة العامة";
-    } else {
-      gun.on("hi", () => {
-        dotEl.className = "w-2 h-2 rounded-full bg-emerald-600 inline-block animate-pulse";
-        statusEl.textContent = "متصل عبر Render — بث مباشر للعامة";
-      });
-    }
+    gun.on("hi", () => {
+      dotEl.className = "w-2 h-2 rounded-full bg-emerald-600 inline-block animate-pulse";
+      statusEl.textContent = "متصل عبر Render — بث مباشر للعامة";
+    });
 
-    // بث العناصر المحلية إلى الشبكة عند الفتح
     Object.values(itemsMap).forEach((item) => {
       radarNode.get(item.id).put(item);
     });
 
-    // استقبال التحديثات الفورية القادمة من الأجهزة الأخرى عبر Render
     radarNode.map().on((data, key) => {
       if (!data || !key) return;
       const changed = mergeItem({ ...data, id: data.id || key });
@@ -464,7 +450,6 @@
       document.getElementById("updateItemId").value = item.id;
       document.getElementById("updateModalTitle").textContent = `تحديث سعر: ${item.name}`;
       document.getElementById("newPriceInput").value = item.price;
-      // يترك حقل الحي فارغاً ليكتب المستخدم اسم الحي الذي رصد فيه السعر
       document.getElementById("newAreaInput").value = "";
       const modal = document.getElementById("updateModal");
       modal.classList.remove("hidden");
@@ -555,7 +540,6 @@
       showToast("تمت إضافة السلعة وبثها للعامة ✓");
     }
 
-    // خوارزمية الاستكشاف التلقائي: أرخص سعر لكل سلعة + أكثر الأحياء تداولاً + أكثر السلع تداولاً
     function runInsights(list) {
       const cheapestByGood = {};
       const areaStats = {};
@@ -722,7 +706,6 @@
       const allList = Object.values(itemsMap).sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
       renderInsights(allList);
 
-      // تحديد أرخص سعر لكل سلعة لإظهار شارة "أقل سعر مسجل الآن" على البطاقة المطابقة
       const lowestPriceByName = {};
       allList.forEach((it) => {
         const k = (it.name || "").trim().toLowerCase();
