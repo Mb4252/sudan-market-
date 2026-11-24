@@ -25,8 +25,8 @@ function saveLocalPost(post){
   const posts=getLocalPosts();
   if(post.id&&posts.some(p=>p.id===post.id)) return;
   posts.unshift(post);
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(posts.slice(0,200)));}
-  catch(e){console.warn('تعذر حفظ المنشور في localStorage:',e);}
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(posts.slice(0,200)));
+  }catch(e){console.warn('تعذر حفظ المنشور في localStorage:',e);}
   renderPosts();
 }
 
@@ -120,10 +120,13 @@ window.setPostFilter=function(filter){
   renderPosts();
 };
 
-renderPosts();
-connect();
+function showCompareModal(selectedPosts){
+  if(selectedPosts.length!==2) return;
+  const [a,b]=selectedPosts;
+  const message=`مقارنة بين المنشورين:\n\n--- المنشور الأول ---\nالكاتب: ${a.author}\nالسعر: ${a.priceTag||'غير محدد'}\nالمحتوى: ${a.content}\n\n--- المنشور الثاني ---\nالكاتب: ${b.author}\nالسعر: ${b.priceTag||'غير محدد'}\nالمحتوى: ${b.content}`;
+  alert(message);
+}
 
-/* ---------- مقارنة سريعة بين منشورين ---------- */
 function attachPostClickHandlers(){
   if(!postsEl) return;
   postsEl.querySelectorAll('.post').forEach(el=>el.classList.remove('selected'));
@@ -144,6 +147,7 @@ function attachPostClickHandlers(){
     if(selectedIds.length===2){
       const posts=getLocalPosts().filter(p=>selectedIds.includes(p.id));
       showCompareModal(posts);
+      // Reset selection after comparison
       selectedIds=[];
       postsEl.querySelectorAll('.post.selected').forEach(el=>el.classList.remove('selected'));
     }
@@ -151,55 +155,6 @@ function attachPostClickHandlers(){
   postsEl.addEventListener('click',clickListener);
 }
 
-function showCompareModal(posts){
-  const modal=document.createElement('div');
-  modal.style.position='fixed';
-  modal.style.top='0';
-  modal.style.left='0';
-  modal.style.width='100%';
-  modal.style.height='100%';
-  modal.style.background='rgba(0,0,0,0.5)';
-  modal.style.display='flex';
-  modal.style.alignItems='center';
-  modal.style.justifyContent='center';
-  modal.style.zIndex='1000';
-  const box=document.createElement('div');
-  box.style.background='#fff';
-  box.style.padding='20px';
-  box.style.borderRadius='8px';
-  box.style.maxWidth='90%';
-  box.style.maxHeight='80%';
-  box.style.overflowY='auto';
-  const closeBtn=document.createElement('button');
-  closeBtn.textContent='إغلاق';
-  closeBtn.style.marginBottom='12px';
-  closeBtn.onclick=()=>{document.body.removeChild(modal);};
-  const table=document.createElement('table');
-  table.style.width='100%';
-  table.style.borderCollapse='collapse';
-  const header=document.createElement('tr');
-  ['الكاتب','الوقت','المحتوى','السعر'].forEach(txt=>{
-    const th=document.createElement('th');
-    th.textContent=txt;
-    th.style.borderBottom='1px solid #ddd';
-    th.style.padding='8px';
-    header.appendChild(th);
-  });
-  table.appendChild(header);
-  posts.forEach(p=>{
-    const tr=document.createElement('tr');
-    [p.author||'مستخدم', new Date(p.timestamp).toLocaleString(), p.content, p.priceTag||''].forEach(val=>{
-      const td=document.createElement('td');
-      td.textContent=val;
-      td.style.padding='8px';
-      td.style.verticalAlign='top';
-      tr.appendChild(td);
-    });
-    table.appendChild(tr);
-  });
-  box.appendChild(closeBtn);
-  box.appendChild(table);
-  modal.appendChild(box);
-  document.body.appendChild(modal);
-}
+renderPosts();
+connect();
 })();
