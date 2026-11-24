@@ -107,10 +107,10 @@ function shutdown(){
   clearInterval(systemBroadcastInterval);
   wss.close(() => {
     console.log('WebSocket server closed');
-  });
-  server.close(() => {
-    console.log('HTTP server closed');
-    process.exit(0);
+    server.close(() => {
+      console.log('HTTP server closed');
+      process.exit(0);
+    });
   });
 }
 

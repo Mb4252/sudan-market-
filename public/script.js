@@ -9,8 +9,20 @@ const contentEl=document.getElementById('content');
 const publishBtn=document.getElementById('publishBtn');
 const postsEl=document.getElementById('posts');
 
-let currentFilter='';// '' | 'cheap' | 'expensive'
+let currentFilter=''; // '' | 'cheap' | 'expensive'
 window.currentFilter=currentFilter;
+
+// BroadcastChannel for instant cross‑tab sync
+const bc = new BroadcastChannel('posts_sync');
+bc.onmessage = e => {
+  if (e.data && e.data.type === 'sync') {
+    renderPosts();
+  }
+};
+
+function broadcastUpdate(){
+  bc.postMessage({type:'sync'});
+}
 
 function getLocalPosts(){
   try{const parsed=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(parsed)?parsed:[];}
@@ -23,9 +35,10 @@ function saveLocalPost(post){
     post.priceTag=typeof window.detectPrice==='function'?window.detectPrice(post.content):'';
   }
   const posts=getLocalPosts();
-  if(post.id&&posts.some(p=>p.id===post.id)) return;
+  if(post.id && posts.some(p=>p.id===post.id)) return; // avoid duplicates
   posts.unshift(post);
   try{localStorage.setItem(STORAGE_KEY,JSON.stringify(posts.slice(0,200)));
+    broadcastUpdate();
   }catch(e){console.warn('تعذر حفظ المنشور في localStorage:',e);}
   renderPosts();
 }
@@ -48,7 +61,10 @@ function updateOnlineCount(){
   const isOpen=socket && socket.readyState===WebSocket.OPEN;
   fetch('/stats')
     .then(r=>{if(!r.ok) throw new Error(`HTTP ${r.status}`);return r.json();})
-    .then(data=>{const count=Number(data.connectedClients??data.clients??0);const base=isOpen?'متصل بـ Render':'جاري الاتصال بـ Render';if(statusEl){statusEl.textContent=`${base} — المتصلون الآن: ${count}`;}})
+    .then(data=>{const count=Number(data.connectedClients??data.clients??0);
+      const base=isOpen?'متصل بـ Render':'جاري الاتصال بـ Render';
+      if(statusEl){statusEl.textContent=`${base} — المتصلون الآن: ${count}`;}}
+    )
     .catch(()=>{if(statusEl && !isOpen){statusEl.textContent='انقطع الاتصال، جاري إعادة المحاولة...';}});
 }
 
@@ -131,35 +147,38 @@ function attachPostClickHandlers(){
   if(!postsEl) return;
   const postElements=postsEl.querySelectorAll('.post');
   postElements.forEach(el=>{
-    el.addEventListener('click',()=>{
-      const id=el.getAttribute('data-id');
-      if(!id) return;
-      // Toggle selection state
+    // Remove any previous listener to avoid duplication
+    if(el._clickHandler){
+      el.removeEventListener('click', el._clickHandler);
+    }
+    const handler=()=>{
+      const currentlySelected=postsEl.querySelectorAll('.post.selected');
       if(el.classList.contains('selected')){
         el.classList.remove('selected');
       }else{
-        // Ensure no more than two posts are selected
-        const alreadySelected=postsEl.querySelectorAll('.post.selected');
-        if(alreadySelected.length>=2){
-          // Deselect the first selected one
-          alreadySelected[0].classList.remove('selected');
+        if(currentlySelected.length>=2){
+          // Deselect the oldest selected post
+          currentlySelected[0].classList.remove('selected');
         }
         el.classList.add('selected');
       }
-      // After toggling, check how many are selected
-      const selected=Array.from(postsEl.querySelectorAll('.post.selected')).map(div=>{
-        const pid=div.getAttribute('data-id');
-        const posts=getLocalPosts();
-        return posts.find(p=>p.id===pid);
-      }).filter(Boolean);
-      if(selected.length===2){
-        showCompareModal(selected);
+      const newSelection=postsEl.querySelectorAll('.post.selected');
+      if(newSelection.length===2){
+        const ids=[newSelection[0].getAttribute('data-id'), newSelection[1].getAttribute('data-id')];
+        const allPosts=getLocalPosts();
+        const a=allPosts.find(p=>p.id===ids[0]);
+        const b=allPosts.find(p=>p.id===ids[1]);
+        if(a && b){
+          showCompareModal([a,b]);
+        }
       }
-    });
+    };
+    el._clickHandler=handler;
+    el.addEventListener('click',handler);
   });
 }
 
-// Initialize connection and UI
+// Initialize
 connect();
 renderPosts();
 })();
