@@ -37,11 +37,30 @@ jobs:
         run: |
           node -e '
           const fs = require("fs");
+          const path = require("path");
 
           function failWithReason(reason) {
             console.error("❌ AI STATUS: FAILED");
             console.error("سبب الفشل:", reason);
             process.exit(1);
+          }
+
+          function collectProjectFiles(dir = ".", depth = 0, out = []) {
+            if (depth > 2) return out;
+            const ignore = new Set(["node_modules", ".git", ".github"]);
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (ignore.has(entry.name)) continue;
+              const fullPath = path.join(dir, entry.name).replace(/\\/g, "/");
+              if (entry.isDirectory()) {
+                collectProjectFiles(fullPath, depth + 1, out);
+              } else if (/\.(js|html|css|json)$/i.test(entry.name)) {
+                const content = fs.readFileSync(fullPath, "utf8");
+                if (content.length <= 12000) {
+                  out.push({ fullPath, content });
+                }
+              }
+            }
+            return out;
           }
 
           async function pickGroqModel(apiKey) {
@@ -125,17 +144,20 @@ jobs:
               }
             }
 
-            const currentFiles = ["server.js", "index.html", "package.json"]
-              .filter(f => fs.existsSync(f))
-              .map(f => `--- FILE: ${f} ---\n${fs.readFileSync(f, "utf8")}`)
-              .join("\n\n");
+            const filesList = collectProjectFiles(".");
+            const currentFiles = filesList
+              .map(f => `--- FILE: ${f.fullPath} ---\n${f.content}`)
+              .join("\n\n")
+              .slice(0, 24000);
 
             const prompt = [
-              "أنت مهندس برمجيات ذاتي التنفيذ. راجع سجلات GitHub Actions وسجلات Render الحالية.",
-              "1) إذا وُجد خطأ في أي من السجلين، أصلحه فوراً.",
-              "2) أضف تحسيناً أو ميزة جديدة مفيدة في الكود دون كسر الوظيفة الأساسية (Render يبث فقط عبر WebSocket ولا يخزن منشورات، والمتصفح يخزن محلياً في localStorage).",
-              "3) أعد النتيجة بصيغة JSON صالحة فقط بدون أي نص خارج JSON بهذا الشكل الدقيق:",
-              "{\"files\":{\"server.js\":\"...\",\"index.html\":\"...\"},\"summary\":\"...\"}",
+              "أنت مهندس برمجيات ذاتي التنفيذ. راجع سجلات GitHub Actions وسجلات Render والملفات الحالية.",
+              "1) إذا وُجد خطأ في السجلات، أصلحه فوراً.",
+              "2) المشروع يهدف إلى مساعدة المستخدمين على معرفة المتاجر أو المناطق التي تبيع بأسعار رخيصة مقارنة بالمتاجر أو المناطق التي تبيع بأسعار غالية، مع الحفاظ على البث المباشر عبر WebSocket دون تخزين ثقيل على الخادم والتخزين المحلي في المتصفح عبر localStorage.",
+              "3) لا تجعل المشروع محصوراً أو مقيّداً بهذه الفكرة فقط؛ وسّع المشروع وأضف ميزات أو تحسينات جديدة باختيارك الكامل دون قيود.",
+              "4) قسّم الكود إلى ملفات صغيرة وبسيطة ومرتبة حسب الوظيفة بدلاً من تكديس كل شيء في ملف واحد طويل، واجعل التعديلات في كل ملف بسيطة وواضحة ومحدودة للملفات التي تحتاج تغييراً فعلياً فقط.",
+              "5) أعد النتيجة بصيغة JSON صالحة فقط بدون أي نص خارج JSON بهذا الشكل الدقيق:",
+              "{\"files\":{\"اسم_الملف\":\"محتواه الكامل البسيط\"},\"summary\":\"ملخص التحديث\"}",
               "",
               "=== GITHUB ACTIONS ERROR LOGS ===",
               actionsErrorLogs || "No failed workflow logs found.",
@@ -143,7 +165,7 @@ jobs:
               "=== RENDER LOGS ===",
               renderLogs || "No external Render log URL configured.",
               "",
-              "=== CURRENT CODE ===",
+              "=== CURRENT FILES ===",
               currentFiles
             ].join("\n");
 
@@ -161,7 +183,7 @@ jobs:
                 model: groqModel,
                 messages: [{ role: "user", content: prompt }],
                 response_format: { type: "json_object" },
-                temperature: 0.3
+                temperature: 0.4
               };
             } else if (apiKey.startsWith("sk-or-")) {
               provider = "OpenRouter (free model)";
@@ -171,7 +193,7 @@ jobs:
               body = {
                 model: "meta-llama/llama-3.3-70b-instruct:free",
                 messages: [{ role: "user", content: prompt }],
-                temperature: 0.3
+                temperature: 0.4
               };
             } else {
               provider = "Gemini (gemini-2.5-flash)";
@@ -234,12 +256,17 @@ jobs:
             let updatedCount = 0;
             if (parsed.files && typeof parsed.files === "object") {
               for (const [filePath, content] of Object.entries(parsed.files)) {
-                if (typeof content === "string" && content.trim().length > 0 && !filePath.includes("..")) {
-                  const prevContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
+                const cleanPath = String(filePath).replace(/^\/+/, "");
+                if (typeof content === "string" && content.trim().length > 0 && !cleanPath.includes("..")) {
+                  const dirName = path.dirname(cleanPath);
+                  if (dirName && dirName !== ".") {
+                    fs.mkdirSync(dirName, { recursive: true });
+                  }
+                  const prevContent = fs.existsSync(cleanPath) ? fs.readFileSync(cleanPath, "utf8") : "";
                   if (prevContent !== content) {
-                    fs.writeFileSync(filePath, content, "utf8");
+                    fs.writeFileSync(cleanPath, content, "utf8");
                     updatedCount++;
-                    console.log(`📝 تم تحديث الملف: ${filePath}`);
+                    console.log(`📝 تم تحديث/إنشاء الملف: ${cleanPath}`);
                   }
                 }
               }
@@ -247,7 +274,7 @@ jobs:
 
             console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
             if (updatedCount > 0) {
-              fs.writeFileSync("last_ai_change.txt", parsed.summary || "Automated update and fix", "utf8");
+              fs.writeFileSync("last_ai_change.txt", parsed.summary || "Automated modular update", "utf8");
             }
           }
 
@@ -264,7 +291,7 @@ jobs:
             echo "ℹ️ nothing to commit, working tree clean — لا توجد تغييرات جديدة."
             exit 0
           fi
-          SUMMARY="Automated update and fix"
+          SUMMARY="Automated modular update"
           if [ -f last_ai_change.txt ]; then
             SUMMARY=$(head -n 1 last_ai_change.txt)
             rm -f last_ai_change.txt
