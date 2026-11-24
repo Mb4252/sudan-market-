@@ -130,44 +130,30 @@ function showCompareModal(selectedPosts){
 function attachPostClickHandlers(){
   if(!postsEl) return;
   const postElements=postsEl.querySelectorAll('.post');
-  // Clear previous selections
-  postElements.forEach(el=>el.classList.remove('selected'));
-  let selectedIds=[];
-  const clickListener=e=>{
-    const postEl=e.target.closest('.post');
-    if(!postEl) return;
-    const id=postEl.getAttribute('data-id');
-    if(!id) return;
-    if(selectedIds.includes(id)){
-      // Deselect
-      selectedIds=selectedIds.filter(i=>i!==id);
-      postEl.classList.remove('selected');
-    }else{
-      if(selectedIds.length>=2){
-        // Remove earliest selection
-        const firstId=selectedIds.shift();
-        const firstEl=postsEl.querySelector(`.post[data-id="${firstId}"]`);
-        if(firstEl) firstEl.classList.remove('selected');
+  postElements.forEach(el=>{
+    el.addEventListener('click',()=> {
+      const id=el.getAttribute('data-id');
+      if(!id) return;
+      if(el.classList.contains('selected')){
+        el.classList.remove('selected');
+      }else{
+        const alreadySelected=postsEl.querySelectorAll('.post.selected');
+        if(alreadySelected.length>=2){
+          alreadySelected[0].classList.remove('selected');
+        }
+        el.classList.add('selected');
       }
-      selectedIds.push(id);
-      postEl.classList.add('selected');
-    }
-    if(selectedIds.length===2){
-      const allPosts=getLocalPosts();
-      const selectedPosts=allPosts.filter(p=>selectedIds.includes(p.id));
-      showCompareModal(selectedPosts);
-      // Reset selection UI
-      selectedIds.forEach(sid=>{
-        const el=postsEl.querySelector(`.post[data-id="${sid}"]`);
-        if(el) el.classList.remove('selected');
-      });
-      selectedIds=[];
-    }
-  };
-  postElements.forEach(el=>el.addEventListener('click',clickListener));
+      const selectedEls=Array.from(postsEl.querySelectorAll('.post.selected'));
+      if(selectedEls.length===2){
+        const posts=getLocalPosts();
+        const selectedPosts=selectedEls.map(se=>posts.find(p=>p.id===se.dataset.id)).filter(Boolean);
+        showCompareModal(selectedPosts);
+        selectedEls.forEach(se=>se.classList.remove('selected'));
+      }
+    });
+  });
 }
 
-// Initialize connection and render initial posts
+// Start connection
 connect();
-renderPosts();
 })();
