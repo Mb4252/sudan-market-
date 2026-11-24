@@ -12,14 +12,16 @@
     const total = posts.length;
     const cheap = posts.filter(p=>p.priceTag==='cheap').length;
     const expensive = posts.filter(p=>p.priceTag==='expensive').length;
-    return {total, cheap, expensive};
+    const cheapPct = total ? ((cheap/total)*100).toFixed(1) : 0;
+    const expPct = total ? ((expensive/total)*100).toFixed(1) : 0;
+    return {total, cheap, expensive, cheapPct, expPct};
   }
 
   function render(){
-    const {total, cheap, expensive} = computeStats();
+    const {total, cheap, expensive, cheapPct, expPct} = computeStats();
     radarEl.innerHTML = `
       <p>إجمالي المنشورات: <strong>${total}</strong></p>
-      <p>رخيص: <strong class="cheap">${cheap}</strong> | غالي: <strong class="expensive">${expensive}</strong></p>
+      <p>رخيص: <strong class="cheap">${cheap} (${cheapPct}%)</strong> | غالي: <strong class="expensive">${expensive} (${expPct}%)</strong></p>
     `;
   }
 
