@@ -45,17 +45,9 @@ jobs:
           }
 
           async function run() {
-            const rawKey = process.env.AI_API_KEY || "";
-            const apiKey = rawKey.trim();
-
+            const apiKey = (process.env.AI_API_KEY || "").trim();
             if (!apiKey) {
               failWithReason("المتغير AI_API_KEY غير موجود أو فارغ في GitHub Secrets.");
-            }
-            if (rawKey !== apiKey) {
-              console.warn("⚠️ تنبيه: تم العثور على مسافات أو أسطر زائدة حول AI_API_KEY وتم تنظيفها تلقائياً.");
-            }
-            if (apiKey.startsWith("AQ.")) {
-              failWithReason("المفتاح يبدأ بـ AQ. وهو ليس مفتاح Gemini API الصحيح من Google AI Studio.");
             }
 
             let actionsErrorLogs = "";
@@ -96,11 +88,7 @@ jobs:
             if (process.env.RENDER_LOG_URL) {
               try {
                 const rRes = await fetch(process.env.RENDER_LOG_URL);
-                if (!rRes.ok) {
-                  renderLogs = `RENDER_LOG_URL أعاد حالة HTTP ${rRes.status}`;
-                } else {
-                  renderLogs = (await rRes.text()).slice(0, 6000);
-                }
+                renderLogs = rRes.ok ? (await rRes.text()).slice(0, 6000) : `HTTP ${rRes.status}`;
               } catch (e) {
                 renderLogs = "تعذر جلب سجلات Render: " + e.message;
               }
@@ -114,8 +102,8 @@ jobs:
             const prompt = [
               "أنت مهندس برمجيات ذاتي التنفيذ. راجع سجلات GitHub Actions وسجلات Render الحالية.",
               "1) إذا وُجد خطأ في أي من السجلين، أصلحه فوراً.",
-              "2) أضف تحسيناً أو ميزة جديدة مفيدة في الكود دون كسر الوظيفة الأساسية (Render يبث فقط ولا يخزن منشورات، والمتصفح يخزن محلياً في localStorage).",
-              "3) أعد النتيجة بصيغة JSON فقط بهذا الشكل الدقيق:",
+              "2) أضف تحسيناً أو ميزة جديدة مفيدة في الكود دون كسر الوظيفة الأساسية (Render يبث فقط عبر WebSocket ولا يخزن منشورات، والمتصفح يخزن محلياً في localStorage).",
+              "3) أعد النتيجة بصيغة JSON صالحة فقط بدون أي نص خارج JSON بهذا الشكل الدقيق:",
               "{\"files\":{\"server.js\":\"...\",\"index.html\":\"...\"},\"summary\":\"...\"}",
               "",
               "=== GITHUB ACTIONS ERROR LOGS ===",
@@ -128,21 +116,51 @@ jobs:
               currentFiles
             ].join("\n");
 
+            let provider = "";
+            let url = "";
+            let headers = { "Content-Type": "application/json" };
+            let body = {};
+
+            if (apiKey.startsWith("gsk_")) {
+              provider = "Groq (llama-3.3-70b-versatile)";
+              url = "https://api.groq.com/openai/v1/chat/completions";
+              headers["Authorization"] = `Bearer ${apiKey}`;
+              body = {
+                model: "llama-3.3-70b-versatile",
+                messages: [{ role: "user", content: prompt }],
+                response_format: { type: "json_object" },
+                temperature: 0.3
+              };
+            } else if (apiKey.startsWith("sk-or-")) {
+              provider = "OpenRouter (free model)";
+              url = "https://openrouter.ai/api/v1/chat/completions";
+              headers["Authorization"] = `Bearer ${apiKey}`;
+              headers["HTTP-Referer"] = `https://github.com/${process.env.REPO}`;
+              body = {
+                model: "meta-llama/llama-3.3-70b-instruct:free",
+                messages: [{ role: "user", content: prompt }],
+                temperature: 0.3
+              };
+            } else {
+              provider = "Gemini (gemini-2.5-flash)";
+              url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+              body = {
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { responseMimeType: "application/json" }
+              };
+            }
+
+            console.log("🔌 المزود المختار:", provider);
+
             let aiRes;
             try {
-              aiRes = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { responseMimeType: "application/json" }
-                  })
-                }
-              );
+              aiRes = await fetch(url, {
+                method: "POST",
+                headers,
+                body: JSON.stringify(body)
+              });
             } catch (e) {
-              failWithReason("فشل الاتصال بشبكة Gemini API: " + e.message);
+              failWithReason(`فشل الاتصال بـ ${provider}: ${e.message}`);
             }
 
             const rawBody = await aiRes.text();
@@ -150,28 +168,35 @@ jobs:
             try {
               aiJson = JSON.parse(rawBody);
             } catch (e) {
-              failWithReason(`رد Gemini API ليس JSON صالحاً (HTTP ${aiRes.status}): ${rawBody.slice(0, 400)}`);
+              failWithReason(`رد ${provider} ليس JSON صالحاً (HTTP ${aiRes.status}): ${rawBody.slice(0, 400)}`);
             }
 
             if (!aiRes.ok || aiJson.error) {
-              const apiMsg = aiJson?.error?.message || rawBody.slice(0, 400);
-              const apiCode = aiJson?.error?.code || aiRes.status;
-              failWithReason(`رفض Gemini API الطلب (رمز ${apiCode}): ${apiMsg}`);
+              const errMsg = aiJson?.error?.message || JSON.stringify(aiJson?.error || rawBody).slice(0, 400);
+              failWithReason(`رفض ${provider} الطلب (HTTP ${aiRes.status}): ${errMsg}`);
             }
 
-            const rawText = aiJson?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-            if (!rawText.trim()) {
-              failWithReason("الذكاء الاصطناعي استجاب لكن لم يُرجع أي نص في candidates.");
+            let rawText = "";
+            if (apiKey.startsWith("gsk_") || apiKey.startsWith("sk-or-")) {
+              rawText = aiJson?.choices?.[0]?.message?.content || "";
+            } else {
+              rawText = aiJson?.candidates?.[0]?.content?.parts?.[0]?.text || "";
             }
+
+            if (!rawText.trim()) {
+              failWithReason(`${provider} استجاب لكن أعاد نصاً فارغاً.`);
+            }
+
+            rawText = rawText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
 
             let parsed;
             try {
               parsed = JSON.parse(rawText);
             } catch (e) {
-              failWithReason(`الذكاء الاصطناعي رد لكن لم يلتزم بصيغة JSON المطلوبة: ${e.message} | النص: ${rawText.slice(0, 300)}`);
+              failWithReason(`فشل تحليل JSON من ${provider}: ${e.message} | النص: ${rawText.slice(0, 300)}`);
             }
 
-            console.log("✅ AI STATUS: WORKING — الذكاء الاصطناعي يعمل واستجاب بنجاح.");
+            console.log(`✅ AI STATUS: WORKING (${provider})`);
             console.log("ملخص التحديث:", parsed.summary || "تم الفحص دون ملخص");
 
             let updatedCount = 0;
@@ -211,7 +236,7 @@ jobs:
                 curl -s -X POST "${RENDER_DEPLOY_HOOK_URL}" || true
               fi
             else
-              echo "❌ PUSH STATUS: فشل رفع التعديلات (git push). تحقق من صلاحيات Workflow (contents: write)."
+              echo "❌ PUSH STATUS: فشل رفع التعديلات (git push)."
               exit 1
             fi
           else
