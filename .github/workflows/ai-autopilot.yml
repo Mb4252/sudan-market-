@@ -64,8 +64,8 @@ jobs:
                 collectProjectFiles(fullPath, depth + 1, out);
               } else if (/\.(js|html|css|json)$/i.test(entry.name)) {
                 const content = fs.readFileSync(fullPath, "utf8");
-                const clipped = content.length > 6000
-                  ? content.slice(0, 6000) + "\n/* ...تم اقتطاع الباقي للاختصار... */"
+                const clipped = content.length > 5000
+                  ? content.slice(0, 5000) + "\n/* ...تم اقتطاع الباقي للاختصار... */"
                   : content;
                 out.push({ fullPath, content: clipped });
               }
@@ -105,6 +105,55 @@ jobs:
             return ids[0];
           }
 
+          function tryRepairJson(candidate) {
+            let s = String(candidate || "").trim();
+            const firstBrace = s.indexOf("{");
+            if (firstBrace > 0) {
+              s = s.slice(firstBrace);
+            }
+            const lastBrace = s.lastIndexOf("}");
+            if (lastBrace !== -1) {
+              s = s.slice(0, lastBrace + 1);
+            }
+
+            let inString = false;
+            let escaped = false;
+            let openBraces = 0;
+
+            for (let i = 0; i < s.length; i++) {
+              const ch = s[i];
+              if (escaped) {
+                escaped = false;
+                continue;
+              }
+              if (ch === "\\") {
+                escaped = true;
+                continue;
+              }
+              if (ch === "\"") {
+                inString = !inString;
+                continue;
+              }
+              if (!inString) {
+                if (ch === "{") openBraces++;
+                else if (ch === "}") openBraces = Math.max(0, openBraces - 1);
+              }
+            }
+
+            if (escaped) {
+              s = s.slice(0, -1);
+            }
+            if (inString) {
+              s += "\"";
+            }
+            while (openBraces > 0) {
+              s += "}";
+              openBraces--;
+            }
+
+            return JSON.parse(s);
+          }
+
           function extractJsonObject(text) {
             const cleaned = String(text || "")
               .replace(/^```json\s*/i, "")
@@ -118,9 +167,13 @@ jobs:
               const start = cleaned.indexOf("{");
               const end = cleaned.lastIndexOf("}");
               if (start !== -1 && end !== -1 && end > start) {
-                return JSON.parse(cleaned.slice(start, end + 1));
+                try {
+                  return JSON.parse(cleaned.slice(start, end + 1));
+                } catch {
+                  return tryRepairJson(cleaned);
+                }
               }
-              throw new Error("تعذر استخراج كائن JSON صالح من رد النموذج.");
+              return tryRepairJson(cleaned);
             }
           }
 
@@ -178,7 +231,7 @@ jobs:
                       jobsData.jobs.map(j => ({ name: j.name, conclusion: j.conclusion, steps: j.steps })),
                       null,
                       2
-                    ).slice(0, 5000);
+                    ).slice(0, 4500);
                   }
                 }
               }
@@ -190,7 +243,7 @@ jobs:
             if (process.env.RENDER_LOG_URL) {
               try {
                 const rRes = await fetch(sanitizeUrl(process.env.RENDER_LOG_URL));
-                renderLogs = rRes.ok ? (await rRes.text()).slice(0, 5000) : `HTTP ${rRes.status}`;
+                renderLogs = rRes.ok ? (await rRes.text()).slice(0, 4500) : `HTTP ${rRes.status}`;
               } catch (e) {
                 renderLogs = "تعذر جلب سجلات Render: " + e.message;
               }
@@ -200,7 +253,7 @@ jobs:
             const currentFiles = filesList
               .map(f => `--- FILE: ${f.fullPath} ---\n${f.content}`)
               .join("\n\n")
-              .slice(0, 20000);
+              .slice(0, 18000);
 
             const systemInstruction = [
               "أنت مهندس برمجيات ومصمم منتجات ذكي يعمل ذاتياً.",
@@ -215,7 +268,7 @@ jobs:
               "2) جوهر المشروع ومرونته: المشروع يساعد المستخدمين على اكتشاف المتاجر أو المناطق ذات الأسعار الأرخص مقارنة بالمتاجر أو المناطق الأغلى، مع الحفاظ على البث اللحظي عبر WebSocket دون تخزين ثقيل على الخادم وحفظ محلي في المتصفح عبر localStorage.",
               "3) أفكار خارج الصندوق (بدون حشو): في كل جولة تطوير، ابتكر ميزة أو أداة ذكية غير تقليدية تخدم مقارنة الأسعار أو التفاعل المباشر (مثل: رادار الفروقات السعرية بين المناطق، مؤشر تنبيه الفارق الأعلى/الأدنى، مقارنة سريعة بين متجرين، أو أداة اكتشاف عروض/فروقات حية)، واجعلها مدمجة بذكاء ووضوح.",
               "4) جمال وترتيب بلا حشو: اجعل واجهة المستخدم أنيقة وعصرية ومرتبة بوضوح بصري وتباين مريح وتقسيم بطاقات نظيف؛ تجنّب النصوص الطويلة المكررة أو العناصر الزائدة بلا فائدة.",
-              "5) معمارية معيارية: قسّم الكود إلى ملفات صغيرة ومتخصصة حسب الوظيفة (مثل الواجهة، التنسيق، الأدوات المساعدة، ومزايا المقارنة/التحليل) وتجنّب حشر كل شيء في ملف ضخم أو تعديل ملفات لا تحتاج تغييراً.",
+              "5) معمارية معيارية: قسّم الكود إلى ملفات صغيرة ومتخصصة حسب الوظيفة وتجنّب حشر كل شيء في ملف ضخم؛ يكفي في الجولة الواحدة تحديث ملف أو ملفين صغيرين بوضوح وإتقان حتى يكتمل الإخراج دون انقطاع.",
               "",
               "=== GITHUB ACTIONS ERROR LOGS ===",
               actionsErrorLogs || "No failed workflow logs found.",
@@ -250,6 +303,7 @@ jobs:
                   model: groqModel,
                   messages,
                   response_format: { type: "json_object" },
+                  max_tokens: 8192,
                   temperature: 0.45
                 });
                 const rawText = aiJson?.choices?.[0]?.message?.content || "";
@@ -259,6 +313,7 @@ jobs:
                 const retryJson = await callChatCompletion(groqUrl, groqHeaders, {
                   model: groqModel,
                   messages,
+                  max_tokens: 8192,
                   temperature: 0.45
                 });
                 const retryText = retryJson?.choices?.[0]?.message?.content || "";
@@ -289,6 +344,7 @@ jobs:
                       { role: "system", content: systemInstruction },
                       { role: "user", content: userPrompt }
                     ],
+                    max_tokens: 8192,
                     temperature: 0.45
                   }
                 );
@@ -308,7 +364,11 @@ jobs:
                   {
                     systemInstruction: { parts: [{ text: systemInstruction }] },
                     contents: [{ parts: [{ text: userPrompt }] }],
-                    generationConfig: { responseMimeType: "application/json", temperature: 0.45 }
+                    generationConfig: {
+                      responseMimeType: "application/json",
+                      maxOutputTokens: 8192,
+                      temperature: 0.45
+                    }
                   }
                 );
                 const rawText = aiJson?.candidates?.[0]?.content?.parts?.[0]?.text || "";
