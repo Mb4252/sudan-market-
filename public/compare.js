@@ -19,7 +19,6 @@
     document.body.appendChild(overlay);
     return overlay;
   }
-
   function showCompare(selectedPosts){
     if(!selectedPosts||selectedPosts.length===0) return;
     const overlay=createModal();
@@ -31,12 +30,13 @@
       div.style.border='1px solid #d0d7de';
       div.style.padding='8px';
       div.style.marginBottom='8px';
+      const areaIndex=getAreaIndex(p.area||'');
       div.innerHTML=`<div class="meta">${escapeHtml(p.author)} — ${escapeHtml(p.timestamp)}</div>`+
         `<div class="${p.priceTag}">${p.priceTag==='cheap'?'رخيص':'غالي'}</div>`+
+        `<div>مؤشر المنطقة: ${areaIndex}</div>`+
         `<div>${escapeHtml(p.content)}</div>`;
       content.appendChild(div);
     });
   }
-
   window.showCompare=showCompare;
 })();
