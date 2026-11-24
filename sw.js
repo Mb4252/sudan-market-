@@ -1,1 +1,19 @@
-self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',()=>self.clients.claim());self.addEventListener('message',e=>{const msg=e.data;storeMessage(msg);});async function storeMessage(msg){const db=await openDB();const tx=db.transaction('messages','readwrite');tx.objectStore('messages').add(msg);await tx.complete;}async function openDB(){return new Promise((res,rej)=>{const req=indexedDB.open('postsDB',1);req.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains('messages'))db.createObjectStore('messages','keyPath','id',{autoIncrement:true});};req.onsuccess=e=>res(e.target.result);req.onerror=e=>rej(e.target.error);});}self.addEventListener('online',()=>{sendStored();});async function sendStored(){const db=await openDB();const tx=db.transaction('messages','readwrite');const store=tx.objectStore('messages');const all=await new Promise((res,rej)=>{store.getAll().onsuccess=ev=>res(ev.target.result);store.getAll().onerror=rej;});for(const m of all){try{await fetch('http://localhost:8080', {method:'POST',body:JSON.stringify(m)});}catch{} }tx.clear();}
+self.addEventListener('push', event => {
+  const data = event.data ? event.data.json() : {};
+  const title = data.title || 'تنبيه جديد';
+  const options = {
+    body: data.body || 'هناك منشور جديد يطابق الفلتر الحالي.',
+    icon: data.icon || '/public/icons/notify.png',
+    badge: data.badge || '/public/icons/notify.png'
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil(clients.matchAll({type:'window'}).then(clientList => {
+    if (clientList.length > 0) {
+      return clientList[0].focus();
+    }
+    return clients.openWindow('/');
+  }));
+});
