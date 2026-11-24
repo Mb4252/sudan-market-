@@ -38,32 +38,71 @@ jobs:
           node -e '
           const fs = require("fs");
 
+          function failWithReason(reason) {
+            console.error("❌ AI STATUS: FAILED");
+            console.error("سبب الفشل:", reason);
+            process.exit(1);
+          }
+
           async function run() {
+            const rawKey = process.env.AI_API_KEY || "";
+            const apiKey = rawKey.trim();
+
+            if (!apiKey) {
+              failWithReason("المتغير AI_API_KEY غير موجود أو فارغ في GitHub Secrets.");
+            }
+            if (rawKey !== apiKey) {
+              console.warn("⚠️ تنبيه: تم العثور على مسافات أو أسطر زائدة حول AI_API_KEY وتم تنظيفها تلقائياً.");
+            }
+            if (apiKey.startsWith("AQ.")) {
+              failWithReason("المفتاح يبدأ بـ AQ. وهو ليس مفتاح Gemini API الصحيح من Google AI Studio.");
+            }
+
             let actionsErrorLogs = "";
             try {
               const runsRes = await fetch(`https://api.github.com/repos/${process.env.REPO}/actions/runs?per_page=5`, {
-                headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, "User-Agent": "ai-autopilot" }
+                headers: {
+                  Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                  "User-Agent": "ai-autopilot"
+                }
               });
-              const runsData = await runsRes.json();
-              const failedRun = (runsData.workflow_runs || []).find(r => r.conclusion === "failure" && r.name !== "AI Auto Fix & Feature Updater");
-              if (failedRun) {
-                const jobsRes = await fetch(failedRun.jobs_url, {
-                  headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, "User-Agent": "ai-autopilot" }
-                });
-                const jobsData = await jobsRes.json();
-                actionsErrorLogs = JSON.stringify(jobsData.jobs.map(j => ({ name: j.name, conclusion: j.conclusion, steps: j.steps })), null, 2).slice(0, 6000);
+              if (runsRes.ok) {
+                const runsData = await runsRes.json();
+                const failedRun = (runsData.workflow_runs || []).find(
+                  r => r.conclusion === "failure" && r.name !== "AI Auto Fix & Feature Updater"
+                );
+                if (failedRun) {
+                  const jobsRes = await fetch(failedRun.jobs_url, {
+                    headers: {
+                      Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                      "User-Agent": "ai-autopilot"
+                    }
+                  });
+                  if (jobsRes.ok) {
+                    const jobsData = await jobsRes.json();
+                    actionsErrorLogs = JSON.stringify(
+                      jobsData.jobs.map(j => ({ name: j.name, conclusion: j.conclusion, steps: j.steps })),
+                      null,
+                      2
+                    ).slice(0, 6000);
+                  }
+                }
               }
             } catch (e) {
-              actionsErrorLogs = "Failed to fetch Actions logs: " + e.message;
+              actionsErrorLogs = "تعذر جلب سجلات GitHub Actions: " + e.message;
             }
 
             let renderLogs = "";
             if (process.env.RENDER_LOG_URL) {
               try {
                 const rRes = await fetch(process.env.RENDER_LOG_URL);
-                renderLogs = (await rRes.text()).slice(0, 6000);
+                if (!rRes.ok) {
+                  renderLogs = `RENDER_LOG_URL أعاد حالة HTTP ${rRes.status}`;
+                } else {
+                  renderLogs = (await rRes.text()).slice(0, 6000);
+                }
               } catch (e) {
-                renderLogs = "Failed to fetch Render logs: " + e.message;
+                renderLogs = "تعذر جلب سجلات Render: " + e.message;
               }
             }
 
@@ -71,11 +110,6 @@ jobs:
               .filter(f => fs.existsSync(f))
               .map(f => `--- FILE: ${f} ---\n${fs.readFileSync(f, "utf8")}`)
               .join("\n\n");
-
-            if (!process.env.AI_API_KEY) {
-              console.log("AI_API_KEY is not set; skipping AI edit.");
-              return;
-            }
 
             const prompt = [
               "أنت مهندس برمجيات ذاتي التنفيذ. راجع سجلات GitHub Actions وسجلات Render الحالية.",
@@ -94,36 +128,71 @@ jobs:
               currentFiles
             ].join("\n");
 
-            const aiRes = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.AI_API_KEY}`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  contents: [{ parts: [{ text: prompt }] }],
-                  generationConfig: { responseMimeType: "application/json" }
-                })
-              }
-            );
+            let aiRes;
+            try {
+              aiRes = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { responseMimeType: "application/json" }
+                  })
+                }
+              );
+            } catch (e) {
+              failWithReason("فشل الاتصال بشبكة Gemini API: " + e.message);
+            }
 
-            const aiJson = await aiRes.json();
-            const rawText = aiJson?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-            const parsed = JSON.parse(rawText);
+            const rawBody = await aiRes.text();
+            let aiJson;
+            try {
+              aiJson = JSON.parse(rawBody);
+            } catch (e) {
+              failWithReason(`رد Gemini API ليس JSON صالحاً (HTTP ${aiRes.status}): ${rawBody.slice(0, 400)}`);
+            }
 
+            if (!aiRes.ok || aiJson.error) {
+              const apiMsg = aiJson?.error?.message || rawBody.slice(0, 400);
+              const apiCode = aiJson?.error?.code || aiRes.status;
+              failWithReason(`رفض Gemini API الطلب (رمز ${apiCode}): ${apiMsg}`);
+            }
+
+            const rawText = aiJson?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            if (!rawText.trim()) {
+              failWithReason("الذكاء الاصطناعي استجاب لكن لم يُرجع أي نص في candidates.");
+            }
+
+            let parsed;
+            try {
+              parsed = JSON.parse(rawText);
+            } catch (e) {
+              failWithReason(`الذكاء الاصطناعي رد لكن لم يلتزم بصيغة JSON المطلوبة: ${e.message} | النص: ${rawText.slice(0, 300)}`);
+            }
+
+            console.log("✅ AI STATUS: WORKING — الذكاء الاصطناعي يعمل واستجاب بنجاح.");
+            console.log("ملخص التحديث:", parsed.summary || "تم الفحص دون ملخص");
+
+            let updatedCount = 0;
             if (parsed.files && typeof parsed.files === "object") {
               for (const [filePath, content] of Object.entries(parsed.files)) {
                 if (typeof content === "string" && content.trim().length > 0 && !filePath.includes("..")) {
-                  fs.writeFileSync(filePath, content, "utf8");
+                  const prevContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
+                  if (prevContent !== content) {
+                    fs.writeFileSync(filePath, content, "utf8");
+                    updatedCount++;
+                    console.log(`📝 تم تحديث الملف: ${filePath}`);
+                  }
                 }
               }
             }
-            fs.writeFileSync("last_ai_change.txt", parsed.summary || "Auto update", "utf8");
+
+            console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
+            fs.writeFileSync("last_ai_change.txt", parsed.summary || "Automated update and fix", "utf8");
           }
 
-          run().catch(err => {
-            console.error(err);
-            process.exit(1);
-          });
+          run();
           '
 
       - name: Commit and push changes automatically
@@ -136,8 +205,16 @@ jobs:
             rm -f last_ai_change.txt
             git add -A
             git commit -m "[ai-autopilot] ${SUMMARY}"
-            git push origin HEAD
-            if [ -n "${RENDER_DEPLOY_HOOK_URL}" ]; then
-              curl -s -X POST "${RENDER_DEPLOY_HOOK_URL}" || true
+            if git push origin HEAD; then
+              echo "✅ PUSH STATUS: تم رفع التعديلات إلى GitHub بنجاح."
+              if [ -n "${RENDER_DEPLOY_HOOK_URL}" ]; then
+                curl -s -X POST "${RENDER_DEPLOY_HOOK_URL}" || true
+              fi
+            else
+              echo "❌ PUSH STATUS: فشل رفع التعديلات (git push). تحقق من صلاحيات Workflow (contents: write)."
+              exit 1
             fi
+          else
+            rm -f last_ai_change.txt
+            echo "ℹ️ لا توجد تغييرات جديدة لرفعها في هذه الدورة."
           fi
