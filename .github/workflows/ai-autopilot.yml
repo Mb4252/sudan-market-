@@ -44,6 +44,37 @@ jobs:
             process.exit(1);
           }
 
+          async function pickGroqModel(apiKey) {
+            const res = await fetch("https://api.groq.com/openai/v1/models", {
+              headers: { Authorization: `Bearer ${apiKey}` }
+            });
+            if (!res.ok) {
+              const txt = await res.text();
+              failWithReason(`تعذر جلب قائمة نماذج Groq (HTTP ${res.status}): ${txt.slice(0, 300)}`);
+            }
+            const data = await res.json();
+            const ids = (data.data || [])
+              .map(m => m.id)
+              .filter(id => !/whisper|tts|guard|prompt-guard|safeguard|embed/i.test(id));
+
+            if (!ids.length) {
+              failWithReason("لا توجد نماذج نصية متاحة في حساب Groq الحالي.");
+            }
+
+            const preferred = [
+              "llama-3.3-70b-versatile",
+              "openai/gpt-oss-120b",
+              "qwen/qwen3-32b",
+              "llama-3.1-8b-instant",
+              "openai/gpt-oss-20b"
+            ];
+
+            for (const p of preferred) {
+              if (ids.includes(p)) return p;
+            }
+            return ids[0];
+          }
+
           async function run() {
             const apiKey = (process.env.AI_API_KEY || "").trim();
             if (!apiKey) {
@@ -122,11 +153,12 @@ jobs:
             let body = {};
 
             if (apiKey.startsWith("gsk_")) {
-              provider = "Groq (llama-3.3-70b-versatile)";
+              const groqModel = await pickGroqModel(apiKey);
+              provider = `Groq (${groqModel})`;
               url = "https://api.groq.com/openai/v1/chat/completions";
               headers["Authorization"] = `Bearer ${apiKey}`;
               body = {
-                model: "llama-3.3-70b-versatile",
+                model: groqModel,
                 messages: [{ role: "user", content: prompt }],
                 response_format: { type: "json_object" },
                 temperature: 0.3
@@ -150,7 +182,7 @@ jobs:
               };
             }
 
-            console.log("🔌 المزود المختار:", provider);
+            console.log("🔌 المزود والنموذج المختار:", provider);
 
             let aiRes;
             try {
