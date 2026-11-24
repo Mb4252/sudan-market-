@@ -1,3 +1,4 @@
+(function(){
 const STORAGE_KEY = 'user_browser_posts_v1';
 const WS_URL = location.hostname === 'localhost'
   ? `ws://${location.host}`
@@ -114,6 +115,7 @@ setInterval(updateOnlineCount, 10000);
 
 if (publishBtn && contentEl) {
   publishBtn.addEventListener('click', () => {
+    if (publishBtn.disabled) return;
     const text = contentEl.value.trim();
     if (!text) return;
 
@@ -134,6 +136,9 @@ if (publishBtn && contentEl) {
     }
 
     contentEl.value = '';
+    // منع النقر المتكرر السريع
+    publishBtn.disabled = true;
+    setTimeout(() => { publishBtn.disabled = false; }, 1000);
   });
 }
 
@@ -145,3 +150,4 @@ window.setPostFilter = function(filter) {
 
 renderPosts();
 connect();
+})();
