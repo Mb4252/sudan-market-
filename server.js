@@ -1,66 +1,73 @@
+// server.js
 const express = require('express');
-const cors = require('cors');
+const http = require('http');
+const { WebSocketServer, WebSocket } = require('ws');
+
 const app = express();
-const PORT = process.env.PORT || 10000;
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
 
-// السماح لموقعك الثابت بالاتصال (استبدل * برابط موقعك الفعلي لاحقاً)
-app.use(cors({ origin: '*' }));
-app.use(express.json());
+const PORT = process.env.PORT || 3000;
+const AI_API_KEY = process.env.AI_API_KEY || '';
 
-// نقطة نهاية للاستدعاء من الواجهة الأمامية
-app.post('/api/ai', async (req, res) => {
-  const { prompt, context } = req.body;
-  if (!prompt) {
-    return res.status(400).json({ error: 'prompt مطلوب' });
-  }
+app.use(express.json({ limit: '64kb' }));
 
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'GROQ_API_KEY غير مضبوط في متغيرات Render' });
-  }
-
-  try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: 'أنت مساعد ذكي لموقع "رادار أسعار الحي" في السودان. تجيب بالعربية الفصحى المبسطة. تستخدم البيانات المقدمة فقط ولا تخترع أرقاماً.'
-          },
-          {
-            role: 'user',
-            content: context
-              ? `بيانات الأسعار الحالية:\n${context}\n\nسؤال المستخدم: ${prompt}`
-              : prompt
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 500
-      })
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      return res.status(response.status).json({ error: 'Groq API error', detail: err });
-    }
-
-    const data = await response.json();
-    const answer = data.choices?.[0]?.message?.content || 'لم أتمكن من الإجابة.';
-    res.json({ answer });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+// مسار فحص جاهزية الخدمة على Render
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    aiKeyConfigured: Boolean(AI_API_KEY),
+    connectedClients: wss.clients.size
+  });
 });
 
-// فحص صحي (مهم لـ Render)
-app.get('/health', (req, res) => res.status(200).send('OK'));
+// بث لحظي: أي رسالة ينشرها متصفح تصل لبقية المتصفحات المتصلة فقط (لا تخزين على Render)
+wss.on('connection', (ws) => {
+  ws.send(JSON.stringify({
+    type: 'system',
+    message: 'متصل ببث المتصفح المباشر (لا يتم حفظ البيانات على الخادم)'
+  }));
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`AI Proxy running on port ${PORT}`);
+  ws.on('message', (rawData) => {
+    try {
+      const parsed = JSON.parse(rawData.toString());
+      if (!parsed || typeof parsed.content !== 'string' || !parsed.content.trim()) {
+        return;
+      }
+
+      const payload = JSON.stringify({
+        type: 'post',
+        author: typeof parsed.author === 'string' && parsed.author.trim()
+          ? parsed.author.trim().slice(0, 40)
+          : 'مستخدم',
+        content: parsed.content.trim().slice(0, 2000),
+        timestamp: new Date().toISOString()
+      });
+
+      for (const client of wss.clients) {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(payload);
+        }
+      }
+    } catch (err) {
+      console.error('WS_PARSE_ERROR:', err.message);
+    }
+  });
+
+  ws.on('error', (err) => {
+    console.error('WS_CLIENT_ERROR:', err.message);
+  });
+});
+
+// التقاط أخطاء الخادم غير المتوقعة لتظهر بوضوح في سجلات Render
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT_EXCEPTION:', err.stack || err.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('UNHANDLED_REJECTION:', reason);
+});
+
+server.listen(PORT, () => {
+  console.log(`Relay server running on port ${PORT}`);
 });
