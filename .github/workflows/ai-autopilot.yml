@@ -1,0 +1,143 @@
+name: AI Auto Fix & Feature Updater
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_run:
+    workflows: ["*"]
+    types: [completed]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  monitor-and-evolve:
+    if: "!contains(github.event.head_commit.message || '', '[ai-autopilot]')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Collect Render & GitHub Actions logs and run AI updater
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          RENDER_LOG_URL: ${{ secrets.RENDER_LOG_URL }}
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          node -e '
+          const fs = require("fs");
+
+          async function run() {
+            let actionsErrorLogs = "";
+            try {
+              const runsRes = await fetch(`https://api.github.com/repos/${process.env.REPO}/actions/runs?per_page=5`, {
+                headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, "User-Agent": "ai-autopilot" }
+              });
+              const runsData = await runsRes.json();
+              const failedRun = (runsData.workflow_runs || []).find(r => r.conclusion === "failure" && r.name !== "AI Auto Fix & Feature Updater");
+              if (failedRun) {
+                const jobsRes = await fetch(failedRun.jobs_url, {
+                  headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, "User-Agent": "ai-autopilot" }
+                });
+                const jobsData = await jobsRes.json();
+                actionsErrorLogs = JSON.stringify(jobsData.jobs.map(j => ({ name: j.name, conclusion: j.conclusion, steps: j.steps })), null, 2).slice(0, 6000);
+              }
+            } catch (e) {
+              actionsErrorLogs = "Failed to fetch Actions logs: " + e.message;
+            }
+
+            let renderLogs = "";
+            if (process.env.RENDER_LOG_URL) {
+              try {
+                const rRes = await fetch(process.env.RENDER_LOG_URL);
+                renderLogs = (await rRes.text()).slice(0, 6000);
+              } catch (e) {
+                renderLogs = "Failed to fetch Render logs: " + e.message;
+              }
+            }
+
+            const currentFiles = ["server.js", "index.html", "package.json"]
+              .filter(f => fs.existsSync(f))
+              .map(f => `--- FILE: ${f} ---\n${fs.readFileSync(f, "utf8")}`)
+              .join("\n\n");
+
+            if (!process.env.AI_API_KEY) {
+              console.log("AI_API_KEY is not set; skipping AI edit.");
+              return;
+            }
+
+            const prompt = [
+              "أنت مهندس برمجيات ذاتي التنفيذ. راجع سجلات GitHub Actions وسجلات Render الحالية.",
+              "1) إذا وُجد خطأ في أي من السجلين، أصلحه فوراً.",
+              "2) أضف تحسيناً أو ميزة جديدة مفيدة في الكود دون كسر الوظيفة الأساسية (Render يبث فقط ولا يخزن منشورات، والمتصفح يخزن محلياً في localStorage).",
+              "3) أعد النتيجة بصيغة JSON فقط بهذا الشكل الدقيق:",
+              "{\"files\":{\"server.js\":\"...\",\"index.html\":\"...\"},\"summary\":\"...\"}",
+              "",
+              "=== GITHUB ACTIONS ERROR LOGS ===",
+              actionsErrorLogs || "No failed workflow logs found.",
+              "",
+              "=== RENDER LOGS ===",
+              renderLogs || "No external Render log URL configured.",
+              "",
+              "=== CURRENT CODE ===",
+              currentFiles
+            ].join("\n");
+
+            const aiRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.AI_API_KEY}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: prompt }] }],
+                  generationConfig: { responseMimeType: "application/json" }
+                })
+              }
+            );
+
+            const aiJson = await aiRes.json();
+            const rawText = aiJson?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+            const parsed = JSON.parse(rawText);
+
+            if (parsed.files && typeof parsed.files === "object") {
+              for (const [filePath, content] of Object.entries(parsed.files)) {
+                if (typeof content === "string" && content.trim().length > 0 && !filePath.includes("..")) {
+                  fs.writeFileSync(filePath, content, "utf8");
+                }
+              }
+            }
+            fs.writeFileSync("last_ai_change.txt", parsed.summary || "Auto update", "utf8");
+          }
+
+          run().catch(err => {
+            console.error(err);
+            process.exit(1);
+          });
+          '
+
+      - name: Commit and push changes automatically
+        run: |
+          git config user.name "ai-autopilot[bot]"
+          git config user.email "ai-autopilot[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --staged --quiet; then
+            SUMMARY=$(head -n 1 last_ai_change.txt || echo "Automated update and fix")
+            rm -f last_ai_change.txt
+            git add -A
+            git commit -m "[ai-autopilot] ${SUMMARY}"
+            git push origin HEAD
+            if [ -n "${RENDER_DEPLOY_HOOK_URL}" ]; then
+              curl -s -X POST "${RENDER_DEPLOY_HOOK_URL}" || true
+            fi
+          fi
