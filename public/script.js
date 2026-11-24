@@ -36,6 +36,12 @@ function renderPosts(){
   postsEl.innerHTML=filtered.map(p=>`\n    <div class="post ${p.priceTag?p.priceTag:''}">\n      <div class="meta">${escapeHtml(p.author||'مستخدم')} — ${escapeHtml(p.timestamp||'')}\n      </div>\n      <div>${escapeHtml(p.content||'')}</div>\n    </div>\n  `).join('')||'<p>لا توجد منشورات محفوظة في المتصفح بعد.</p>';
 }
 
+function setConnectedStatus(isConnected){
+  if(!statusEl) return;
+  const base=isConnected?'متصل بـ Render':'جاري الاتصال بـ Render';
+  statusEl.textContent=base;
+}
+
 function updateOnlineCount(){
   const isOpen=socket && socket.readyState===WebSocket.OPEN;
   fetch('/stats')
@@ -51,11 +57,18 @@ function connect(){
   clearTimeout(reconnectTimer);
   socket=new WebSocket(WS_URL);
 
-  socket.onopen=()=>{updateOnlineCount();};
+  socket.onopen=()=>{
+    setConnectedStatus(true);
+    updateOnlineCount();
+  };
 
-  socket.onclose=()=>{if(statusEl){statusEl.textContent='انقطع الاتصال، جاري إعادة المحاولة...';}reconnectTimer=setTimeout(connect,2500);};
+  socket.onclose=()=>{
+    setConnectedStatus(false);
+    if(statusEl){statusEl.textContent='انقطع الاتصال، جاري إعادة المحاولة...';}
+    reconnectTimer=setTimeout(connect,2500);
+  };
 
-  socket.onerror=()=>{if(statusEl){statusEl.textContent='تعذر الاتصال بالخادم، جاري إعادة المحاولة...';}};
+  socket.onerror=()=>{setConnectedStatus(false);if(statusEl){statusEl.textContent='تعذر الاتصال بالخادم، جاري إعادة المحاولة...';}};
 
   socket.onmessage=event=>{
     try{const data=JSON.parse(event.data);
