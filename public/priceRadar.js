@@ -23,6 +23,9 @@
       <p>إجمالي المنشورات: <strong>${total}</strong></p>
       <p>رخيص: <strong class="cheap">${cheap} (${cheapPct}%)</strong> | غالي: <strong class="expensive">${expensive} (${expPct}%)</strong></p>
     `;
+    // Remove any previous dominant‑price alert to avoid duplicates
+    const existingAlert = radarEl.querySelector('.price-alert');
+    if (existingAlert) existingAlert.remove();
     // Dominant price alert
     const diff = parseFloat(cheapPct) - parseFloat(expPct);
     if (!isNaN(diff) && diff > 20){
