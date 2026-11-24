@@ -1,1 +1,23 @@
-let wasmModule=null;async function loadWasm(){try{const response=await fetch('priceWasm.wasm');const buffer=await response.arrayBuffer();const {instance}=await WebAssembly.instantiate(buffer,{});wasmModule=instance.exports;}catch(err){console.error('WASM load error',err);}}loadWasm();function analyzePrice(content){if(!wasmModule)return{label:'neutral',confidence:0};const ptr=wasmModule.allocString(content);const result=wasmModule.analyze(ptr);wasmModule.freeString(ptr);const label=String.fromCharCode.apply(null,new Uint8Array(wasmModule.memory.buffer,result,6)).replace(/\0/g,'');const confidence=wasmModule.getConfidence();return{label,confidence};}window.analyzePrice=analyzePrice;
+(function(){
+  // محاكاة WebAssembly للتحليل السريع
+  function extractPrice(text) {
+    if (!text) return null;
+    const regex = /([\d,.]+)/g;
+    const matches = text.match(regex);
+    if (!matches) return null;
+    const nums = matches.map(m => parseFloat(m.replace(/,/g, '')));
+    return nums.length ? Math.max(...nums) : null;
+  }
+
+  function analyzePrice(price, avgPrice = 100) {
+    if (price === null || price === undefined) return { label: 'neutral', confidence: 0 };
+    if (price < avgPrice * 0.9) return { label: 'cheap', confidence: 1 };
+    if (price > avgPrice * 1.1) return { label: 'expensive', confidence: 1 };
+    return { label: 'neutral', confidence: 0.5 };
+  }
+
+  window.PriceWasm = {
+    extractPrice,
+    analyzePrice
+  };
+})();
