@@ -5,4 +5,5 @@ function detectPrice(content) {
   if (lower.includes('غالي') || lower.includes('باهظ')) return 'expensive';
   return '';
 }
+
 window.detectPrice = detectPrice;
