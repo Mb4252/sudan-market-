@@ -138,23 +138,23 @@ function attachPostClickHandlers(){
     if(selectedIds.includes(id)){
       selectedIds=selectedIds.filter(i=>i!==id);
       postEl.classList.remove('selected');
-    }else{
-      if(selectedIds.length<2){
-        selectedIds.push(id);
-        postEl.classList.add('selected');
+    } else {
+      if (selectedIds.length >= 2) {
+        const firstId = selectedIds.shift();
+        const firstEl = postsEl.querySelector(`.post[data-id="${firstId}"]`);
+        if (firstEl) firstEl.classList.remove('selected');
       }
+      selectedIds.push(id);
+      postEl.classList.add('selected');
     }
-    if(selectedIds.length===2){
-      const posts=getLocalPosts().filter(p=>selectedIds.includes(p.id));
-      showCompareModal(posts);
-      // Reset selection after comparison
-      selectedIds=[];
-      postsEl.querySelectorAll('.post.selected').forEach(el=>el.classList.remove('selected'));
+    if (selectedIds.length === 2) {
+      const selectedPosts = selectedIds.map(sid => {
+        const p = getLocalPosts().find(p => p.id === sid);
+        return p;
+      }).filter(Boolean);
+      showCompareModal(selectedPosts);
     }
   };
-  postsEl.addEventListener('click',clickListener);
+  postsEl.addEventListener('click', clickListener);
 }
-
-renderPosts();
-connect();
 })();
