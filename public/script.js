@@ -130,32 +130,44 @@ function showCompareModal(selectedPosts){
 function attachPostClickHandlers(){
   if(!postsEl) return;
   const postElements=postsEl.querySelectorAll('.post');
+  // Clear previous selections
   postElements.forEach(el=>el.classList.remove('selected'));
   let selectedIds=[];
   const clickListener=e=>{
     const postEl=e.target.closest('.post');
     if(!postEl) return;
     const id=postEl.getAttribute('data-id');
+    if(!id) return;
     if(selectedIds.includes(id)){
+      // Deselect
       selectedIds=selectedIds.filter(i=>i!==id);
       postEl.classList.remove('selected');
     }else{
-      if(selectedIds.length>=2) return; // max two selections
+      if(selectedIds.length>=2){
+        // Remove earliest selection
+        const firstId=selectedIds.shift();
+        const firstEl=postsEl.querySelector(`.post[data-id="${firstId}"]`);
+        if(firstEl) firstEl.classList.remove('selected');
+      }
       selectedIds.push(id);
       postEl.classList.add('selected');
     }
     if(selectedIds.length===2){
-      const posts=getLocalPosts();
-      const selectedPosts=posts.filter(p=>selectedIds.includes(p.id));
+      const allPosts=getLocalPosts();
+      const selectedPosts=allPosts.filter(p=>selectedIds.includes(p.id));
       showCompareModal(selectedPosts);
-      // reset selection after comparison
+      // Reset selection UI
+      selectedIds.forEach(sid=>{
+        const el=postsEl.querySelector(`.post[data-id="${sid}"]`);
+        if(el) el.classList.remove('selected');
+      });
       selectedIds=[];
-      postElements.forEach(el=>el.classList.remove('selected'));
     }
   };
   postElements.forEach(el=>el.addEventListener('click',clickListener));
 }
 
-// Start WebSocket connection
+// Initialize connection and render initial posts
 connect();
+renderPosts();
 })();
