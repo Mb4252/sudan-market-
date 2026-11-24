@@ -27,13 +27,8 @@
     trendEl.textContent = `الاتجاه الحالي: ${trend}`;
   }
 
-  // Initial render
   renderTrend();
-
-  // Update on storage changes (other tabs)
   window.addEventListener('storage', e => { if (e.key === 'user_browser_posts_v1') renderTrend(); });
-
-  // Update on local DOM changes (new post added locally)
   const postsContainer = document.getElementById('posts');
   if (postsContainer) {
     const observer = new MutationObserver(renderTrend);

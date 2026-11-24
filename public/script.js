@@ -10,10 +10,9 @@
   const postsEl=document.getElementById('posts');
   const compareBtn=document.getElementById('compareBtn');
 
-  let currentFilter=''; // '' | 'cheap' | 'expensive'
+  let currentFilter='';
   window.currentFilter=currentFilter;
 
-  // BroadcastChannel for cross‑tab sync
   const bc = new BroadcastChannel('posts_sync');
   bc.onmessage = e => {
     if (e.data && e.data.type === 'sync') {
@@ -36,7 +35,7 @@
       post.priceTag=typeof window.detectPrice==='function'?window.detectPrice(post.content):'';
     }
     const posts=getLocalPosts();
-    if(post.id && posts.some(p=>p.id===post.id)) return; // avoid duplicates
+    if(post.id && posts.some(p=>p.id===post.id)) return;
     posts.unshift(post);
     try{localStorage.setItem(STORAGE_KEY,JSON.stringify(posts.slice(0,200)));
       broadcastUpdate();
@@ -138,37 +137,27 @@
     renderPosts();
   };
 
-  // ---------- Post selection & compare logic ----------
   function attachPostClickHandlers(){
     if(!postsEl) return;
     const postElements=postsEl.querySelectorAll('.post');
     postElements.forEach(el=>{
       el.onclick=()=>{
         el.classList.toggle('selected');
-        const selected=document.querySelectorAll('.post.selected');
-        if(selected.length>2){
-          // keep only the last two selected
-          selected.forEach((s,i)=>{ if(i<selected.length-2) s.classList.remove('selected'); });
-        }
       };
     });
-  }
-
-  if(compareBtn){
-    compareBtn.addEventListener('click',()=>{
-      const selected=document.querySelectorAll('.post.selected');
-      const postsArray=Array.from(selected).map(el=>{
-        const id=el.dataset.id;
-        const all=getLocalPosts();
-        return all.find(p=>p.id===id);
-      }).filter(Boolean);
-      if(postsArray.length===0){
-        alert('اختر منشورًا على الأقل للمقارنة');
-        return;
-      }
-      if(typeof window.showCompare==='function'){
-        window.showCompare(postsArray);
-      }
-    });
+    if(compareBtn){
+      compareBtn.onclick=()=>{
+        const selectedEls=postsEl.querySelectorAll('.post.selected');
+        const selectedPosts=Array.from(selectedEls).map(el=>{
+          const id=el.dataset.id;
+          return getLocalPosts().find(p=>p.id===id);
+        }).filter(Boolean);
+        if(selectedPosts.length<2){
+          alert('اختر منشورين على الأقل للمقارنة');
+          return;
+        }
+        window.showCompare(selectedPosts);
+      };
+    }
   }
 })();

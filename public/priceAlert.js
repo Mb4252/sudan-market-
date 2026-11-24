@@ -4,7 +4,7 @@
   const observer=new MutationObserver(mutations=>{
     mutations.forEach(mutation=>{
       mutation.addedNodes.forEach(node=>{
-        if(node.nodeType!==1) return; // element only
+        if(node.nodeType!==1) return;
         const isCheap=node.classList.contains('cheap');
         const isExpensive=node.classList.contains('expensive');
         if(!isCheap && !isExpensive) return;
