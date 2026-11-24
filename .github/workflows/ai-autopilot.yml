@@ -1,171 +1,446 @@
-import fs from "node:fs";
-import path from "node:path";
+name: AI Auto Fix & Feature Updater
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-if (!GROQ_API_KEY) {
-  console.error("❌ GROQ_API_KEY is missing in environment variables.");
-  process.exit(1);
-}
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_run:
+    workflows: ["*"]
+    types: [completed]
+  workflow_dispatch: {}
 
-// النموذج الأساسي ونموذج احتياطي أصغر لتجنب ضغط TPM عند الحاجة
-const PRIMARY_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
-const FALLBACK_MODEL = process.env.GROQ_FALLBACK_MODEL || "llama-3.1-8b-instant";
+permissions:
+  contents: write
+  actions: read
 
-// حد تقريبي آمن بالأحرف (~1 token ≈ 3.5–4 chars للعربي والإنجليزي والـ JSON)
-// 8000 TPM حد المنظمة؛ نبدأ بحد آمن ~11,000 حرف (~2,800–3,500 توكن) مع ترك مساحة للـ prompt والرد
-const INITIAL_MAX_CHARS = Number(process.env.MAX_LOG_CHARS || 11000);
-const MAX_LINES_PER_LOG = Number(process.env.MAX_LOG_LINES || 150);
+jobs:
+  monitor-and-evolve:
+    if: "!contains(github.event.head_commit.message || '', '[ai-autopilot]')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
 
-function readAndTrimLog(filePath, maxLines = MAX_LINES_PER_LOG) {
-  try {
-    if (!filePath || !fs.existsSync(filePath)) return "";
-    const raw = fs.readFileSync(filePath, "utf8");
-    const lines = raw
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
-    // نأخذ آخر الأسطر لأن الأخطاء غالباً في نهاية السجل
-    const tail = lines.slice(-maxLines);
-    return tail.join("\n");
-  } catch (err) {
-    return `[Failed to read ${filePath}: ${err.message}]`;
-  }
-}
+      - name: Collect Render & GitHub Actions logs and run AI updater
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          RENDER_LOG_URL: ${{ secrets.RENDER_LOG_URL }}
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          node -e '
+          const fs = require("fs");
+          const path = require("path");
 
-function sanitizeText(text, maxChars) {
-  if (!text) return "";
-  // إزالة تكرار المسافات الفارغة الزائدة وتقصير النص من البداية (الاحتفاظ بالنهاية الأقرب للخطأ)
-  const cleaned = text.replace(/\n{3,}/g, "\n\n").trim();
-  if (cleaned.length <= maxChars) return cleaned;
-  return "[...trimmed older logs...]\n" + cleaned.slice(-maxChars);
-}
+          function failWithReason(reason) {
+            console.error("❌ AI STATUS: FAILED");
+            console.error("سبب الفشل:", reason);
+            process.exit(1);
+          }
 
-function buildMessages(renderLog, actionsLog, repoSummary, charBudget) {
-  const halfBudget = Math.floor(charBudget * 0.42);
-  const repoBudget = Math.floor(charBudget * 0.16);
+          function sanitizeUrl(rawUrl) {
+            let u = String(rawUrl || "").trim();
+            const mdMatch = u.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+            if (mdMatch) {
+              u = (mdMatch[2] || mdMatch[1] || "").trim();
+            }
+            return u.replace(/^<|>$/g, "").trim();
+          }
 
-  const trimmedRender = sanitizeText(renderLog, halfBudget);
-  const trimmedActions = sanitizeText(actionsLog, halfBudget);
-  const trimmedRepo = sanitizeText(repoSummary, repoBudget);
+          function collectProjectFiles(dir = ".", depth = 0, out = []) {
+            if (depth > 2) return out;
+            const ignore = new Set(["node_modules", ".git", ".github"]);
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (ignore.has(entry.name)) continue;
+              const fullPath = path.join(dir, entry.name).replace(/\\/g, "/");
+              if (entry.isDirectory()) {
+                collectProjectFiles(fullPath, depth + 1, out);
+              } else if (/\.(js|html|css|json)$/i.test(entry.name)) {
+                const content = fs.readFileSync(fullPath, "utf8");
+                const clipped = content.length > 5000
+                  ? content.slice(0, 5000) + "\n/* ...تم اقتطاع الباقي للاختصار... */"
+                  : content;
+                out.push({ fullPath, content: clipped });
+              }
+            }
+            return out;
+          }
 
-  const systemPrompt = [
-    "You are a concise CI/CD and code diagnostic assistant.",
-    "Analyze the provided Render and GitHub Actions logs and return a brief, actionable fix summary in Arabic.",
-    "Keep the response focused, clear, and under 400 words."
-  ].join(" ");
+          async function pickGroqModel(apiKey) {
+            const modelsUrl = sanitizeUrl("https://api.groq.com/openai/v1/models");
+            const res = await fetch(modelsUrl, {
+              headers: { Authorization: `Bearer ${apiKey}` }
+            });
+            if (!res.ok) {
+              const txt = await res.text();
+              failWithReason(`تعذر جلب قائمة نماذج Groq (HTTP ${res.status}): ${txt.slice(0, 300)}`);
+            }
+            const data = await res.json();
+            const ids = (data.data || [])
+              .map(m => m.id)
+              .filter(id => !/whisper|tts|guard|prompt-guard|safeguard|embed/i.test(id));
 
-  const userContent = [
-    "=== RENDER LOGS (TAIL) ===",
-    trimmedRender || "No Render logs found.",
-    "",
-    "=== GITHUB ACTIONS LOGS (TAIL) ===",
-    trimmedActions || "No GitHub Actions logs found.",
-    trimmedRepo ? `\n=== REPO CONTEXT ===\n${trimmedRepo}` : ""
-  ].join("\n");
+            if (!ids.length) {
+              failWithReason("لا توجد نماذج نصية متاحة في حساب Groq الحالي.");
+            }
 
-  return [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: userContent }
-  ];
-}
+            const preferred = [
+              "openai/gpt-oss-120b",
+              "llama-3.3-70b-versatile",
+              "qwen/qwen3-32b",
+              "llama-3.1-8b-instant",
+              "openai/gpt-oss-20b"
+            ];
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            for (const p of preferred) {
+              if (ids.includes(p)) return p;
+            }
+            return ids[0];
+          }
 
-async function callGroqChat(messages, model) {
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${GROQ_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.2,
-      max_tokens: 900
-    })
-  });
+          function tryRepairJson(candidate) {
+            let s = String(candidate || "").trim();
+            const firstBrace = s.indexOf("{");
+            if (firstBrace > 0) {
+              s = s.slice(firstBrace);
+            }
+            const lastBrace = s.lastIndexOf("}");
+            if (lastBrace !== -1) {
+              s = s.slice(0, lastBrace + 1);
+            }
 
-  const text = await res.text();
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    parsed = null;
-  }
+            let inString = false;
+            let escaped = false;
+            let openBraces = 0;
 
-  if (!res.ok) {
-    const errMsg = parsed?.error?.message || text || `HTTP ${res.status}`;
-    const err = new Error(`HTTP ${res.status}: ${errMsg}`);
-    err.status = res.status;
-    throw err;
-  }
+            for (let i = 0; i < s.length; i++) {
+              const ch = s[i];
+              if (escaped) {
+                escaped = false;
+                continue;
+              }
+              if (ch === "\\") {
+                escaped = true;
+                continue;
+              }
+              if (ch === "\"") {
+                inString = !inString;
+                continue;
+              }
+              if (!inString) {
+                if (ch === "{") openBraces++;
+                else if (ch === "}") openBraces = Math.max(0, openBraces - 1);
+              }
+            }
 
-  return parsed?.choices?.[0]?.message?.content || "";
-}
+            if (escaped) {
+              s = s.slice(0, -1);
+            }
+            if (inString) {
+              s += "\"";
+            }
+            while (openBraces > 0) {
+              s += "}";
+              openBraces--;
+            }
 
-async function runWithSmartTrimming(renderLog, actionsLog, repoSummary) {
-  let charBudget = INITIAL_MAX_CHARS;
-  let currentModel = PRIMARY_MODEL;
-  const maxAttempts = 5;
+            return JSON.parse(s);
+          }
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const messages = buildMessages(renderLog, actionsLog, repoSummary, charBudget);
-    console.log(
-      `Attempt ${attempt}/${maxAttempts} | model=${currentModel} | charBudget=${charBudget}`
-    );
+          function extractJsonObject(text) {
+            const cleaned = String(text || "")
+              .replace(/^```json\s*/i, "")
+              .replace(/^```\s*/i, "")
+              .replace(/```\s*$/i, "")
+              .trim();
 
-    try {
-      const reply = await callGroqChat(messages, currentModel);
-      return reply;
-    } catch (err) {
-      console.warn(`⚠️ Attempt ${attempt} failed: ${err.message}`);
+            try {
+              return JSON.parse(cleaned);
+            } catch {
+              const start = cleaned.indexOf("{");
+              const end = cleaned.lastIndexOf("}");
+              if (start !== -1 && end !== -1 && end > start) {
+                try {
+                  return JSON.parse(cleaned.slice(start, end + 1));
+                } catch {
+                  return tryRepairJson(cleaned);
+                }
+              }
+              return tryRepairJson(cleaned);
+            }
+          }
 
-      // إذا كان الخطأ 413 (الطلب أكبر من الحد)، نقلّص السجلات بنسبة 35% ونحاول مجدداً
-      if (err.status === 413) {
-        charBudget = Math.max(1500, Math.floor(charBudget * 0.65));
-        if (attempt >= 2) {
-          currentModel = FALLBACK_MODEL;
-        }
-        await sleep(1500);
-        continue;
-      }
+          async function callChatCompletion(targetUrl, targetHeaders, payloadBody) {
+            const cleanUrl = sanitizeUrl(targetUrl);
+            const res = await fetch(cleanUrl, {
+              method: "POST",
+              headers: targetHeaders,
+              body: JSON.stringify(payloadBody)
+            });
+            const txt = await res.text();
+            let jsonData;
+            try {
+              jsonData = JSON.parse(txt);
+            } catch {
+              throw new Error(`الرد ليس JSON صالحاً (HTTP ${res.status}): ${txt.slice(0, 400)}`);
+            }
+            if (!res.ok || jsonData.error) {
+              const msg = jsonData?.error?.message || JSON.stringify(jsonData?.error || txt).slice(0, 400);
+              throw new Error(`HTTP ${res.status}: ${msg}`);
+            }
+            return jsonData;
+          }
 
-      // إذا كان 429 (تجاوز Rate Limit مؤقت)، ننتظر قليلاً ونغيّر للنموذج الاحتياطي بعد المحاولة الثانية
-      if (err.status === 429) {
-        if (attempt >= 2) {
-          currentModel = FALLBACK_MODEL;
-        }
-        await sleep(4000 * attempt);
-        continue;
-      }
+          async function run() {
+            const apiKey = (process.env.AI_API_KEY || "").trim();
+            if (!apiKey) {
+              failWithReason("المتغير AI_API_KEY غير موجود أو فارغ في GitHub Secrets.");
+            }
 
-      // أخطاء أخرى غير قابلة لإعادة المحاولة
-      throw err;
-    }
-  }
+            let actionsErrorLogs = "";
+            try {
+              const runsUrl = sanitizeUrl(`[https://api.github.com/repos/$](https://api.github.com/repos/$){process.env.REPO}/actions/runs?per_page=5`);
+              const runsRes = await fetch(runsUrl, {
+                headers: {
+                  Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                  "User-Agent": "ai-autopilot"
+                }
+              });
+              if (runsRes.ok) {
+                const runsData = await runsRes.json();
+                const failedRun = (runsData.workflow_runs || []).find(
+                  r => r.conclusion === "failure" && r.name !== "AI Auto Fix & Feature Updater"
+                );
+                if (failedRun) {
+                  const jobsRes = await fetch(sanitizeUrl(failedRun.jobs_url), {
+                    headers: {
+                      Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                      "User-Agent": "ai-autopilot"
+                    }
+                  });
+                  if (jobsRes.ok) {
+                    const jobsData = await jobsRes.json();
+                    actionsErrorLogs = JSON.stringify(
+                      jobsData.jobs.map(j => ({ name: j.name, conclusion: j.conclusion, steps: j.steps })),
+                      null,
+                      2
+                    ).slice(0, 4500);
+                  }
+                }
+              }
+            } catch (e) {
+              actionsErrorLogs = "تعذر جلب سجلات GitHub Actions: " + e.message;
+            }
 
-  throw new Error("Exhausted retry attempts due to token/rate limits.");
-}
+            let renderLogs = "";
+            if (process.env.RENDER_LOG_URL) {
+              try {
+                const rRes = await fetch(sanitizeUrl(process.env.RENDER_LOG_URL));
+                renderLogs = rRes.ok ? (await rRes.text()).slice(0, 4500) : `HTTP ${rRes.status}`;
+              } catch (e) {
+                renderLogs = "تعذر جلب سجلات Render: " + e.message;
+              }
+            }
 
-async function main() {
-  const renderLog =
-    process.env.RENDER_LOG_TEXT || readAndTrimLog(path.resolve("render.log"));
-  const actionsLog =
-    process.env.ACTIONS_LOG_TEXT || readAndTrimLog(path.resolve("actions.log"));
-  const repoSummary = process.env.REPO_CONTEXT || "";
+            const filesList = collectProjectFiles(".");
+            const currentFiles = filesList
+              .map(f => `--- FILE: ${f.fullPath} ---\n${f.content}`)
+              .join("\n\n")
+              .slice(0, 18000);
 
-  const output = await runWithSmartTrimming(renderLog, actionsLog, repoSummary);
+            const systemInstruction = [
+              "أنت مهندس برمجيات ومصمم منتجات ذكي يعمل ذاتياً.",
+              "أعد كائن JSON صالحاً فقط بدون أي نص خارج JSON، وبصيغة الهروب الصحيحة للأسطر الجديدة وعلامات التنصيص داخل السلاسل النصية.",
+              "الشكل المطلوب بدقة: {\"files\":{\"مسار_الملف\":\"محتواه_الكامل\"},\"summary\":\"ملخص واضح ومختصر\"}"
+            ].join("\n");
 
-  fs.mkdirSync("artifacts", { recursive: true });
-  fs.writeFileSync("artifacts/ai-report.md", output, "utf8");
+            const userPrompt = [
+              "راجع سجلات GitHub Actions وسجلات Render والملفات الحالية للمشروع ثم نفّذ التحديث الأنسب:",
+              "",
+              "1) إصلاح الأعطال أولاً: إذا وُجد خطأ في السجلات أو مسارات أو بناء أو توافق بين الملفات، أصلحه بدقة ونظافة.",
+              "2) جوهر المشروع ومرونته: المشروع يساعد المستخدمين على اكتشاف المتاجر أو المناطق ذات الأسعار الأرخص مقارنة بالمتاجر أو المناطق الأغلى، مع الحفاظ على البث اللحظي عبر WebSocket دون تخزين ثقيل على الخادم وحفظ محلي في المتصفح عبر localStorage.",
+              "3) أفكار خارج الصندوق (بدون حشو): في كل جولة تطوير، ابتكر ميزة أو أداة ذكية غير تقليدية تخدم مقارنة الأسعار أو التفاعل المباشر (مثل: رادار الفروقات السعرية بين المناطق، مؤشر تنبيه الفارق الأعلى/الأدنى، مقارنة سريعة بين متجرين، أو أداة اكتشاف عروض/فروقات حية)، واجعلها مدمجة بذكاء ووضوح.",
+              "4) جمال وترتيب بلا حشو: اجعل واجهة المستخدم أنيقة وعصرية ومرتبة بوضوح بصري وتباين مريح وتقسيم بطاقات نظيف؛ تجنّب النصوص الطويلة المكررة أو العناصر الزائدة بلا فائدة.",
+              "5) معمارية معيارية: قسّم الكود إلى ملفات صغيرة ومتخصصة حسب الوظيفة وتجنّب حشر كل شيء في ملف ضخم؛ يكفي في الجولة الواحدة تحديث ملف أو ملفين صغيرين بوضوح وإتقان حتى يكتمل الإخراج دون انقطاع.",
+              "",
+              "=== GITHUB ACTIONS ERROR LOGS ===",
+              actionsErrorLogs || "No failed workflow logs found.",
+              "",
+              "=== RENDER LOGS ===",
+              renderLogs || "No external Render log URL configured.",
+              "",
+              "=== CURRENT FILES ===",
+              currentFiles
+            ].join("\n");
 
-  console.log("\n✅ AI Report generated successfully:\n");
-  console.log(output);
-}
+            let provider = "";
+            let parsed;
 
-main().catch((err) => {
-  console.error("❌ Fatal error:", err.message);
-  process.exit(1);
-});
+            if (apiKey.startsWith("gsk_")) {
+              const groqModel = await pickGroqModel(apiKey);
+              provider = `Groq (${groqModel})`;
+              console.log("🔌 المزود والنموذج المختار:", provider);
+
+              const groqUrl = sanitizeUrl("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)");
+              const groqHeaders = {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`
+              };
+              const messages = [
+                { role: "system", content: systemInstruction },
+                { role: "user", content: userPrompt }
+              ];
+
+              try {
+                const aiJson = await callChatCompletion(groqUrl, groqHeaders, {
+                  model: groqModel,
+                  messages,
+                  response_format: { type: "json_object" },
+                  max_tokens: 8192,
+                  temperature: 0.45
+                });
+                const rawText = aiJson?.choices?.[0]?.message?.content || "";
+                parsed = extractJsonObject(rawText);
+              } catch (firstErr) {
+                console.warn("⚠️ تعذر التوليد بصيغة json_object مباشرة، جارٍ المحاولة بوضع مرن:", firstErr.message);
+                const retryJson = await callChatCompletion(groqUrl, groqHeaders, {
+                  model: groqModel,
+                  messages,
+                  max_tokens: 8192,
+                  temperature: 0.45
+                });
+                const retryText = retryJson?.choices?.[0]?.message?.content || "";
+                if (!retryText.trim()) {
+                  failWithReason(`${provider} أعاد رداً فارغاً في المحاولة المرنة.`);
+                }
+                try {
+                  parsed = extractJsonObject(retryText);
+                } catch (parseErr) {
+                  failWithReason(`فشل تحليل JSON من ${provider}: ${parseErr.message} | المقتطف: ${retryText.slice(0, 300)}`);
+                }
+              }
+            } else if (apiKey.startsWith("sk-or-")) {
+              provider = "OpenRouter (free model)";
+              console.log("🔌 المزود والنموذج المختار:", provider);
+              const openRouterUrl = sanitizeUrl("[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)");
+              try {
+                const aiJson = await callChatCompletion(
+                  openRouterUrl,
+                  {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${apiKey}`,
+                    "HTTP-Referer": `[https://github.com/$](https://github.com/$){process.env.REPO}`
+                  },
+                  {
+                    model: "meta-llama/llama-3.3-70b-instruct:free",
+                    messages: [
+                      { role: "system", content: systemInstruction },
+                      { role: "user", content: userPrompt }
+                    ],
+                    max_tokens: 8192,
+                    temperature: 0.45
+                  }
+                );
+                const rawText = aiJson?.choices?.[0]?.message?.content || "";
+                parsed = extractJsonObject(rawText);
+              } catch (e) {
+                failWithReason(`فشل ${provider}: ${e.message}`);
+              }
+            } else {
+              provider = "Gemini (gemini-2.5-flash)";
+              console.log("🔌 المزود والنموذج المختار:", provider);
+              const geminiUrl = sanitizeUrl(`[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$){encodeURIComponent(apiKey)}`);
+              try {
+                const aiJson = await callChatCompletion(
+                  geminiUrl,
+                  { "Content-Type": "application/json" },
+                  {
+                    systemInstruction: { parts: [{ text: systemInstruction }] },
+                    contents: [{ parts: [{ text: userPrompt }] }],
+                    generationConfig: {
+                      responseMimeType: "application/json",
+                      maxOutputTokens: 8192,
+                      temperature: 0.45
+                    }
+                  }
+                );
+                const rawText = aiJson?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                parsed = extractJsonObject(rawText);
+              } catch (e) {
+                failWithReason(`فشل ${provider}: ${e.message}`);
+              }
+            }
+
+            console.log(`✅ AI STATUS: WORKING (${provider})`);
+            console.log("ملخص التحديث:", parsed.summary || "تم التطوير والفحص");
+
+            let updatedCount = 0;
+            if (parsed.files && typeof parsed.files === "object") {
+              for (const [filePath, content] of Object.entries(parsed.files)) {
+                const cleanPath = String(filePath).replace(/^\/+/, "").trim();
+                if (!cleanPath || cleanPath.includes("..") || typeof content !== "string" || !content.trim()) {
+                  continue;
+                }
+                if (cleanPath.endsWith(".json")) {
+                  try {
+                    JSON.parse(content);
+                  } catch {
+                    console.warn(`⚠️ تم تخطي ${cleanPath} لأن محتواه JSON غير صالح.`);
+                    continue;
+                  }
+                }
+                const dirName = path.dirname(cleanPath);
+                if (dirName && dirName !== ".") {
+                  fs.mkdirSync(dirName, { recursive: true });
+                }
+                const prevContent = fs.existsSync(cleanPath) ? fs.readFileSync(cleanPath, "utf8") : "";
+                if (prevContent !== content) {
+                  fs.writeFileSync(cleanPath, content, "utf8");
+                  updatedCount++;
+                  console.log(`📝 تم تحديث/إنشاء الملف: ${cleanPath}`);
+                }
+              }
+            }
+
+            console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
+            if (updatedCount > 0) {
+              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Creative modular feature update").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
+            }
+          }
+
+          run();
+          '
+
+      - name: Commit and push changes automatically
+        run: |
+          git config user.name "ai-autopilot[bot]"
+          git config user.email "ai-autopilot[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            rm -f last_ai_change.txt
+            echo "ℹ️ nothing to commit, working tree clean — لا توجد تغييرات جديدة."
+            exit 0
+          fi
+          SUMMARY="Creative modular feature update"
+          if [ -f last_ai_change.txt ]; then
+            SUMMARY=$(head -n 1 last_ai_change.txt)
+            rm -f last_ai_change.txt
+            git add -A
+          fi
+          if git diff --staged --quiet; then
+            echo "ℹ️ لا توجد تغييرات متبقية بعد تنظيف الملف المؤقت."
+            exit 0
+          fi
+          git commit -m "[ai-autopilot] ${SUMMARY}"
+          git push origin HEAD
+          echo "✅ PUSH STATUS: تم رفع التعديلات إلى GitHub بنجاح."
+          if [ -n "${RENDER_DEPLOY_HOOK_URL}" ]; then
+            curl -s -X POST "${RENDER_DEPLOY_HOOK_URL}" || true
+          fi
