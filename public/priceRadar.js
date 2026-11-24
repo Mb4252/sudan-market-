@@ -23,6 +23,14 @@
       <p>إجمالي المنشورات: <strong>${total}</strong></p>
       <p>رخيص: <strong class="cheap">${cheap} (${cheapPct}%)</strong> | غالي: <strong class="expensive">${expensive} (${expPct}%)</strong></p>
     `;
+    // Dominant price alert
+    const diff = parseFloat(cheapPct) - parseFloat(expPct);
+    if (!isNaN(diff) && diff > 20){
+      const alertDiv = document.createElement('div');
+      alertDiv.className = 'price-alert';
+      alertDiv.textContent = 'المنشورات الرخيصة تفوق الغالية بأكثر من 20%';
+      radarEl.appendChild(alertDiv);
+    }
   }
 
   // Initial render
