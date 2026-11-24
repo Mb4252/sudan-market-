@@ -10,6 +10,8 @@ const contentEl = document.getElementById('content');
 const publishBtn = document.getElementById('publishBtn');
 const postsEl = document.getElementById('posts');
 
+let currentFilter = '';// '' | 'cheap' | 'expensive'
+
 function getLocalPosts() {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -21,7 +23,6 @@ function getLocalPosts() {
 
 function saveLocalPost(post) {
   if (!post || !post.content) return;
-  // add price tag if missing
   if (!post.priceTag) {
     post.priceTag = typeof window.detectPrice === 'function' ? window.detectPrice(post.content) : '';
   }
@@ -39,7 +40,8 @@ function saveLocalPost(post) {
 function renderPosts() {
   const posts = getLocalPosts();
   if (!postsEl) return;
-  postsEl.innerHTML = posts.map(p => `
+  const filtered = currentFilter ? posts.filter(p => p.priceTag === currentFilter) : posts;
+  postsEl.innerHTML = filtered.map(p => `
     <div class="post ${p.priceTag ? p.priceTag : ''}">
       <div class="meta">${escapeHtml(p.author || 'مستخدم')} — ${escapeHtml(p.timestamp || '')}</div>
       <div>${escapeHtml(p.content || '')}</div>
@@ -123,7 +125,6 @@ if (publishBtn && contentEl) {
       timestamp: new Date().toISOString()
     };
 
-    // add price tag before sending
     msg.priceTag = typeof window.detectPrice === 'function' ? window.detectPrice(msg.content) : '';
 
     saveLocalPost(msg);
@@ -135,6 +136,12 @@ if (publishBtn && contentEl) {
     contentEl.value = '';
   });
 }
+
+// Expose filter control API for filter.js
+window.setPostFilter = function(filter) {
+  currentFilter = filter;
+  renderPosts();
+};
 
 renderPosts();
 connect();
