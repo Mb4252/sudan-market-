@@ -8,6 +8,7 @@
   const contentEl=document.getElementById('content');
   const publishBtn=document.getElementById('publishBtn');
   const postsEl=document.getElementById('posts');
+  const compareBtn=document.getElementById('compareBtn');
 
   let currentFilter=''; // '' | 'cheap' | 'expensive'
   window.currentFilter=currentFilter;
@@ -142,19 +143,32 @@
     if(!postsEl) return;
     const postElements=postsEl.querySelectorAll('.post');
     postElements.forEach(el=>{
-      el.onclick = () => {
-        // toggle selected class
-        const alreadySelected = el.classList.contains('selected');
-        // clear previous selections
-        postElements.forEach(p=>p.classList.remove('selected'));
-        if(!alreadySelected){
-          el.classList.add('selected');
+      el.onclick=()=>{
+        el.classList.toggle('selected');
+        const selected=document.querySelectorAll('.post.selected');
+        if(selected.length>2){
+          // keep only the last two selected
+          selected.forEach((s,i)=>{ if(i<selected.length-2) s.classList.remove('selected'); });
         }
-        // future compare logic can read the selected post via data-id attribute
       };
     });
   }
 
-  // Initial render on load
-  renderPosts();
+  if(compareBtn){
+    compareBtn.addEventListener('click',()=>{
+      const selected=document.querySelectorAll('.post.selected');
+      const postsArray=Array.from(selected).map(el=>{
+        const id=el.dataset.id;
+        const all=getLocalPosts();
+        return all.find(p=>p.id===id);
+      }).filter(Boolean);
+      if(postsArray.length===0){
+        alert('اختر منشورًا على الأقل للمقارنة');
+        return;
+      }
+      if(typeof window.showCompare==='function'){
+        window.showCompare(postsArray);
+      }
+    });
+  }
 })();
