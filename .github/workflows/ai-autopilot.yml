@@ -55,9 +55,10 @@ jobs:
                 collectProjectFiles(fullPath, depth + 1, out);
               } else if (/\.(js|html|css|json)$/i.test(entry.name)) {
                 const content = fs.readFileSync(fullPath, "utf8");
-                if (content.length <= 12000) {
-                  out.push({ fullPath, content });
-                }
+                const clipped = content.length > 6000
+                  ? content.slice(0, 6000) + "\n/* ...تم اقتطاع الباقي للاختصار... */"
+                  : content;
+                out.push({ fullPath, content: clipped });
               }
             }
             return out;
@@ -81,8 +82,8 @@ jobs:
             }
 
             const preferred = [
-              "llama-3.3-70b-versatile",
               "openai/gpt-oss-120b",
+              "llama-3.3-70b-versatile",
               "qwen/qwen3-32b",
               "llama-3.1-8b-instant",
               "openai/gpt-oss-20b"
@@ -94,6 +95,45 @@ jobs:
             return ids[0];
           }
 
+          function extractJsonObject(text) {
+            const cleaned = String(text || "")
+              .replace(/^```json\s*/i, "")
+              .replace(/^```\s*/i, "")
+              .replace(/```\s*$/i, "")
+              .trim();
+
+            try {
+              return JSON.parse(cleaned);
+            } catch {
+              const start = cleaned.indexOf("{");
+              const end = cleaned.lastIndexOf("}");
+              if (start !== -1 && end !== -1 && end > start) {
+                return JSON.parse(cleaned.slice(start, end + 1));
+              }
+              throw new Error("تعذر استخراج كائن JSON صالح من رد النموذج.");
+            }
+          }
+
+          async function callChatCompletion(targetUrl, targetHeaders, payloadBody) {
+            const res = await fetch(targetUrl, {
+              method: "POST",
+              headers: targetHeaders,
+              body: JSON.stringify(payloadBody)
+            });
+            const txt = await res.text();
+            let jsonData;
+            try {
+              jsonData = JSON.parse(txt);
+            } catch {
+              throw new Error(`الرد ليس JSON صالحاً (HTTP ${res.status}): ${txt.slice(0, 400)}`);
+            }
+            if (!res.ok || jsonData.error) {
+              const msg = jsonData?.error?.message || JSON.stringify(jsonData?.error || txt).slice(0, 400);
+              throw new Error(`HTTP ${res.status}: ${msg}`);
+            }
+            return jsonData;
+          }
+
           async function run() {
             const apiKey = (process.env.AI_API_KEY || "").trim();
             if (!apiKey) {
@@ -102,7 +142,7 @@ jobs:
 
             let actionsErrorLogs = "";
             try {
-              const runsRes = await fetch(`https://api.github.com/repos/${process.env.REPO}/actions/runs?per_page=5`, {
+              const runsRes = await fetch(`[https://api.github.com/repos/$](https://api.github.com/repos/$){process.env.REPO}/actions/runs?per_page=5`, {
                 headers: {
                   Authorization: `Bearer ${process.env.GH_TOKEN}`,
                   "User-Agent": "ai-autopilot"
@@ -126,7 +166,7 @@ jobs:
                       jobsData.jobs.map(j => ({ name: j.name, conclusion: j.conclusion, steps: j.steps })),
                       null,
                       2
-                    ).slice(0, 6000);
+                    ).slice(0, 5000);
                   }
                 }
               }
@@ -138,7 +178,7 @@ jobs:
             if (process.env.RENDER_LOG_URL) {
               try {
                 const rRes = await fetch(process.env.RENDER_LOG_URL);
-                renderLogs = rRes.ok ? (await rRes.text()).slice(0, 6000) : `HTTP ${rRes.status}`;
+                renderLogs = rRes.ok ? (await rRes.text()).slice(0, 5000) : `HTTP ${rRes.status}`;
               } catch (e) {
                 renderLogs = "تعذر جلب سجلات Render: " + e.message;
               }
@@ -148,16 +188,22 @@ jobs:
             const currentFiles = filesList
               .map(f => `--- FILE: ${f.fullPath} ---\n${f.content}`)
               .join("\n\n")
-              .slice(0, 24000);
+              .slice(0, 20000);
 
-            const prompt = [
-              "أنت مهندس برمجيات ذاتي التنفيذ. راجع سجلات GitHub Actions وسجلات Render والملفات الحالية.",
-              "1) إذا وُجد خطأ في السجلات، أصلحه فوراً.",
-              "2) المشروع يهدف إلى مساعدة المستخدمين على معرفة المتاجر أو المناطق التي تبيع بأسعار رخيصة مقارنة بالمتاجر أو المناطق التي تبيع بأسعار غالية، مع الحفاظ على البث المباشر عبر WebSocket دون تخزين ثقيل على الخادم والتخزين المحلي في المتصفح عبر localStorage.",
-              "3) لا تجعل المشروع محصوراً أو مقيّداً بهذه الفكرة فقط؛ وسّع المشروع وأضف ميزات أو تحسينات جديدة باختيارك الكامل دون قيود.",
-              "4) قسّم الكود إلى ملفات صغيرة وبسيطة ومرتبة حسب الوظيفة بدلاً من تكديس كل شيء في ملف واحد طويل، واجعل التعديلات في كل ملف بسيطة وواضحة ومحدودة للملفات التي تحتاج تغييراً فعلياً فقط.",
-              "5) أعد النتيجة بصيغة JSON صالحة فقط بدون أي نص خارج JSON بهذا الشكل الدقيق:",
-              "{\"files\":{\"اسم_الملف\":\"محتواه الكامل البسيط\"},\"summary\":\"ملخص التحديث\"}",
+            const systemInstruction = [
+              "أنت مهندس برمجيات ومصمم منتجات ذكي يعمل ذاتياً.",
+              "أعد كائن JSON صالحاً فقط بدون أي نص خارج JSON، وبصيغة الهروب الصحيحة للأسطر الجديدة وعلامات التنصيص داخل السلاسل النصية.",
+              "الشكل المطلوب بدقة: {\"files\":{\"مسار_الملف\":\"محتواه_الكامل\"},\"summary\":\"ملخص واضح ومختصر\"}"
+            ].join("\n");
+
+            const userPrompt = [
+              "راجع سجلات GitHub Actions وسجلات Render والملفات الحالية للمشروع ثم نفّذ التحديث الأنسب:",
+              "",
+              "1) إصلاح الأعطال أولاً: إذا وُجد خطأ في السجلات أو مسارات أو بناء أو توافق بين الملفات، أصلحه بدقة ونظافة.",
+              "2) جوهر المشروع ومرونته: المشروع يساعد المستخدمين على اكتشاف المتاجر أو المناطق ذات الأسعار الأرخص مقارنة بالمتاجر أو المناطق الأغلى، مع الحفاظ على البث اللحظي عبر WebSocket دون تخزين ثقيل على الخادم وحفظ محلي في المتصفح عبر localStorage.",
+              "3) أفكار خارج الصندوق (بدون حشو): في كل جولة تطوير، ابتكر ميزة أو أداة ذكية غير تقليدية تخدم مقارنة الأسعار أو التفاعل المباشر (مثل: رادار الفروقات السعرية بين المناطق، مؤشر تنبيه الفارق الأعلى/الأدنى، مقارنة سريعة بين متجرين، أو أداة اكتشاف عروض/فروقات حية)، واجعلها مدمجة بذكاء ووضوح.",
+              "4) جمال وترتيب بلا حشو: اجعل واجهة المستخدم أنيقة وعصرية ومرتبة بوضوح بصري وتباين مريح وتقسيم بطاقات نظيف؛ تجنّب النصوص الطويلة المكررة أو العناصر الزائدة بلا فائدة.",
+              "5) معمارية معيارية: قسّم الكود إلى ملفات صغيرة ومتخصصة حسب الوظيفة (مثل الواجهة، التنسيق، الأدوات المساعدة، ومزايا المقارنة/التحليل) وتجنّب حشر كل شيء في ملف ضخم أو تعديل ملفات لا تحتاج تغييراً.",
               "",
               "=== GITHUB ACTIONS ERROR LOGS ===",
               actionsErrorLogs || "No failed workflow logs found.",
@@ -170,111 +216,128 @@ jobs:
             ].join("\n");
 
             let provider = "";
-            let url = "";
-            let headers = { "Content-Type": "application/json" };
-            let body = {};
+            let parsed;
 
             if (apiKey.startsWith("gsk_")) {
               const groqModel = await pickGroqModel(apiKey);
               provider = `Groq (${groqModel})`;
-              url = "https://api.groq.com/openai/v1/chat/completions";
-              headers["Authorization"] = `Bearer ${apiKey}`;
-              body = {
-                model: groqModel,
-                messages: [{ role: "user", content: prompt }],
-                response_format: { type: "json_object" },
-                temperature: 0.4
+              console.log("🔌 المزود والنموذج المختار:", provider);
+
+              const groqUrl = "[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)";
+              const groqHeaders = {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`
               };
+              const messages = [
+                { role: "system", content: systemInstruction },
+                { role: "user", content: userPrompt }
+              ];
+
+              try {
+                const aiJson = await callChatCompletion(groqUrl, groqHeaders, {
+                  model: groqModel,
+                  messages,
+                  response_format: { type: "json_object" },
+                  temperature: 0.45
+                });
+                const rawText = aiJson?.choices?.[0]?.message?.content || "";
+                parsed = extractJsonObject(rawText);
+              } catch (firstErr) {
+                console.warn("⚠️ تعذر التوليد بصيغة json_object مباشرة، جارٍ المحاولة بوضع مرن:", firstErr.message);
+                const retryJson = await callChatCompletion(groqUrl, groqHeaders, {
+                  model: groqModel,
+                  messages,
+                  temperature: 0.45
+                });
+                const retryText = retryJson?.choices?.[0]?.message?.content || "";
+                if (!retryText.trim()) {
+                  failWithReason(`${provider} أعاد رداً فارغاً في المحاولة المرنة.`);
+                }
+                try {
+                  parsed = extractJsonObject(retryText);
+                } catch (parseErr) {
+                  failWithReason(`فشل تحليل JSON من ${provider}: ${parseErr.message} | المقتطف: ${retryText.slice(0, 300)}`);
+                }
+              }
             } else if (apiKey.startsWith("sk-or-")) {
               provider = "OpenRouter (free model)";
-              url = "https://openrouter.ai/api/v1/chat/completions";
-              headers["Authorization"] = `Bearer ${apiKey}`;
-              headers["HTTP-Referer"] = `https://github.com/${process.env.REPO}`;
-              body = {
-                model: "meta-llama/llama-3.3-70b-instruct:free",
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.4
-              };
+              console.log("🔌 المزود والنموذج المختار:", provider);
+              try {
+                const aiJson = await callChatCompletion(
+                  "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)",
+                  {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${apiKey}`,
+                    "HTTP-Referer": `[https://github.com/$](https://github.com/$){process.env.REPO}`
+                  },
+                  {
+                    model: "meta-llama/llama-3.3-70b-instruct:free",
+                    messages: [
+                      { role: "system", content: systemInstruction },
+                      { role: "user", content: userPrompt }
+                    ],
+                    temperature: 0.45
+                  }
+                );
+                const rawText = aiJson?.choices?.[0]?.message?.content || "";
+                parsed = extractJsonObject(rawText);
+              } catch (e) {
+                failWithReason(`فشل ${provider}: ${e.message}`);
+              }
             } else {
               provider = "Gemini (gemini-2.5-flash)";
-              url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
-              body = {
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { responseMimeType: "application/json" }
-              };
-            }
-
-            console.log("🔌 المزود والنموذج المختار:", provider);
-
-            let aiRes;
-            try {
-              aiRes = await fetch(url, {
-                method: "POST",
-                headers,
-                body: JSON.stringify(body)
-              });
-            } catch (e) {
-              failWithReason(`فشل الاتصال بـ ${provider}: ${e.message}`);
-            }
-
-            const rawBody = await aiRes.text();
-            let aiJson;
-            try {
-              aiJson = JSON.parse(rawBody);
-            } catch (e) {
-              failWithReason(`رد ${provider} ليس JSON صالحاً (HTTP ${aiRes.status}): ${rawBody.slice(0, 400)}`);
-            }
-
-            if (!aiRes.ok || aiJson.error) {
-              const errMsg = aiJson?.error?.message || JSON.stringify(aiJson?.error || rawBody).slice(0, 400);
-              failWithReason(`رفض ${provider} الطلب (HTTP ${aiRes.status}): ${errMsg}`);
-            }
-
-            let rawText = "";
-            if (apiKey.startsWith("gsk_") || apiKey.startsWith("sk-or-")) {
-              rawText = aiJson?.choices?.[0]?.message?.content || "";
-            } else {
-              rawText = aiJson?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-            }
-
-            if (!rawText.trim()) {
-              failWithReason(`${provider} استجاب لكن أعاد نصاً فارغاً.`);
-            }
-
-            rawText = rawText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
-
-            let parsed;
-            try {
-              parsed = JSON.parse(rawText);
-            } catch (e) {
-              failWithReason(`فشل تحليل JSON من ${provider}: ${e.message} | النص: ${rawText.slice(0, 300)}`);
+              console.log("🔌 المزود والنموذج المختار:", provider);
+              try {
+                const aiJson = await callChatCompletion(
+                  `[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$){encodeURIComponent(apiKey)}`,
+                  { "Content-Type": "application/json" },
+                  {
+                    systemInstruction: { parts: [{ text: systemInstruction }] },
+                    contents: [{ parts: [{ text: userPrompt }] }],
+                    generationConfig: { responseMimeType: "application/json", temperature: 0.45 }
+                  }
+                );
+                const rawText = aiJson?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                parsed = extractJsonObject(rawText);
+              } catch (e) {
+                failWithReason(`فشل ${provider}: ${e.message}`);
+              }
             }
 
             console.log(`✅ AI STATUS: WORKING (${provider})`);
-            console.log("ملخص التحديث:", parsed.summary || "تم الفحص دون ملخص");
+            console.log("ملخص التحديث:", parsed.summary || "تم التطوير والفحص");
 
             let updatedCount = 0;
             if (parsed.files && typeof parsed.files === "object") {
               for (const [filePath, content] of Object.entries(parsed.files)) {
-                const cleanPath = String(filePath).replace(/^\/+/, "");
-                if (typeof content === "string" && content.trim().length > 0 && !cleanPath.includes("..")) {
-                  const dirName = path.dirname(cleanPath);
-                  if (dirName && dirName !== ".") {
-                    fs.mkdirSync(dirName, { recursive: true });
+                const cleanPath = String(filePath).replace(/^\/+/, "").trim();
+                if (!cleanPath || cleanPath.includes("..") || typeof content !== "string" || !content.trim()) {
+                  continue;
+                }
+                if (cleanPath.endsWith(".json")) {
+                  try {
+                    JSON.parse(content);
+                  } catch {
+                    console.warn(`⚠️ تم تخطي ${cleanPath} لأن محتواه JSON غير صالح.`);
+                    continue;
                   }
-                  const prevContent = fs.existsSync(cleanPath) ? fs.readFileSync(cleanPath, "utf8") : "";
-                  if (prevContent !== content) {
-                    fs.writeFileSync(cleanPath, content, "utf8");
-                    updatedCount++;
-                    console.log(`📝 تم تحديث/إنشاء الملف: ${cleanPath}`);
-                  }
+                }
+                const dirName = path.dirname(cleanPath);
+                if (dirName && dirName !== ".") {
+                  fs.mkdirSync(dirName, { recursive: true });
+                }
+                const prevContent = fs.existsSync(cleanPath) ? fs.readFileSync(cleanPath, "utf8") : "";
+                if (prevContent !== content) {
+                  fs.writeFileSync(cleanPath, content, "utf8");
+                  updatedCount++;
+                  console.log(`📝 تم تحديث/إنشاء الملف: ${cleanPath}`);
                 }
               }
             }
 
             console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
             if (updatedCount > 0) {
-              fs.writeFileSync("last_ai_change.txt", parsed.summary || "Automated modular update", "utf8");
+              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Creative modular feature update").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
             }
           }
 
@@ -291,7 +354,7 @@ jobs:
             echo "ℹ️ nothing to commit, working tree clean — لا توجد تغييرات جديدة."
             exit 0
           fi
-          SUMMARY="Automated modular update"
+          SUMMARY="Creative modular feature update"
           if [ -f last_ai_change.txt ]; then
             SUMMARY=$(head -n 1 last_ai_change.txt)
             rm -f last_ai_change.txt
