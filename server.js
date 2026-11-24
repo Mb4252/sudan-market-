@@ -87,11 +87,9 @@ const heartbeatInterval = setInterval(() => {
 
 const SYSTEM_BROADCAST_INTERVAL = 60000;
 const systemBroadcastInterval = setInterval(() => {
-  const payload = JSON.stringify({
-    type: 'system',
-    timestamp: new Date().toISOString()
-  });
-  wss.clients.forEach((client) => {
+  const now = new Date().toISOString();
+  const payload = JSON.stringify({ type: 'system', timestamp: now });
+  wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(payload);
     }
@@ -101,17 +99,3 @@ const systemBroadcastInterval = setInterval(() => {
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
-
-function shutdown(){
-  clearInterval(heartbeatInterval);
-  clearInterval(systemBroadcastInterval);
-  wss.close(() => {
-    server.close(() => {
-      console.log('Server shut down gracefully');
-      process.exit(0);
-    });
-  });
-}
-
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);

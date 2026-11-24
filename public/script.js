@@ -143,33 +143,16 @@
     const postElements=postsEl.querySelectorAll('.post');
     postElements.forEach(el=>{
       el.onclick = () => {
-        el.classList.toggle('selected');
-        const selected = postsEl.querySelectorAll('.post.selected');
-        if(selected.length > 2){
-          // keep only the last two selected
-          selected[0].classList.remove('selected');
+        // toggle selected class
+        const alreadySelected = el.classList.contains('selected');
+        // clear previous selections
+        postElements.forEach(p=>p.classList.remove('selected'));
+        if(!alreadySelected){
+          el.classList.add('selected');
         }
-        if(selected.length === 2){
-          const ids = Array.from(selected).map(s=>s.getAttribute('data-id'));
-          const allPosts = getLocalPosts();
-          const selectedPosts = allPosts.filter(p=>ids.includes(p.id));
-          if(selectedPosts.length===2){
-            showCompareModal(selectedPosts);
-          }
-        }
+        // future compare logic can read the selected post via data-id attribute
       };
     });
-  }
-
-  function showCompareModal(selectedPosts){
-    const [a,b]=selectedPosts;
-    const message=`مقارنة بين المنشورين:\n\n--- المنشور الأول ---\nالكاتب: ${a.author}\nالسعر: ${a.priceTag||'غير محدد'}\nالمحتوى: ${a.content}\n\n--- المنشور الثاني ---\nالكاتب: ${b.author}\nالسعر: ${b.priceTag||'غير محدد'}\nالمحتوى: ${b.content}`;
-    alert(message);
-    // after showing, clear selection
-    const postsContainer=document.getElementById('posts');
-    if(postsContainer){
-      postsContainer.querySelectorAll('.post.selected').forEach(el=>el.classList.remove('selected'));
-    }
   }
 
   // Initial render on load
