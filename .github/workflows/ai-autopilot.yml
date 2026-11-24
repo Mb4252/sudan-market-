@@ -65,7 +65,8 @@ jobs:
           }
 
           async function pickGroqModel(apiKey) {
-            const res = await fetch("https://api.groq.com/openai/v1/models", {
+            const modelsUrl = "https://api.groq.com/openai/v1/models";
+            const res = await fetch(modelsUrl, {
               headers: { Authorization: `Bearer ${apiKey}` }
             });
             if (!res.ok) {
@@ -142,7 +143,8 @@ jobs:
 
             let actionsErrorLogs = "";
             try {
-              const runsRes = await fetch(`[https://api.github.com/repos/$](https://api.github.com/repos/$){process.env.REPO}/actions/runs?per_page=5`, {
+              const runsUrl = `[https://api.github.com/repos/$](https://api.github.com/repos/$){process.env.REPO}/actions/runs?per_page=5`;
+              const runsRes = await fetch(runsUrl, {
                 headers: {
                   Authorization: `Bearer ${process.env.GH_TOKEN}`,
                   "User-Agent": "ai-autopilot"
@@ -262,9 +264,10 @@ jobs:
             } else if (apiKey.startsWith("sk-or-")) {
               provider = "OpenRouter (free model)";
               console.log("🔌 المزود والنموذج المختار:", provider);
+              const openRouterUrl = "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)";
               try {
                 const aiJson = await callChatCompletion(
-                  "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)",
+                  openRouterUrl,
                   {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${apiKey}`,
@@ -287,9 +290,10 @@ jobs:
             } else {
               provider = "Gemini (gemini-2.5-flash)";
               console.log("🔌 المزود والنموذج المختار:", provider);
+              const geminiUrl = `[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$){encodeURIComponent(apiKey)}`;
               try {
                 const aiJson = await callChatCompletion(
-                  `[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$){encodeURIComponent(apiKey)}`,
+                  geminiUrl,
                   { "Content-Type": "application/json" },
                   {
                     systemInstruction: { parts: [{ text: systemInstruction }] },
