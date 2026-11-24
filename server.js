@@ -1,6 +1,7 @@
 // server.js
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const app = express();
@@ -11,6 +12,14 @@ const PORT = process.env.PORT || 3000;
 const AI_API_KEY = process.env.AI_API_KEY || '';
 
 app.use(express.json({ limit: '64kb' }));
+
+// خدمة ملفات الواجهة الثابتة من الجذر ومن مجلد public
+app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 // مسار فحص جاهزية الخدمة على Render
 app.get('/health', (req, res) => {
@@ -34,7 +43,9 @@ wss.on('connection', (ws) => {
     message: 'متصل ببث المتصفح المباشر (لا يتم حفظ البيانات على الخادم)'
   }));
 
-  ws.on('pong', () => { ws.isAlive = true; });
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
 
   ws.on('message', (rawData) => {
     try {
@@ -43,8 +54,13 @@ wss.on('connection', (ws) => {
         return;
       }
 
+      const id = typeof parsed.id === 'string' && parsed.id.trim()
+        ? parsed.id.trim().slice(0, 80)
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
       const payload = JSON.stringify({
         type: 'post',
+        id,
         author: typeof parsed.author === 'string' && parsed.author.trim()
           ? parsed.author.trim().slice(0, 40)
           : 'مستخدم',
@@ -67,9 +83,9 @@ wss.on('connection', (ws) => {
   });
 });
 
-// Heartbeat / keep‑alive mechanism
-const HEARTBEAT_INTERVAL = 30000; // 30 seconds
-const interval = setInterval(() => {
+// Heartbeat / keep-alive mechanism
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+const heartbeatInterval = setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws.isAlive === false) return ws.terminate();
     ws.isAlive = false;
@@ -77,11 +93,9 @@ const interval = setInterval(() => {
   });
 }, HEARTBEAT_INTERVAL);
 
-wss.on('close', () => clearInterval(interval));
-
 // Broadcast server timestamp every minute as a system message (no storage)
-const SYSTEM_BROADCAST_INTERVAL = 60000; // 1 minute
-setInterval(() => {
+const SYSTEM_BROADCAST_INTERVAL = 60000; // 1 minute
+const systemBroadcastInterval = setInterval(() => {
   const payload = JSON.stringify({
     type: 'system',
     timestamp: new Date().toISOString()
@@ -92,6 +106,11 @@ setInterval(() => {
     }
   });
 }, SYSTEM_BROADCAST_INTERVAL);
+
+wss.on('close', () => {
+  clearInterval(heartbeatInterval);
+  clearInterval(systemBroadcastInterval);
+});
 
 // التقاط أخطاء الخادم غير المتوقعة لتظهر بوضوح في سجلات Render
 process.on('uncaughtException', (err) => {
