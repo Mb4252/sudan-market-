@@ -131,7 +131,7 @@ function attachPostClickHandlers(){
   if(!postsEl) return;
   const postElements=postsEl.querySelectorAll('.post');
   postElements.forEach(el=>{
-    el.addEventListener('click',()=> {
+    el.addEventListener('click',()=>{
       const id=el.getAttribute('data-id');
       if(!id) return;
       if(el.classList.contains('selected')){
@@ -139,21 +139,29 @@ function attachPostClickHandlers(){
       }else{
         const alreadySelected=postsEl.querySelectorAll('.post.selected');
         if(alreadySelected.length>=2){
+          // remove the oldest selected (first in the NodeList)
           alreadySelected[0].classList.remove('selected');
         }
         el.classList.add('selected');
       }
-      const selectedEls=Array.from(postsEl.querySelectorAll('.post.selected'));
-      if(selectedEls.length===2){
+      const selectedPosts=Array.from(postsEl.querySelectorAll('.post.selected')).map(sel=>{
+        const pid=sel.getAttribute('data-id');
         const posts=getLocalPosts();
-        const selectedPosts=selectedEls.map(se=>posts.find(p=>p.id===se.dataset.id)).filter(Boolean);
+        return posts.find(p=>p.id===pid);
+      }).filter(Boolean);
+      if(selectedPosts.length===2){
         showCompareModal(selectedPosts);
-        selectedEls.forEach(se=>se.classList.remove('selected'));
+        // clear selection after showing the modal
+        selectedPosts.forEach(p=>{
+          const elSel=postsEl.querySelector(`.post[data-id="${p.id}"]`);
+          if(elSel) elSel.classList.remove('selected');
+        });
       }
     });
   });
 }
 
-// Start connection
+// initiate WebSocket connection
 connect();
+
 })();
