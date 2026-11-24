@@ -79,6 +79,20 @@ const interval = setInterval(() => {
 
 wss.on('close', () => clearInterval(interval));
 
+// Broadcast server timestamp every minute as a system message (no storage)
+const SYSTEM_BROADCAST_INTERVAL = 60000; // 1 minute
+setInterval(() => {
+  const payload = JSON.stringify({
+    type: 'system',
+    timestamp: new Date().toISOString()
+  });
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(payload);
+    }
+  });
+}, SYSTEM_BROADCAST_INTERVAL);
+
 // التقاط أخطاء الخادم غير المتوقعة لتظهر بوضوح في سجلات Render
 process.on('uncaughtException', (err) => {
   console.error('UNCAUGHT_EXCEPTION:', err.stack || err.message);
