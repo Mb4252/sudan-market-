@@ -28,10 +28,10 @@
   }
 
   renderTrend();
-  window.addEventListener('storage', e => { if (e.key === 'user_browser_posts_v1') renderTrend(); });
   const postsContainer = document.getElementById('posts');
-  if (postsContainer) {
+  if (postsContainer){
     const observer = new MutationObserver(renderTrend);
-    observer.observe(postsContainer, { childList: true, subtree: true });
+    observer.observe(postsContainer, {childList:true, subtree:true});
   }
+  window.addEventListener('storage', (e)=>{ if(e.key==='user_browser_posts_v1') renderTrend(); });
 })();
