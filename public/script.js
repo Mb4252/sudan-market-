@@ -10,15 +10,6 @@ const contentEl = document.getElementById('content');
 const publishBtn = document.getElementById('publishBtn');
 const postsEl = document.getElementById('posts');
 
-function escapeHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 function getLocalPosts() {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -30,6 +21,10 @@ function getLocalPosts() {
 
 function saveLocalPost(post) {
   if (!post || !post.content) return;
+  // add price tag if missing
+  if (!post.priceTag) {
+    post.priceTag = typeof window.detectPrice === 'function' ? window.detectPrice(post.content) : '';
+  }
   const posts = getLocalPosts();
   if (post.id && posts.some(p => p.id === post.id)) return;
   posts.unshift(post);
@@ -45,7 +40,7 @@ function renderPosts() {
   const posts = getLocalPosts();
   if (!postsEl) return;
   postsEl.innerHTML = posts.map(p => `
-    <div class="post">
+    <div class="post ${p.priceTag ? p.priceTag : ''}">
       <div class="meta">${escapeHtml(p.author || 'مستخدم')} — ${escapeHtml(p.timestamp || '')}</div>
       <div>${escapeHtml(p.content || '')}</div>
     </div>
@@ -127,6 +122,9 @@ if (publishBtn && contentEl) {
       content: text,
       timestamp: new Date().toISOString()
     };
+
+    // add price tag before sending
+    msg.priceTag = typeof window.detectPrice === 'function' ? window.detectPrice(msg.content) : '';
 
     saveLocalPost(msg);
 
