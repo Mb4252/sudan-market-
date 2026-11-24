@@ -134,34 +134,32 @@ function attachPostClickHandlers(){
     el.addEventListener('click',()=>{
       const id=el.getAttribute('data-id');
       if(!id) return;
+      // Toggle selection state
       if(el.classList.contains('selected')){
         el.classList.remove('selected');
       }else{
+        // Ensure no more than two posts are selected
         const alreadySelected=postsEl.querySelectorAll('.post.selected');
         if(alreadySelected.length>=2){
-          // remove the oldest selected (first in the NodeList)
+          // Deselect the first selected one
           alreadySelected[0].classList.remove('selected');
         }
         el.classList.add('selected');
       }
-      const selectedPosts=Array.from(postsEl.querySelectorAll('.post.selected')).map(sel=>{
-        const pid=sel.getAttribute('data-id');
+      // After toggling, check how many are selected
+      const selected=Array.from(postsEl.querySelectorAll('.post.selected')).map(div=>{
+        const pid=div.getAttribute('data-id');
         const posts=getLocalPosts();
         return posts.find(p=>p.id===pid);
       }).filter(Boolean);
-      if(selectedPosts.length===2){
-        showCompareModal(selectedPosts);
-        // clear selection after showing the modal
-        selectedPosts.forEach(p=>{
-          const elSel=postsEl.querySelector(`.post[data-id="${p.id}"]`);
-          if(elSel) elSel.classList.remove('selected');
-        });
+      if(selected.length===2){
+        showCompareModal(selected);
       }
     });
   });
 }
 
-// initiate WebSocket connection
+// Initialize connection and UI
 connect();
-
+renderPosts();
 })();
