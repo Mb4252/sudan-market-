@@ -106,9 +106,8 @@ function shutdown(){
   clearInterval(heartbeatInterval);
   clearInterval(systemBroadcastInterval);
   wss.close(() => {
-    console.log('WebSocket server closed');
     server.close(() => {
-      console.log('HTTP server closed');
+      console.log('Server shut down gracefully');
       process.exit(0);
     });
   });

@@ -1,184 +1,177 @@
 (function(){
-const STORAGE_KEY='user_browser_posts_v1';
-const WS_URL=location.hostname==='localhost'?`ws://${location.host}`:`wss://${location.hostname}`;
+  const STORAGE_KEY='user_browser_posts_v1';
+  const WS_URL=location.hostname==='localhost'?`ws://${location.host}`:`wss://${location.hostname}`;
 
-const statusEl=document.getElementById('status');
-const serverTimeEl=document.getElementById('serverTime');
-const authorEl=document.getElementById('author');
-const contentEl=document.getElementById('content');
-const publishBtn=document.getElementById('publishBtn');
-const postsEl=document.getElementById('posts');
+  const statusEl=document.getElementById('status');
+  const serverTimeEl=document.getElementById('serverTime');
+  const authorEl=document.getElementById('author');
+  const contentEl=document.getElementById('content');
+  const publishBtn=document.getElementById('publishBtn');
+  const postsEl=document.getElementById('posts');
 
-let currentFilter=''; // '' | 'cheap' | 'expensive'
-window.currentFilter=currentFilter;
+  let currentFilter=''; // '' | 'cheap' | 'expensive'
+  window.currentFilter=currentFilter;
 
-// BroadcastChannel for instant cross‑tab sync
-const bc = new BroadcastChannel('posts_sync');
-bc.onmessage = e => {
-  if (e.data && e.data.type === 'sync') {
+  // BroadcastChannel for cross‑tab sync
+  const bc = new BroadcastChannel('posts_sync');
+  bc.onmessage = e => {
+    if (e.data && e.data.type === 'sync') {
+      renderPosts();
+    }
+  };
+
+  function broadcastUpdate(){
+    bc.postMessage({type:'sync'});
+  }
+
+  function getLocalPosts(){
+    try{const parsed=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(parsed)?parsed:[];}
+    catch{return[];}
+  }
+
+  function saveLocalPost(post){
+    if(!post||!post.content) return;
+    if(!post.priceTag){
+      post.priceTag=typeof window.detectPrice==='function'?window.detectPrice(post.content):'';
+    }
+    const posts=getLocalPosts();
+    if(post.id && posts.some(p=>p.id===post.id)) return; // avoid duplicates
+    posts.unshift(post);
+    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(posts.slice(0,200)));
+      broadcastUpdate();
+    }catch(e){console.warn('تعذر حفظ المنشور في localStorage:',e);}
     renderPosts();
   }
-};
 
-function broadcastUpdate(){
-  bc.postMessage({type:'sync'});
-}
-
-function getLocalPosts(){
-  try{const parsed=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(parsed)?parsed:[];}
-  catch{return[];}
-}
-
-function saveLocalPost(post){
-  if(!post||!post.content) return;
-  if(!post.priceTag){
-    post.priceTag=typeof window.detectPrice==='function'?window.detectPrice(post.content):'';
+  function renderPosts(){
+    const posts=getLocalPosts();
+    if(!postsEl) return;
+    const filtered=currentFilter?posts.filter(p=>p.priceTag===currentFilter):posts;
+    postsEl.innerHTML=filtered.map(p=>`\n    <div class="post ${p.priceTag?p.priceTag:''}" data-id="${p.id}">\n      <div class="meta">${escapeHtml(p.author||'مستخدم')} — ${escapeHtml(p.timestamp||'')}\n      </div>\n      <div>${escapeHtml(p.content||'')}</div>\n    </div>\n  `).join('')||'<p>لا توجد منشورات محفوظة في المتصفح بعد.</p>';
+    attachPostClickHandlers();
   }
-  const posts=getLocalPosts();
-  if(post.id && posts.some(p=>p.id===post.id)) return; // avoid duplicates
-  posts.unshift(post);
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(posts.slice(0,200)));
-    broadcastUpdate();
-  }catch(e){console.warn('تعذر حفظ المنشور في localStorage:',e);}
-  renderPosts();
-}
 
-function renderPosts(){
-  const posts=getLocalPosts();
-  if(!postsEl) return;
-  const filtered=currentFilter?posts.filter(p=>p.priceTag===currentFilter):posts;
-  postsEl.innerHTML=filtered.map(p=>`\n    <div class="post ${p.priceTag?p.priceTag:''}" data-id="${p.id}">\n      <div class="meta">${escapeHtml(p.author||'مستخدم')} — ${escapeHtml(p.timestamp||'')}\n      </div>\n      <div>${escapeHtml(p.content||'')}</div>\n    </div>\n  `).join('')||'<p>لا توجد منشورات محفوظة في المتصفح بعد.</p>';
-  attachPostClickHandlers();
-}
+  function setConnectedStatus(isConnected){
+    if(!statusEl) return;
+    const base=isConnected?'متصل بـ Render':'جاري الاتصال بـ Render';
+    statusEl.textContent=base;
+  }
 
-function setConnectedStatus(isConnected){
-  if(!statusEl) return;
-  const base=isConnected?'متصل بـ Render':'جاري الاتصال بـ Render';
-  statusEl.textContent=base;
-}
+  function updateOnlineCount(){
+    const isOpen=socket && socket.readyState===WebSocket.OPEN;
+    fetch('/stats')
+      .then(r=>{if(!r.ok) throw new Error(`HTTP ${r.status}`);return r.json();})
+      .then(data=>{const count=Number(data.connectedClients??data.clients??0);
+        const base=isOpen?'متصل بـ Render':'جاري الاتصال بـ Render';
+        if(statusEl){statusEl.textContent=`${base} — المتصلون الآن: ${count}`;}}
+      )
+      .catch(()=>{if(statusEl && !isOpen){statusEl.textContent='انقطع الاتصال، جاري إعادة المحاولة...';}});
+  }
 
-function updateOnlineCount(){
-  const isOpen=socket && socket.readyState===WebSocket.OPEN;
-  fetch('/stats')
-    .then(r=>{if(!r.ok) throw new Error(`HTTP ${r.status}`);return r.json();})
-    .then(data=>{const count=Number(data.connectedClients??data.clients??0);
-      const base=isOpen?'متصل بـ Render':'جاري الاتصال بـ Render';
-      if(statusEl){statusEl.textContent=`${base} — المتصلون الآن: ${count}`;}}
-    )
-    .catch(()=>{if(statusEl && !isOpen){statusEl.textContent='انقطع الاتصال، جاري إعادة المحاولة...';}});
-}
+  let socket;
+  let reconnectTimer;
 
-let socket;
-let reconnectTimer;
+  function connect(){
+    clearTimeout(reconnectTimer);
+    socket=new WebSocket(WS_URL);
 
-function connect(){
-  clearTimeout(reconnectTimer);
-  socket=new WebSocket(WS_URL);
-
-  socket.onopen=()=>{
-    setConnectedStatus(true);
-    updateOnlineCount();
-  };
-
-  socket.onclose=()=>{
-    setConnectedStatus(false);
-    if(statusEl){statusEl.textContent='انقطع الاتصال، جاري إعادة المحاولة...';}
-    reconnectTimer=setTimeout(connect,2500);
-  };
-
-  socket.onerror=()=>{setConnectedStatus(false);if(statusEl){statusEl.textContent='تعذر الاتصال بالخادم، جاري إعادة المحاولة...';}};
-
-  socket.onmessage=event=>{
-    try{
-      const data=JSON.parse(event.data);
-      if(data.type==='post'){
-        saveLocalPost(data);
-        updateOnlineCount();
-      }else if(data.type==='system' && data.timestamp && serverTimeEl){
-        const time=new Date(data.timestamp).toLocaleTimeString();
-        serverTimeEl.textContent=`وقت الخادم: ${time}`;
-      }
-    }catch(e){console.warn('رسالة WebSocket غير صالحة:',e);}
-  };
-}
-
-setInterval(updateOnlineCount,10000);
-
-if(publishBtn && contentEl){
-  publishBtn.addEventListener('click',()=>{
-    if(publishBtn.disabled) return;
-    const text=contentEl.value.trim();
-    if(!text) return;
-
-    const msg={
-      type:'post',
-      id:`${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
-      author:(authorEl?authorEl.value.trim():'' )||'مستخدم',
-      content:text,
-      timestamp:new Date().toISOString()
+    socket.onopen=()=>{
+      setConnectedStatus(true);
+      updateOnlineCount();
     };
 
-    msg.priceTag=typeof window.detectPrice==='function'?window.detectPrice(msg.content):'';
+    socket.onclose=()=>{
+      setConnectedStatus(false);
+      if(statusEl){statusEl.textContent='انقطع الاتصال، جاري إعادة المحاولة...';}
+      reconnectTimer=setTimeout(connect,2500);
+    };
 
-    saveLocalPost(msg);
+    socket.onerror=()=>{setConnectedStatus(false);if(statusEl){statusEl.textContent='تعذر الاتصال بالخادم، جاري إعادة المحاولة...';}};
 
-    if(socket && socket.readyState===WebSocket.OPEN){socket.send(JSON.stringify(msg));}
+    socket.onmessage=event=>{
+      try{
+        const data=JSON.parse(event.data);
+        if(data.type==='post'){
+          saveLocalPost(data);
+          updateOnlineCount();
+        }else if(data.type==='system' && data.timestamp && serverTimeEl){
+          const time=new Date(data.timestamp).toLocaleTimeString();
+          serverTimeEl.textContent=`وقت الخادم: ${time}`;
+        }
+      }catch(e){console.warn('رسالة WebSocket غير صالحة:',e);}
+    };
+  }
 
-    contentEl.value='';
-    publishBtn.disabled=true;
-    setTimeout(()=>{publishBtn.disabled=false;},1000);
-  });
-}
+  setInterval(updateOnlineCount,10000);
+  connect();
 
-window.setPostFilter=function(filter){
-  currentFilter=filter;
-  window.currentFilter=filter;
-  renderPosts();
-};
+  if(publishBtn && contentEl){
+    publishBtn.addEventListener('click',()=>{
+      if(publishBtn.disabled) return;
+      const text=contentEl.value.trim();
+      if(!text) return;
 
-function showCompareModal(selectedPosts){
-  if(selectedPosts.length!==2) return;
-  const [a,b]=selectedPosts;
-  const message=`مقارنة بين المنشورين:\n\n--- المنشور الأول ---\nالكاتب: ${a.author}\nالسعر: ${a.priceTag||'غير محدد'}\nالمحتوى: ${a.content}\n\n--- المنشور الثاني ---\nالكاتب: ${b.author}\nالسعر: ${b.priceTag||'غير محدد'}\nالمحتوى: ${b.content}`;
-  alert(message);
-}
+      const msg={
+        type:'post',
+        id:`${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+        author:(authorEl?authorEl.value.trim():'' )||'مستخدم',
+        content:text,
+        timestamp:new Date().toISOString()
+      };
 
-function attachPostClickHandlers(){
-  if(!postsEl) return;
-  const postElements=postsEl.querySelectorAll('.post');
-  postElements.forEach(el=>{
-    // Remove any previous listener to avoid duplication
-    if(el._clickHandler){
-      el.removeEventListener('click', el._clickHandler);
+      msg.priceTag=typeof window.detectPrice==='function'?window.detectPrice(msg.content):'';
+
+      saveLocalPost(msg);
+
+      if(socket && socket.readyState===WebSocket.OPEN){socket.send(JSON.stringify(msg));}
+
+      contentEl.value='';
+      publishBtn.disabled=true;
+      setTimeout(()=>{publishBtn.disabled=false;},1000);
+    });
+  }
+
+  window.setPostFilter=function(filter){
+    currentFilter=filter;
+    window.currentFilter=filter;
+    renderPosts();
+  };
+
+  // ---------- Post selection & compare logic ----------
+  function attachPostClickHandlers(){
+    if(!postsEl) return;
+    const postElements=postsEl.querySelectorAll('.post');
+    postElements.forEach(el=>{
+      el.onclick = () => {
+        el.classList.toggle('selected');
+        const selected = postsEl.querySelectorAll('.post.selected');
+        if(selected.length > 2){
+          // keep only the last two selected
+          selected[0].classList.remove('selected');
+        }
+        if(selected.length === 2){
+          const ids = Array.from(selected).map(s=>s.getAttribute('data-id'));
+          const allPosts = getLocalPosts();
+          const selectedPosts = allPosts.filter(p=>ids.includes(p.id));
+          if(selectedPosts.length===2){
+            showCompareModal(selectedPosts);
+          }
+        }
+      };
+    });
+  }
+
+  function showCompareModal(selectedPosts){
+    const [a,b]=selectedPosts;
+    const message=`مقارنة بين المنشورين:\n\n--- المنشور الأول ---\nالكاتب: ${a.author}\nالسعر: ${a.priceTag||'غير محدد'}\nالمحتوى: ${a.content}\n\n--- المنشور الثاني ---\nالكاتب: ${b.author}\nالسعر: ${b.priceTag||'غير محدد'}\nالمحتوى: ${b.content}`;
+    alert(message);
+    // after showing, clear selection
+    const postsContainer=document.getElementById('posts');
+    if(postsContainer){
+      postsContainer.querySelectorAll('.post.selected').forEach(el=>el.classList.remove('selected'));
     }
-    const handler=()=>{
-      const currentlySelected=postsEl.querySelectorAll('.post.selected');
-      if(el.classList.contains('selected')){
-        el.classList.remove('selected');
-      }else{
-        if(currentlySelected.length>=2){
-          // Deselect the oldest selected post
-          currentlySelected[0].classList.remove('selected');
-        }
-        el.classList.add('selected');
-      }
-      const newSelection=postsEl.querySelectorAll('.post.selected');
-      if(newSelection.length===2){
-        const ids=[newSelection[0].getAttribute('data-id'), newSelection[1].getAttribute('data-id')];
-        const allPosts=getLocalPosts();
-        const a=allPosts.find(p=>p.id===ids[0]);
-        const b=allPosts.find(p=>p.id===ids[1]);
-        if(a && b){
-          showCompareModal([a,b]);
-        }
-      }
-    };
-    el._clickHandler=handler;
-    el.addEventListener('click',handler);
-  });
-}
+  }
 
-// Initialize
-connect();
-renderPosts();
+  // Initial render on load
+  renderPosts();
 })();
