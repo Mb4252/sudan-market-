@@ -29,7 +29,6 @@
 
   <script>
     const STORAGE_KEY = 'user_browser_posts_v1';
-    // غيّر الرابط إلى رابط خدمتك على Render (مثال: wss://your-service.onrender.com)
     const WS_URL = location.hostname === 'localhost'
       ? `ws://${location.host}`
       : `wss://${location.hostname}`;
@@ -41,11 +40,8 @@
     const postsEl = document.getElementById('posts');
 
     function getLocalPosts() {
-      try {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      } catch {
-        return [];
-      }
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+      catch { return []; }
     }
 
     function saveLocalPost(post) {
@@ -73,10 +69,25 @@
         .replace(/"/g, '&quot;');
     }
 
+    function updateOnlineCount() {
+      fetch('/stats')
+        .then(r => r.json())
+        .then(data => {
+          const count = data.connectedClients || 0;
+          const base = socket && socket.readyState === WebSocket.OPEN ? 'متصل بـ Render' : 'جاري الاتصال بـ Render';
+          statusEl.textContent = `${base} — المتصلون الآن: ${count}`;
+        })
+        .catch(() => {
+          // fallback if /stats not reachable
+        });
+    }
+
     let socket;
     function connect() {
       socket = new WebSocket(WS_URL);
-      socket.onopen = () => { statusEl.textContent = 'متصل بـ Render (البث نشط بدون تخزين على الخادم)'; };
+      socket.onopen = () => {
+        updateOnlineCount();
+      };
       socket.onclose = () => {
         statusEl.textContent = 'انقطع الاتصال، جاري إعادة المحاولة...';
         setTimeout(connect, 2500);
@@ -86,10 +97,14 @@
           const data = JSON.parse(event.data);
           if (data.type === 'post') {
             saveLocalPost(data);
+            updateOnlineCount();
           }
         } catch {}
       };
     }
+
+    // Periodic refresh of online count
+    setInterval(updateOnlineCount, 10000);
 
     publishBtn.addEventListener('click', () => {
       const text = contentEl.value.trim();
@@ -101,10 +116,10 @@
         timestamp: new Date().toISOString()
       };
 
-      // حفظ في قاعدة بيانات المتصفح الخاصة بالمستخدم
+      // حفظ محلي
       saveLocalPost(msg);
 
-      // إرسال للآخرين عبر Render فقط بدون حفظ في Render
+      // إرسال للآخرين عبر WebSocket
       if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(msg));
       }

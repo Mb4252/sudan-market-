@@ -21,12 +21,20 @@ app.get('/health', (req, res) => {
   });
 });
 
+// إحصائيات إضافية (عدد المتصلين)
+app.get('/stats', (req, res) => {
+  res.json({ connectedClients: wss.clients.size });
+});
+
 // بث لحظي: أي رسالة ينشرها متصفح تصل لبقية المتصفحات المتصلة فقط (لا تخزين على Render)
 wss.on('connection', (ws) => {
+  ws.isAlive = true;
   ws.send(JSON.stringify({
     type: 'system',
     message: 'متصل ببث المتصفح المباشر (لا يتم حفظ البيانات على الخادم)'
   }));
+
+  ws.on('pong', () => { ws.isAlive = true; });
 
   ws.on('message', (rawData) => {
     try {
@@ -58,6 +66,18 @@ wss.on('connection', (ws) => {
     console.error('WS_CLIENT_ERROR:', err.message);
   });
 });
+
+// Heartbeat / keep‑alive mechanism
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+const interval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) return ws.terminate();
+    ws.isAlive = false;
+    ws.ping(() => {});
+  });
+}, HEARTBEAT_INTERVAL);
+
+wss.on('close', () => clearInterval(interval));
 
 // التقاط أخطاء الخادم غير المتوقعة لتظهر بوضوح في سجلات Render
 process.on('uncaughtException', (err) => {
