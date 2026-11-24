@@ -106,7 +106,7 @@
       </div>
     </div>
     <div class="max-w-xl mx-auto px-3.5 pb-2.5 flex items-center gap-1.5">
-      <input id="searchInput" type="text" oninput="renderAll()" placeholder="ابحث عن سلعة أو منطقة..." class="w-full text-xs bg-white border border-emerald-900/15 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
+      <input id="searchInput" type="text" maxlength="60" oninput="renderAll()" placeholder="ابحث عن سلعة أو منطقة..." class="w-full text-xs bg-white border border-emerald-900/15 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
       <button type="button" id="myZoneBtn" onclick="toggleMyZoneOnly()" class="text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-2.5 py-2 rounded-xl transition shrink-0">منطقتي</button>
       <a href="#feedbackSection" class="text-xs font-bold bg-white hover:bg-slate-50 text-[#235d9f] border border-slate-300 px-2.5 py-2 rounded-xl transition shrink-0">رأيك</a>
     </div>
@@ -236,10 +236,19 @@
     <!-- شريط ذكي مختصر -->
     <div id="smartStrip" class="flex items-center gap-2 overflow-x-auto pb-1 text-xs"></div>
 
+    <!-- أزرار مسح المنشورات فقط أو التعليقات فقط -->
+    <section class="bg-white rounded-2xl border border-emerald-700/20 p-3 shadow-2xs flex flex-wrap items-center justify-between gap-2">
+      <span class="text-[11px] font-extrabold text-slate-700">إدارة المحتوى السريعة:</span>
+      <div class="flex items-center gap-2">
+        <button type="button" onclick="clearPostsOnly()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-extrabold px-3 py-1.5 rounded-xl transition">🗑️ مسح المنشورات فقط</button>
+        <button type="button" onclick="clearCommentsOnly()" class="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-extrabold px-3 py-1.5 rounded-xl transition">💬 مسح التعليقات فقط</button>
+      </div>
+    </section>
+
     <!-- قائمة الأسعار المباشرة -->
     <section id="cardsContainer" class="space-y-3"></section>
 
-    <!-- قسم التصويت -->
+    <!-- قسم التصويت والتعليقات/الاقتراحات -->
     <section id="feedbackSection" class="bg-white rounded-2xl border border-emerald-700/20 p-4 shadow-2xs space-y-4">
       <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
         <div>
@@ -249,20 +258,23 @@
         <span id="totalVotesBadge" class="text-[11px] font-extrabold bg-emerald-50 text-[#1b7a43] border border-emerald-200 px-2.5 py-1 rounded-full">0 صوت</span>
       </div>
       <div id="pollOptionsContainer" class="space-y-2"></div>
-      <form onsubmit="submitSuggestion(event)" class="space-y-2 pt-2 border-t border-slate-100">
-        <label class="block text-xs font-extrabold text-slate-800">اكتب اقتراحك أو ملاحظتك لتطوير الموقع:</label>
+      <form onsubmit="submitSuggestion(event)" class="space-y-1.5 pt-2 border-t border-slate-100">
+        <label class="block text-xs font-extrabold text-slate-800">اكتب تعليقك أو اقتراحك (حد أقصى 180 حرفاً):</label>
         <div class="flex gap-2">
-          <input id="suggestionInput" type="text" maxlength="180" required placeholder="مثال: أضيفوا أسعار اللحوم والخضار..." class="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:bg-white focus:border-emerald-700" />
+          <input id="suggestionInput" type="text" maxlength="180" oninput="updateCharCounter('suggestionInput', 'suggestionCounter', 180)" required placeholder="مثال: أضيفوا أسعار اللحوم والخضار..." class="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:bg-white focus:border-emerald-700" />
           <button type="submit" class="bg-[#235d9f] hover:bg-[#1b4b82] active:scale-95 text-white text-xs font-extrabold px-4 py-2.5 rounded-xl transition shrink-0">إرسال</button>
+        </div>
+        <div class="flex justify-end">
+          <span id="suggestionCounter" class="text-[10px] font-bold text-slate-400">0 / 180</span>
         </div>
       </form>
       <div class="space-y-2">
         <div class="flex items-center justify-between">
-          <span class="text-[11px] font-extrabold text-slate-600">آخر اقتراحات الزوار</span>
-          <span id="suggestionsCount" class="text-[11px] text-slate-400">0 اقتراح</span>
+          <span class="text-[11px] font-extrabold text-slate-600">آخر التعليقات والاقتراحات</span>
+          <span id="suggestionsCount" class="text-[11px] text-slate-400">0 تعليق</span>
         </div>
         <div id="suggestionsList" class="space-y-2 max-h-64 overflow-y-auto">
-          <div class="text-center text-[11px] text-slate-400 py-3 bg-slate-50 rounded-xl">كن أول من يترك اقتراحاً لتطوير المشروع!</div>
+          <div class="text-center text-[11px] text-slate-400 py-3 bg-slate-50 rounded-xl">كن أول من يترك تعليقاً أو اقتراحاً لتطوير المشروع!</div>
         </div>
       </div>
     </section>
@@ -313,22 +325,31 @@
       </div>
       <form onsubmit="submitNewItem(event)" class="space-y-3">
         <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">السلعة</label>
-          <input id="addName" type="text" required placeholder="مثال: سكر، دقيق، زيت..." class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-xs font-bold text-slate-700">السلعة</label>
+            <span id="addNameCounter" class="text-[10px] font-bold text-slate-400">0 / 40</span>
+          </div>
+          <input id="addName" type="text" maxlength="40" oninput="updateCharCounter('addName', 'addNameCounter', 40)" required placeholder="مثال: سكر، دقيق، زيت..." class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
         </div>
         <div class="grid grid-cols-2 gap-2.5">
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1">السعر</label>
-            <input id="addPrice" type="number" step="any" required placeholder="0" class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
+            <input id="addPrice" type="number" step="any" min="1" max="1000000000" required placeholder="0" class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
           </div>
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">الوحدة</label>
-            <input id="addUnit" type="text" value="كيس / وحدة" class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-slate-700">الوحدة</label>
+              <span id="addUnitCounter" class="text-[10px] font-bold text-slate-400">11 / 25</span>
+            </div>
+            <input id="addUnit" type="text" maxlength="25" oninput="updateCharCounter('addUnit', 'addUnitCounter', 25)" value="كيس / وحدة" class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
           </div>
         </div>
         <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">المنطقة أو الحي</label>
-          <input id="addArea" type="text" required placeholder="اكتب اسم المنطقة أو الحي" class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-xs font-bold text-slate-700">المنطقة أو الحي</label>
+            <span id="addAreaCounter" class="text-[10px] font-bold text-slate-400">0 / 40</span>
+          </div>
+          <input id="addArea" type="text" maxlength="40" oninput="updateCharCounter('addArea', 'addAreaCounter', 40)" required placeholder="اكتب اسم المنطقة أو الحي" class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
         </div>
         <div class="flex gap-2 pt-1">
           <button type="submit" class="flex-1 bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl transition">نشر الآن</button>
@@ -349,11 +370,14 @@
         <input type="hidden" id="updateItemId" />
         <div>
           <label class="block text-xs font-bold text-slate-700 mb-1">السعر الجديد</label>
-          <input id="updatePrice" type="number" step="any" required class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
+          <input id="updatePrice" type="number" step="any" min="1" max="1000000000" required class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
         </div>
         <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">المنطقة أو الحي</label>
-          <input id="updateArea" type="text" required placeholder="اكتب اسم المنطقة أو الحي" class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-xs font-bold text-slate-700">المنطقة أو الحي</label>
+            <span id="updateAreaCounter" class="text-[10px] font-bold text-slate-400">0 / 40</span>
+          </div>
+          <input id="updateArea" type="text" maxlength="40" oninput="updateCharCounter('updateArea', 'updateAreaCounter', 40)" required placeholder="اكتب اسم المنطقة أو الحي" class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
         </div>
         <div class="flex gap-2 pt-1">
           <button type="submit" class="flex-1 bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl transition">حفظ وبث التحديث</button>
@@ -372,12 +396,12 @@
       </div>
       <div class="space-y-2.5">
         <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">اسمك الظاهر (اختياري)</label>
-          <input id="profileName" type="text" placeholder="اكتب اسمك" class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
+          <label class="block text-xs font-bold text-slate-700 mb-1">اسمك الظاهر (اختياري - حد أقصى 30 حرفاً)</label>
+          <input id="profileName" type="text" maxlength="30" placeholder="اكتب اسمك" class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
         </div>
         <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">منطقتي المفضلة (اختياري)</label>
-          <input id="profileZone" type="text" placeholder="اكتب منطقتك" class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
+          <label class="block text-xs font-bold text-slate-700 mb-1">منطقتي المفضلة (اختياري - حد أقصى 40 حرفاً)</label>
+          <input id="profileZone" type="text" maxlength="40" placeholder="اكتب منطقتك" class="w-full text-sm border border-slate-300 rounded-xl px-3.5 py-2 focus:outline-none focus:border-emerald-700" />
         </div>
         <div class="text-[11px] text-slate-500 bg-slate-50 px-3 py-2 rounded-xl flex items-center justify-between">
           <span>معرّفك الفريد:</span>
@@ -398,15 +422,25 @@
 
   <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg hidden"></div>
 
-  <a href="https://wa.me/?text=شوف%20رادار%20أسعار%20الحي%20-%20بتعرف%20أسعار%20منطقتك%3F%20شارك%20وصوّت%3A%20" target="_blank" class="fixed bottom-6 right-4 z-40 w-14 h-14 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center text-white text-2xl shadow-lg pulse-glow transition">📱</a>
+  <a href="https://wa.me/?text=شوف%20رادار%20أسعار%20الحي%20-%20بتعرف%20أسعار%20منطقتك%3F%20شارك%20وصوّت%3A%20" target="_blank" rel="noopener noreferrer" class="fixed bottom-6 right-4 z-40 w-14 h-14 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center text-white text-2xl shadow-lg pulse-glow transition">📱</a>
 
   <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
   <script>
     const RENDER_RELAY_URL = "https://sudan-market-2.onrender.com/gun";
     const RENDER_BASE_URL = "https://sudan-market-2.onrender.com";
 
+    // حدود الكتابة المعتمدة
+    const CHAR_LIMITS = {
+      name: 40,
+      unit: 25,
+      area: 40,
+      comment: 180,
+      profileName: 30
+    };
+
     const ITEMS_KEY = "radar_simple_items_v8";
     const DELETED_KEY = "radar_simple_deleted_v8";
+    const CLEARED_SUGGESTIONS_TS_KEY = "radar_cleared_suggestions_ts_v8";
     const UID_KEY = "radar_simple_uid_v8";
     const NAME_KEY = "radar_simple_name_v8";
     const ZONE_KEY = "radar_simple_zone_v8";
@@ -447,7 +481,6 @@
       { id: "starter_oil", name: "زيت نباتي", unit: "لتر / جركان", currency: "ج.س", price: 0, area: "أضف منطقتك", voters: {}, confirmations: 0, disputes: 0, publisherName: "نموذج جاهز للتحديث", publisherId: "starter", updatedAt: Date.now() - 2000, deleted: false, isStarter: true }
     ];
 
-    // مراكز الأحياء (تقريبي للسودان)
     const NEIGHBORHOOD_COORDS = {
       "الخرطوم": [15.5007, 32.5599],
       "الرياض": [15.5833, 32.5333],
@@ -468,6 +501,20 @@
       "القضارف": [14.0333, 35.3833],
       "بربر": [18.0167, 33.9833]
     };
+
+    function updateCharCounter(inputId, counterId, maxLen) {
+      const inp = document.getElementById(inputId);
+      const cnt = document.getElementById(counterId);
+      if (!inp || !cnt) return;
+      if (inp.value.length > maxLen) inp.value = inp.value.slice(0, maxLen);
+      const len = inp.value.length;
+      cnt.textContent = len + " / " + maxLen;
+      cnt.className = "text-[10px] font-bold " + (len >= maxLen ? "text-rose-600" : (len >= Math.floor(maxLen * 0.85) ? "text-amber-600" : "text-slate-400"));
+    }
+
+    function clampText(val, maxLen) {
+      return String(val || "").trim().slice(0, maxLen);
+    }
 
     function norm(str) {
       return String(str || "").toLowerCase()
@@ -491,6 +538,7 @@
     let deletedMap = loadJson(DELETED_KEY, {});
     let votesMap = loadJson(VOTES_KEY, {});
     let suggestionsMap = loadJson(SUGGESTIONS_KEY, {});
+    let clearedSuggestionsTs = Number(localStorage.getItem(CLEARED_SUGGESTIONS_TS_KEY) || 0);
     let priceHistory = loadJson(PRICE_HISTORY_KEY, {});
     let priceAlerts = loadJson(ALERTS_KEY, {});
     let dailyQuests = loadJson(QUESTS_KEY, null);
@@ -514,7 +562,11 @@
 
     function pickQuickGood(goodName) {
       const inp = document.getElementById("addName");
-      if (inp) { inp.value = goodName; document.getElementById("addPrice").focus(); }
+      if (inp) {
+        inp.value = clampText(goodName, CHAR_LIMITS.name);
+        updateCharCounter("addName", "addNameCounter", CHAR_LIMITS.name);
+        document.getElementById("addPrice").focus();
+      }
     }
 
     function loadJson(key, fallback) {
@@ -530,6 +582,7 @@
         localStorage.setItem(DELETED_KEY, JSON.stringify(deletedMap));
         localStorage.setItem(VOTES_KEY, JSON.stringify(votesMap));
         localStorage.setItem(SUGGESTIONS_KEY, JSON.stringify(suggestionsMap));
+        localStorage.setItem(CLEARED_SUGGESTIONS_TS_KEY, String(clearedSuggestionsTs));
         localStorage.setItem(PRICE_HISTORY_KEY, JSON.stringify(priceHistory));
         localStorage.setItem(ALERTS_KEY, JSON.stringify(priceAlerts));
         localStorage.setItem(NEIGHBORHOOD_HISTORY_KEY, JSON.stringify(neighborhoodHistory));
@@ -545,10 +598,10 @@
     }
 
     function getPublisherName() {
-      return (localStorage.getItem(NAME_KEY) || "").trim() || "زائر";
+      return clampText(localStorage.getItem(NAME_KEY), CHAR_LIMITS.profileName) || "زائر";
     }
     function getSavedZone() {
-      return (localStorage.getItem(ZONE_KEY) || "").trim();
+      return clampText(localStorage.getItem(ZONE_KEY), CHAR_LIMITS.area);
     }
 
     function updateMyZoneBtn() {
@@ -615,24 +668,28 @@
       if (!existing || incTs >= extTs) {
         const oldPrice = Number(existing && existing.price || 0);
         const newPrice = Number(entry.price || 0);
-        // تتبع تاريخ الأسعار
         if (id && newPrice > 0 && (!existing || oldPrice !== newPrice)) {
           if (!priceHistory[id]) priceHistory[id] = [];
           priceHistory[id].push({ price: newPrice, ts: incTs || Date.now() });
           if (priceHistory[id].length > 30) priceHistory[id] = priceHistory[id].slice(-30);
-          // فحص تنبيهات انخفاض السعر
           if (oldPrice > 0 && newPrice < oldPrice) {
             checkPriceAlert(id, oldPrice, newPrice, entry.name, entry.area);
           }
         }
         itemsMap[id] = {
-          id: id, name: String(entry.name).trim(), unit: String(entry.unit || "وحدة").trim(),
-          currency: String(entry.currency || "ج.س").trim(), price: newPrice,
-          area: String(entry.area || "غير محدد").trim(), voters: mergedVoters, confirmations: conf,
+          id: id,
+          name: clampText(entry.name, CHAR_LIMITS.name),
+          unit: clampText(entry.unit || "وحدة", CHAR_LIMITS.unit),
+          currency: clampText(entry.currency || "ج.س", 10),
+          price: newPrice,
+          area: clampText(entry.area || "غير محدد", CHAR_LIMITS.area),
+          voters: mergedVoters,
+          confirmations: conf,
           disputes: Math.max(Number(entry.disputes || 0), Number(existing && existing.disputes || 0)),
-          publisherName: String(entry.publisherName || (existing && existing.publisherName) || "مستخدم").trim(),
+          publisherName: clampText(entry.publisherName || (existing && existing.publisherName) || "مستخدم", CHAR_LIMITS.profileName),
           publisherId: String(entry.publisherId || (existing && existing.publisherId) || myUserId).trim(),
-          updatedAt: incTs || Date.now(), deleted: false
+          updatedAt: incTs || Date.now(),
+          deleted: false
         };
         return true;
       } else if (Object.keys(mergedVoters).length > Object.keys(existing.voters || {}).length) {
@@ -671,7 +728,7 @@
     }
     renderOnlineBadge();
 
-    let itemsNode = null, presenceNode = null, votesNode = null, suggestionsNode = null;
+    let itemsNode = null, presenceNode = null, votesNode = null, suggestionsNode = null, controlNode = null;
 
     function sendHeartbeat() {
       const now = Date.now();
@@ -692,6 +749,41 @@
         .catch(function() { failedHealthChecks++; if (failedHealthChecks >= 3) setConnectedState(false); });
     }
 
+    // مسح المنشورات فقط (دون مسح التعليقات/الاقتراحات أو التصويت أو النقاط)
+    function clearPostsOnly() {
+      if (!confirm("هل تريد مسح جميع المنشورات فقط دون مسح التعليقات؟")) return;
+      const now = Date.now();
+      Object.keys(itemsMap).forEach(function(id) {
+        deletedMap[id] = { deleted: true, deletedAt: now };
+        if (itemsNode) {
+          try { itemsNode.get(id).put({ id: id, deleted: true, deletedAt: now, deletedBy: myUserId }); } catch (e) {}
+        }
+      });
+      itemsMap = {};
+      saveState();
+      renderAll();
+      showToast("تم مسح جميع المنشورات فقط ✓");
+    }
+
+    // مسح التعليقات/الاقتراحات فقط (دون مسح المنشورات)
+    function clearCommentsOnly() {
+      if (!confirm("هل تريد مسح جميع التعليقات والاقتراحات فقط دون مسح المنشورات؟")) return;
+      const now = Date.now();
+      clearedSuggestionsTs = now;
+      Object.keys(suggestionsMap).forEach(function(sid) {
+        if (suggestionsNode) {
+          try { suggestionsNode.get(sid).put(null); } catch (e) {}
+        }
+      });
+      suggestionsMap = {};
+      if (controlNode) {
+        try { controlNode.get("clear_comments").put({ clearedAt: now, by: myUserId }); } catch (e) {}
+      }
+      saveState();
+      renderSuggestions();
+      showToast("تم مسح جميع التعليقات فقط ✓");
+    }
+
     if (typeof Gun !== "undefined") {
       try {
         const gun = Gun({ peers: [RENDER_RELAY_URL], retry: 2000 });
@@ -700,6 +792,7 @@
         presenceNode = rootNode.get("presence");
         votesNode = rootNode.get("project_votes");
         suggestionsNode = rootNode.get("project_suggestions");
+        controlNode = rootNode.get("control_events");
 
         gun.on("hi", function() {
           failedHealthChecks = 0;
@@ -707,10 +800,26 @@
           sendHeartbeat();
           Object.values(itemsMap).forEach(function(it) { if (!it.deleted) itemsNode.get(it.id).put(it); });
           Object.values(votesMap).forEach(function(v) { if (v && v.userId) votesNode.get(v.userId).put(v); });
-          Object.values(suggestionsMap).forEach(function(s) { if (s && s.id) suggestionsNode.get(s.id).put(s); });
+          Object.values(suggestionsMap).forEach(function(s) {
+            if (s && s.id && Number(s.createdAt || 0) > clearedSuggestionsTs) suggestionsNode.get(s.id).put(s);
+          });
         });
 
         gun.on("bye", function() { checkRenderHealth(); });
+
+        controlNode.get("clear_comments").on(function(data) {
+          const ts = Number(data && data.clearedAt || 0);
+          if (ts > clearedSuggestionsTs) {
+            clearedSuggestionsTs = ts;
+            Object.keys(suggestionsMap).forEach(function(k) {
+              if (Number(suggestionsMap[k] && suggestionsMap[k].createdAt || 0) <= ts) {
+                delete suggestionsMap[k];
+              }
+            });
+            saveState();
+            renderSuggestions();
+          }
+        });
 
         presenceNode.map().on(function(data, key) {
           const uid = String((data && data.userId) || key || "").trim();
@@ -745,13 +854,18 @@
         suggestionsNode.map().on(function(data, key) {
           if (!data || !key) return;
           const sid = String(data.id || key).trim();
-          const text = String(data.text || "").trim();
+          const text = clampText(data.text, CHAR_LIMITS.comment);
           if (!sid || !text) return;
           const ts = Number(data.createdAt || Date.now());
+          if (ts <= clearedSuggestionsTs) return;
           if (!suggestionsMap[sid]) {
             suggestionsMap[sid] = {
-              id: sid, text: text, author: String(data.author || "زائر").trim(),
-              zone: String(data.zone || "").trim(), userId: String(data.userId || "").trim(), createdAt: ts
+              id: sid,
+              text: text,
+              author: clampText(data.author || "زائر", CHAR_LIMITS.profileName),
+              zone: clampText(data.zone || "", CHAR_LIMITS.area),
+              userId: String(data.userId || "").trim(),
+              createdAt: ts
             };
             saveState();
             renderSuggestions();
@@ -926,12 +1040,10 @@
     function checkPriceAlert(id, oldPrice, newPrice, name, area) {
       const dropPct = ((oldPrice - newPrice) / oldPrice) * 100;
       if (dropPct >= 5) {
-        // إذا كان المستخدم مشتركاً في التنبيه لهذه السلعة
         const key = norm(name);
         if (priceAlerts[key]) {
           showToast(`🔻 ${name} نزل من ${oldPrice.toLocaleString()} إلى ${newPrice.toLocaleString()} (${dropPct.toFixed(0)}%)`);
         }
-        // إشعار المتصفح إذا مسموح
         if ("Notification" in window && Notification.permission === "granted") {
           try {
             new Notification("🔻 انخفض السعر!", {
@@ -982,11 +1094,10 @@
       const q = loadDailyQuests();
       if (q.progress[questId] !== undefined) {
         q.progress[questId] = Math.min(DAILY_QUESTS_TEMPLATE.find(t => t.id === questId).target, q.progress[questId] + amount);
-        // فحص اكتمال جميع المهام
         const allDone = DAILY_QUESTS_TEMPLATE.every(t => q.progress[t.id] >= t.target);
         if (allDone && !q.completed) {
           q.completed = true;
-          addPoints(20); // مكافأة إضافية
+          addPoints(20);
           showToast("🎉 أكملت كل مهام اليوم! +20 نقطة مكافأة");
         }
         localStorage.setItem(QUESTS_KEY, JSON.stringify(q));
@@ -1035,7 +1146,6 @@
       const key = norm(area);
       if (!neighborhoodHistory[week][key]) neighborhoodHistory[week][key] = { label: area, count: 0 };
       neighborhoodHistory[week][key].count++;
-      // احتفظ بآخر 4 أسابيع فقط
       const weeks = Object.keys(neighborhoodHistory).sort().slice(-4);
       const newHist = {};
       weeks.forEach(w => newHist[w] = neighborhoodHistory[w]);
@@ -1106,7 +1216,6 @@
         attribution: '© OpenStreetMap',
         maxZoom: 18
       }).addTo(mapInstance);
-      // legend
       const legend = L.control({ position: "bottomright" });
       legend.onAdd = function() {
         const div = L.DomUtil.create("div", "map-legend");
@@ -1120,14 +1229,12 @@
     }
     function refreshMap() {
       if (!mapInstance) return;
-      // إزالة markers القديمة
       mapInstance.eachLayer(layer => {
         if (layer instanceof L.CircleMarker) mapInstance.removeLayer(layer);
       });
       const valid = Object.values(itemsMap).filter(it => Number(it.price || 0) > 0);
       if (valid.length === 0) return;
 
-      // لكل حي: متوسط الأسعار
       const byArea = {};
       valid.forEach(it => {
         const key = norm(it.area);
@@ -1138,7 +1245,6 @@
       });
 
       const avgs = Object.values(byArea).map(a => a.prices.reduce((x, y) => x + y, 0) / a.prices.length);
-      const globalAvg = avgs.reduce((a, b) => a + b, 0) / avgs.length;
       const minAvg = Math.min(...avgs);
       const maxAvg = Math.max(...avgs);
 
@@ -1146,7 +1252,7 @@
         const avg = a.prices.reduce((x, y) => x + y, 0) / a.prices.length;
         const coords = NEIGHBORHOOD_COORDS[a.label] || NEIGHBORHOOD_COORDS[a.label.trim()];
         if (!coords) return;
-        let color = "#f59e0b"; // متوسط
+        let color = "#f59e0b";
         if (avg <= minAvg + (maxAvg - minAvg) * 0.33) color = "#16a34a";
         else if (avg >= minAvg + (maxAvg - minAvg) * 0.67) color = "#dc2626";
 
@@ -1323,19 +1429,24 @@
     function submitSuggestion(e) {
       e.preventDefault();
       const inp = document.getElementById("suggestionInput");
-      const text = inp.value.trim();
+      const text = clampText(inp.value, CHAR_LIMITS.comment);
       if (!text) return;
       const now = Date.now();
       const id = "sug_" + now + "_" + Math.random().toString(36).substring(2, 6);
       const entry = {
-        id: id, text: text, author: getPublisherName(), zone: getSavedZone(),
-        userId: myUserId, createdAt: now
+        id: id,
+        text: text,
+        author: getPublisherName(),
+        zone: getSavedZone(),
+        userId: myUserId,
+        createdAt: now
       };
       suggestionsMap[id] = entry;
       saveState();
       inp.value = "";
+      updateCharCounter("suggestionInput", "suggestionCounter", CHAR_LIMITS.comment);
       renderSuggestions();
-      showToast("تم إرسال اقتراحك بنجاح ✓");
+      showToast("تم إرسال تعليقك بنجاح ✓");
       addPoints(2);
       if (suggestionsNode) { try { suggestionsNode.get(id).put(entry); } catch (err) {} }
     }
@@ -1345,18 +1456,18 @@
       const countEl = document.getElementById("suggestionsCount");
       if (!listEl || !countEl) return;
       const list = Object.values(suggestionsMap)
-        .filter(function(s) { return s && s.text; })
+        .filter(function(s) { return s && s.text && Number(s.createdAt || 0) > clearedSuggestionsTs; })
         .sort(function(a, b) { return Number(b.createdAt || 0) - Number(a.createdAt || 0); });
-      countEl.textContent = list.length + (list.length === 1 ? " اقتراح" : " اقتراحات");
+      countEl.textContent = list.length + (list.length === 1 ? " تعليق" : " تعليقات");
       if (list.length === 0) {
-        listEl.innerHTML = '<div class="text-center text-[11px] text-slate-400 py-3 bg-slate-50 rounded-xl">كن أول من يترك اقتراحاً لتطوير المشروع!</div>';
+        listEl.innerHTML = '<div class="text-center text-[11px] text-slate-400 py-3 bg-slate-50 rounded-xl">كن أول من يترك تعليقاً أو اقتراحاً لتطوير المشروع!</div>';
         return;
       }
       listEl.innerHTML = list.map(function(s) {
         const meta = [esc(s.author || "زائر"), s.zone ? esc(s.zone) : "", timeAgo(s.createdAt)].filter(Boolean).join(" • ");
         return (
           '<div class="bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2.5 space-y-1">' +
-            '<p class="text-xs font-bold text-slate-800 leading-relaxed">' + esc(s.text) + '</p>' +
+            '<p class="text-xs font-bold text-slate-800 leading-relaxed break-words">' + esc(s.text) + '</p>' +
             '<div class="text-[10px] font-bold text-slate-400">' + meta + '</div>' +
           '</div>'
         );
@@ -1429,6 +1540,9 @@
       if (z && !document.getElementById("addArea").value) {
         document.getElementById("addArea").value = z;
       }
+      updateCharCounter("addName", "addNameCounter", CHAR_LIMITS.name);
+      updateCharCounter("addUnit", "addUnitCounter", CHAR_LIMITS.unit);
+      updateCharCounter("addArea", "addAreaCounter", CHAR_LIMITS.area);
       const m = document.getElementById("addModal");
       m.classList.remove("hidden");
       m.classList.add("flex");
@@ -1442,28 +1556,39 @@
 
     function submitNewItem(e) {
       e.preventDefault();
-      const name = document.getElementById("addName").value.trim();
+      const name = clampText(document.getElementById("addName").value, CHAR_LIMITS.name);
       const price = Number(document.getElementById("addPrice").value);
-      const unit = document.getElementById("addUnit").value.trim() || "وحدة";
-      const area = document.getElementById("addArea").value.trim();
+      const unit = clampText(document.getElementById("addUnit").value || "وحدة", CHAR_LIMITS.unit);
+      const area = clampText(document.getElementById("addArea").value, CHAR_LIMITS.area);
       if (!name || !price || price <= 0 || !area) return;
       const now = Date.now();
       const id = "item_" + now + "_" + Math.random().toString(36).substring(2, 6);
       const newItem = {
-        id: id, name: name, price: price, unit: unit, currency: "ج.س", area: area,
-        voters: { [myUserId]: true }, confirmations: 1, disputes: 0,
-        publisherName: getPublisherName(), publisherId: myUserId, updatedAt: now, deleted: false
+        id: id,
+        name: name,
+        price: price,
+        unit: unit,
+        currency: "ج.س",
+        area: area,
+        voters: { [myUserId]: true },
+        confirmations: 1,
+        disputes: 0,
+        publisherName: getPublisherName(),
+        publisherId: myUserId,
+        updatedAt: now,
+        deleted: false
       };
       delete deletedMap[id];
       itemsMap[id] = newItem;
-      // تتبع تاريخ الأسعار
       if (!priceHistory[id]) priceHistory[id] = [];
       priceHistory[id].push({ price: price, ts: now });
-      // تتبع نشاط الحي
       trackNeighborhoodActivity(area);
       saveState();
       e.target.reset();
       document.getElementById("addUnit").value = "كيس / وحدة";
+      updateCharCounter("addName", "addNameCounter", CHAR_LIMITS.name);
+      updateCharCounter("addUnit", "addUnitCounter", CHAR_LIMITS.unit);
+      updateCharCounter("addArea", "addAreaCounter", CHAR_LIMITS.area);
       closeAddModal();
       renderAll();
       showToast("تم النشر بنجاح ✓");
@@ -1482,7 +1607,8 @@
       document.getElementById("updateItemId").value = item.id;
       document.getElementById("updateTitle").textContent = "سجّل سعر: " + item.name;
       document.getElementById("updatePrice").value = Number(item.price || 0) > 0 ? item.price : "";
-      document.getElementById("updateArea").value = getSavedZone() || (item.area === "أضف منطقتك" ? "" : item.area) || "";
+      document.getElementById("updateArea").value = clampText(getSavedZone() || (item.area === "أضف منطقتك" ? "" : item.area) || "", CHAR_LIMITS.area);
+      updateCharCounter("updateArea", "updateAreaCounter", CHAR_LIMITS.area);
       const m = document.getElementById("updateModal");
       m.classList.remove("hidden");
       m.classList.add("flex");
@@ -1498,24 +1624,28 @@
       e.preventDefault();
       const id = document.getElementById("updateItemId").value;
       const price = Number(document.getElementById("updatePrice").value);
-      const area = document.getElementById("updateArea").value.trim();
+      const area = clampText(document.getElementById("updateArea").value, CHAR_LIMITS.area);
       const starter = STARTER_ITEMS.find(function(s) { return s.id === id; });
       const item = itemsMap[id] || starter;
       if (!item || !price || price <= 0 || !area) return;
       const oldPrice = Number(item.price || 0);
       const updated = Object.assign({}, item, {
-        price: price, area: area, voters: { [myUserId]: true }, confirmations: 1,
-        disputes: Number(item.disputes || 0) + 1, publisherName: getPublisherName(),
-        publisherId: myUserId, updatedAt: Date.now(), deleted: false, isStarter: false
+        price: price,
+        area: area,
+        voters: { [myUserId]: true },
+        confirmations: 1,
+        disputes: Number(item.disputes || 0) + 1,
+        publisherName: getPublisherName(),
+        publisherId: myUserId,
+        updatedAt: Date.now(),
+        deleted: false,
+        isStarter: false
       });
-      // تتبع تاريخ الأسعار
       if (!priceHistory[id]) priceHistory[id] = [];
       priceHistory[id].push({ price: price, ts: Date.now() });
-      // فحص انخفاض السعر
       if (oldPrice > 0 && price < oldPrice) {
         checkPriceAlert(id, oldPrice, price, item.name, area);
       }
-      // تتبع نشاط الحي
       trackNeighborhoodActivity(area);
       itemsMap[id] = updated;
       saveState();
@@ -1527,7 +1657,7 @@
     }
 
     function openProfileModal() {
-      document.getElementById("profileName").value = localStorage.getItem(NAME_KEY) || "";
+      document.getElementById("profileName").value = clampText(localStorage.getItem(NAME_KEY), CHAR_LIMITS.profileName);
       document.getElementById("profileZone").value = getSavedZone();
       document.getElementById("profileUserId").textContent = myUserId;
       const m = document.getElementById("profileModal");
@@ -1540,8 +1670,8 @@
       m.classList.remove("flex");
     }
     function saveProfile() {
-      const n = document.getElementById("profileName").value.trim();
-      const z = document.getElementById("profileZone").value.trim();
+      const n = clampText(document.getElementById("profileName").value, CHAR_LIMITS.profileName);
+      const z = clampText(document.getElementById("profileZone").value, CHAR_LIMITS.area);
       if (n) localStorage.setItem(NAME_KEY, n);
       else localStorage.removeItem(NAME_KEY);
       if (z) localStorage.setItem(ZONE_KEY, z);
@@ -1616,7 +1746,12 @@
       return "منذ " + Math.floor(hr / 24) + " ي";
     }
     function esc(s) {
-      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
     }
     function escJs(s) {
       return String(s || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
@@ -1734,7 +1869,6 @@
           const alertKey = norm(item.name);
           const hasAlert = Boolean(priceAlerts[alertKey]);
 
-          // sparkline صغير من تاريخ الأسعار
           const hist = priceHistory[item.id] || [];
           let sparklineHtml = "";
           if (hist.length >= 2) {
@@ -1810,7 +1944,6 @@
         }).join("");
       }
 
-      // 🧲 تحديث الميزات
       updateSavingsBanner(workingList);
       updateInflationChart();
       updateTicker(workingList);
@@ -1820,7 +1953,6 @@
       refreshMap();
     }
 
-    /* 🔔 إشعارات ذكية دورية */
     const SMART_TOASTS = [
       "🔥 3 أشخاص حدّثوا أسعارهم الآن",
       "💰 وفّر أكثر بمقارنة الأحياء",
@@ -1840,12 +1972,8 @@
       }
     }, 45000);
 
-    // تحديث الخريطة بعد التحميل
     setTimeout(() => { initMap(); }, 500);
-
-    // تحميل المهام اليومية
     loadDailyQuests();
-
     renderAll();
   </script>
 </body>
