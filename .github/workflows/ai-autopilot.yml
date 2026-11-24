@@ -45,6 +45,15 @@ jobs:
             process.exit(1);
           }
 
+          function sanitizeUrl(rawUrl) {
+            let u = String(rawUrl || "").trim();
+            const mdMatch = u.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+            if (mdMatch) {
+              u = (mdMatch[2] || mdMatch[1] || "").trim();
+            }
+            return u.replace(/^<|>$/g, "").trim();
+          }
+
           function collectProjectFiles(dir = ".", depth = 0, out = []) {
             if (depth > 2) return out;
             const ignore = new Set(["node_modules", ".git", ".github"]);
@@ -65,7 +74,7 @@ jobs:
           }
 
           async function pickGroqModel(apiKey) {
-            const modelsUrl = "https://api.groq.com/openai/v1/models";
+            const modelsUrl = sanitizeUrl("https://api.groq.com/openai/v1/models");
             const res = await fetch(modelsUrl, {
               headers: { Authorization: `Bearer ${apiKey}` }
             });
@@ -116,7 +125,8 @@ jobs:
           }
 
           async function callChatCompletion(targetUrl, targetHeaders, payloadBody) {
-            const res = await fetch(targetUrl, {
+            const cleanUrl = sanitizeUrl(targetUrl);
+            const res = await fetch(cleanUrl, {
               method: "POST",
               headers: targetHeaders,
               body: JSON.stringify(payloadBody)
@@ -143,7 +153,7 @@ jobs:
 
             let actionsErrorLogs = "";
             try {
-              const runsUrl = `[https://api.github.com/repos/$](https://api.github.com/repos/$){process.env.REPO}/actions/runs?per_page=5`;
+              const runsUrl = sanitizeUrl(`[https://api.github.com/repos/$](https://api.github.com/repos/$){process.env.REPO}/actions/runs?per_page=5`);
               const runsRes = await fetch(runsUrl, {
                 headers: {
                   Authorization: `Bearer ${process.env.GH_TOKEN}`,
@@ -156,7 +166,7 @@ jobs:
                   r => r.conclusion === "failure" && r.name !== "AI Auto Fix & Feature Updater"
                 );
                 if (failedRun) {
-                  const jobsRes = await fetch(failedRun.jobs_url, {
+                  const jobsRes = await fetch(sanitizeUrl(failedRun.jobs_url), {
                     headers: {
                       Authorization: `Bearer ${process.env.GH_TOKEN}`,
                       "User-Agent": "ai-autopilot"
@@ -179,7 +189,7 @@ jobs:
             let renderLogs = "";
             if (process.env.RENDER_LOG_URL) {
               try {
-                const rRes = await fetch(process.env.RENDER_LOG_URL);
+                const rRes = await fetch(sanitizeUrl(process.env.RENDER_LOG_URL));
                 renderLogs = rRes.ok ? (await rRes.text()).slice(0, 5000) : `HTTP ${rRes.status}`;
               } catch (e) {
                 renderLogs = "تعذر جلب سجلات Render: " + e.message;
@@ -225,7 +235,7 @@ jobs:
               provider = `Groq (${groqModel})`;
               console.log("🔌 المزود والنموذج المختار:", provider);
 
-              const groqUrl = "[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)";
+              const groqUrl = sanitizeUrl("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)");
               const groqHeaders = {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${apiKey}`
@@ -264,7 +274,7 @@ jobs:
             } else if (apiKey.startsWith("sk-or-")) {
               provider = "OpenRouter (free model)";
               console.log("🔌 المزود والنموذج المختار:", provider);
-              const openRouterUrl = "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)";
+              const openRouterUrl = sanitizeUrl("[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)");
               try {
                 const aiJson = await callChatCompletion(
                   openRouterUrl,
@@ -290,7 +300,7 @@ jobs:
             } else {
               provider = "Gemini (gemini-2.5-flash)";
               console.log("🔌 المزود والنموذج المختار:", provider);
-              const geminiUrl = `[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$){encodeURIComponent(apiKey)}`;
+              const geminiUrl = sanitizeUrl(`[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$){encodeURIComponent(apiKey)}`);
               try {
                 const aiJson = await callChatCompletion(
                   geminiUrl,
