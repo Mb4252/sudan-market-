@@ -1,0 +1,1 @@
+(function(){const es=new EventSource('/events');es.onmessage=e=>{const data=JSON.parse(e.data);if(data.type==='reload'&&data.element){const el=document.getElementById(data.element);if(el){fetch('public/'+data.element+'.html').then(r=>r.text()).then(html=>{el.innerHTML=html;});}}};})();
