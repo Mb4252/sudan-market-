@@ -13,7 +13,8 @@ let currentFilter='';// '' | 'cheap' | 'expensive'
 window.currentFilter=currentFilter;
 
 function getLocalPosts(){
-  try{const parsed=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(parsed)?parsed:[];}catch{return[];}
+  try{const parsed=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(parsed)?parsed:[];}
+  catch{return[];}
 }
 
 function saveLocalPost(post){
@@ -24,8 +25,8 @@ function saveLocalPost(post){
   const posts=getLocalPosts();
   if(post.id&&posts.some(p=>p.id===post.id)) return;
   posts.unshift(post);
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(posts.slice(0,200)));
-  }catch(e){console.warn('تعذر حفظ المنشور في localStorage:',e);}
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(posts.slice(0,200)));}
+  catch(e){console.warn('تعذر حفظ المنشور في localStorage:',e);}
   renderPosts();
 }
 
@@ -33,7 +34,8 @@ function renderPosts(){
   const posts=getLocalPosts();
   if(!postsEl) return;
   const filtered=currentFilter?posts.filter(p=>p.priceTag===currentFilter):posts;
-  postsEl.innerHTML=filtered.map(p=>`\n    <div class="post ${p.priceTag?p.priceTag:''}">\n      <div class="meta">${escapeHtml(p.author||'مستخدم')} — ${escapeHtml(p.timestamp||'')}\n      </div>\n      <div>${escapeHtml(p.content||'')}</div>\n    </div>\n  `).join('')||'<p>لا توجد منشورات محفوظة في المتصفح بعد.</p>';
+  postsEl.innerHTML=filtered.map(p=>`\n    <div class="post ${p.priceTag?p.priceTag:''}" data-id="${p.id}">\n      <div class="meta">${escapeHtml(p.author||'مستخدم')} — ${escapeHtml(p.timestamp||'')}\n      </div>\n      <div>${escapeHtml(p.content||'')}</div>\n    </div>\n  `).join('')||'<p>لا توجد منشورات محفوظة في المتصفح بعد.</p>';
+  attachPostClickHandlers();
 }
 
 function setConnectedStatus(isConnected){
@@ -71,7 +73,8 @@ function connect(){
   socket.onerror=()=>{setConnectedStatus(false);if(statusEl){statusEl.textContent='تعذر الاتصال بالخادم، جاري إعادة المحاولة...';}};
 
   socket.onmessage=event=>{
-    try{const data=JSON.parse(event.data);
+    try{
+      const data=JSON.parse(event.data);
       if(data.type==='post'){
         saveLocalPost(data);
         updateOnlineCount();
@@ -111,7 +114,6 @@ if(publishBtn && contentEl){
   });
 }
 
-// Expose filter control API for filter.js
 window.setPostFilter=function(filter){
   currentFilter=filter;
   window.currentFilter=filter;
@@ -122,10 +124,34 @@ renderPosts();
 connect();
 
 /* ---------- مقارنة سريعة بين منشورين ---------- */
-(function(){
-  const postsContainer=document.getElementById('posts');
-  if(!postsContainer) return;
-  let selected=[];
+function attachPostClickHandlers(){
+  if(!postsEl) return;
+  postsEl.querySelectorAll('.post').forEach(el=>el.classList.remove('selected'));
+  let selectedIds=[];
+  const clickListener=e=>{
+    const postEl=e.target.closest('.post');
+    if(!postEl) return;
+    const id=postEl.getAttribute('data-id');
+    if(selectedIds.includes(id)){
+      selectedIds=selectedIds.filter(i=>i!==id);
+      postEl.classList.remove('selected');
+    }else{
+      if(selectedIds.length<2){
+        selectedIds.push(id);
+        postEl.classList.add('selected');
+      }
+    }
+    if(selectedIds.length===2){
+      const posts=getLocalPosts().filter(p=>selectedIds.includes(p.id));
+      showCompareModal(posts);
+      selectedIds=[];
+      postsEl.querySelectorAll('.post.selected').forEach(el=>el.classList.remove('selected'));
+    }
+  };
+  postsEl.addEventListener('click',clickListener);
+}
+
+function showCompareModal(posts){
   const modal=document.createElement('div');
   modal.style.position='fixed';
   modal.style.top='0';
@@ -137,59 +163,43 @@ connect();
   modal.style.alignItems='center';
   modal.style.justifyContent='center';
   modal.style.zIndex='1000';
-  modal.style.visibility='hidden';
-  const content=document.createElement('div');
-  content.style.background='#fff';
-  content.style.padding='20px';
-  content.style.borderRadius='8px';
-  content.style.maxWidth='90%';
-  content.style.maxHeight='90%';
-  content.style.overflow='auto';
-  modal.appendChild(content);
-  document.body.appendChild(modal);
-
-  function clearSelection(){
-    const highlighted=document.querySelectorAll('.post.selected');
-    highlighted.forEach(el=>el.classList.remove('selected'));
-  }
-
-  function openCompare(){
-    const [a,b]=selected;
-    content.innerHTML=`<h3>مقارنة المنشورات</h3>
-      <div style="display:flex;gap:10px;">
-        <div style="flex:1;border:1px solid #d0d7de;padding:8px;">
-          <strong>${escapeHtml(a.author||'مستخدم')}</strong><br>
-          ${escapeHtml(a.content)}
-        </div>
-        <div style="flex:1;border:1px solid #d0d7de;padding:8px;">
-          <strong>${escapeHtml(b.author||'مستخدم')}</strong><br>
-          ${escapeHtml(b.content)}
-        </div>
-      </div>
-      <button id="closeCmp" style="margin-top:10px;">إغلاق</button>`;
-    modal.style.visibility='visible';
-    document.getElementById('closeCmp').onclick=()=>{modal.style.visibility='hidden';selected=[];clearSelection();};
-  }
-
-  postsContainer.addEventListener('click',e=>{
-    const postEl=e.target.closest('.post');
-    if(!postEl) return;
-    const index=Array.from(postsContainer.children).indexOf(postEl);
-    const posts=JSON.parse(localStorage.getItem('user_browser_posts_v1')||'[]');
-    const postData=posts[index];
-    if(!postData) return;
-    if(postEl.classList.contains('selected')){
-      postEl.classList.remove('selected');
-      selected=selected.filter(p=>p.id!==postData.id);
-    }else{
-      if(selected.length<2){
-        postEl.classList.add('selected');
-        selected.push(postData);
-        if(selected.length===2){
-          openCompare();
-        }
-      }
-    }
+  const box=document.createElement('div');
+  box.style.background='#fff';
+  box.style.padding='20px';
+  box.style.borderRadius='8px';
+  box.style.maxWidth='90%';
+  box.style.maxHeight='80%';
+  box.style.overflowY='auto';
+  const closeBtn=document.createElement('button');
+  closeBtn.textContent='إغلاق';
+  closeBtn.style.marginBottom='12px';
+  closeBtn.onclick=()=>{document.body.removeChild(modal);};
+  const table=document.createElement('table');
+  table.style.width='100%';
+  table.style.borderCollapse='collapse';
+  const header=document.createElement('tr');
+  ['الكاتب','الوقت','المحتوى','السعر'].forEach(txt=>{
+    const th=document.createElement('th');
+    th.textContent=txt;
+    th.style.borderBottom='1px solid #ddd';
+    th.style.padding='8px';
+    header.appendChild(th);
   });
-})();
+  table.appendChild(header);
+  posts.forEach(p=>{
+    const tr=document.createElement('tr');
+    [p.author||'مستخدم', new Date(p.timestamp).toLocaleString(), p.content, p.priceTag||''].forEach(val=>{
+      const td=document.createElement('td');
+      td.textContent=val;
+      td.style.padding='8px';
+      td.style.verticalAlign='top';
+      tr.appendChild(td);
+    });
+    table.appendChild(tr);
+  });
+  box.appendChild(closeBtn);
+  box.appendChild(table);
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+}
 })();

@@ -12,8 +12,6 @@ const PORT = process.env.PORT || 3000;
 const AI_API_KEY = process.env.AI_API_KEY || '';
 
 app.use(express.json({ limit: '64kb' }));
-
-// خدمة ملفات الواجهة الثابتة من الجذر ومن مجلد public
 app.use(express.static(__dirname));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -21,7 +19,6 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// مسار فحص جاهزية الخدمة على Render
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
@@ -30,12 +27,10 @@ app.get('/health', (req, res) => {
   });
 });
 
-// إحصائيات إضافية (عدد المتصلين)
 app.get('/stats', (req, res) => {
   res.json({ connectedClients: wss.clients.size });
 });
 
-// بث لحظي: أي رسالة ينشرها متصفح تصل لبقية المتصفحات المتصلة فقط (لا تخزين على Render)
 wss.on('connection', (ws) => {
   ws.isAlive = true;
   ws.send(JSON.stringify({
@@ -83,8 +78,7 @@ wss.on('connection', (ws) => {
   });
 });
 
-// Heartbeat / keep-alive mechanism
-const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+const HEARTBEAT_INTERVAL = 30000;
 const heartbeatInterval = setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws.isAlive === false) return ws.terminate();
@@ -93,8 +87,7 @@ const heartbeatInterval = setInterval(() => {
   });
 }, HEARTBEAT_INTERVAL);
 
-// Broadcast server timestamp every minute as a system message (no storage)
-const SYSTEM_BROADCAST_INTERVAL = 60000; // 1 minute
+const SYSTEM_BROADCAST_INTERVAL = 60000;
 const systemBroadcastInterval = setInterval(() => {
   const payload = JSON.stringify({
     type: 'system',
@@ -107,20 +100,18 @@ const systemBroadcastInterval = setInterval(() => {
   });
 }, SYSTEM_BROADCAST_INTERVAL);
 
-wss.on('close', () => {
+server.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+});
+
+function shutdown(){
   clearInterval(heartbeatInterval);
   clearInterval(systemBroadcastInterval);
-});
-
-// التقاط أخطاء الخادم غير المتوقعة لتظهر بوضوح في سجلات Render
-process.on('uncaughtException', (err) => {
-  console.error('UNCAUGHT_EXCEPTION:', err.stack || err.message);
-});
-
-process.on('unhandledRejection', (reason) => {
-  console.error('UNHANDLED_REJECTION:', reason);
-});
-
-server.listen(PORT, () => {
-  console.log(`Relay server running on port ${PORT}`);
-});
+  wss.close(() => {
+    server.close(() => {
+      process.exit(0);
+    });
+  });
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
