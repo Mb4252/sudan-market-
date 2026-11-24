@@ -43,5 +43,25 @@
       navigator.serviceWorker.register('sw.js').then(r=>console.log('SW registered',r)).catch(e=>console.error('SW fail',e));
     }
   </script>
+  <script>
+    (function(){
+      const serverUrl='wss://example.com/socket';
+      let socket=null;
+      function connect(){
+        socket=new WebSocket(serverUrl);
+        socket.onopen=()=>{console.log('WebSocket connected');};
+        socket.onclose=()=>{console.log('WebSocket closed, retrying'); setTimeout(connect,3000);};
+        socket.onerror=()=>{socket.close();};
+      }
+      connect();
+      window.sendMessage=data=>{
+        if(socket && socket.readyState===WebSocket.OPEN){
+          socket.send(JSON.stringify(data));
+        }else{
+          fetch('/longpoll', {method:'POST',body:JSON.stringify(data)});
+        }
+      };
+    })();
+  </script>
 </body>
 </html>
