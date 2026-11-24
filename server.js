@@ -38,9 +38,7 @@ wss.on('connection', (ws) => {
     message: 'متصل ببث المتصفح المباشر (لا يتم حفظ البيانات على الخادم)'
   }));
 
-  ws.on('pong', () => {
-    ws.isAlive = true;
-  });
+  ws.on('pong', () => { ws.isAlive = true; });
 
   ws.on('message', (rawData) => {
     try {
@@ -108,10 +106,13 @@ function shutdown(){
   clearInterval(heartbeatInterval);
   clearInterval(systemBroadcastInterval);
   wss.close(() => {
-    server.close(() => {
-      process.exit(0);
-    });
+    console.log('WebSocket server closed');
+  });
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
   });
 }
+
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);

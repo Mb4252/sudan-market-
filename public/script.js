@@ -129,7 +129,8 @@ function showCompareModal(selectedPosts){
 
 function attachPostClickHandlers(){
   if(!postsEl) return;
-  postsEl.querySelectorAll('.post').forEach(el=>el.classList.remove('selected'));
+  const postElements=postsEl.querySelectorAll('.post');
+  postElements.forEach(el=>el.classList.remove('selected'));
   let selectedIds=[];
   const clickListener=e=>{
     const postEl=e.target.closest('.post');
@@ -138,23 +139,23 @@ function attachPostClickHandlers(){
     if(selectedIds.includes(id)){
       selectedIds=selectedIds.filter(i=>i!==id);
       postEl.classList.remove('selected');
-    } else {
-      if (selectedIds.length >= 2) {
-        const firstId = selectedIds.shift();
-        const firstEl = postsEl.querySelector(`.post[data-id="${firstId}"]`);
-        if (firstEl) firstEl.classList.remove('selected');
-      }
+    }else{
+      if(selectedIds.length>=2) return; // max two selections
       selectedIds.push(id);
       postEl.classList.add('selected');
     }
-    if (selectedIds.length === 2) {
-      const selectedPosts = selectedIds.map(sid => {
-        const p = getLocalPosts().find(p => p.id === sid);
-        return p;
-      }).filter(Boolean);
+    if(selectedIds.length===2){
+      const posts=getLocalPosts();
+      const selectedPosts=posts.filter(p=>selectedIds.includes(p.id));
       showCompareModal(selectedPosts);
+      // reset selection after comparison
+      selectedIds=[];
+      postElements.forEach(el=>el.classList.remove('selected'));
     }
   };
-  postsEl.addEventListener('click', clickListener);
+  postElements.forEach(el=>el.addEventListener('click',clickListener));
 }
+
+// Start WebSocket connection
+connect();
 })();
