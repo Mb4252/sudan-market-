@@ -120,4 +120,76 @@ window.setPostFilter=function(filter){
 
 renderPosts();
 connect();
+
+/* ---------- مقارنة سريعة بين منشورين ---------- */
+(function(){
+  const postsContainer=document.getElementById('posts');
+  if(!postsContainer) return;
+  let selected=[];
+  const modal=document.createElement('div');
+  modal.style.position='fixed';
+  modal.style.top='0';
+  modal.style.left='0';
+  modal.style.width='100%';
+  modal.style.height='100%';
+  modal.style.background='rgba(0,0,0,0.5)';
+  modal.style.display='flex';
+  modal.style.alignItems='center';
+  modal.style.justifyContent='center';
+  modal.style.zIndex='1000';
+  modal.style.visibility='hidden';
+  const content=document.createElement('div');
+  content.style.background='#fff';
+  content.style.padding='20px';
+  content.style.borderRadius='8px';
+  content.style.maxWidth='90%';
+  content.style.maxHeight='90%';
+  content.style.overflow='auto';
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+
+  function clearSelection(){
+    const highlighted=document.querySelectorAll('.post.selected');
+    highlighted.forEach(el=>el.classList.remove('selected'));
+  }
+
+  function openCompare(){
+    const [a,b]=selected;
+    content.innerHTML=`<h3>مقارنة المنشورات</h3>
+      <div style="display:flex;gap:10px;">
+        <div style="flex:1;border:1px solid #d0d7de;padding:8px;">
+          <strong>${escapeHtml(a.author||'مستخدم')}</strong><br>
+          ${escapeHtml(a.content)}
+        </div>
+        <div style="flex:1;border:1px solid #d0d7de;padding:8px;">
+          <strong>${escapeHtml(b.author||'مستخدم')}</strong><br>
+          ${escapeHtml(b.content)}
+        </div>
+      </div>
+      <button id="closeCmp" style="margin-top:10px;">إغلاق</button>`;
+    modal.style.visibility='visible';
+    document.getElementById('closeCmp').onclick=()=>{modal.style.visibility='hidden';selected=[];clearSelection();};
+  }
+
+  postsContainer.addEventListener('click',e=>{
+    const postEl=e.target.closest('.post');
+    if(!postEl) return;
+    const index=Array.from(postsContainer.children).indexOf(postEl);
+    const posts=JSON.parse(localStorage.getItem('user_browser_posts_v1')||'[]');
+    const postData=posts[index];
+    if(!postData) return;
+    if(postEl.classList.contains('selected')){
+      postEl.classList.remove('selected');
+      selected=selected.filter(p=>p.id!==postData.id);
+    }else{
+      if(selected.length<2){
+        postEl.classList.add('selected');
+        selected.push(postData);
+        if(selected.length===2){
+          openCompare();
+        }
+      }
+    }
+  });
+})();
 })();
