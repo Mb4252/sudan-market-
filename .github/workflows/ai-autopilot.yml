@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Collect diagnostics and run multi-AI updater
+      - name: Collect diagnostics, run multi-AI updater, and verify live site
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -56,6 +56,14 @@ jobs:
             return u.replace(/^<|>$/g, "").trim();
           }
 
+          function getPagesUrl(repoSlug) {
+            const parts = String(repoSlug || "").split("/");
+            if (parts.length === 2 && parts[0] && parts[1]) {
+              return `https://${parts[0].toLowerCase()}.github.io/${parts[1]}/`;
+            }
+            return "https://mb4252.github.io/sudan-market-/";
+          }
+
           function collectProjectFiles(dir = ".", depth = 0, out = []) {
             if (depth > 2) return out;
             const ignore = new Set(["node_modules", ".git", ".github"]);
@@ -66,13 +74,44 @@ jobs:
                 collectProjectFiles(fullPath, depth + 1, out);
               } else if (/\.(js|html|css|json)$/i.test(entry.name)) {
                 const content = fs.readFileSync(fullPath, "utf8");
-                const clipped = content.length > 2400
-                  ? content.slice(0, 2400) + "\n/* ...مقتطع للاختصار... */"
+                const clipped = content.length > 2300
+                  ? content.slice(0, 2300) + "\n/* ...مقتطع للاختصار... */"
                   : content;
                 out.push({ fullPath, raw: content, content: clipped });
               }
             }
             return out;
+          }
+
+          async function probeLiveEndpoints(pagesUrl, renderUrl) {
+            const lines = [];
+            try {
+              const res = await fetch(sanitizeUrl(pagesUrl), { signal: AbortSignal.timeout(10000) });
+              const html = await res.text();
+              const scriptSrcs = [...html.matchAll(/<script[^>]+src=["'\'']([^"'\'']+)["'\'']/gi)].map(m => m[1]);
+              const hasBrokenLocalSrc = scriptSrcs.some(src => /^\/(?!sudan-market-)/.test(src));
+              lines.push(`صفحة GitHub Pages (${pagesUrl}): HTTP ${res.status} | عدد السكربتات: ${scriptSrcs.length} (${scriptSrcs.join(", ") || "لا يوجد"})`);
+              if (hasBrokenLocalSrc) {
+                lines.push("⚠️ تحذير مسار: يوجد رابط سكربت يبدأ بـ / قد ينكسر تحت مسار GitHub Pages الفرعي؛ استخدم مسارات نسبية مثل ./public/...");
+              }
+              if (/جاري الاتصال\.\.\./.test(html) && !/bridgeStatus|statusText|connectionStatus/i.test(html)) {
+                lines.push("⚠️ نص ثابت (جاري الاتصال...) موجود في HTML دون مؤشر حالة ديناميكي واضح.");
+              }
+            } catch (e) {
+              lines.push(`تعذر فحص صفحة GitHub Pages (${pagesUrl}): ${e.message}`);
+            }
+
+            if (renderUrl) {
+              const base = sanitizeUrl(renderUrl).replace(/\/+$/, "");
+              try {
+                const hRes = await fetch(`${base}/health`, { signal: AbortSignal.timeout(12000) });
+                const hTxt = await hRes.text();
+                lines.push(`جسر Render (${base}/health): HTTP ${hRes.status} | الرد: ${hTxt.slice(0, 120)}`);
+              } catch (e) {
+                lines.push(`جسر Render (${base}/health): غير مستجيب حالياً (${e.message}) — يجب أن يعمل الحفظ والنشر محلياً فوراً دون انتظار Render.`);
+              }
+            }
+            return lines.join("\n");
           }
 
           function runSelfDiagnostics(filesList, renderUrl) {
@@ -94,9 +133,6 @@ jobs:
             if (/location\.host/.test(allJsRaw) && !/onrender\.com/.test(allJsRaw)) {
               issues.push("الكود يستخدم location.host للـ WebSocket مما يجعله يتصل بـ github.io بدلاً من Render!");
             }
-            if (!renderUrl) {
-              issues.push("رابط Render غير محدد؛ تأكد من ضبط https://sudan-market-2.onrender.com والسماح بتحديثه محلياً في localStorage.");
-            }
 
             const referencedIds = [...allJsRaw.matchAll(/getElementById\(["'\'']([^"'\'']+)["'\'']\)/g)].map(m => m[1]);
             const missingIds = [...new Set(referencedIds.filter(id => !htmlIds.has(id)))];
@@ -108,9 +144,13 @@ jobs:
               issues.push("التخزين المحلي localStorage غير مفعّل بشكل واضح عند النشر.");
             }
 
+            if (!/window\.addEventListener\(["'\'']error["'\'']|onunhandledrejection/.test(allJsRaw + htmlFile.raw)) {
+              issues.push("لا يوجد ملتقط أخطاء عام (window.onerror / unhandledrejection) يظهر الخطأ بوضوح في الواجهة واللوغو.");
+            }
+
             return issues.length
               ? issues.map((x, i) => `${i + 1}. ${x}`).join("\n")
-              : "لا توجد أخطاء بنيوية واضحة في الفحص الساكن، ركّز على تحسين تجربة المستخدم والأفكار المبتكرة.";
+              : "لا توجد أخطاء بنيوية واضحة في الفحص الساكن، ركّز على تحسين تجربة النشر الفوري وميزات خارج الصندوق.";
           }
 
           async function getGroqModelsOrdered(apiKey) {
@@ -240,7 +280,7 @@ jobs:
                 { role: "user", content: usrPrompt }
               ],
               max_tokens: maxTokens,
-              temperature: 0.45
+              temperature: 0.5
             };
 
             let lastErr = null;
@@ -277,7 +317,7 @@ jobs:
                     { role: "user", content: usrPrompt }
                   ],
                   max_tokens: maxTokens,
-                  temperature: 0.4
+                  temperature: 0.5
                 };
                 if (jsonMode && m !== "codestral-latest") {
                   body.response_format = { type: "json_object" };
@@ -307,7 +347,7 @@ jobs:
                 runText: async (sysPrompt, usrPrompt, maxTokens = 700) => {
                   return await callMistral(mistralKey, sysPrompt, usrPrompt, maxTokens, false);
                 },
-                runJson: async (sysPrompt, usrPrompt, maxTokens = 2800) => {
+                runJson: async (sysPrompt, usrPrompt, maxTokens = 2900) => {
                   const res = await callMistral(mistralKey, sysPrompt, usrPrompt, maxTokens, true);
                   return { parsed: extractJsonObject(res.text), detail: res.detail };
                 }
@@ -337,7 +377,7 @@ jobs:
                             { role: "user", content: usrPrompt }
                           ],
                           max_tokens: maxTokens,
-                          temperature: 0.45
+                          temperature: 0.5
                         });
                         const out = data?.choices?.[0]?.message?.content || "";
                         if (!out.trim()) throw new Error("رد فارغ");
@@ -350,7 +390,7 @@ jobs:
                     }
                     throw lastErr || new Error("فشل نماذج Groq");
                   },
-                  runJson: async (sysPrompt, usrPrompt, maxTokens = 2800) => {
+                  runJson: async (sysPrompt, usrPrompt, maxTokens = 2900) => {
                     const models = await getGroqModelsOrdered(key);
                     const groqUrl = sanitizeUrl("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)");
                     const headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
@@ -367,7 +407,7 @@ jobs:
                             ],
                             response_format: { type: "json_object" },
                             max_tokens: maxTokens,
-                            temperature: 0.45
+                            temperature: 0.5
                           });
                         } catch (jErr) {
                           if (jErr.status === 429 || jErr.status === 400) throw jErr;
@@ -378,7 +418,7 @@ jobs:
                               { role: "user", content: usrPrompt }
                             ],
                             max_tokens: maxTokens,
-                            temperature: 0.45
+                            temperature: 0.5
                           });
                         }
                         const raw = data?.choices?.[0]?.message?.content || "";
@@ -401,7 +441,7 @@ jobs:
                     const out = await callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens);
                     return { text: out, detail: "OpenRouter (openrouter/free)" };
                   },
-                  runJson: async (sysPrompt, usrPrompt, maxTokens = 2800) => {
+                  runJson: async (sysPrompt, usrPrompt, maxTokens = 2900) => {
                     const raw = await callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens);
                     return { parsed: extractJsonObject(raw), detail: "OpenRouter (openrouter/free)" };
                   }
@@ -416,27 +456,30 @@ jobs:
             const openRouterKey = (process.env.OPENROUTER_API_KEY || "").trim();
             const mistralKey = (process.env.MISTRAL_API_KEY || "").trim();
             const renderUrl = sanitizeUrl(process.env.RENDER_URL || "[https://sudan-market-2.onrender.com](https://sudan-market-2.onrender.com)");
+            const pagesUrl = getPagesUrl(process.env.REPO);
             const providers = buildProviders(primaryKey, openRouterKey, mistralKey);
 
             if (!providers.length) {
-              failWithReason("لا يوجد أي مفتاح API صالح في Secrets (MISTRAL_API_KEY أو AI_API_KEY أو OPENROUTER_API_KEY).");
+              failWithReason("لا يوجد أي مفتاح API صالح في Secrets.");
             }
 
             const filesList = collectProjectFiles(".");
-            const diagnosticReport = runSelfDiagnostics(filesList, renderUrl);
-            console.log("🩺 تقرير التشخيص التلقائي للموقع:\n" + diagnosticReport);
+            const staticReport = runSelfDiagnostics(filesList, renderUrl);
+            const liveReport = await probeLiveEndpoints(pagesUrl, renderUrl);
+            const diagnosticReport = `${staticReport}\n\n--- فحص الموقع الحي والجسر ---\n${liveReport}`;
+            console.log("🩺 تقرير التشخيص الشامل (الثابت والحي):\n" + diagnosticReport);
 
             const currentFiles = filesList
               .map(f => `--- FILE: ${f.fullPath} ---\n${f.content}`)
               .join("\n\n")
-              .slice(0, 6800);
+              .slice(0, 6500);
 
             const architectureMandate = [
-              `رابط Render المعتمد: ${renderUrl} (استخدمه كأساس للـ WebSocket عبر wss:// وطلب الإيقاظ عبر /health، مع السماح بتعديله وحفظه في localStorage دون تعطيل النشر المحلي أبداً).`,
-              "1) النشر المحلي الفوري أولاً (Local-First): عند ضغط زر (نشر وحفظ)، يجب حفظ المنشور فوراً في localStorage وعرضه في قائمة المنشورات وتحديث رادار الأسعار ولوحة التحليل في نفس اللحظة دون انتظار اتصال Render! حتى لو كان Render نائماً أو غير متصل.",
-              "2) اتصال ذكي بجسر Render: عند فتح الصفحة على GitHub Pages، أرسل طلب fetch خفيف إلى مسار /health لإيقاظ Render من وضع السكون، ثم افتح WebSocket (wss://) لبث المنشورات الجديدة للآخرين فقط، مع إعادة محاولة تلقائية وعرض حالة الجسر بوضوح دون تجميد الواجهة.",
-              "3) إصلاح تعارضات DOM والسكربتات: تأكد أن كل معرّف HTML (id) يُستخدم في JS موجود فعلاً في index.html، وأن رادار الأسعار يعرض حالة واضحة حتى عند وجود 0 منشورات (بدلاً من البقاء عالقاً على جارِ التحليل...).",
-              "4) تطوير خارج الصندوق ومرتب بدون حشو: أضف ميزة عملية ومبتكرة لاكتشاف أرخص متجر/منطقة ومقارنتها بالأغلى (مثل شارة توفير فورية % ومقارنة بين منطقتين) بتصميم أنيق ومتناسق."
+              `رابط جسر Render المعتمد: ${renderUrl} (للبث المباشر WebSocket عبر wss:// وطلب الإيقاظ /health فقط).`,
+              "1) النشر والحفظ المحلي الفوري (Local-First بلا تعليق): عند ضغط زر النشر، احفظ المنشور فوراً في localStorage حتى لو كان النص حراً أو بدون رقم صريح أو كان Render نائماً، وحدّث قائمة المنشورات ورادار الأسعار ولوحة التحليل في نفس اللحظة، وأظهر رسالة تأكيد أو خطأ واضحة في اللوغو والواجهة بدلاً من الصمت أو التعليق.",
+              "2) واجهة نظيفة بلا تداخل أزرار أو نصوص عالقة: تأكد من عدم تراكب الأزرار، وأن حالة الاتصال تتحدث بوضوح (متصل بالجسر / وضع محلي سريع) دون بقاء (جاري الاتصال...) أو (جارِ التحليل...) عالقة للأبد.",
+              "3) إظهار الأخطاء وتشخيصها: أضف ملتقط أخطاء عام (window.onerror و unhandledrejection) يطبع الخطأ في اللوغو ويعرضه للمستخدم ليسهل تتبعه وإصلاحه.",
+              "4) أفكار مبتكرة خارج الصندوق (غير تقليدية): صمّم (رادار الفرص وفروق الأسعار) لاستخراج السعر والسلعة والمكان تلقائياً من النص الحر واكتشاف أرخص مكان مقابل الأغلى وحساب نسبة التوفير ومؤشر تذبذب السعر بطريقة ذكية ومختصرة."
             ].join("\n");
 
             let agreedPlan = "";
@@ -449,16 +492,16 @@ jobs:
 
               try {
                 const propRes = await p1.runText(
-                  "أنت مهندس تشخيص ومبتكر منتجات. حلّل الأعطال المكتشفة واقترح خطة إصلاح وتطوير خارج الصندوق في 4 نقاط مركّزة.",
-                  `تقرير الأعطال المكتشفة:\n${diagnosticReport}\n\nالقواعد:\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
-                  650
+                  "أنت مهندس تشخيص ومبتكر منتجات غير تقليدية. اشرح سبب تعليق النشر أو تداخل الأزرار من التقرير، واقترح ميزة ذكية خارج الصندوق وفحصاً واضحاً للأخطاء.",
+                  `التقرير:\n${diagnosticReport}\n\nالقواعد:\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
+                  680
                 );
                 console.log(`💡 مقترح ${propRes.detail} جاهز للمراجعة.`);
 
                 try {
                   const revRes = await p2.runText(
-                    "أنت المدقق الهندسي والمشارك الثاني. راجع المقترح، تأكد من تطابق معرّفات HTML مع JS وعدم تعليق زر النشر أو رادار الأسعار، ثم اكتب [اتفقنا] متبوعاً بالخطة النهائية الدقيقة.",
-                    `مقترح الطرف الأول:\n${propRes.text}\n\nتقرير الأعطال:\n${diagnosticReport}\n\n${architectureMandate}`,
+                    "أنت المدقق الهندسي والمشارك الثاني. راجع المقترح، تحقق من عدم وجود أزرار متراكبة أو تعليق عند النشر، وتأكد من ظهور الأخطاء بوضوح، ثم اكتب [اتفقنا] متبوعاً بالخطة النهائية.",
+                    `مقترح الطرف الأول:\n${propRes.text}\n\nالتقرير:\n${diagnosticReport}\n\n${architectureMandate}`,
                     700
                   );
                   agreedPlan = revRes.text;
@@ -472,16 +515,16 @@ jobs:
               } catch (propErr) {
                 console.warn(`⚠️ تعذر الطرف الأول (${propErr.message}) — ينتقل الطرف الثاني للعمل المستقل الفوري.`);
                 const soloRes = await p2.runText(
-                  "أنت المنفذ المستقل. ضع خطة إصلاح وتطوير فورية في 4 نقاط.",
-                  `تقرير الأعطال:\n${diagnosticReport}\n\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
-                  650
+                  "أنت المنفذ المستقل. ضع خطة فورية لحل التعليق، إظهار الأخطاء في اللوغو، وإضافة ميزة خارج الصندوق.",
+                  `التقرير:\n${diagnosticReport}\n\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
+                  680
                 );
                 agreedPlan = `[عمل مستقل فوري]\n${soloRes.text}`;
                 activeExecutor = p2;
               }
             } else {
               activeExecutor = providers[0];
-              agreedPlan = `أصلح الأعطال التالية ونفّذ التطوير المبتكر:\n${diagnosticReport}`;
+              agreedPlan = `أصلح المشاكل التالية وأضف تطويراً خارج الصندوق:\n${diagnosticReport}`;
             }
 
             const systemJsonInstruction = [
@@ -491,10 +534,10 @@ jobs:
             ].join("\n");
 
             const executionPrompt = [
-              "نفّذ الخطة المتفق عليها بدقة وتأكد من توافق index.html وملفات public/ بالكامل:",
+              "نفّذ الخطة المتفق عليها بدقة وتأكد من سلامة index.html وملفات public/:",
               agreedPlan,
               "",
-              "=== تشخيص الأعطال الواجب حلها ===",
+              "=== التقرير التشخيصي ===",
               diagnosticReport,
               "",
               architectureMandate,
@@ -509,7 +552,7 @@ jobs:
 
             for (const execProvider of orderedExecutors) {
               try {
-                execResult = await execProvider.runJson(systemJsonInstruction, executionPrompt, 2800);
+                execResult = await execProvider.runJson(systemJsonInstruction, executionPrompt, 2900);
                 lastExecErr = null;
                 break;
               } catch (e) {
@@ -524,7 +567,7 @@ jobs:
 
             const parsed = execResult.parsed;
             console.log(`✅ AI STATUS: WORKING (${execResult.detail})`);
-            console.log("ملخص التحديث:", parsed.summary || "تم الإصلاح والتطوير");
+            console.log("ملخص التحديث:", parsed.summary || "تم التطوير والمعالجة");
 
             let updatedCount = 0;
             if (parsed.files && typeof parsed.files === "object") {
@@ -547,14 +590,14 @@ jobs:
 
             console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
             if (updatedCount > 0) {
-              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Fix local-first publish & Render bridge").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
+              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Fix publish hang, error log & smart radar").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
             }
           }
 
           run();
           '
 
-      - name: Commit and push changes automatically
+      - name: Commit, push, and verify live site
         run: |
           git config user.name "ai-autopilot[bot]"
           git config user.email "ai-autopilot[bot]@users.noreply.github.com"
@@ -564,7 +607,7 @@ jobs:
             echo "ℹ️ nothing to commit, working tree clean."
             exit 0
           fi
-          SUMMARY="Fix local-first publish & Render bridge"
+          SUMMARY="Fix publish hang, error log & smart radar"
           if [ -f last_ai_change.txt ]; then
             SUMMARY=$(head -n 1 last_ai_change.txt)
             rm -f last_ai_change.txt
@@ -578,4 +621,13 @@ jobs:
           echo "✅ PUSH STATUS: تم رفع التعديلات إلى GitHub بنجاح."
           if [ -n "${RENDER_DEPLOY_HOOK_URL}" ]; then
             curl -s -X POST "${RENDER_DEPLOY_HOOK_URL}" || true
+          fi
+          echo "⏳ انتظار نشر التحديث على GitHub Pages للفحص..."
+          sleep 25
+          PAGES_URL="https://$(echo "${REPO}" | tr '[:upper:]' '[:lower:]' | cut -d'/' -f1).github.io/$(echo "${REPO}" | cut -d'/' -f2)/"
+          CODE=$(curl -s -o /tmp/pages_check.html -w "%{http_code}" "${PAGES_URL}" || echo "000")
+          echo "🌐 فحص ما بعد النشر (${PAGES_URL}): HTTP ${CODE}"
+          if [ "${CODE}" = "200" ]; then
+            echo "🧪 تحقق من تجربة الموقع عبر الرابط: ${PAGES_URL}"
+            grep -E "<script|<title|جاري الاتصال" /tmp/pages_check.html | head -n 15 || true
           fi
