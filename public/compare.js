@@ -71,11 +71,4 @@
   }
 
   window.showCompare = showCompare;
-  
-  document.addEventListener('DOMContentLoaded', () => {
-    const btn = document.getElementById('compareBtn');
-    if (btn) {
-      btn.addEventListener('click', showCompare);
-    }
-  });
 })();
