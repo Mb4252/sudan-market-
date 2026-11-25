@@ -6,8 +6,8 @@
     wsUrl: 'wss://browser-relay-server.onrender.com',
     storageKey: 'smart_posts_v1',
     maxPosts: 500,
-    priceRegex: /(\d+(\.\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
-    storeRegex: /(في|من|عند)\s+([\u0600-\u06FF\s]+)/i,
+    priceRegex: /(\\d+(\\.\\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
+    storeRegex: /(في|من|عند)\s+([\\u0600-\\u06FF\\s]+)/i,
     connectionTimeout: 5000
   };
 
@@ -46,7 +46,7 @@
 
     // Extract Price
     const priceMatch = text.match(window.APP_CONFIG.priceRegex);
-    post.price = priceMatch ? parseFloat(priceMatch[0].replace(/[^\d.]/g, '')) : null;
+    post.price = priceMatch ? parseFloat(priceMatch[0].replace(/[^\\d.]/g, '')) : null;
 
     // Extract Store Name
     const storeMatch = text.match(window.APP_CONFIG.storeRegex);
@@ -66,124 +66,106 @@
 
       if (relevantPosts.length > 0) {
         const avgPrice = relevantPosts.reduce((sum, p) => sum + p.price, 0) / relevantPosts.length;
-        post.priceTag = post.price < avgPrice * 0.9
-          ? 'cheap'
-          : post.price > avgPrice * 1.1
-          ? 'expensive'
-          : null;
+        post.priceTag = post.price < avgPrice ? 'cheap' : 'expensive';
+      } else {
+        post.priceTag = 'neutral';
       }
     }
 
     return post;
   };
 
-  // 4. UI State Management
-  function updateUIStatus(status, isOnline) {
-    const statusElement = document.getElementById('status');
-    const syncBadge = document.getElementById('syncBadge');
+  // 4. UI Initialization
+  function initUI() {
+    const posts = window.postStorage.getAll();
+    renderPosts(posts);
+    updateRadar();
 
-    statusElement.textContent = status;
-    statusElement.className = 'status ' + (isOnline ? 'online' : 'offline');
+    document.getElementById('publishBtn').addEventListener('click', publishPost);
+    document.getElementById('compareBtn').addEventListener('click', showCompareOverlay);
+    document.getElementById('analyticsToggle').addEventListener('click', toggleAnalytics);
 
-    if (isOnline) {
-      syncBadge.classList.remove('offline');
-      syncBadge.classList.add('online');
-      syncBadge.title = 'متصل بالجسر';
-      document.getElementById('publishBtn').disabled = false;
-      document.getElementById('compareBtn').disabled = false;
-      document.getElementById('analyticsToggle').disabled = false;
-    } else {
-      syncBadge.classList.remove('online');
-      syncBadge.classList.add('offline');
-      syncBadge.title = 'وضع محلي سريع';
-      document.getElementById('publishBtn').disabled = false;
-      document.getElementById('compareBtn').disabled = false;
-      document.getElementById('analyticsToggle').disabled = false;
-    }
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderPosts(window.postStorage.getAll(), btn.dataset.filter);
+      });
+    });
   }
 
-  // 5. WebSocket Connection Handler
-  function connectWebSocket() {
-    let ws = null;
-    let connectionAttempts = 0;
-    const maxAttempts = 5;
-    const attemptDelay = 3000;
-
-    function attemptConnection() {
-      ws = new WebSocket(window.APP_CONFIG.wsUrl);
-
-      ws.onopen = () => {
-        connectionAttempts = 0;
-        updateUIStatus('متصل بالجسر', true);
-        console.log('Connected to WebSocket server');
-      };
-
-      ws.onclose = () => {
-        if (connectionAttempts < maxAttempts) {
-          const delay = attemptDelay * (connectionAttempts + 1);
-          setTimeout(attemptConnection, delay);
-          connectionAttempts++;
-          updateUIStatus('جارِ الاتصال...', false);
-        } else {
-          updateUIStatus('فشل الاتصال بعد عدة محاولات', false);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        updateUIStatus('خطأ في الاتصال', false);
-      };
-    }
-
-    attemptConnection();
-    return ws;
-  }
-
-  // 6. Publish Button Handler
-  document.getElementById('publishBtn').addEventListener('click', () => {
-    const author = document.getElementById('author').value.trim() || 'مستخدم مجهول';
+  // 5. Post Publishing (Local-First)
+  function publishPost() {
     const content = document.getElementById('content').value.trim();
+    const author = document.getElementById('author').value.trim();
 
     if (!content) {
-      showError('من فضلك أدخل نص المنشور', 'warning');
+      showError('الرجاء كتابة منشور', 'warning');
       return;
     }
 
     const post = {
       id: Date.now().toString(),
-      author,
       content,
-      timestamp: Date.now(),
-      isLocal: true
+      author: author || 'مجهول',
+      timestamp: Date.now()
     };
 
-    const taggedPost = window.tagPost(post);
-    window.postStorage.addPost(taggedPost);
+    // Local-First: Save immediately
+    window.postStorage.addPost(window.tagPost(post));
     document.getElementById('content').value = '';
-    showError('تم حفظ المنشور محلياً!', 'success');
+    document.getElementById('author').value = '';
 
-    // Trigger UI update
-    window.dispatchEvent(new CustomEvent('posts:update'));
-  });
+    // Try to sync with server
+    syncPost(post);
+  }
 
-  // 7. Compare Button Handler
-  document.getElementById('compareBtn').addEventListener('click', () => {
-    const compareOverlay = document.getElementById('compareOverlay');
-    const compareContent = document.getElementById('compareContent');
+  // 6. Server Sync
+  function syncPost(post) {
+    if (!window.APP_CONFIG.wsUrl) return;
 
-    if (compareOverlay.classList.contains('hidden')) {
-      compareOverlay.classList.remove('hidden');
-      compareContent.innerHTML = '<p>جارِ تحميل المقارنة...</p>';
-      compareContent.classList.remove('hidden');
+    const ws = new WebSocket(window.APP_CONFIG.wsUrl);
+    let timeout = setTimeout(() => {
+      ws.close();
+      updateUIStatus('وضع محلي سريع', false);
+    }, window.APP_CONFIG.connectionTimeout);
 
-      // Simulate comparison logic
-      setTimeout(() => {
-        compareContent.innerHTML = '<p>مقارنة الأسعار بين المتاجر المختلفة...</p>';
-        const posts = window.postStorage.getAll();
-        const storesWithPrices = posts.filter(p => p.price !== null && p.store).reduce((acc, post) => {
-          if (!acc[post.store]) {
-            acc[post.store] = [];
-          }
-          acc[post.store].push(post.price);
-          return acc;
-        }, {}
+    ws.onopen = () => {
+      clearTimeout(timeout);
+      ws.send(JSON.stringify({ type: 'POST', data: post }));
+      updateUIStatus('تم البث المباشر', true);
+    };
+
+    ws.onerror = (e) => {
+      console.error('WebSocket error:', e);
+      updateUIStatus('تم الحفظ محلياً - سيُزامن عند عودة الاتصال', false);
+    };
+  }
+
+  // 7. UI Rendering
+  function renderPosts(posts, filter = '') {
+    const postsContainer = document.getElementById('posts');
+    postsContainer.innerHTML = '';
+
+    const filteredPosts = filter ? posts.filter(p => p.priceTag === filter) : posts;
+
+    if (filteredPosts.length === 0) {
+      postsContainer.innerHTML = '<p>لا توجد منشورات بعد</p>';
+      return;
+    }
+
+    filteredPosts.forEach(post => {
+      const postElement = document.createElement('div');
+      postElement.className = `post ${post.priceTag || ''}`;
+      postElement.innerHTML = `
+        <div class="post-header">
+          <span class="post-author">${post.author}</span>
+          <span class="post-time">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
+        </div>
+        <div class="post-content">${post.content}</div>
+        ${post.price ? `<div class="post-price">السعر: ${post.price} ريال</div>` : ''}
+        ${post.store ? `<div class="post-store">المحل: ${post.store}</div>` : ''}
+      `;
+      postsContainer.appendChild(postElement);
+    });
+  }
