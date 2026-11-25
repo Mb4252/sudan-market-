@@ -1,28 +1,32 @@
 (function() {
-    'use strict';
+    'use strict'
 
-    const socket = new WebSocket('wss://sudan-market-2.onrender.com');
+    const BROADCAST_CHANNEL = 'sudanMarketBroadcast'
 
-    socket.onopen = function() {
-        console.log('تم الاتصال بالبث');
-        window.store.status = 'متصل';
-    };
-
-    socket.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-        if (data.type === 'post') {
-            window.store.posts.push(data.post);
-            window.store.saveToLocalStorage();
+    class Broadcast {
+        constructor() {
+            this.channel = new BroadcastChannel(BROADCAST_CHANNEL)
+            this.setupEventListeners()
         }
-    };
 
-    window.broadcast = function(post) {
-        if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'post', post: post }));
+        setupEventListeners() {
+            this.channel.onmessage = (event) => {
+                if (window.store.isValidDate(new Date(event.data.timestamp))) {
+                    window.store.add(event.data)
+                }
+            }
         }
-    };
 
-    window.onbeforeunload = function() {
-        socket.close();
-    };
+        send(post) {
+            try {
+                this.channel.postMessage(post)
+            } catch (error) {
+                console.error('خطأ في بث عبر BroadcastChannel:', error)
+            }
+        }
+    }
+
+    // إنشاء Instance
+    window.broadcast = new Broadcast()
+
 })();

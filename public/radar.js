@@ -1,1 +1,42 @@
-(()=>'use strict')();(function(){function detectAnomaly(post,threshold=1.5){const prices=store.state.posts.filter(p=>p.city===post.city).map(p=>p.price);if(prices.length<2)return false;const avg=prices.reduce((a,b)=>a+b)/prices.length;const std=Math.sqrt(prices.reduce((s,p)=>s+(p-avg)**2,0)/prices.length);return Math.abs(post.price-avg)>threshold*std}function cityTrend(city){const recent=store.state.posts.filter(p=>p.city===city).slice(-5);if(recent.length<2)return null;const xs=recent.map((_,i)=>i);const ys=recent.map(p=>p.price);const n=xs.length;const sumX=xs.reduce((a,b)=>a+b,0);const sumY=ys.reduce((a,b)=>a+b,0);const sumXY=xs.reduce((s,i)=>s+xs[i]*ys[i],0);const sumXX=xs.reduce((s,i)=>s+xs[i]*xs[i],0);const slope=(n*sumXY-sumX*sumY)/(n*sumXX-sumX*sumX);return slope>0?'ارتفاع':'انخفاض'}window.radar={detectAnomaly,cityTrend}})();
+(function() {
+    'use strict'
+
+    class Radar {
+        constructor() {
+            this.data = []
+            this.setupStoreListener()
+        }
+
+        setupStoreListener() {
+            window.store.on('storeUpdated', (event) => {
+                this.data = event.detail.posts
+                this.processData()
+            })
+        }
+
+        processData() {
+            const cities = this.getUniqueCities()
+            const cityData = this.calculateCityData(cities)
+            window.store.emit('radarDataUpdated', { cities: cityData })
+        }
+
+        getUniqueCities() {
+            const cities = new Set()
+            this.data.forEach(post => cities.add(post.city))
+            return Array.from(cities)
+        }
+
+        calculateCityData(cities) {
+            return cities.reduce((acc, city) => {
+                const cityPosts = this.data.filter(post => post.city === city)
+                const avgPrice = cityPosts.reduce((sum, post) => sum + post.price, 0) / cityPosts.length
+                acc[city] = { avgPrice, count: cityPosts.length }
+                return acc
+            }, {})
+        }
+    }
+
+    // إنشاء Instance
+    window.radar = new Radar()
+
+})();
