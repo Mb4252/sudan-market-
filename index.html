@@ -36,27 +36,45 @@
   <script src="public/compare.js"></script>
   <script>
     (function(){
+      const statusEl = document.getElementById('status');
+      function setStatus(msg, isError){
+        statusEl.textContent = msg;
+        statusEl.classList.toggle('error', !!isError);
+      }
+      window.addEventListener('error', function(e){
+        setStatus('خطأ: ' + (e.message || 'غير معروف'), true);
+      });
+      window.addEventListener('unhandledrejection', function(){
+        setStatus('خطأ غير معالج', true);
+      });
+
       const publishBtn = document.getElementById('publishBtn');
       const authorInput = document.getElementById('author');
       const contentInput = document.getElementById('content');
-      const statusEl = document.getElementById('status');
+      const compareBtn = document.getElementById('compareBtn');
 
-      publishBtn.addEventListener('click', () => {
+      publishBtn.addEventListener('click', function(){
         const author = authorInput.value.trim() || 'مجهول';
         const content = contentInput.value.trim();
-        if (!content) {
-          statusEl.textContent = 'الرجاء كتابة نص المنشور';
-          return;
+        if (!content) { setStatus('الرجاء كتابة نص المنشور', true); return; }
+        try {
+          window.publishPost({ id: Date.now(), author: author, content: content, timestamp: Date.now() });
+          contentInput.value = '';
+          setStatus('تم النشر والحفظ');
+        } catch (err) {
+          console.error(err);
+          setStatus('تعذر النشر', true);
         }
-        const post = {
-          id: Date.now(),
-          author,
-          content,
-          timestamp: Date.now()
-        };
-        window.publishPost(post);
-        contentInput.value = '';
-        statusEl.textContent = 'تم النشر والحفظ';
+      });
+
+      compareBtn.addEventListener('click', function(){
+        try {
+          if (window.showCompare) { window.showCompare(); }
+          else { setStatus('المقارنة غير متاحة', true); }
+        } catch (err) {
+          console.error(err);
+          setStatus('تعذر فتح المقارنة', true);
+        }
       });
     })();
   </script>
