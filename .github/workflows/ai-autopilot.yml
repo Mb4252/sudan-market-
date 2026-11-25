@@ -33,6 +33,7 @@ jobs:
           REPO: ${{ github.repository }}
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           RENDER_URL: ${{ secrets.RENDER_URL }}
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
@@ -65,8 +66,8 @@ jobs:
                 collectProjectFiles(fullPath, depth + 1, out);
               } else if (/\.(js|html|css|json)$/i.test(entry.name)) {
                 const content = fs.readFileSync(fullPath, "utf8");
-                const clipped = content.length > 2600
-                  ? content.slice(0, 2600) + "\n/* ...مقتطع للاختصار... */"
+                const clipped = content.length > 2400
+                  ? content.slice(0, 2400) + "\n/* ...مقتطع للاختصار... */"
                   : content;
                 out.push({ fullPath, raw: content, content: clipped });
               }
@@ -258,16 +259,71 @@ jobs:
             throw lastErr || new Error("فشل OpenRouter");
           }
 
-          function buildProviders(primaryKey, openRouterKey) {
-            const list = [];
-            const uniqueKeys = [...new Set([primaryKey, openRouterKey].map(k => (k || "").trim()).filter(Boolean))];
+          async function callMistral(key, sysPrompt, usrPrompt, maxTokens, jsonMode = false) {
+            const url = sanitizeUrl("[https://api.mistral.ai/v1/chat/completions](https://api.mistral.ai/v1/chat/completions)");
+            const headers = {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${key}`
+            };
+            const models = ["codestral-latest", "mistral-small-latest", "open-mistral-nemo"];
+            let lastErr = null;
 
-            for (const key of uniqueKeys) {
+            for (const m of models) {
+              try {
+                const body = {
+                  model: m,
+                  messages: [
+                    { role: "system", content: sysPrompt },
+                    { role: "user", content: usrPrompt }
+                  ],
+                  max_tokens: maxTokens,
+                  temperature: 0.4
+                };
+                if (jsonMode && m !== "codestral-latest") {
+                  body.response_format = { type: "json_object" };
+                }
+                const data = await callChatCompletion(url, headers, body);
+                const out = data?.choices?.[0]?.message?.content || "";
+                if (!out.trim()) throw new Error(`رد فارغ من Mistral (${m})`);
+                return { text: out, detail: `Mistral (${m})` };
+              } catch (e) {
+                lastErr = e;
+                console.warn(`⚠️ نموذج Mistral (${m}) تعذر: ${e.message}`);
+                continue;
+              }
+            }
+            throw lastErr || new Error("فشل جميع نماذج Mistral");
+          }
+
+          function buildProviders(primaryKey, openRouterKey, mistralKey) {
+            const list = [];
+            const seen = new Set();
+
+            if (mistralKey) {
+              seen.add(mistralKey);
+              list.push({
+                id: "mistral",
+                label: "Mistral AI",
+                runText: async (sysPrompt, usrPrompt, maxTokens = 700) => {
+                  return await callMistral(mistralKey, sysPrompt, usrPrompt, maxTokens, false);
+                },
+                runJson: async (sysPrompt, usrPrompt, maxTokens = 2800) => {
+                  const res = await callMistral(mistralKey, sysPrompt, usrPrompt, maxTokens, true);
+                  return { parsed: extractJsonObject(res.text), detail: res.detail };
+                }
+              });
+            }
+
+            const otherKeys = [primaryKey, openRouterKey].map(k => (k || "").trim()).filter(Boolean);
+            for (const key of otherKeys) {
+              if (seen.has(key)) continue;
+              seen.add(key);
+
               if (key.startsWith("gsk_")) {
                 list.push({
                   id: "groq",
                   label: "Groq",
-                  runText: async (sysPrompt, usrPrompt, maxTokens = 750) => {
+                  runText: async (sysPrompt, usrPrompt, maxTokens = 700) => {
                     const models = await getGroqModelsOrdered(key);
                     const groqUrl = sanitizeUrl("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)");
                     const headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
@@ -294,7 +350,7 @@ jobs:
                     }
                     throw lastErr || new Error("فشل نماذج Groq");
                   },
-                  runJson: async (sysPrompt, usrPrompt, maxTokens = 3200) => {
+                  runJson: async (sysPrompt, usrPrompt, maxTokens = 2800) => {
                     const models = await getGroqModelsOrdered(key);
                     const groqUrl = sanitizeUrl("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)");
                     const headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
@@ -341,11 +397,11 @@ jobs:
                 list.push({
                   id: "openrouter",
                   label: "OpenRouter (ChatGPT-style partner)",
-                  runText: async (sysPrompt, usrPrompt, maxTokens = 750) => {
+                  runText: async (sysPrompt, usrPrompt, maxTokens = 700) => {
                     const out = await callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens);
                     return { text: out, detail: "OpenRouter (openrouter/free)" };
                   },
-                  runJson: async (sysPrompt, usrPrompt, maxTokens = 3200) => {
+                  runJson: async (sysPrompt, usrPrompt, maxTokens = 2800) => {
                     const raw = await callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens);
                     return { parsed: extractJsonObject(raw), detail: "OpenRouter (openrouter/free)" };
                   }
@@ -358,11 +414,12 @@ jobs:
           async function run() {
             const primaryKey = (process.env.AI_API_KEY || "").trim();
             const openRouterKey = (process.env.OPENROUTER_API_KEY || "").trim();
+            const mistralKey = (process.env.MISTRAL_API_KEY || "").trim();
             const renderUrl = sanitizeUrl(process.env.RENDER_URL || "[https://sudan-market-2.onrender.com](https://sudan-market-2.onrender.com)");
-            const providers = buildProviders(primaryKey, openRouterKey);
+            const providers = buildProviders(primaryKey, openRouterKey, mistralKey);
 
             if (!providers.length) {
-              failWithReason("لا يوجد أي مفتاح API صالح في Secrets.");
+              failWithReason("لا يوجد أي مفتاح API صالح في Secrets (MISTRAL_API_KEY أو AI_API_KEY أو OPENROUTER_API_KEY).");
             }
 
             const filesList = collectProjectFiles(".");
@@ -372,7 +429,7 @@ jobs:
             const currentFiles = filesList
               .map(f => `--- FILE: ${f.fullPath} ---\n${f.content}`)
               .join("\n\n")
-              .slice(0, 7500);
+              .slice(0, 6800);
 
             const architectureMandate = [
               `رابط Render المعتمد: ${renderUrl} (استخدمه كأساس للـ WebSocket عبر wss:// وطلب الإيقاظ عبر /health، مع السماح بتعديله وحفظه في localStorage دون تعطيل النشر المحلي أبداً).`,
@@ -394,7 +451,7 @@ jobs:
                 const propRes = await p1.runText(
                   "أنت مهندس تشخيص ومبتكر منتجات. حلّل الأعطال المكتشفة واقترح خطة إصلاح وتطوير خارج الصندوق في 4 نقاط مركّزة.",
                   `تقرير الأعطال المكتشفة:\n${diagnosticReport}\n\nالقواعد:\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
-                  700
+                  650
                 );
                 console.log(`💡 مقترح ${propRes.detail} جاهز للمراجعة.`);
 
@@ -402,7 +459,7 @@ jobs:
                   const revRes = await p2.runText(
                     "أنت المدقق الهندسي والمشارك الثاني. راجع المقترح، تأكد من تطابق معرّفات HTML مع JS وعدم تعليق زر النشر أو رادار الأسعار، ثم اكتب [اتفقنا] متبوعاً بالخطة النهائية الدقيقة.",
                     `مقترح الطرف الأول:\n${propRes.text}\n\nتقرير الأعطال:\n${diagnosticReport}\n\n${architectureMandate}`,
-                    750
+                    700
                   );
                   agreedPlan = revRes.text;
                   activeExecutor = p2;
@@ -417,7 +474,7 @@ jobs:
                 const soloRes = await p2.runText(
                   "أنت المنفذ المستقل. ضع خطة إصلاح وتطوير فورية في 4 نقاط.",
                   `تقرير الأعطال:\n${diagnosticReport}\n\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
-                  700
+                  650
                 );
                 agreedPlan = `[عمل مستقل فوري]\n${soloRes.text}`;
                 activeExecutor = p2;
@@ -452,7 +509,7 @@ jobs:
 
             for (const execProvider of orderedExecutors) {
               try {
-                execResult = await execProvider.runJson(systemJsonInstruction, executionPrompt, 3200);
+                execResult = await execProvider.runJson(systemJsonInstruction, executionPrompt, 2800);
                 lastExecErr = null;
                 break;
               } catch (e) {
