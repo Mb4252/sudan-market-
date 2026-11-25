@@ -5,8 +5,91 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sudan Market</title>
   <script src="core/dom-date-guard.js"></script>
+  <script src="core/local-posts-store.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .post {
+      border: 1px solid #ddd;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 5px;
+    }
+    .post-title {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    .post-date {
+      color: #666;
+      font-size: 0.9em;
+    }
+    .post-content {
+      margin-top: 10px;
+    }
+  </style>
 </head>
 <body>
-  <!-- محتوى الواجهة هنا -->
+  <h1>Sudan Market</h1>
+  <div id="posts-container"></div>
+
+  <script>
+    // دالة لعرض المنشورات
+    function displayPosts() {
+      const postsContainer = document.getElementById('posts-container');
+      if (!postsContainer) return;
+
+      const posts = window.localPostsStore.getAllPosts();
+      postsContainer.innerHTML = '';
+
+      if (posts.length === 0) {
+        postsContainer.innerHTML = '<p>No posts available.</p>';
+        return;
+      }
+
+      posts.forEach(post => {
+        const postElement = document.createElement('div');
+        postElement.className = 'post';
+
+        const titleElement = document.createElement('div');
+        titleElement.className = 'post-title';
+        window.safeSetTextContent(titleElement, post.title || 'Untitled');
+
+        const dateElement = document.createElement('div');
+        dateElement.className = 'post-date';
+        const postDate = new Date(post.date);
+        if (window.isValidDate(postDate)) {
+          window.safeSetTextContent(dateElement, window.safeFormatDate(postDate));
+        } else {
+          window.safeSetTextContent(dateElement, 'Invalid date');
+        }
+
+        const contentElement = document.createElement('div');
+        contentElement.className = 'post-content';
+        window.safeSetTextContent(contentElement, post.content || '');
+
+        postElement.appendChild(titleElement);
+        postElement.appendChild(dateElement);
+        postElement.appendChild(contentElement);
+
+        postsContainer.appendChild(postElement);
+      });
+    }
+
+    // عرض المنشورات عند تحميل الصفحة
+    document.addEventListener('DOMContentLoaded', displayPosts);
+
+    // مثال على إضافة منشور جديد
+    // window.localPostsStore.savePost({
+    //   id: 'post-' + Date.now(),
+    //   title: 'New Post',
+    //   date: new Date().toISOString(),
+    //   content: 'This is a new post content.'
+    // });
+    // displayPosts();
+  </script>
 </body>
 </html>
