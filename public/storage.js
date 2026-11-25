@@ -1,5 +1,1 @@
-const storageKey='posts_v2';
-async function loadPosts(){const data=localStorage.getItem(storageKey);return data?JSON.parse(data):[];}
-async function savePosts(posts){localStorage.setItem(storageKey,JSON.stringify(posts));}
-async function addPost(post){const posts=await loadPosts();posts.push(post);await savePosts(posts);return posts.length-1;}
-async function getAllPosts(){return await loadPosts();}
+const STORAGE_KEY=window.APP_CONFIG.storageKey||'posts_v2';async function loadPosts(){const posts=await getAllPosts();const postsDiv=document.getElementById('posts');if(!postsDiv)return;postsDiv.innerHTML='';posts.forEach(p=>{const div=document.createElement('div');div.className='post '+(p.priceTag||'');div.innerHTML=`<div class="meta">${p.author||'مجهول'} — ${new Date(p.timestamp).toLocaleString()}</div><div>${p.content}</div>`;postsDiv.appendChild(div);});applyFilter(window.currentFilter);}window.init=function(){if(!window.APP_CONFIG||!window.APP_CONFIG.wsUrl){console.error('[init] APP_CONFIG missing wsUrl');return;}loadPosts();};
