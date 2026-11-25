@@ -35,12 +35,16 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           PAGES_URL: "https://mb4252.github.io/sudan-market-/"
-          RENDER_URL: ${{ secrets.RENDER_URL }}
+          RENDER_URL: "https://sudan-market-2.onrender.com"
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
           node -e '
           const fs = require("fs");
           const path = require("path");
+          const vm = require("vm");
+
+          const CANONICAL_PAGES_URL = "https://mb4252.github.io/sudan-market-/";
+          const CANONICAL_RENDER_URL = "https://sudan-market-2.onrender.com";
 
           function failWithReason(reason) {
             console.error("❌ AI STATUS: FAILED");
@@ -48,13 +52,14 @@ jobs:
             process.exit(1);
           }
 
-          function sanitizeUrl(rawUrl) {
+          function sanitizeUrl(rawUrl, fallbackUrl = "") {
             let u = String(rawUrl || "").trim();
             const mdMatch = u.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
             if (mdMatch) {
               u = (mdMatch[2] || mdMatch[1] || "").trim();
             }
-            return u.replace(/^<|>$/g, "").trim();
+            u = u.replace(/^<|>$/g, "").trim();
+            return u || fallbackUrl;
           }
 
           function collectProjectFiles(dir = ".", depth = 0, out = []) {
@@ -76,14 +81,66 @@ jobs:
             return out;
           }
 
+          function validateGeneratedFiles(filesMap) {
+            const errors = [];
+            if (!filesMap || typeof filesMap !== "object") {
+              return ["كائن files مفقود أو غير صالح."];
+            }
+
+            const htmlEntry = filesMap["index.html"];
+            const htmlIds = new Set();
+            if (typeof htmlEntry === "string") {
+              for (const m of htmlEntry.matchAll(/\bid=["'\'']([^"'\'']+)["'\'']/g)) {
+                htmlIds.add(m[1]);
+              }
+            }
+
+            for (const [rawPath, content] of Object.entries(filesMap)) {
+              const cleanPath = String(rawPath).replace(/^\/+/, "").trim();
+              if (!cleanPath || cleanPath.includes("..") || typeof content !== "string" || !content.trim()) {
+                errors.push(`مسار أو محتوى غير صالح للملف: ${rawPath}`);
+                continue;
+              }
+              if (cleanPath.endsWith(".json")) {
+                try {
+                  JSON.parse(content);
+                } catch (e) {
+                  errors.push(`خطأ JSON في ${cleanPath}: ${e.message}`);
+                }
+              } else if (cleanPath.endsWith(".js")) {
+                try {
+                  new vm.Script(content, { filename: cleanPath });
+                } catch (e) {
+                  errors.push(`خطأ صياغة JavaScript في ${cleanPath}: ${e.message}`);
+                }
+              }
+            }
+
+            if (typeof htmlEntry === "string") {
+              for (const [rawPath, content] of Object.entries(filesMap)) {
+                if (!rawPath.endsWith(".js") || typeof content !== "string") continue;
+                const refs = [...content.matchAll(/getElementById\(["'\'']([^"'\'']+)["'\'']\)/g)].map(m => m[1]);
+                const missing = [...new Set(refs.filter(id => !htmlIds.has(id)))];
+                if (missing.length) {
+                  errors.push(`معرّفات غير موجودة في index.html مستدعاة في ${rawPath}: ${missing.join(", ")}`);
+                }
+              }
+            }
+
+            return errors;
+          }
+
           async function probeLiveEndpoints(pagesUrl, renderUrl) {
             const lines = [];
+            const cleanPages = sanitizeUrl(pagesUrl, CANONICAL_PAGES_URL);
+            const cleanRender = sanitizeUrl(renderUrl, CANONICAL_RENDER_URL).replace(/\/+$/, "");
+
             try {
-              const res = await fetch(sanitizeUrl(pagesUrl), { signal: AbortSignal.timeout(10000) });
+              const res = await fetch(cleanPages, { signal: AbortSignal.timeout(12000) });
               const html = await res.text();
               const scriptSrcs = [...html.matchAll(/<script[^>]+src=["'\'']([^"'\'']+)["'\'']/gi)].map(m => m[1]);
               const hasBrokenLocalSrc = scriptSrcs.some(src => /^\/(?!sudan-market-)/.test(src));
-              lines.push(`صفحة GitHub Pages (${pagesUrl}): HTTP ${res.status} | عدد السكربتات: ${scriptSrcs.length} (${scriptSrcs.join(", ") || "لا يوجد"})`);
+              lines.push(`صفحة GitHub Pages (${cleanPages}): HTTP ${res.status} | عدد السكربتات: ${scriptSrcs.length} (${scriptSrcs.join(", ") || "لا يوجد"})`);
               if (hasBrokenLocalSrc) {
                 lines.push("⚠️ تحذير مسار: يوجد رابط سكربت يبدأ بـ / قد ينكسر تحت مسار GitHub Pages الفرعي؛ استخدم مسارات نسبية مثل ./public/...");
               }
@@ -91,23 +148,21 @@ jobs:
                 lines.push("⚠️ نص ثابت (جاري الاتصال...) موجود في HTML دون مؤشر حالة ديناميكي واضح.");
               }
             } catch (e) {
-              lines.push(`تعذر فحص صفحة GitHub Pages (${pagesUrl}): ${e.message}`);
+              lines.push(`تعذر فحص صفحة GitHub Pages (${cleanPages}): ${e.message}`);
             }
 
-            if (renderUrl) {
-              const base = sanitizeUrl(renderUrl).replace(/\/+$/, "");
-              try {
-                const hRes = await fetch(`${base}/health`, { signal: AbortSignal.timeout(12000) });
-                const hTxt = await hRes.text();
-                lines.push(`جسر Render (${base}/health): HTTP ${hRes.status} | الرد: ${hTxt.slice(0, 120)}`);
-              } catch (e) {
-                lines.push(`جسر Render (${base}/health): غير مستجيب حالياً (${e.message}) — يجب أن يعمل الحفظ والنشر محلياً فوراً دون انتظار Render.`);
-              }
+            try {
+              const hRes = await fetch(`${cleanRender}/health`, { signal: AbortSignal.timeout(15000) });
+              const hTxt = await hRes.text();
+              lines.push(`جسر Render (${cleanRender}/health): HTTP ${hRes.status} | الرد: ${hTxt.slice(0, 120)}`);
+            } catch (e) {
+              lines.push(`جسر Render (${cleanRender}/health): غير مستجيب حالياً (${e.message}) — يجب أن يعمل الحفظ والنشر محلياً فوراً دون انتظار Render.`);
             }
+
             return lines.join("\n");
           }
 
-          function runSelfDiagnostics(filesList, renderUrl) {
+          function runSelfDiagnostics(filesList, pagesUrl, renderUrl) {
             const issues = [];
             const htmlFile = filesList.find(f => f.fullPath === "index.html");
             const jsFiles = filesList.filter(f => f.fullPath.endsWith(".js") && f.fullPath !== "server.js");
@@ -119,12 +174,16 @@ jobs:
 
             const htmlIds = new Set([...htmlFile.raw.matchAll(/\bid=["'\'']([^"'\'']+)["'\'']/g)].map(m => m[1]));
             const allJsRaw = jsFiles.map(f => f.raw).join("\n");
+            const combinedRaw = allJsRaw + "\n" + htmlFile.raw;
 
-            if (/YOUR-SERVICE|example\.onrender\.com/i.test(allJsRaw + htmlFile.raw)) {
-              issues.push("يوجد رابط Render وهمي غير حقيقي في الكود يمنع الاتصال من GitHub Pages.");
+            if (/YOUR-SERVICE|example\.onrender\.com/i.test(combinedRaw)) {
+              issues.push(`يوجد رابط Render وهمي غير حقيقي في الكود؛ استبدله بالرابط الصحيح: ${renderUrl}`);
             }
-            if (/location\.host/.test(allJsRaw) && !/onrender\.com/.test(allJsRaw)) {
-              issues.push("الكود يستخدم location.host للـ WebSocket مما يجعله يتصل بـ github.io بدلاً من Render!");
+            if (/location\.host/.test(allJsRaw) && !/sudan-market-2\.onrender\.com/.test(allJsRaw)) {
+              issues.push(`الكود يستخدم location.host للـ WebSocket بدلاً من الجسر الصحيح ${renderUrl}`);
+            }
+            if (!/sudan-market-2\.onrender\.com/.test(combinedRaw)) {
+              issues.push(`رابط Render المعتمد ${renderUrl} غير مضمّن بوضوح في كود الواجهة أو إعدادات الاتصال.`);
             }
 
             const referencedIds = [...allJsRaw.matchAll(/getElementById\(["'\'']([^"'\'']+)["'\'']\)/g)].map(m => m[1]);
@@ -137,13 +196,13 @@ jobs:
               issues.push("التخزين المحلي localStorage غير مفعّل بشكل واضح عند النشر.");
             }
 
-            if (!/window\.addEventListener\(["'\'']error["'\'']|onunhandledrejection/.test(allJsRaw + htmlFile.raw)) {
+            if (!/window\.addEventListener\(["'\'']error["'\'']|onunhandledrejection/.test(combinedRaw)) {
               issues.push("لا يوجد ملتقط أخطاء عام (window.onerror / unhandledrejection) يظهر الخطأ بوضوح في الواجهة واللوغو.");
             }
 
             return issues.length
               ? issues.map((x, i) => `${i + 1}. ${x}`).join("\n")
-              : "لا توجد أخطاء بنيوية واضحة في الفحص الساكن، ركّز على تحسين تجربة النشر الفوري وميزات خارج الصندوق.";
+              : "لا توجد أخطاء بنيوية واضحة في الفحص الساكن، ركّز على توسيع البنية المعيارية والميزات المتقدمة غير التقليدية.";
           }
 
           async function getGroqModelsOrdered(apiKey) {
@@ -263,7 +322,7 @@ jobs:
             const headers = {
               "Content-Type": "application/json",
               Authorization: `Bearer ${key}`,
-              "HTTP-Referer": `[https://github.com/$](https://github.com/$){process.env.REPO}`,
+              "HTTP-Referer": CANONICAL_PAGES_URL,
               "X-Title": "sudan-market-autopilot"
             };
             const body = {
@@ -273,7 +332,7 @@ jobs:
                 { role: "user", content: usrPrompt }
               ],
               max_tokens: maxTokens,
-              temperature: 0.5
+              temperature: 0.55
             };
 
             let lastErr = null;
@@ -310,7 +369,7 @@ jobs:
                     { role: "user", content: usrPrompt }
                   ],
                   max_tokens: maxTokens,
-                  temperature: 0.5
+                  temperature: 0.55
                 };
                 if (jsonMode && m !== "codestral-latest") {
                   body.response_format = { type: "json_object" };
@@ -337,10 +396,10 @@ jobs:
               list.push({
                 id: "mistral",
                 label: "Mistral AI",
-                runText: async (sysPrompt, usrPrompt, maxTokens = 700) => {
+                runText: async (sysPrompt, usrPrompt, maxTokens = 750) => {
                   return await callMistral(mistralKey, sysPrompt, usrPrompt, maxTokens, false);
                 },
-                runJson: async (sysPrompt, usrPrompt, maxTokens = 2900) => {
+                runJson: async (sysPrompt, usrPrompt, maxTokens = 3200) => {
                   const res = await callMistral(mistralKey, sysPrompt, usrPrompt, maxTokens, true);
                   return { parsed: extractJsonObject(res.text), detail: res.detail };
                 }
@@ -356,7 +415,7 @@ jobs:
                 list.push({
                   id: "groq",
                   label: "Groq",
-                  runText: async (sysPrompt, usrPrompt, maxTokens = 700) => {
+                  runText: async (sysPrompt, usrPrompt, maxTokens = 750) => {
                     const models = await getGroqModelsOrdered(key);
                     const groqUrl = sanitizeUrl("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)");
                     const headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
@@ -370,7 +429,7 @@ jobs:
                             { role: "user", content: usrPrompt }
                           ],
                           max_tokens: maxTokens,
-                          temperature: 0.5
+                          temperature: 0.55
                         });
                         const out = data?.choices?.[0]?.message?.content || "";
                         if (!out.trim()) throw new Error("رد فارغ");
@@ -383,7 +442,7 @@ jobs:
                     }
                     throw lastErr || new Error("فشل نماذج Groq");
                   },
-                  runJson: async (sysPrompt, usrPrompt, maxTokens = 2900) => {
+                  runJson: async (sysPrompt, usrPrompt, maxTokens = 3200) => {
                     const models = await getGroqModelsOrdered(key);
                     const groqUrl = sanitizeUrl("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)");
                     const headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
@@ -400,7 +459,7 @@ jobs:
                             ],
                             response_format: { type: "json_object" },
                             max_tokens: maxTokens,
-                            temperature: 0.5
+                            temperature: 0.55
                           });
                         } catch (jErr) {
                           if (jErr.status === 429 || jErr.status === 400) throw jErr;
@@ -411,7 +470,7 @@ jobs:
                               { role: "user", content: usrPrompt }
                             ],
                             max_tokens: maxTokens,
-                            temperature: 0.5
+                            temperature: 0.55
                           });
                         }
                         const raw = data?.choices?.[0]?.message?.content || "";
@@ -430,11 +489,11 @@ jobs:
                 list.push({
                   id: "openrouter",
                   label: "OpenRouter (ChatGPT-style partner)",
-                  runText: async (sysPrompt, usrPrompt, maxTokens = 700) => {
+                  runText: async (sysPrompt, usrPrompt, maxTokens = 750) => {
                     const out = await callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens);
                     return { text: out, detail: "OpenRouter (openrouter/free)" };
                   },
-                  runJson: async (sysPrompt, usrPrompt, maxTokens = 2900) => {
+                  runJson: async (sysPrompt, usrPrompt, maxTokens = 3200) => {
                     const raw = await callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens);
                     return { parsed: extractJsonObject(raw), detail: "OpenRouter (openrouter/free)" };
                   }
@@ -448,8 +507,8 @@ jobs:
             const primaryKey = (process.env.AI_API_KEY || "").trim();
             const openRouterKey = (process.env.OPENROUTER_API_KEY || "").trim();
             const mistralKey = (process.env.MISTRAL_API_KEY || "").trim();
-            const pagesUrl = sanitizeUrl(process.env.PAGES_URL || "[https://mb4252.github.io/sudan-market-/](https://mb4252.github.io/sudan-market-/)");
-            const renderUrl = sanitizeUrl(process.env.RENDER_URL || "[https://sudan-market-2.onrender.com](https://sudan-market-2.onrender.com)");
+            const pagesUrl = sanitizeUrl(process.env.PAGES_URL, CANONICAL_PAGES_URL);
+            const renderUrl = sanitizeUrl(process.env.RENDER_URL, CANONICAL_RENDER_URL);
             const providers = buildProviders(primaryKey, openRouterKey, mistralKey);
 
             if (!providers.length) {
@@ -457,7 +516,7 @@ jobs:
             }
 
             const filesList = collectProjectFiles(".");
-            const staticReport = runSelfDiagnostics(filesList, renderUrl);
+            const staticReport = runSelfDiagnostics(filesList, pagesUrl, renderUrl);
             const liveReport = await probeLiveEndpoints(pagesUrl, renderUrl);
             const diagnosticReport = `${staticReport}\n\n--- فحص الموقع الحي والجسر ---\n${liveReport}`;
             console.log("🩺 تقرير التشخيص الشامل (الثابت والحي):\n" + diagnosticReport);
@@ -468,12 +527,11 @@ jobs:
               .slice(0, 6500);
 
             const architectureMandate = [
-              `رابط GitHub Pages المعتمد: ${pagesUrl}`,
-              `رابط جسر Render المعتمد: ${renderUrl} (للبث المباشر WebSocket عبر wss:// وطلب الإيقاظ /health فقط).`,
-              "1) النشر والحفظ المحلي الفوري (Local-First بلا تعليق): عند ضغط زر النشر، احفظ المنشور فوراً في localStorage حتى لو كان النص حراً أو بدون رقم صريح أو كان Render نائماً، وحدّث قائمة المنشورات ورادار الأسعار ولوحة التحليل في نفس اللحظة، وأظهر رسالة تأكيد أو خطأ واضحة في اللوغو والواجهة بدلاً من الصمت أو التعليق.",
-              "2) واجهة نظيفة بلا تداخل أزرار أو نصوص عالقة: تأكد من عدم تراكب الأزرار، وأن حالة الاتصال تتحدث بوضوح (متصل بالجسر / وضع محلي سريع) دون بقاء (جاري الاتصال...) أو (جارِ التحليل...) عالقة للأبد.",
-              "3) إظهار الأخطاء وتشخيصها: أضف ملتقط أخطاء عام (window.onerror و unhandledrejection) يطبع الخطأ في اللوغو ويعرضه للمستخدم ليسهل تتبعه وإصلاحه.",
-              "4) أفكار مبتكرة خارج الصندوق (غير تقليدية): صمّم (رادار الفرص وفروق الأسعار) لاستخراج السعر والسلعة والمكان تلقائياً من النص الحر واكتشاف أرخص مكان مقابل الأغلى وحساب نسبة التوفير ومؤشر تذبذب السعر بطريقة ذكية ومختصرة."
+              `رابط GitHub Pages الصحيح: ${pagesUrl}`,
+              `رابط جسر Render الصحيح: ${renderUrl} (للبث المباشر عبر wss:// وطلب الإيقاظ /health).`,
+              "1) بنية متقدمة وقابلة للتوسيع (غير بسيطة أو تقليدية): صمّم معمارية معيارية قائمة على سجل إضافات/وحدات (Plugin/Module Registry) وحالة مركزية تفاعلية (Reactive Store) وأدوات تحليل ذكية (استخراج ذكي للسعر والسلعة والمكان من النص الحر، مؤشر تذبذب الأسعار، ومقارنة فورية للأرخص والأغلى) بعيداً عن الواجهات التقليدية الجامدة.",
+              "2) حفظ محلي في المتصفح + بث مباشر عبر Render: عند النشر، احفظ فوراً في localStorage وأعد البناء الفوري للواجهة دون تأخير، وفي الوقت نفسه أرسل الحدث عبر WebSocket إلى wss://sudan-market-2.onrender.com لبثه لبقية المتصلين، مع مزامنة آمنة تمنع تكرار المنشورات ومؤشر حالة حي واضح (بث مباشر / وضع محلي).",
+              "3) كود خالٍ من الأخطاء البرمجية قدر الإمكان: تأكد من تطابق جميع معرّفات DOM بين index.html وملفات JS، وفحص كل عنصر قبل الوصول إليه، وإضافة ملتقط أخطاء عام (window.onerror و unhandledrejection) يعرض الأخطاء بوضوح في اللوغو والواجهة، والتحقق من صحة صياغة الكود قبل كتابته."
             ].join("\n");
 
             let agreedPlan = "";
@@ -486,17 +544,17 @@ jobs:
 
               try {
                 const propRes = await p1.runText(
-                  "أنت مهندس تشخيص ومبتكر منتجات غير تقليدية. اشرح سبب تعليق النشر أو تداخل الأزرار من التقرير، واقترح ميزة ذكية خارج الصندوق وفحصاً واضحاً للأخطاء.",
+                  "أنت مهندس معماري ومبتكر واجهات متقدمة. صمّم خطة لموقع قابل للتوسيع بأدوات غير تقليدية، يجمع بين الحفظ الفوري في localStorage والبث المباشر عبر Render بلا أخطاء.",
                   `التقرير:\n${diagnosticReport}\n\nالقواعد:\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
-                  680
+                  720
                 );
                 console.log(`💡 مقترح ${propRes.detail} جاهز للمراجعة.`);
 
                 try {
                   const revRes = await p2.runText(
-                    "أنت المدقق الهندسي والمشارك الثاني. راجع المقترح، تحقق من عدم وجود أزرار متراكبة أو تعليق عند النشر، وتأكد من ظهور الأخطاء بوضوح، ثم اكتب [اتفقنا] متبوعاً بالخطة النهائية.",
+                    "أنت المدقق الهندسي والمشارك الثاني. راجع الخطة وتأكد من خلوها من أخطاء DOM أو الصياغة، ومن أن النشر يحفظ محلياً ويبث عبر Render، ثم اكتب [اتفقنا] متبوعاً بالخطة النهائية.",
                     `مقترح الطرف الأول:\n${propRes.text}\n\nالتقرير:\n${diagnosticReport}\n\n${architectureMandate}`,
-                    700
+                    720
                   );
                   agreedPlan = revRes.text;
                   activeExecutor = p2;
@@ -509,20 +567,21 @@ jobs:
               } catch (propErr) {
                 console.warn(`⚠️ تعذر الطرف الأول (${propErr.message}) — ينتقل الطرف الثاني للعمل المستقل الفوري.`);
                 const soloRes = await p2.runText(
-                  "أنت المنفذ المستقل. ضع خطة فورية لحل التعليق، إظهار الأخطاء في اللوغو، وإضافة ميزة خارج الصندوق.",
+                  "أنت المنفذ المستقل. ضع خطة فورية لبناء واجهة متقدمة قابلة للتوسيع مع localStorage وبث Render وخلو من الأخطاء.",
                   `التقرير:\n${diagnosticReport}\n\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
-                  680
+                  720
                 );
                 agreedPlan = `[عمل مستقل فوري]\n${soloRes.text}`;
                 activeExecutor = p2;
               }
             } else {
               activeExecutor = providers[0];
-              agreedPlan = `أصلح المشاكل التالية وأضف تطويراً خارج الصندوق:\n${diagnosticReport}`;
+              agreedPlan = `نفّذ المعمارية المتقدمة وحل المشاكل التالية:\n${diagnosticReport}`;
             }
 
             const systemJsonInstruction = [
-              "أنت مهندس برمجيات ومصمم واجهات محترف.",
+              "أنت مهندس برمجيات ومصمم معماري محترف.",
+              "اكتب كوداً نظيفاً، متماسكاً، خالياً من الأخطاء الصياغية أو المراجع الناقصة، وقابلاً للتوسيع.",
               "أعد كائن JSON صالحاً فقط بدون أي نص خارج JSON، وبصيغة الهروب الصحيحة.",
               "الشكل المطلوب بدقة: {\"files\":{\"مسار_الملف\":\"محتواه_الكامل\"},\"summary\":\"ملخص واضح ومختصر\"}"
             ].join("\n");
@@ -541,12 +600,27 @@ jobs:
             ].join("\n");
 
             let execResult = null;
+            let validationErrors = [];
             const orderedExecutors = [activeExecutor, ...providers.filter(pr => pr !== activeExecutor)].filter(Boolean);
             let lastExecErr = null;
 
             for (const execProvider of orderedExecutors) {
               try {
-                execResult = await execProvider.runJson(systemJsonInstruction, executionPrompt, 2900);
+                execResult = await execProvider.runJson(systemJsonInstruction, executionPrompt, 3200);
+                const errs = validateGeneratedFiles(execResult?.parsed?.files);
+                if (errs.length) {
+                  validationErrors = errs;
+                  console.warn(`⚠️ رصد أخطاء تحقق في مخرجات ${execProvider.label}: ${errs.join(" | ")}`);
+                  const retryPrompt = `${executionPrompt}\n\n=== أخطاء يجب تصحيحها فوراً في الكود المولد ===\n${errs.join("\n")}`;
+                  execResult = await execProvider.runJson(systemJsonInstruction, retryPrompt, 3200);
+                  const errsAfterRetry = validateGeneratedFiles(execResult?.parsed?.files);
+                  if (errsAfterRetry.length) {
+                    validationErrors = errsAfterRetry;
+                    lastExecErr = new Error(errsAfterRetry.join(" | "));
+                    continue;
+                  }
+                }
+                validationErrors = [];
                 lastExecErr = null;
                 break;
               } catch (e) {
@@ -561,6 +635,9 @@ jobs:
 
             const parsed = execResult.parsed;
             console.log(`✅ AI STATUS: WORKING (${execResult.detail})`);
+            if (validationErrors.length) {
+              console.warn("⚠️ ملاحظات تحقق متبقية:", validationErrors.join(" | "));
+            }
             console.log("ملخص التحديث:", parsed.summary || "تم التطوير والمعالجة");
 
             let updatedCount = 0;
@@ -584,7 +661,7 @@ jobs:
 
             console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
             if (updatedCount > 0) {
-              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Fix publish hang, error log & smart radar").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
+              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Advanced modular UI with localStorage & Render live broadcast").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
             }
           }
 
@@ -595,7 +672,7 @@ jobs:
         env:
           REPO: ${{ github.repository }}
           PAGES_URL: "[https://mb4252.github.io/sudan-market-/](https://mb4252.github.io/sudan-market-/)"
-          RENDER_URL: ${{ secrets.RENDER_URL }}
+          RENDER_URL: "[https://sudan-market-2.onrender.com](https://sudan-market-2.onrender.com)"
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
           git config user.name "ai-autopilot[bot]"
@@ -606,7 +683,7 @@ jobs:
             echo "ℹ️ nothing to commit, working tree clean."
             exit 0
           fi
-          SUMMARY="Fix publish hang, error log & smart radar"
+          SUMMARY="Advanced modular UI with localStorage & Render live broadcast"
           if [ -f last_ai_change.txt ]; then
             SUMMARY=$(head -n 1 last_ai_change.txt)
             rm -f last_ai_change.txt
@@ -621,17 +698,24 @@ jobs:
           if [ -n "${RENDER_DEPLOY_HOOK_URL}" ]; then
             curl -s -X POST "${RENDER_DEPLOY_HOOK_URL}" || true
           fi
+
+          TARGET_PAGES_URL="[https://mb4252.github.io/sudan-market-/](https://mb4252.github.io/sudan-market-/)"
           echo "⏳ انتظار نشر التحديث على GitHub Pages للفحص..."
-          sleep 35
-          TARGET_PAGES_URL="${PAGES_URL:-[https://mb4252.github.io/sudan-market-/](https://mb4252.github.io/sudan-market-/)}"
-          CODE=$(curl -sL -m 15 -o /tmp/pages_check.html -w "%{http_code}" "${TARGET_PAGES_URL}" || echo "000")
+          sleep 40
+          CODE="000"
+          for i in 1 2; do
+            CODE=$(curl -sL --connect-timeout 10 -m 20 -o /tmp/pages_check.html -w "%{http_code}" "${TARGET_PAGES_URL}" || echo "000")
+            [ "${CODE}" = "200" ] && break
+            sleep 15
+          done
           echo "🌐 فحص ما بعد النشر (${TARGET_PAGES_URL}): HTTP ${CODE}"
           if [ "${CODE}" = "200" ]; then
             echo "🧪 تحقق من تجربة الموقع عبر الرابط: ${TARGET_PAGES_URL}"
             grep -E "<script|<title|جاري الاتصال" /tmp/pages_check.html | head -n 15 || true
           else
-            echo "ℹ️ قد يكون GitHub Pages ما زال ينشر التحديث؛ جرّب فتح الرابط مباشرة: ${TARGET_PAGES_URL}"
+            echo "ℹ️ لم يكتمل رد GitHub Pages بعد (HTTP ${CODE})؛ جرّب فتح الرابط مباشرة: ${TARGET_PAGES_URL}"
           fi
-          TARGET_RENDER_URL="${RENDER_URL:-[https://sudan-market-2.onrender.com](https://sudan-market-2.onrender.com)}"
-          RCODE=$(curl -sL -m 15 -o /dev/null -w "%{http_code}" "${TARGET_RENDER_URL%/}/health" || echo "000")
-          echo "🔌 فحص جسر Render (${TARGET_RENDER_URL%/}/health): HTTP ${RCODE}"
+
+          TARGET_RENDER_URL="[https://sudan-market-2.onrender.com](https://sudan-market-2.onrender.com)"
+          RCODE=$(curl -sL --connect-timeout 12 -m 25 -o /dev/null -w "%{http_code}" "${TARGET_RENDER_URL}/health" || echo "000")
+          echo "🔌 فحص جسر Render (${TARGET_RENDER_URL}/health): HTTP ${RCODE}"
