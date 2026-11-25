@@ -6,8 +6,8 @@
     wsUrl: 'wss://browser-relay-server.onrender.com',
     storageKey: 'smart_posts_v1',
     maxPosts: 500,
-    priceRegex: /(\d+(\.\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
-    storeRegex: /(في|من|عند)\s+([\u0600-\u06FF\s]+)/i
+    priceRegex: /(\\d+(\\.\\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
+    storeRegex: /(في|من|عند)\s+([\\u0600-\\u06FF\\s]+)/i
   };
   
   // 2. Storage Manager (Source of Truth)
@@ -44,7 +44,7 @@
     
     // Extract Price
     const priceMatch = text.match(window.APP_CONFIG.priceRegex);
-    post.price = priceMatch ? parseFloat(priceMatch[0].replace(/[^\d.]/g, '')) : null;
+    post.price = priceMatch ? parseFloat(priceMatch[0].replace(/[^\\d.]/g, '')) : null;
     
     // Extract Store Name
     const storeMatch = text.match(window.APP_CONFIG.storeRegex);
@@ -72,130 +72,83 @@
       } else {
         post.priceTag = 'normal';
       }
-    } else {
-      post.priceTag = 'unknown';
     }
     
     return post;
   };
-  
-  // 4. UI Initialization
-  document.addEventListener('DOMContentLoaded', () => {
-    // Initialize UI components
+
+  // 4. UI Rendering
+  function renderPosts(posts) {
     const postsContainer = document.getElementById('posts');
-    const contentInput = document.getElementById('content');
-    const publishBtn = document.getElementById('publishBtn');
-    const authorInput = document.getElementById('author');
-    const filterBtns = document.querySelectorAll('.filter-btn');
-    const compareBtn = document.getElementById('compareBtn');
-    const analyticsToggle = document.getElementById('analyticsToggle');
-    const analyticsPanel = document.getElementById('analyticsPanel');
-    const compareOverlay = document.getElementById('compareOverlay');
-    const compareContent = document.getElementById('compareContent');
+    postsContainer.innerHTML = '';
     
-    // Initialize charts
-    const chartVolume = new Chart(document.getElementById('chartVolume'), {
-      type: 'bar',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'عدد المنشورات',
-          data: [],
-          backgroundColor: 'rgba(54, 162, 235, 0.5)',
-          borderColor: 'rgba(54, 162, 235, 1)',
-          borderWidth: 1
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          y: {
-            beginAtZero: true
-          }
-        }
-      }
-    });
-    
-    const chartPriceTrends = new Chart(document.getElementById('chartPriceTrends'), {
-      type: 'line',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'متوسط السعر',
-          data: [],
-          borderColor: 'rgba(255, 99, 132, 1)',
-          backgroundColor: 'rgba(255, 99, 132, 0.2)',
-          tension: 0.1
-        }]
-      },
-      options: {
-        responsive: true
-      }
-    });
-    
-    const chartStoreComparison = new Chart(document.getElementById('chartStoreComparison'), {
-      type: 'bar',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'متوسط السعر',
-          data: [],
-          backgroundColor: 'rgba(75, 192, 192, 0.5)',
-          borderColor: 'rgba(75, 192, 192, 1)',
-          borderWidth: 1
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          y: {
-            beginAtZero: true
-          }
-        }
-      }
-    });
-    
-    // Render posts
-    function renderPosts(posts, filter = '') {
-      postsContainer.innerHTML = '';
+    posts.forEach(post => {
+      const postElement = document.createElement('div');
+      postElement.className = `post ${post.priceTag || ''}`;
       
-      posts.forEach(post => {
-        if (filter && post.priceTag !== filter) return;
-        
-        const postElement = document.createElement('div');
-        postElement.className = `post ${post.priceTag}`;
-        postElement.innerHTML = `
-          <div class="post-header">
-            <span class="post-author">${post.author || 'مجهول'}</span>
-            <span class="post-time">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
-          </div>
-          <div class="post-content">${post.content}</div>
-          <div class="post-meta">
-            <span class="post-store">${post.store}</span>
-            ${post.price !== null ? `<span class="post-price">${post.price} ريال</span>` : ''}
-          </div>
-        `;
-        
-        postsContainer.appendChild(postElement);
-      });
+      const authorElement = document.createElement('div');
+      authorElement.className = 'author';
+      authorElement.textContent = post.author || 'مجهول';
+      
+      const contentElement = document.createElement('div');
+      contentElement.className = 'content';
+      contentElement.textContent = post.content;
+      
+      const metaElement = document.createElement('div');
+      metaElement.className = 'meta';
+      metaElement.innerHTML = `
+        <span class="store">${post.store}</span>
+        <span class="price">${post.price ? `${post.price} ريال` : 'سعر غير محدد'}</span>
+        <span class="time">${new Date(post.timestamp).toLocaleString()}</span>
+      `;
+      
+      postElement.appendChild(authorElement);
+      postElement.appendChild(contentElement);
+      postElement.appendChild(metaElement);
+      
+      postsContainer.appendChild(postElement);
+    });
+  }
+  
+  // 5. Event Listeners
+  document.getElementById('publishBtn').addEventListener('click', () => {
+    const author = document.getElementById('author').value.trim();
+    const content = document.getElementById('content').value.trim();
+    
+    if (!content) {
+      showError('الرجاء كتابة منشور', 'warning');
+      return;
     }
     
-    // Update UI based on posts
-    function updateUI(posts) {
-      renderPosts(posts);
-      updateRadar(posts);
-      updateAnalytics(posts);
-    }
+    const post = {
+      id: Date.now().toString(),
+      author: author || null,
+      content: content,
+      timestamp: Date.now()
+    };
     
-    // Update radar with smart opportunities
-    function updateRadar(posts) {
-      const radarContent = document.getElementById('radarContent');
-      const now = Date.now();
-      const dayAgo = now - (24 * 60 * 60 * 1000);
-      
-      const recentPosts = posts.filter(p => p.timestamp > dayAgo && p.price !== null);
-      
-      if (recentPosts.length === 0) {
-        radarContent.innerHTML = 'لا توجد بيانات كافية لتحليل الفرص.';
-        return;
-      }
+    const taggedPost = window.tagPost(post);
+    window.postStorage.addPost(taggedPost);
+    
+    document.getElementById('author').value = '';
+    document.getElementById('content').value = '';
+    
+    showError('تم نشر المنشور بنجاح!', 'success');
+  });
+  
+  // 6. Initialization
+  document.addEventListener('DOMContentLoaded', () => {
+    const posts = window.postStorage.getAll();
+    renderPosts(posts);
+    
+    // Enable publish button when content is entered
+    document.getElementById('content').addEventListener('input', (e) => {
+      document.getElementById('publishBtn').disabled = e.target.value.trim() === '';
+    });
+  });
+
+  // 7. Storage Update Listener
+  window.addEventListener('storage:update', (e) => {
+    renderPosts(e.detail);
+  });
+}
