@@ -67,144 +67,75 @@
         post.priceTag = post.price < avgPrice * 0.9
           ? 'cheap'
           : post.price > avgPrice * 1.1
-            ? 'expensive'
-            : 'normal';
-      } else {
-        post.priceTag = 'normal';
+          ? 'expensive'
+          : '';
       }
     }
 
     return post;
   };
 
-  // 4. UI Initialization
-  document.addEventListener('DOMContentLoaded', () => {
-    // Initialize UI elements
-    const publishBtn = document.getElementById('publishBtn');
-    const contentInput = document.getElementById('content');
-    const authorInput = document.getElementById('author');
+  // 4. UI Rendering
+  function renderPosts(posts, filter = '') {
     const postsContainer = document.getElementById('posts');
-    const filterBtns = document.querySelectorAll('.filter-btn');
-    const compareBtn = document.getElementById('compareBtn');
-    const analyticsToggle = document.getElementById('analyticsToggle');
-    const analyticsPanel = document.getElementById('analyticsPanel');
-    const compareOverlay = document.getElementById('compareOverlay');
-    const compareContent = document.getElementById('compareContent');
+    postsContainer.innerHTML = '';
 
-    // Check if DOM elements exist
-    if (!compareOverlay || !compareContent) {
-      console.error('Missing DOM elements for comparison feature');
-      return;
-    }
-
-    // Render posts from storage
-    renderPosts();
-
-    // Event Listeners
-    publishBtn.addEventListener('click', publishPost);
-    contentInput.addEventListener('input', validatePost);
-    filterBtns.forEach(btn => btn.addEventListener('click', filterPosts));
-    compareBtn.addEventListener('click', showComparison);
-    analyticsToggle.addEventListener('click', toggleAnalytics);
-
-    // Close overlay when clicking outside content
-    compareOverlay.addEventListener('click', (e) => {
-      if (e.target === compareOverlay) {
-        compareOverlay.classList.add('hidden');
-      }
-    });
-
-    // Close button in overlay
-    const closeBtn = compareContent.querySelector('.close-btn');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', () => {
-        compareOverlay.classList.add('hidden');
+    posts
+      .filter(post => !filter || post.priceTag === filter)
+      .forEach(post => {
+        const postElement = document.createElement('div');
+        postElement.className = `post ${post.priceTag || ''}`;
+        postElement.innerHTML = `
+          <div class="post-header">
+            <span class="author">${post.author || 'مجهول'}</span>
+            <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
+          </div>
+          <div class="post-content">${post.content}</div>
+          <div class="post-meta">
+            <span class="store">🏪 ${post.store}</span>
+            ${post.price ? `<span class="price">💰 ${post.price.toFixed(2)}</span>` : ''}
+          </div>
+        `;
+        postsContainer.appendChild(postElement);
       });
-    }
+  }
 
-    // Listen for storage updates
-    window.addEventListener('storage:update', () => renderPosts());
-  });
-
-  // 5. Post Publishing
-  function publishPost() {
+  // 5. Event Listeners
+  document.getElementById('publishBtn').addEventListener('click', () => {
+    const author = document.getElementById('author').value.trim();
     const content = document.getElementById('content').value.trim();
-    const author = document.getElementById('author').value.trim() || 'مجهول';
 
     if (!content) {
-      showError('المنشور فارغ!', 'validation');
+      showError('يرجى كتابة منشور', 'warning');
       return;
     }
 
     const post = {
       id: Date.now().toString(),
+      author: author || 'مجهول',
       content,
-      author,
-      timestamp: Date.now(),
-      price: null,
-      store: 'غير محدد',
-      priceTag: 'normal'
+      timestamp: Date.now()
     };
 
-    // Tag the post with price and store info
     const taggedPost = window.tagPost(post);
-
-    // Save to local storage
     window.postStorage.addPost(taggedPost);
-
-    // Clear input fields
     document.getElementById('content').value = '';
-    document.getElementById('author').value = '';
+  });
 
-    // Show success message
-    showSuccess('تم نشر المنشور بنجاح!');
-  }
-
-  // 6. Post Validation
-  function validatePost() {
-    const content = document.getElementById('content').value.trim();
-    const publishBtn = document.getElementById('publishBtn');
-
-    publishBtn.disabled = !content;
-  }
-
-  // 7. Post Rendering
-  function renderPosts(filter = '') {
-    const posts = window.postStorage.getAll();
-    const postsContainer = document.getElementById('posts');
-
-    if (!postsContainer) return;
-
-    postsContainer.innerHTML = '';
-
-    if (posts.length === 0) {
-      postsContainer.innerHTML = '<p>لا توجد منشورات بعد.</p>';
-      return;
-    }
-
-    const filteredPosts = filter ? posts.filter(p => p.priceTag === filter) : posts;
-
-    if (filteredPosts.length === 0) {
-      postsContainer.innerHTML = '<p>لا توجد منشورات مطابقة للفلتر.</p>';
-      return;
-    }
-
-    filteredPosts.forEach(post => {
-      const postElement = document.createElement('div');
-      postElement.className = `post ${post.priceTag}`;
-
-      postElement.innerHTML = `
-        <div class="post-header">
-          <span class="post-author">${escapeHtml(post.author)}</span>
-          <span class="post-time">${formatTime(post.timestamp)}</span>
-        </div>
-        <div class="post-content">${escapeHtml(post.content)}</div>
-        <div class="post-meta">
-          <span class="post-store">${escapeHtml(post.store)}</span>
-          ${post.price !== null ? `<span class="post-price">${post.price} ريال</span>` : ''}
-        </div>
-      `;
-
-      postsContainer.appendChild(postElement);
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderPosts(window.postStorage.getAll(), btn.dataset.filter);
     });
-  }
+  });
+
+  // 6. Initialization
+  window.addEventListener('DOMContentLoaded', () => {
+    renderPosts(window.postStorage.getAll());
+  });
+
+  window.addEventListener('storage:update', (e) => {
+    renderPosts(e.detail);
+  });
+})();
