@@ -53,41 +53,42 @@
       const maxDelay = 30000; // 30 s max
 
       function connect(){
-        socket = new WebSocket(serverUrl);
-        socket.onopen = () => {
-          console.log('WebSocket connected');
-          // reset back‑off after a successful connection
-          retryDelay = 500;
-        };
-        socket.onmessage = e => {
-          // يمكن إضافة معالجة للرسائل الواردة هنا إذا لزم الأمر
-        };
-        socket.onclose = () => {
-          console.warn('WebSocket closed, retrying in ' + retryDelay + 'ms');
+        try{
+          socket = new WebSocket(serverUrl);
+          socket.onopen = () => {
+            console.log('WebSocket connected');
+            retryDelay = 500;
+          };
+          socket.onmessage = e => {
+            // يمكن إضافة معالجة للرسائل الواردة هنا إذا لزم الأمر
+          };
+          socket.onclose = () => {
+            console.warn('WebSocket closed, retrying in ' + retryDelay + 'ms');
+            setTimeout(connect, retryDelay);
+            retryDelay = Math.min(retryDelay * 2, maxDelay);
+          };
+        }catch(err){
+          console.error('WebSocket error', err);
           setTimeout(connect, retryDelay);
-          // exponential back‑off مع حد أقصى
           retryDelay = Math.min(retryDelay * 2, maxDelay);
-        };
-        socket.onerror = () => {
-          console.error('WebSocket error – closing socket');
-          socket.close();
-        };
+        }
       }
-
-      // بدء الاتصال الأولي
       connect();
 
-      // واجهة لإرسال الرسائل مع fallback إلى HTTP long‑poll
-      window.sendMessage = data => {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify(data));
-        } else {
-          fetch('/longpoll', {
-            method: 'POST',
-            body: JSON.stringify(data)
-          }).catch(err => console.error('Fallback send failed', err));
-        }
-      };
+      // MutationObserver to keep posts sorted by timestamp descending
+      const postsContainer = document.getElementById('posts');
+      if(postsContainer){
+        const observer = new MutationObserver(() => {
+          const posts = Array.from(postsContainer.children);
+          posts.sort((a,b)=>{
+            const ta = new Date(a.dataset.timestamp).getTime();
+            const tb = new Date(b.dataset.timestamp).getTime();
+            return tb - ta;
+          });
+          posts.forEach(p=>postsContainer.appendChild(p));
+        });
+        observer.observe(postsContainer, {childList:true, subtree:true});
+      }
     })();
   </script>
 </body>
