@@ -1,41 +1,74 @@
 (function(){
-  const LS_KEY='posts';
-  // Load posts from localStorage
-  function loadFromLocal(){
-    const data=localStorage.getItem(LS_KEY);
-    return data?JSON.parse(data):[];
+  const POSTS_KEY = 'postsData';
+  const postsContainer = document.getElementById('posts');
+  const publishBtn = document.getElementById('publishBtn');
+  const authorInput = document.getElementById('author');
+  const contentInput = document.getElementById('content');
+
+  function loadPosts(){
+    const raw = localStorage.getItem(POSTS_KEY);
+    return raw ? JSON.parse(raw) : [];
   }
-  // Save posts to localStorage
-  function saveToLocal(posts){
-    try{
-      localStorage.setItem(LS_KEY,JSON.stringify(posts));
-    }catch(e){
-      console.warn('localStorage full, using IndexedDB fallback');
+
+  function savePosts(posts){
+    localStorage.setItem(POSTS_KEY, JSON.stringify(posts));
+  }
+
+  function renderPost(post){
+    const div = document.createElement('div');
+    div.className = `post ${post.priceTag}`;
+    div.dataset.id = post.id;
+    div.innerHTML = `
+      <div class="meta">${post.author || 'مجهول'} — ${new Date(post.timestamp).toLocaleString()}</div>
+      <div class="content">${post.content}</div>
+      <div class="tag ${post.priceTag}">${post.priceTag === 'cheap' ? 'رخيص' : post.priceTag === 'expensive' ? 'غالي' : 'عادي'}</div>
+    `;
+    postsContainer.appendChild(div);
+  }
+
+  function renderAll(){
+    postsContainer.innerHTML = '';
+    const posts = loadPosts();
+    posts.forEach(renderPost);
+    // Apply current filter if any
+    if (window.currentFilter !== undefined) {
+      window.applyFilter(window.currentFilter);
     }
   }
-  // Render a single post in the DOM
-  function renderPost(p){
-    const container=document.getElementById('posts');
-    if(!container) return;
-    const div=document.createElement('div');
-    div.className='post '+(p.priceTag||'');
-    div.dataset.id=p.id||'';
-    div.innerHTML=`<div class="meta">${p.author||'مجهول'} — ${new Date(p.timestamp).toLocaleString()}</div>`+
-      `<div class="${p.priceTag||'neutral'}">${p.priceTag==='cheap'?'رخيص':p.priceTag==='expensive'?'غالي':'عادي'}</div>`+
-      `<div>${p.content||''}</div>`;
-    container.appendChild(div);
-    if(window.applyFilter) window.applyFilter(window.currentFilter||'');
-  }
-  // Public API: add a post, persist it and render
-  window.addPost = async function(post){
-    const posts=loadFromLocal();
+
+  function addPost(){
+    const content = contentInput.value.trim();
+    if (!content) return;
+    const author = authorInput.value.trim();
+    const timestamp = Date.now();
+    // استخدم الدالة detectPrice الموجودة في price.js لتصنيف السعر
+    const priceTag = typeof detectPrice === 'function' ? detectPrice(content) || 'neutral' : 'neutral';
+    const post = {id: timestamp, author, content, timestamp, priceTag};
+    const posts = loadPosts();
     posts.push(post);
-    saveToLocal(posts);
-    if(window.indexedDB){
-      try{ await addPost(post); }catch(e){ console.error('IndexedDB save failed',e); }
-    }
+    savePosts(posts);
     renderPost(post);
-  };
-  // Initialize UI with stored posts
-  loadFromLocal().forEach(renderPost);
+    // إفراغ الحقول
+    contentInput.value = '';
+    authorInput.value = '';
+    // إبلاغ الخادم (WebSocket أو long‑polling) إذا كان متصلاً
+    if (window.sendMessage) {
+      window.sendMessage({type:'newPost', data:post});
+    }
+  }
+
+  // استمع للنقر على زر النشر
+  if (publishBtn) {
+    publishBtn.addEventListener('click', addPost);
+  }
+
+  // مراقبة تغيّر التخزين عبر نافذة أخرى (sync بين تبويبات)
+  window.addEventListener('storage', e => {
+    if (e.key === POSTS_KEY) {
+      renderAll();
+    }
+  });
+
+  // تحميل أولي
+  document.addEventListener('DOMContentLoaded', renderAll);
 })();
