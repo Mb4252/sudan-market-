@@ -66,13 +66,14 @@
   const renderPosts = (filter = '') => {
     const posts = window.postStorage.getAll();
     const postsContainer = document.getElementById('posts');
-    if (!postsContainer) return;
-
-    postsContainer.innerHTML = posts.length === 0 ? '<p>لا توجد منشورات بعد</p>' : '';
-
-    posts.forEach(post => {
-      if (filter && post.priceTag !== filter) return;
-
+    postsContainer.innerHTML = '';
+    
+    if (posts.length === 0) {
+      postsContainer.innerHTML = '<p>لا توجد منشورات بعد. كن أول من ينشر!</p>';
+      return;
+    }
+    
+    posts.filter(p => filter === '' || p.priceTag === filter).forEach(post => {
       const postElement = document.createElement('div');
       postElement.className = `post ${post.priceTag || ''}`;
       postElement.innerHTML = `
@@ -81,31 +82,94 @@
           <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
         </div>
         <div class="post-content">${post.content}</div>
-        <div class="post-meta">
+        <div class="post-footer">
           <span class="store">🏪 ${post.store}</span>
-          ${post.price !== null ? `<span class="price">💰 ${post.price} ريال</span>` : ''}
+          ${post.price ? `<span class="price">💰 ${post.price} ريال</span>` : ''}
         </div>
       `;
       postsContainer.appendChild(postElement);
     });
   };
 
-  // 5. Event Listeners
-  document.addEventListener('DOMContentLoaded', () => {
-    // Check for required elements
-    const requiredIds = ['status', 'author', 'content', 'publishBtn', 'priceRadar', 'posts'];
-    const missingIds = requiredIds.filter(id => !document.getElementById(id));
-    if (missingIds.length > 0) {
-      console.warn('Missing required elements:', missingIds);
+  // 5. Price Radar
+  const updatePriceRadar = () => {
+    const posts = window.postStorage.getAll();
+    const radarContent = document.getElementById('radarContent');
+    
+    if (posts.length === 0) {
+      radarContent.innerHTML = '<p>لا توجد بيانات كافية لتحليل الأسعار.</p>';
       return;
     }
+    
+    const stores = {};
+    posts.forEach(post => {
+      if (post.price && post.store) {
+        if (!stores[post.store]) {
+          stores[post.store] = { prices: [], count: 0 };
+        }
+        stores[post.store].prices.push(post.price);
+        stores[post.store].count++;
+      }
+    });
+    
+    const storeEntries = Object.entries(stores);
+    if (storeEntries.length === 0) {
+      radarContent.innerHTML = '<p>لا توجد بيانات أسعار متاحة.</p>';
+      return;
+    }
+    
+    // Sort by average price
+    storeEntries.sort((a, b) => {
+      const avgA = a[1].prices.reduce((s, p) => s + p, 0) / a[1].count;
+      const avgB = b[1].prices.reduce((s, p) => s + p, 0) / b[1].count;
+      return avgA - avgB;
+    });
+    
+    radarContent.innerHTML = storeEntries.map(([store, data], index) => {
+      const avgPrice = data.prices.reduce((s, p) => s + p, 0) / data.count;
+      const color = index === 0 ? 'green' : (index === storeEntries.length - 1 ? 'red' : 'orange');
+      return `
+        <div class="store-entry">
+          <span class="store-name">${store}</span>
+          <span class="store-price" style="color: ${color}">${avgPrice.toFixed(2)} ريال</span>
+          <span class="store-count">(${data.count} منشور)</span>
+        </div>
+      `;
+    }).join('');
+  };
 
-    // Initialize UI
+  // 6. Event Listeners
+  document.addEventListener('DOMContentLoaded', () => {
+    // Initial render
     renderPosts();
     updatePriceRadar();
-
-    // Set up event listeners
-    document.getElementById('publishBtn').addEventListener('click', publishPost);
+    
+    // Publish button
+    document.getElementById('publishBtn').addEventListener('click', () => {
+      const content = document.getElementById('content').value.trim();
+      if (!content) return;
+      
+      const post = {
+        content,
+        author: document.getElementById('author').value.trim() || 'مجهول',
+        timestamp: Date.now()
+      };
+      
+      // Tag the post immediately
+      window.tagPost(post);
+      
+      // Add to local storage
+      window.postStorage.addPost(post);
+      
+      // Broadcast to other tabs
+      const channel = new BroadcastChannel('posts');
+      channel.postMessage({ type: 'NEW_POST', ...post });
+      
+      // Clear input
+      document.getElementById('content').value = '';
+    });
+    
+    // Filter buttons
     document.querySelectorAll('.filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -113,60 +177,70 @@
         renderPosts(btn.dataset.filter || '');
       });
     });
-
+    
     // Storage update listener
     window.addEventListener('storage:update', () => {
-      renderPosts(document.querySelector('.filter-btn.active')?.dataset.filter || '');
+      renderPosts(document.querySelector('.filter-btn.active').dataset.filter || '');
       updatePriceRadar();
     });
   });
 
-  // 6. Publish Function
-  function publishPost() {
-    const author = document.getElementById('author').value.trim();
-    const content = document.getElementById('content').value.trim();
-
-    if (!content) {
-      alert('يرجى كتابة منشور أولاً');
-      return;
-    }
-
-    const post = {
-      author: author || 'مجهول',
-      content,
-      timestamp: Date.now()
-    };
-
-    // Tag the post with price and store info
-    window.tagPost(post);
-
-    // Save to local storage
-    window.postStorage.addPost(post);
-
-    // Clear input fields
-    document.getElementById('content').value = '';
+  // 7. Wake up Render server
+  function wakeUpRender() {
+    fetch('https://browser-relay-server.onrender.com/health')
+      .then(() => console.log('Render server woke up'))
+      .catch(err => console.error('Failed to wake up Render server:', err));
   }
 
-  // 7. Price Radar Update
-  function updatePriceRadar() {
-    const posts = window.postStorage.getAll();
-    const radarContent = document.getElementById('radarContent');
-    if (!radarContent) return;
+  // Wake up server on page load
+  wakeUpRender();
 
-    if (posts.length === 0) {
-      radarContent.innerHTML = '<p>لا توجد منشورات بعد</p>';
-      return;
+  // Reconnect WebSocket periodically
+  setInterval(() => {
+    if (!window.ws || window.ws.readyState !== WebSocket.OPEN) {
+      connectWebSocket();
     }
+  }, 30000);
 
-    // Calculate statistics
-    const stats = {
-      total: posts.length,
-      cheap: posts.filter(p => p.priceTag === 'cheap').length,
-      expensive: posts.filter(p => p.priceTag === 'expensive').length,
-      normal: posts.filter(p => p.priceTag === 'normal').length
+  // Initial WebSocket connection
+  function connectWebSocket() {
+    if (window.ws) return;
+    
+    window.ws = new WebSocket(window.APP_CONFIG.wsUrl);
+    
+    window.ws.onopen = () => {
+      console.log('WebSocket connected');
+      document.getElementById('status').textContent = 'متصل';
+      document.getElementById('syncBadge').classList.remove('offline');
+      document.getElementById('syncBadge').classList.add('online');
     };
+    
+    window.ws.onmessage = e => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === 'NEW_POST') {
+          window.postStorage.addPost(data);
+        }
+      } catch (err) {
+        console.warn('WebSocket message error', err);
+      }
+    };
+    
+    window.ws.onclose = () => {
+      console.log('WebSocket disconnected');
+      document.getElementById('status').textContent = 'غير متصل';
+      document.getElementById('syncBadge').classList.remove('online');
+      document.getElementById('syncBadge').classList.add('offline');
+      window.ws = null;
+      setTimeout(connectWebSocket, 5000);
+    };
+    
+    window.ws.onerror = err => {
+      console.error('WebSocket error:', err);
+      window.ws.close();
+    };
+  }
 
-    // Update radar content
-    radarContent.innerHTML = `
-      <p>إجمالي المنشورات: ${stats.total}</p>
-      <p>رخيص: ${stats.cheap} (${Math.round((stats.cheap / stats.total) * 100)}
+  // Start WebSocket connection
+  connectWebSocket();
+})();
