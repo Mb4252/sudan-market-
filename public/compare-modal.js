@@ -1,3 +1,7 @@
 // نافذة مقارنة بسيطة
-function openCompare(){}
-window.openCompare=openCompare;
+function openCompare(){
+  if (window.showCompare) {
+    window.showCompare();
+  }
+}
+window.openCompare = openCompare;
