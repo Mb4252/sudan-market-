@@ -152,12 +152,16 @@ jobs:
             }
 
             if (!cssFiles.length) {
-              issues.push("لا يوجد ملف CSS مستقل (مثل public/styles.css) لتنسيق الواجهة بشكل حديث ومتقن بدلاً من التصميم التقليدي البسيط.");
+              issues.push("لا يوجد ملف CSS مستقل لتنسيق الواجهة بشكل حديث ومتقن.");
             }
 
             const htmlIds = new Set([...htmlFile.raw.matchAll(/\bid=["'\'']([^"'\'']+)["'\'']/g)].map(m => m[1]));
             const allJsRaw = jsFiles.map(f => f.raw).join("\n");
             const combinedRaw = allJsRaw + "\n" + htmlFile.raw;
+
+            if (/toLocaleString|toLocaleDateString|toLocaleTimeString/.test(allJsRaw) && !/isNaN\(Date\.parse|Number\.isFinite/.test(allJsRaw)) {
+              issues.push("تنسيق التاريخ قد يظهر Invalid Date عند وصول تاريخ غير صالح أو مفقود؛ تحقّق من صلاحية التاريخ قبل تنسيقه.");
+            }
 
             if (/getElementById\([^)]+\)\.textContent\s*=|querySelector\([^)]+\)\.textContent\s*=/.test(combinedRaw)) {
               issues.push("إسناد مباشر لـ .textContent دون التحقق من وجود العنصر مما قد يسبب TypeError.");
@@ -190,7 +194,7 @@ jobs:
 
             return issues.length
               ? issues.map((x, i) => `${i + 1}. ${x}`).join("\n")
-              : "لا توجد أخطاء بنيوية واضحة في الفحص الساكن، ركّز على تطوير التصميم البصري العصري والميزات المتقدمة وتوزيع الملفات.";
+              : "لا توجد أخطاء بنيوية واضحة في الفحص الساكن، ركّز على تطوير التصميم البصري العصري والميزات الذكية القابلة للتوسيع وتوزيع الملفات.";
           }
 
           async function getGroqModelsOrdered(apiKey) {
@@ -538,9 +542,9 @@ jobs:
             const architectureMandate = [
               `رابط GitHub Pages الصحيح: ${pagesUrl}`,
               `رابط جسر Render الصحيح: ${renderUrl} (للبث المباشر عبر wss://sudan-market-2.onrender.com وطلب الإيقاظ /health).`,
-              "1) تصميم عصري جذاب وغير تقليدي وموزع على ملفات: ابتعد تماماً عن البطاقات البيضاء المسطحة الفارغة أو القوالب البدائية؛ وزّع العمل على 2 إلى 3 ملفات متخصصة في الجولة (مثل public/styles.css بتصميم حديث غني بالألوان المتناسقة والظلال والأزرار التفاعلية، index.html بواجهة متكاملة مع نموذج نشر فوري وحاويات حية، وملفات public/ للمنطق والرادار والبث).",
-              "2) حفظ فوري في المتصفح + بث مباشر عبر Render: عند النشر، احفظ فوراً في localStorage وأعد العرض الفوري للمنشورات والرادار والتحليلات دون انتظار الشبكة، وأرسل المنشور عبر WebSocket إلى wss://sudan-market-2.onrender.com لبثه لبقية المتصلين مع منع التكرار وتحديث مؤشر الحالة.",
-              "3) بنية قابلة للتوسيع وخالية من الأخطاء: نظام وحدات/إضافات (Plugins) وتحقّق آمن من وجود عناصر DOM وملتقط أخطاء عام."
+              "1) إصلاح Invalid Date بشكل جذري: أي تاريخ يُعرض في المنشورات يجب التحقق من صحته أولاً، وعند غيابه أو عدم صلاحيته يُعرض وقت صالح (مثل Date.now()) أو نص واضح مثل 'الآن' دون ظهور Invalid Date أبداً.",
+              "2) حفظ فوري في المتصفح + بث مباشر عبر Render: حفظ فوري في localStorage عند النشر مع إرسال الحدث عبر WebSocket إلى wss://sudan-market-2.onrender.com لبثه لبقية المتصلين مع منع التكرار.",
+              "3) بنية موزعة قابلة للتوسيع وتصميم حديث غير تقليدي: توزيع المسؤوليات على ملفات منظمة ومضافة ميزات تحليل/بحث/تصفية أو تحسين المظهر البصري خطوة بخطوة دون كسر النشر الفوري."
             ].join("\n");
 
             let agreedPlan = "";
@@ -553,7 +557,7 @@ jobs:
 
               try {
                 const propRes = await p1.runText(
-                  "أنت مصمم واجهات ومهندس معماري مبدع. ضع خطة لـ 2 إلى 3 ملفات متخصصة تمنح الموقع مظهراً حديثاً وجذاباً غير تقليدي وحفظاً فورياً في localStorage وبثاً مباشراً عبر Render.",
+                  "أنت مهندس معماري ومصمم واجهات متقدمة. ضع خطة لـ 2 إلى 3 ملفات لإزالة Invalid Date وتطوير الميزات والتصميم مع الحفاظ على الحفظ المحلي والبث عبر Render.",
                   `التقرير:\n${diagnosticReport}\n\nالقواعد:\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
                   480
                 );
@@ -561,7 +565,7 @@ jobs:
 
                 try {
                   const revRes = await p2.runText(
-                    "أنت المدقق الهندسي والجمالي. راجع الخطة وتأكد من أنها غير تقليدية وموزعة على ملفات وتعمل بلا أخطاء، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
+                    "أنت المدقق الهندسي. راجع الخطة وتأكد من حل Invalid Date وعدم كسر النشر الفوري، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
                     `مقترح الطرف الأول:\n${propRes.text}\n\nالتقرير:\n${diagnosticReport}`,
                     480
                   );
@@ -576,7 +580,7 @@ jobs:
               } catch (propErr) {
                 console.warn(`⚠️ تعذر الطرف الأول (${propErr.message}) — ينتقل الطرف الثاني للعمل المستقل الفوري.`);
                 const soloRes = await p2.runText(
-                  "أنت المنفذ المستقل. ضع خطة لـ 2 إلى 3 ملفات متخصصة بتصميم عصري جذاب وحفظ localStorage وبث Render.",
+                  "أنت المنفذ المستقل. ضع خطة لـ 2 إلى 3 ملفات لإزالة Invalid Date وتطوير الميزات والتصميم.",
                   `التقرير:\n${diagnosticReport}\n\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
                   480
                 );
@@ -584,17 +588,17 @@ jobs:
                 activeExecutor = p2;
               }
             } else {
-              agreedPlan = `نفّذ تصميماً عصرياً جذاباً وموزعاً على ملفات وحل المشاكل التالية:\n${diagnosticReport}`;
+              agreedPlan = `نفّذ الخطة وحل المشاكل التالية:\n${diagnosticReport}`;
             }
 
             const systemJsonInstruction = [
-              "أنت مهندس واجهات ومعماري برمجيات مبدع. أعد كائن JSON صالحاً فقط بدون أي نص خارجه.",
-              "وزّع العمل على 2 إلى 3 ملفات متخصصة بتصميم حديث جذاب وغير تقليدي وبنية قابلة للتوسيع.",
+              "أنت مهندس واجهات ومعماري برمجيات محترف. أعد كائن JSON صالحاً فقط بدون أي نص خارجه.",
+              "وزّع العمل على 2 إلى 3 ملفات متخصصة وقابلة للتوسيع.",
               "الشكل المطلوب: {\"files\":{\"ملف1\":\"محتواه\",\"ملف2\":\"محتواه\"},\"summary\":\"ملخص مختصر\"}"
             ].join("\n");
 
             const executionPrompt = [
-              "نفّذ الخطة ووزّع المهام على 2 إلى 3 ملفات متخصصة بأسلوب عصري جذاب وقابل للتوسيع:",
+              "نفّذ الخطة بدقة ووزّع المهام على 2 إلى 3 ملفات متخصصة:",
               agreedPlan,
               "",
               "=== التقرير التشخيصي ===",
@@ -658,7 +662,7 @@ jobs:
 
             console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
             if (updatedCount > 0) {
-              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Modern modular UI with localStorage & Render live broadcast").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
+              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Fix Invalid Date & evolve modular UI with localStorage + Render").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
             }
           }
 
@@ -680,7 +684,7 @@ jobs:
             echo "ℹ️ nothing to commit, working tree clean."
             exit 0
           fi
-          SUMMARY="Modern modular UI with localStorage & Render live broadcast"
+          SUMMARY="Fix Invalid Date & evolve modular UI with localStorage + Render"
           if [ -f last_ai_change.txt ]; then
             SUMMARY=$(head -n 1 last_ai_change.txt)
             rm -f last_ai_change.txt
