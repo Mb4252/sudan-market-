@@ -8,7 +8,7 @@
             plugins.set(name, plugin);
             plugin.init();
         } else {
-            throw new Error(`Plugin ${name} must have an init function`);
+            console.warn(`الملحق ${name} ليس له دالة 'init'`);
         }
     }
 
@@ -16,13 +16,18 @@
         return plugins.get(name);
     }
 
-    function getAllPlugins() {
-        return Array.from(plugins.values());
+    function unregisterPlugin(name) {
+        const plugin = plugins.get(name);
+        if (plugin && typeof plugin.destroy === 'function') {
+            plugin.destroy();
+        }
+        plugins.delete(name);
     }
 
+    // تصدير الوظائف
     window.pluginRegistry = {
         registerPlugin,
         getPlugin,
-        getAllPlugins
+        unregisterPlugin
     };
 })();
