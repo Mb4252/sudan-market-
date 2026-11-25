@@ -70,69 +70,23 @@
             } catch(err) { console.error('WS parse error', err); }
           };
           socket.onclose = () => {
+            console.log('WebSocket closed');
             const statusEl = document.getElementById('status');
-            if(statusEl) statusEl.textContent = 'غير متصل، إعادة المحاولة...';
+            if(statusEl) statusEl.textContent = 'غير متصل';
             setTimeout(connect, retryDelay);
             retryDelay = Math.min(retryDelay * 2, maxDelay);
           };
           socket.onerror = () => {
-            const statusEl = document.getElementById('status');
-            if(statusEl) statusEl.textContent = 'خطأ في الاتصال';
+            console.error('WebSocket error');
+            socket.close();
           };
-        }catch(err){
-          console.error('WebSocket error', err);
+        } catch(e) {
+          console.error('WS init error', e);
           setTimeout(connect, retryDelay);
-          retryDelay = Math.min(retryDelay * 2, maxDelay);
         }
       }
 
       connect();
-
-      const publishBtn = document.getElementById('publishBtn');
-      if(publishBtn){
-        publishBtn.addEventListener('click', () => {
-          const author = document.getElementById('author').value.trim() || 'مجهول';
-          const content = document.getElementById('content').value.trim();
-          if(!content) return;
-          
-          const post = {
-            author: author,
-            content: content,
-            timestamp: Date.now()
-          };
-
-          // حفظ محلي
-          const stored = JSON.parse(localStorage.getItem(window.APP_CONFIG.storageKey) || '[]');
-          stored.unshift(post);
-          localStorage.setItem(window.APP_CONFIG.storageKey, JSON.stringify(stored));
-
-          // بث محلي وعبر WebSocket
-          window.publishPost(post);
-          if(socket && socket.readyState === WebSocket.OPEN){
-            socket.send(JSON.stringify({ type: 'NEW_POST', ...post }));
-          }
-
-          document.getElementById('content').value = '';
-        });
-      }
-
-      // عرض المنشورات المحفوظة
-      function renderPosts(){
-        const postsDiv = document.getElementById('posts');
-        if(!postsDiv) return;
-        const stored = JSON.parse(localStorage.getItem(window.APP_CONFIG.storageKey) || '[]');
-        postsDiv.innerHTML = '';
-        stored.forEach(p => {
-          const div = document.createElement('div');
-          div.className = 'post ' + (p.priceTag || '');
-          div.dataset.timestamp = p.timestamp;
-          div.innerHTML = `<div class="meta">${p.author || 'مجهول'} — ${new Date(p.timestamp).toLocaleString()}</div><div>${p.content}</div>`;
-          postsDiv.appendChild(div);
-        });
-        window.applyFilter && window.applyFilter(window.currentFilter);
-      }
-
-      renderPosts();
     })();
   </script>
 </body>
