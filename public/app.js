@@ -75,97 +75,104 @@
     return post;
   };
 
-  // 4. UI Initialization
-  function initUI() {
-    const posts = window.postStorage.getAll();
-    renderPosts(posts);
-    updateRadar();
+  // 4. UI State Management
+  function updateUIStatus(status, isOnline) {
+    const statusElement = document.getElementById('status');
+    const syncBadge = document.getElementById('syncBadge');
 
-    document.getElementById('publishBtn').addEventListener('click', publishPost);
-    document.getElementById('compareBtn').addEventListener('click', showCompareOverlay);
-    document.getElementById('analyticsToggle').addEventListener('click', toggleAnalytics);
+    statusElement.textContent = status;
 
+    if (isOnline) {
+      syncBadge.classList.remove('offline');
+      syncBadge.classList.add('online');
+      syncBadge.title = 'متصل';
+      document.getElementById('publishBtn').disabled = false;
+      document.getElementById('compareBtn').disabled = false;
+      document.getElementById('analyticsToggle').disabled = false;
+    } else {
+      syncBadge.classList.remove('online');
+      syncBadge.classList.add('offline');
+      syncBadge.title = 'وضع محلي سري';
+      document.getElementById('publishBtn').disabled = true;
+      document.getElementById('compareBtn').disabled = true;
+      document.getElementById('analyticsToggle').disabled = true;
+    }
+  }
+
+  // 5. Event Listeners
+  document.addEventListener('DOMContentLoaded', () => {
+    // Hide initial status message
+    document.getElementById('status').style.display = 'none';
+
+    // Publish Button
+    document.getElementById('publishBtn').addEventListener('click', () => {
+      const content = document.getElementById('content').value.trim();
+      const author = document.getElementById('author').value.trim();
+
+      if (!content) {
+        showError('الرجاء كتابة منشور', 'error');
+        return;
+      }
+
+      const post = {
+        id: Date.now().toString(),
+        content,
+        author: author || 'مجهول',
+        timestamp: Date.now()
+      };
+
+      // Tag post and save locally
+      const taggedPost = window.tagPost(post);
+      window.postStorage.addPost(taggedPost);
+
+      // Clear input
+      document.getElementById('content').value = '';
+      document.getElementById('author').value = '';
+
+      // Show success message
+      showError('تم النشر بنجاح!', 'success');
+    });
+
+    // Filter Buttons
     document.querySelectorAll('.filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        renderPosts(window.postStorage.getAll(), btn.dataset.filter);
       });
     });
-  }
 
-  // 5. Post Publishing (Local-First)
-  function publishPost() {
-    const content = document.getElementById('content').value.trim();
-    const author = document.getElementById('author').value.trim();
-
-    if (!content) {
-      showError('الرجاء كتابة منشور', 'warning');
-      return;
-    }
-
-    const post = {
-      id: Date.now().toString(),
-      content,
-      author: author || 'مجهول',
-      timestamp: Date.now()
-    };
-
-    // Local-First: Save immediately
-    window.postStorage.addPost(window.tagPost(post));
-    document.getElementById('content').value = '';
-    document.getElementById('author').value = '';
-
-    // Try to sync with server
-    syncPost(post);
-  }
-
-  // 6. Server Sync
-  function syncPost(post) {
-    if (!window.APP_CONFIG.wsUrl) return;
-
-    const ws = new WebSocket(window.APP_CONFIG.wsUrl);
-    let timeout = setTimeout(() => {
-      ws.close();
-      updateUIStatus('وضع محلي سريع', false);
-    }, window.APP_CONFIG.connectionTimeout);
-
-    ws.onopen = () => {
-      clearTimeout(timeout);
-      ws.send(JSON.stringify({ type: 'POST', data: post }));
-      updateUIStatus('تم البث المباشر', true);
-    };
-
-    ws.onerror = (e) => {
-      console.error('WebSocket error:', e);
-      updateUIStatus('تم الحفظ محلياً - سيُزامن عند عودة الاتصال', false);
-    };
-  }
-
-  // 7. UI Rendering
-  function renderPosts(posts, filter = '') {
-    const postsContainer = document.getElementById('posts');
-    postsContainer.innerHTML = '';
-
-    const filteredPosts = filter ? posts.filter(p => p.priceTag === filter) : posts;
-
-    if (filteredPosts.length === 0) {
-      postsContainer.innerHTML = '<p>لا توجد منشورات بعد</p>';
-      return;
-    }
-
-    filteredPosts.forEach(post => {
-      const postElement = document.createElement('div');
-      postElement.className = `post ${post.priceTag || ''}`;
-      postElement.innerHTML = `
-        <div class="post-header">
-          <span class="post-author">${post.author}</span>
-          <span class="post-time">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
-        </div>
-        <div class="post-content">${post.content}</div>
-        ${post.price ? `<div class="post-price">السعر: ${post.price} ريال</div>` : ''}
-        ${post.store ? `<div class="post-store">المحل: ${post.store}</div>` : ''}
-      `;
-      postsContainer.appendChild(postElement);
+    // Analytics Toggle
+    document.getElementById('analyticsToggle').addEventListener('click', () => {
+      document.getElementById('analyticsPanel').classList.toggle('hidden');
     });
+  });
+
+  // 6. Initial UI Setup
+  updateUIStatus('جارٍ الاتصال...', false);
+
+  // 7. Storage Update Listener
+  window.addEventListener('storage:update', (e) => {
+    // Update UI with new posts
+  });
+
+  // 8. Error Handling
+  window.onerror = (msg, url, line, col, error) => {
+    console.error(msg, url, line, col, error);
+    showError(`خطأ: ${msg}`, 'error');
+  };
+
+  window.addEventListener('unhandledrejection', e => {
+    console.error(e.reason);
+    showError(`الرفض غير معالج: ${e.reason}`, 'error');
+  });
+
+  // 9. Local-First Implementation
+  function savePostLocally(post) {
+    const posts = JSON.parse(localStorage.getItem('localPosts') || '[]');
+    posts.unshift(post);
+    localStorage.setItem('localPosts', JSON.stringify(posts));
+  }
+
+  function syncPostsWithServer() {
+    // Implementation for syncing with server
   }
