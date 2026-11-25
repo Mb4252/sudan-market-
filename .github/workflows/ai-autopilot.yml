@@ -63,8 +63,8 @@ jobs:
                 collectProjectFiles(fullPath, depth + 1, out);
               } else if (/\.(js|html|css|json)$/i.test(entry.name)) {
                 const content = fs.readFileSync(fullPath, "utf8");
-                const clipped = content.length > 2800
-                  ? content.slice(0, 2800) + "\n/* ...مقتطع لتوفير التوكنات... */"
+                const clipped = content.length > 1800
+                  ? content.slice(0, 1800) + "\n/* ...مقتطع لتوفير السياق والتوكنات... */"
                   : content;
                 out.push({ fullPath, content: clipped });
               }
@@ -86,10 +86,10 @@ jobs:
             const data = await res.json();
             const ids = (data.data || [])
               .map(m => m.id)
-              .filter(id => !/whisper|tts|guard|prompt-guard|safeguard|embed/i.test(id));
+              .filter(id => !/whisper|tts|guard|prompt-guard|safeguard|embed|allam/i.test(id));
 
             if (!ids.length) {
-              throw new Error("لا توجد نماذج نصية متاحة في حساب Groq الحالي.");
+              throw new Error("لا توجد نماذج نصية مناسبة في حساب Groq الحالي.");
             }
 
             const preferred = [
@@ -207,6 +207,46 @@ jobs:
             return jsonData;
           }
 
+          async function callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens, jsonMode = false) {
+            const url = sanitizeUrl("[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)");
+            const headers = {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${key}`,
+              "HTTP-Referer": `[https://github.com/$](https://github.com/$){process.env.REPO}`,
+              "X-Title": "sudan-market-autopilot"
+            };
+            const body = {
+              model: "openrouter/free",
+              messages: [
+                { role: "system", content: sysPrompt },
+                { role: "user", content: usrPrompt }
+              ],
+              max_tokens: maxTokens,
+              temperature: 0.45
+            };
+            if (jsonMode) {
+              body.response_format = { type: "json_object" };
+            }
+
+            let lastErr = null;
+            for (let attempt = 1; attempt <= 2; attempt++) {
+              try {
+                const data = await callChatCompletion(url, headers, body);
+                const out = data?.choices?.[0]?.message?.content || "";
+                if (!out.trim()) {
+                  throw new Error("رد فارغ من OpenRouter");
+                }
+                return out;
+              } catch (e) {
+                lastErr = e;
+                if (attempt < 2) {
+                  await new Promise(r => setTimeout(r, 1200));
+                }
+              }
+            }
+            throw lastErr || new Error("فشل OpenRouter");
+          }
+
           function buildProviders(primaryKey, openRouterKey) {
             const list = [];
             const keys = [primaryKey, openRouterKey].filter(Boolean);
@@ -217,7 +257,7 @@ jobs:
                 list.push({
                   id: "groq",
                   label: "Groq",
-                  runText: async (sysPrompt, usrPrompt, maxTokens = 900) => {
+                  runText: async (sysPrompt, usrPrompt, maxTokens = 650) => {
                     const models = await getGroqModelsOrdered(key);
                     const groqUrl = sanitizeUrl("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)");
                     const headers = {
@@ -241,12 +281,12 @@ jobs:
                         return { text: out, detail: `Groq (${m})` };
                       } catch (e) {
                         lastErr = e;
-                        if (e.status === 429) continue;
+                        if (e.status === 429 || e.status === 400) continue;
                       }
                     }
                     throw lastErr || new Error("فشل جميع نماذج Groq");
                   },
-                  runJson: async (sysPrompt, usrPrompt, maxTokens = 4096) => {
+                  runJson: async (sysPrompt, usrPrompt, maxTokens = 2600) => {
                     const models = await getGroqModelsOrdered(key);
                     const groqUrl = sanitizeUrl("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)");
                     const headers = {
@@ -285,7 +325,7 @@ jobs:
                         return { parsed: extractJsonObject(raw), detail: `Groq (${m})` };
                       } catch (e) {
                         lastErr = e;
-                        if (e.status === 429) continue;
+                        if (e.status === 429 || e.status === 400) continue;
                       }
                     }
                     throw lastErr || new Error("فشل توليد JSON من Groq");
@@ -295,50 +335,12 @@ jobs:
                 list.push({
                   id: "openrouter",
                   label: "OpenRouter (ChatGPT-style assistant)",
-                  runText: async (sysPrompt, usrPrompt, maxTokens = 900) => {
-                    const url = sanitizeUrl("[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)");
-                    const data = await callChatCompletion(
-                      url,
-                      {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${key}`,
-                        "HTTP-Referer": `[https://github.com/$](https://github.com/$){process.env.REPO}`
-                      },
-                      {
-                        model: "openrouter/free",
-                        messages: [
-                          { role: "system", content: sysPrompt },
-                          { role: "user", content: usrPrompt }
-                        ],
-                        max_tokens: maxTokens,
-                        temperature: 0.45
-                      }
-                    );
-                    const out = data?.choices?.[0]?.message?.content || "";
-                    if (!out.trim()) throw new Error("رد فارغ من OpenRouter");
+                  runText: async (sysPrompt, usrPrompt, maxTokens = 650) => {
+                    const out = await callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens, false);
                     return { text: out, detail: "OpenRouter (openrouter/free)" };
                   },
-                  runJson: async (sysPrompt, usrPrompt, maxTokens = 4096) => {
-                    const url = sanitizeUrl("[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)");
-                    const data = await callChatCompletion(
-                      url,
-                      {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${key}`,
-                        "HTTP-Referer": `[https://github.com/$](https://github.com/$){process.env.REPO}`
-                      },
-                      {
-                        model: "openrouter/free",
-                        messages: [
-                          { role: "system", content: sysPrompt },
-                          { role: "user", content: usrPrompt }
-                        ],
-                        max_tokens: maxTokens,
-                        temperature: 0.45
-                      }
-                    );
-                    const raw = data?.choices?.[0]?.message?.content || "";
-                    if (!raw.trim()) throw new Error("رد فارغ من OpenRouter");
+                  runJson: async (sysPrompt, usrPrompt, maxTokens = 2600) => {
+                    const raw = await callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens, false);
                     return { parsed: extractJsonObject(raw), detail: "OpenRouter (openrouter/free)" };
                   }
                 });
@@ -346,7 +348,7 @@ jobs:
                 list.push({
                   id: "gemini",
                   label: "Gemini",
-                  runText: async (sysPrompt, usrPrompt, maxTokens = 900) => {
+                  runText: async (sysPrompt, usrPrompt, maxTokens = 650) => {
                     const url = sanitizeUrl(`[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$){encodeURIComponent(key)}`);
                     const data = await callChatCompletion(
                       url,
@@ -361,7 +363,7 @@ jobs:
                     if (!out.trim()) throw new Error("رد فارغ من Gemini");
                     return { text: out, detail: "Gemini (gemini-2.5-flash)" };
                   },
-                  runJson: async (sysPrompt, usrPrompt, maxTokens = 4096) => {
+                  runJson: async (sysPrompt, usrPrompt, maxTokens = 2600) => {
                     const url = sanitizeUrl(`[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$){encodeURIComponent(key)}`);
                     const data = await callChatCompletion(
                       url,
@@ -422,7 +424,7 @@ jobs:
                       jobsData.jobs.map(j => ({ name: j.name, conclusion: j.conclusion, steps: j.steps })),
                       null,
                       2
-                    ).slice(0, 2000);
+                    ).slice(0, 1400);
                   }
                 }
               }
@@ -434,13 +436,13 @@ jobs:
             const currentFiles = filesList
               .map(f => `--- FILE: ${f.fullPath} ---\n${f.content}`)
               .join("\n\n")
-              .slice(0, 8500);
+              .slice(0, 5500);
 
             const coreRules = [
               "1) دور Render والحفظ في المتصفح: Render يعمل كجسر بث مباشر (WebSocket relay) فقط لإرسال ما يكتبه المستخدم للجميع وتوصيل الآخرين دون تخزين ثقيل على الخادم، بينما يتم الحفظ في متصفح المستخدم عبر localStorage مع مسارات نسبية تعمل بسلاسة من رابط GitHub Pages.",
               "2) ظهور كل تطوير مباشرة في الموقع: أي ميزة أو تحسين يجب أن يظهر بوضوح وفعالية مباشرة في واجهة index.html وملفات public/ في نفس التحديث.",
               "3) إصلاح الأعطال أولاً: إذا وُجد أي خطأ يمنع التشغيل أو العرض، أصلحه أولاً.",
-              "4) جوهر المشروع وأفكار مبتكرة بلا حشو: اكتشاف المتاجر أو المناطق الرخيصة مقارنة بالغالية بأفكار ذكية ومرتبة ومعيارية في ملفات صغيرة بدون حشو أو نصوص مكررة."
+              "4) جوهر المشروع وأفكار مبتكرة بلا حشو: اكتشاف المتاجر أو المناطق الرخيصة مقارنة بالغالية بأفكار ذكية ومرتبة ومعيارية في ملف واحد صغير أو ملفين بدون حشو أو نصوص مكررة."
             ].join("\n");
 
             let agreedPlan = "";
@@ -454,18 +456,18 @@ jobs:
               let proposalText = "";
               try {
                 const propRes = await p1.runText(
-                  "أنت المخطط الأول. اكتب مقترحاً مختصراً وعملياً ومبتكراً في 4 نقاط قصيرة فقط.",
+                  "أنت المخطط الأول. اكتب مقترحاً مختصراً وعملياً ومبتكراً في 3 نقاط قصيرة فقط.",
                   `${coreRules}\n\nالسجلات:\n${actionsErrorLogs || "لا توجد أخطاء"}\n\nالملفات:\n${currentFiles}`,
-                  700
+                  550
                 );
                 proposalText = propRes.text;
                 console.log(`💡 مقترح ${propRes.detail} جاهز للمراجعة.`);
 
                 try {
                   const revRes = await p2.runText(
-                    "أنت المراجع والمفاوض الثاني بأسلوب حواري واضح وعملي. راجع المقترح باختصار، حسّنه إن لزم، ثم اكتب [اتفقنا] متبوعاً بالخطة النهائية المختصرة للتنفيذ.",
+                    "أنت المراجع والمفاوض الثاني بأسلوب حواري واضح وعملي. راجع المقترح باختصار ثم اكتب [اتفقنا] متبوعاً بالخطة النهائية المختصرة للتنفيذ.",
                     `مقترح الطرف الأول:\n${proposalText}\n\n${coreRules}`,
-                    750
+                    550
                   );
                   agreedPlan = revRes.text;
                   activeExecutor = p2;
@@ -480,7 +482,7 @@ jobs:
                 const soloRes = await p2.runText(
                   "أنت المنفذ المستقل. ضع خطة سريعة ومباشرة في 3 نقاط قصيرة لتطوير المشروع.",
                   `${coreRules}\n\nالسجلات:\n${actionsErrorLogs || "لا توجد أخطاء"}\n\nالملفات:\n${currentFiles}`,
-                  650
+                  550
                 );
                 agreedPlan = `[عمل مستقل فوري]\n${soloRes.text}`;
                 activeExecutor = p2;
@@ -499,7 +501,7 @@ jobs:
             ].join("\n");
 
             const executionPrompt = [
-              "نفّذ الخطة التالية باختصار وإتقان وحدث ملفاً أو ملفين صغيرين فقط لضمان اكتمال JSON:",
+              "نفّذ الخطة التالية باختصار وإتقان وحدث ملفاً واحداً صغيراً أو ملفين فقط لضمان اكتمال JSON:",
               agreedPlan,
               "",
               coreRules,
@@ -517,7 +519,7 @@ jobs:
             let lastExecErr = null;
             for (const execProvider of orderedExecutors) {
               try {
-                execResult = await execProvider.runJson(systemJsonInstruction, executionPrompt, 4096);
+                execResult = await execProvider.runJson(systemJsonInstruction, executionPrompt, 2600);
                 lastExecErr = null;
                 break;
               } catch (e) {
