@@ -81,6 +81,12 @@ jobs:
             return out;
           }
 
+          function isValidCleanFilePath(cleanPath) {
+            if (!cleanPath || cleanPath.includes("..") || /\s/.test(cleanPath)) return false;
+            if (/^file_\d+_/i.test(cleanPath)) return false;
+            return /^(index\.html|app\.js|api\.js|styles\.css|public\/[a-zA-Z0-9._/-]+\.(js|css|html|json))$/.test(cleanPath);
+          }
+
           function validateGeneratedFiles(filesMap) {
             const errors = [];
             if (!filesMap || typeof filesMap !== "object") {
@@ -89,7 +95,7 @@ jobs:
 
             for (const [rawPath, content] of Object.entries(filesMap)) {
               const cleanPath = String(rawPath).replace(/^\/+/, "").trim();
-              if (!cleanPath || cleanPath.includes("..") || typeof content !== "string" || !content.trim()) {
+              if (!isValidCleanFilePath(cleanPath) || typeof content !== "string" || !content.trim()) {
                 errors.push(`مسار أو محتوى غير صالح للملف: ${rawPath}`);
                 continue;
               }
@@ -542,9 +548,10 @@ jobs:
             const architectureMandate = [
               `رابط GitHub Pages الصحيح: ${pagesUrl}`,
               `رابط جسر Render الصحيح: ${renderUrl} (للبث المباشر عبر wss://sudan-market-2.onrender.com وطلب الإيقاظ /health).`,
+              "مهم جداً — أسماء الملفات المسموحة فقط: index.html أو app.js أو api.js أو styles.css أو ملفات داخل public/ مثل public/store.js وpublic/broadcast.js وpublic/radar.js. يُمنع منعاً باتاً استخدام أسماء مثل file_1_... أو أي أسماء وصفية.",
               "1) إصلاح Invalid Date بشكل جذري: أي تاريخ يُعرض في المنشورات يجب التحقق من صحته أولاً، وعند غيابه أو عدم صلاحيته يُعرض وقت صالح (مثل Date.now()) أو نص واضح مثل 'الآن' دون ظهور Invalid Date أبداً.",
               "2) حفظ فوري في المتصفح + بث مباشر عبر Render: حفظ فوري في localStorage عند النشر مع إرسال الحدث عبر WebSocket إلى wss://sudan-market-2.onrender.com لبثه لبقية المتصلين مع منع التكرار.",
-              "3) بنية موزعة قابلة للتوسيع وتصميم حديث غير تقليدي: توزيع المسؤوليات على ملفات منظمة ومضافة ميزات تحليل/بحث/تصفية أو تحسين المظهر البصري خطوة بخطوة دون كسر النشر الفوري."
+              "3) بنية موزعة قابلة للتوسيع وتصميم حديث غير تقليدي: توزيع المسؤوليات على ملفات نظيفة ومضافة ميزات تحليل/بحث/تصفية أو تحسين المظهر البصري خطوة بخطوة دون كسر النشر الفوري."
             ].join("\n");
 
             let agreedPlan = "";
@@ -557,7 +564,7 @@ jobs:
 
               try {
                 const propRes = await p1.runText(
-                  "أنت مهندس معماري ومصمم واجهات متقدمة. ضع خطة لـ 2 إلى 3 ملفات لإزالة Invalid Date وتطوير الميزات والتصميم مع الحفاظ على الحفظ المحلي والبث عبر Render.",
+                  "أنت مهندس معماري ومصمم واجهات متقدمة. ضع خطة لـ 2 إلى 3 ملفات بأسماء نظيفة (مثل index.html وpublic/store.js وpublic/broadcast.js) لإزالة Invalid Date وتطوير الميزات والتصميم مع الحفظ المحلي والبث عبر Render.",
                   `التقرير:\n${diagnosticReport}\n\nالقواعد:\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
                   480
                 );
@@ -565,7 +572,7 @@ jobs:
 
                 try {
                   const revRes = await p2.runText(
-                    "أنت المدقق الهندسي. راجع الخطة وتأكد من حل Invalid Date وعدم كسر النشر الفوري، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
+                    "أنت المدقق الهندسي. راجع الخطة وتأكد من أن أسماء الملفات نظيفة ومن حل Invalid Date وعدم كسر النشر الفوري، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
                     `مقترح الطرف الأول:\n${propRes.text}\n\nالتقرير:\n${diagnosticReport}`,
                     480
                   );
@@ -580,7 +587,7 @@ jobs:
               } catch (propErr) {
                 console.warn(`⚠️ تعذر الطرف الأول (${propErr.message}) — ينتقل الطرف الثاني للعمل المستقل الفوري.`);
                 const soloRes = await p2.runText(
-                  "أنت المنفذ المستقل. ضع خطة لـ 2 إلى 3 ملفات لإزالة Invalid Date وتطوير الميزات والتصميم.",
+                  "أنت المنفذ المستقل. ضع خطة لـ 2 إلى 3 ملفات بأسماء نظيفة لإزالة Invalid Date وتطوير الميزات والتصميم.",
                   `التقرير:\n${diagnosticReport}\n\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
                   480
                 );
@@ -593,12 +600,12 @@ jobs:
 
             const systemJsonInstruction = [
               "أنت مهندس واجهات ومعماري برمجيات محترف. أعد كائن JSON صالحاً فقط بدون أي نص خارجه.",
-              "وزّع العمل على 2 إلى 3 ملفات متخصصة وقابلة للتوسيع.",
-              "الشكل المطلوب: {\"files\":{\"ملف1\":\"محتواه\",\"ملف2\":\"محتواه\"},\"summary\":\"ملخص مختصر\"}"
+              "استخدم أسماء ملفات نظيفة فقط مثل: index.html أو app.js أو api.js أو styles.css أو public/store.js أو public/broadcast.js أو public/radar.js.",
+              "الشكل المطلوب: {\"files\":{\"مسار_نظيف\":\"محتواه\"},\"summary\":\"ملخص مختصر\"}"
             ].join("\n");
 
             const executionPrompt = [
-              "نفّذ الخطة بدقة ووزّع المهام على 2 إلى 3 ملفات متخصصة:",
+              "نفّذ الخطة بدقة ووزّع المهام على 2 إلى 3 ملفات بأسماء نظيفة:",
               agreedPlan,
               "",
               "=== التقرير التشخيصي ===",
@@ -643,7 +650,7 @@ jobs:
             if (parsed.files && typeof parsed.files === "object") {
               for (const [filePath, content] of Object.entries(parsed.files)) {
                 const cleanPath = String(filePath).replace(/^\/+/, "").trim();
-                if (!cleanPath || cleanPath.includes("..") || typeof content !== "string" || !content.trim()) continue;
+                if (!isValidCleanFilePath(cleanPath) || typeof content !== "string" || !content.trim()) continue;
                 if (cleanPath.endsWith(".json")) {
                   try { JSON.parse(content); } catch { continue; }
                 } else if (cleanPath.endsWith(".js")) {
@@ -662,7 +669,7 @@ jobs:
 
             console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
             if (updatedCount > 0) {
-              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Fix Invalid Date & evolve modular UI with localStorage + Render").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
+              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Clean modular files with localStorage & Render live broadcast").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
             }
           }
 
@@ -684,7 +691,7 @@ jobs:
             echo "ℹ️ nothing to commit, working tree clean."
             exit 0
           fi
-          SUMMARY="Fix Invalid Date & evolve modular UI with localStorage + Render"
+          SUMMARY="Clean modular files with localStorage & Render live broadcast"
           if [ -f last_ai_change.txt ]; then
             SUMMARY=$(head -n 1 last_ai_change.txt)
             rm -f last_ai_change.txt
