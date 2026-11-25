@@ -64,97 +64,101 @@
       
       if (relevantPosts.length > 0) {
         const avgPrice = relevantPosts.reduce((sum, p) => sum + p.price, 0) / relevantPosts.length;
-        post.priceTag = post.price < avgPrice * 0.9 ? 'cheap' : post.price > avgPrice * 1.1 ? 'expensive' : 'normal';
-      } else {
-        post.priceTag = 'normal';
+        post.priceTag = post.price < avgPrice * 0.9 ? 'cheap' : post.price > avgPrice * 1.1 ? 'expensive' : '';
       }
     }
-    
-    return post;
   };
 
   // 4. UI Initialization
   document.addEventListener('DOMContentLoaded', () => {
-    // Initialize UI Elements
-    const publishBtn = document.getElementById('publishBtn');
     const contentInput = document.getElementById('content');
-    const authorInput = document.getElementById('author');
+    const publishBtn = document.getElementById('publishBtn');
     const postsContainer = document.getElementById('posts');
-    const filterButtons = document.querySelectorAll('.filter-btn');
-    const compareBtn = document.getElementById('compareBtn');
+    const radarContent = document.getElementById('radarContent');
     const analyticsToggle = document.getElementById('analyticsToggle');
     const analyticsPanel = document.getElementById('analyticsPanel');
-    const compareOverlay = document.getElementById('compareOverlay');
-    const compareContent = document.getElementById('compareContent');
-    const closeBtn = compareContent.querySelector('.close-btn');
     
     // Initialize UI State
-    updateUIStatus('جاري الاتصال...', false);
+    updatePostsList();
+    updatePriceRadar();
     
     // Event Listeners
-    publishBtn.addEventListener('click', publishPost);
-    contentInput.addEventListener('input', validateInput);
-    authorInput.addEventListener('input', validateInput);
-    filterButtons.forEach(btn => btn.addEventListener('click', filterPosts));
-    compareBtn.addEventListener('click', showCompareModal);
-    analyticsToggle.addEventListener('click', toggleAnalytics);
-    closeBtn.addEventListener('click', hideCompareModal);
-    
-    // Initialize Posts
-    renderPosts(window.postStorage.getAll());
-    
-    // Storage Update Listener
-    window.addEventListener('storage:update', (e) => {
-      renderPosts(e.detail);
-      updateRadar();
+    contentInput.addEventListener('input', () => {
+      publishBtn.disabled = contentInput.value.trim().length === 0;
     });
-  });
-
-  // 5. Core Functions
-  function publishPost() {
-    const content = document.getElementById('content').value.trim();
-    const author = document.getElementById('author').value.trim();
     
-    if (!content) return;
+    publishBtn.addEventListener('click', () => {
+      const content = contentInput.value.trim();
+      if (content.length === 0) return;
+      
+      const post = {
+        id: Date.now().toString(),
+        content,
+        author: document.getElementById('author').value.trim() || 'مجهول',
+        timestamp: Date.now()
+      };
+      
+      window.tagPost(post);
+      window.postStorage.addPost(post);
+      contentInput.value = '';
+      publishBtn.disabled = true;
+    });
     
-    const post = {
-      id: Date.now().toString(),
-      content,
-      author: author || 'مجهول',
-      timestamp: Date.now()
-    };
+    window.addEventListener('storage:update', () => {
+      updatePostsList();
+      updatePriceRadar();
+    });
     
-    // Tag the post
-    window.tagPost(post);
+    analyticsToggle.addEventListener('click', () => {
+      analyticsPanel.classList.toggle('hidden');
+    });
     
-    // Save to storage
-    window.postStorage.addPost(post);
+    // Filter Buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        updatePostsList(btn.dataset.filter);
+      });
+    });
     
-    // Clear input
-    document.getElementById('content').value = '';
-    document.getElementById('author').value = '';
+    // Compare Button
+    document.getElementById('compareBtn').addEventListener('click', () => {
+      const posts = window.postStorage.getAll();
+      const stores = [...new Set(posts.map(p => p.store))];
+      
+      let comparisonHTML = '<h4>مقارنة الأسعار</h4>';
+      stores.forEach(store => {
+        const storePosts = posts.filter(p => p.store === store && p.price !== null);
+        if (storePosts.length > 1) {
+          const minPrice = Math.min(...storePosts.map(p => p.price));
+          const maxPrice = Math.max(...storePosts.map(p => p.price));
+          
+          comparisonHTML += `<div class="comparison-item">
+            <strong>${store}</strong><br>
+            أرخص: ${minPrice} ريال<br>
+            أغلى: ${maxPrice} ريال<br>
+            فرق: ${maxPrice - minPrice} ريال
+          </div>`;
+        }
+      });
+      
+      radarContent.innerHTML = comparisonHTML;
+    });
     
-    // Update UI
-    validateInput();
-  }
-
-  function validateInput() {
-    const content = document.getElementById('content').value.trim();
-    document.getElementById('publishBtn').disabled = !content;
-  }
-
-  function renderPosts(posts, filter = '') {
-    const container = document.getElementById('posts');
-    container.innerHTML = '';
-    
-    posts.filter(p => !filter || p.priceTag === filter).forEach(post => {
-      const postElement = document.createElement('div');
-      postElement.className = `post ${post.priceTag || ''}`;
-      postElement.innerHTML = `
-        <div class="post-header">
-          <span class="post-author">${escapeHtml(post.author)}</span>
-          <span class="post-time">${formatTime(post.timestamp)}</span>
-        </div>
-        <div class="post-content">${escapeHtml(post.content)}</div>
-        ${post.price ? `<div class="post-price">${post.price} ${getCurrency(post.content)}</div>` : ''}
-        ${post.store ? `<div class="post-store">${escapeHtml(post.store)}</div>` : ''}
+    // Update Functions
+    function updatePostsList(filter = '') {
+      const posts = window.postStorage.getAll();
+      let filteredPosts = posts;
+      
+      if (filter) {
+        filteredPosts = posts.filter(p => p.priceTag === filter);
+      }
+      
+      postsContainer.innerHTML = filteredPosts.length > 0 ?
+        filteredPosts.map(p => {
+          const priceTag = p.priceTag ? `<span class="price-tag ${p.priceTag}">${p.priceTag === 'cheap' ? 'رخيص' : 'غالي'}</span>` : '';
+          return `<div class="post">
+            <div class="post-header">
+              <span class="post-author">${p.author}</span>
+              <span class="post-time">${new Date(p.timestamp).toLocaleString('ar-EG')}
