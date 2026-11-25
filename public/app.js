@@ -6,8 +6,8 @@
     wsUrl: 'wss://browser-relay-server.onrender.com',
     storageKey: 'smart_posts_v1',
     maxPosts: 500,
-    priceRegex: /(\d+(\.\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
-    storeRegex: /(في|من|عند)\s+([\u0600-\u06FF\s]+)/i
+    priceRegex: /(\\d+(\\.\\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
+    storeRegex: /(في|من|عند)\s+([\\u0600-\\u06FF\\s]+)/i
   };
   
   // 2. Storage Manager (Source of Truth)
@@ -44,7 +44,7 @@
     
     // Extract Price
     const priceMatch = text.match(window.APP_CONFIG.priceRegex);
-    post.price = priceMatch ? parseFloat(priceMatch[0].replace(/[^\d.]/g, '')) : null;
+    post.price = priceMatch ? parseFloat(priceMatch[0].replace(/[^\\d.]/g, '')) : null;
     
     // Extract Store Name
     const storeMatch = text.match(window.APP_CONFIG.storeRegex);
@@ -68,89 +68,110 @@
           ? 'cheap'
           : post.price > avgPrice * 1.1
             ? 'expensive'
-            : '';
+            : 'normal';
+      } else {
+        post.priceTag = 'normal';
       }
     }
+    
+    return post;
   };
-  
+
   // 4. UI Initialization
   document.addEventListener('DOMContentLoaded', () => {
-    const contentInput = document.getElementById('content');
-    const publishBtn = document.getElementById('publishBtn');
-    const postsContainer = document.getElementById('posts');
-    const statusElement = document.getElementById('status');
-    const compareOverlay = document.getElementById('compareOverlay');
-    const compareContent = document.getElementById('compareContent');
-    const compareResults = document.getElementById('compareResults');
-    const closeCompareBtn = document.getElementById('closeCompare');
-    const analyticsPanel = document.getElementById('analyticsPanel');
-    const analyticsToggle = document.getElementById('analyticsToggle');
-    const radarContent = document.getElementById('radarContent');
+    // Load posts from localStorage
+    const posts = window.postStorage.getAll();
+    renderPosts(posts);
     
-    // Initialize UI
-    updateUIStatus('جاهز', navigator.onLine);
-    renderPosts();
-    
-    // Event Listeners
-    contentInput.addEventListener('input', () => {
-      publishBtn.disabled = contentInput.value.trim() === '';
+    // Setup event listeners
+    document.getElementById('publishBtn').addEventListener('click', publishPost);
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', filterPosts);
     });
+    document.getElementById('compareBtn').addEventListener('click', comparePrices);
+    document.getElementById('analyticsToggle').addEventListener('click', toggleAnalytics);
     
-    publishBtn.addEventListener('click', () => {
-      publishBtn.disabled = true;
-      const content = contentInput.value.trim();
-      const author = document.getElementById('author').value.trim();
-      
-      const post = {
-        id: Date.now().toString(),
-        content,
-        author: author || 'مجهول',
-        timestamp: Date.now()
-      };
-      
-      window.tagPost(post);
-      window.postStorage.addPost(post);
-      contentInput.value = '';
-      publishBtn.disabled = false;
-      
-      // Broadcast the post
-      const channel = new BroadcastChannel('posts');
-      channel.postMessage(post);
+    // Listen for storage updates
+    window.addEventListener('storage:update', (e) => {
+      renderPosts(e.detail);
+      updatePriceRadar(e.detail);
     });
+  });
+
+  // 5. Core Functions
+  function publishPost() {
+    const author = document.getElementById('author').value.trim();
+    const content = document.getElementById('content').value.trim();
     
-    // Render posts from storage
-    function renderPosts(filter = '') {
-      const posts = window.postStorage.getAll();
-      postsContainer.innerHTML = '';
-      
-      posts.forEach(post => {
-        if (filter && post.priceTag !== filter) return;
-        
-        const postElement = document.createElement('div');
-        postElement.className = `post ${post.priceTag || ''}`;
-        postElement.innerHTML = `
-          <div class="post-header">
-            <span class="author">${post.author}</span>
-            <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
-          </div>
-          <div class="post-content">${post.content}</div>
-          ${post.price ? `<div class="post-price">السعر: ${post.price} ${post.priceTag === 'cheap' ? '🟢' : post.priceTag === 'expensive' ? '🔴' : ''}</div>` : ''}
-          ${post.store ? `<div class="post-store">المحل: ${post.store}</div>` : ''}
-        `;
-        postsContainer.appendChild(postElement);
-      });
+    if (!content) {
+      showError('الرجاء كتابة منشور', 'warning');
+      return;
     }
     
-    // Filter buttons
+    const post = {
+      id: Date.now().toString(),
+      author: author || 'مجهول',
+      content: content,
+      timestamp: Date.now()
+    };
+    
+    // Tag the post
+    const taggedPost = window.tagPost(post);
+    
+    // Save to localStorage
+    window.postStorage.addPost(taggedPost);
+    
+    // Clear input fields
+    document.getElementById('content').value = '';
+    
+    // Show success message
+    showError('تم حفظ المنشور محلياً', 'success');
+  }
+
+  function renderPosts(posts) {
+    const postsContainer = document.getElementById('posts');
+    postsContainer.innerHTML = '';
+    
+    if (posts.length === 0) {
+      postsContainer.innerHTML = '<p>لا توجد منشورات بعد</p>';
+      return;
+    }
+    
+    posts.forEach(post => {
+      const postElement = document.createElement('div');
+      postElement.className = `post ${post.priceTag || ''}`;
+      
+      postElement.innerHTML = `
+        <div class="post-header">
+          <span class="author">${post.author}</span>
+          <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
+        </div>
+        <div class="post-content">${post.content}</div>
+        ${post.price ? `<div class="post-price">السعر: ${post.price} ريال</div>` : ''}
+        ${post.store ? `<div class="post-store">المحل: ${post.store}</div>` : ''}
+      `;
+      
+      postsContainer.appendChild(postElement);
+    });
+  }
+
+  function filterPosts(e) {
+    const filter = e.target.dataset.filter;
+    const posts = window.postStorage.getAll();
+    
+    // Update active filter button
     document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        renderPosts(btn.dataset.filter || '');
-      });
+      btn.classList.toggle('active', btn.dataset.filter === filter);
     });
     
-    // Compare button
-    document.getElementById('compareBtn').addEventListener('click', () => {
-      const posts = window.postStorage.getAll();
-      const products = {}
+    // Filter posts
+    const filteredPosts = filter
+      ? posts.filter(post => post.priceTag === filter)
+      : posts;
+    
+    renderPosts(filteredPosts);
+  }
+
+  function comparePrices() {
+    const posts = window.postStorage.getAll();
+    const priceMap = {}
