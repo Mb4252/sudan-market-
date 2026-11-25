@@ -29,11 +29,11 @@
   // 3. Price Extraction & Smart Tagging Engine (Time-Based Clustering)
   window.tagPost = (post) => {
     const text = post.content || '';
-    const priceMatch = text.match(/(\d+(?:\.\d+)?)/);
+    const priceMatch = text.match(/(\\d+(?:\\.\\d+)?)/);
     post.price = priceMatch ? parseFloat(priceMatch[1]) : null;
     
     // Extract Store Name
-    const storeMatch = text.match(/(?:في|من|عند)\s+([\u0600-\u06FF\s]+)/);
+    const storeMatch = text.match(/(?:في|من|عند)\\s+([\\u0600-\\u06FF\\s]+)/);
     post.store = storeMatch ? storeMatch[1].trim().substring(0, 20) : 'غير محدد';
     
     // Smart Dynamic Tagging: Compare with 24h average for same store/item
@@ -43,9 +43,9 @@
       const dayAgo = now - (24 * 60 * 60 * 1000);
       
       // Filter posts from last 24 hours, same store, and has price
-      const relevantPosts = posts.filter(p => 
-        p.timestamp > dayAgo && 
-        p.store === post.store && 
+      const relevantPosts = posts.filter(p =>
+        p.timestamp > dayAgo &&
+        p.store === post.store &&
         p.price !== null
       );
       
@@ -65,102 +65,87 @@
   // 4. UI Rendering & Analytics
   const renderPosts = (filter = '') => {
     const posts = window.postStorage.getAll();
-    const container = document.getElementById('posts');
-    if (!container) return;
-    
-    const filtered = filter ? posts.filter(p => p.priceTag === filter) : posts;
-    
-    if (filtered.length === 0) {
-      container.innerHTML = '<p>لا توجد منشورات.</p>';
-      return;
-    }
+    const postsContainer = document.getElementById('posts');
+    if (!postsContainer) return;
 
-    container.innerHTML = filtered.map(p => `
-      <div class="post-item">
-        <strong>${p.author || 'مجهول'}</strong> - ${p.content}
-        <span class="tag ${p.priceTag}">${p.priceTag === 'cheap' ? 'رخيص 🟢' : p.priceTag === 'expensive' ? 'غالي 🔴' : 'عادي'}</span>
-      </div>
-    `).join('');
+    postsContainer.innerHTML = posts.length === 0 ? '<p>لا توجد منشورات بعد</p>' :
+      posts.filter(p => filter === '' || p.priceTag === filter)
+        .map(p => {
+          const priceTag = p.priceTag === 'cheap' ? '🟢' : (p.priceTag === 'expensive' ? '🔴' : '');
+          return `<div class="post ${p.priceTag}">
+            <div class="post-header">
+              <span class="author">${esc(p.author || 'مجهول')}</span>
+              <span class="price-tag">${priceTag}</span>
+            </div>
+            <div class="post-content">${esc(p.content)}</div>
+            <div class="post-footer">
+              <span class="store">${esc(p.store)}</span>
+              <span class="price">${p.price ? `${p.price} ريال` : ''}</span>
+              <span class="time">${new Date(p.timestamp).toLocaleTimeString()}</span>
+            </div>
+          </div>`;
+        }).join('');
   };
 
-  const renderRadar = () => {
-    const posts = window.postStorage.getAll();
-    const radarContent = document.getElementById('radarContent');
-    if (!radarContent) return;
-    
-    // Group by store and find cheapest/most expensive
-    const storeStats = {};
-    posts.forEach(p => {
-      if (!p.price) return;
-      if (!storeStats[p.store]) storeStats[p.store] = { prices: [], cheap: 0, expensive: 0 };
-      storeStats[p.store].prices.push(p.price);
-      if (p.priceTag === 'cheap') storeStats[p.store].cheap++;
-      if (p.priceTag === 'expensive') storeStats[p.store].expensive++;
-    });
-
-    const sortedStores = Object.entries(storeStats).sort((a, b) => {
-      const avgA = a[1].prices.reduce((s, p) => s + p, 0) / a[1].prices.length;
-      const avgB = b[1].prices.reduce((s, p) => s + p, 0) / b[1].prices.length;
-      return avgA - avgB;
-    });
-
-    if (sortedStores.length === 0) {
-      radarContent.innerHTML = '<p>لا توجد بيانات كافية للتحليل.</p>';
-      return;
-    }
-
-    radarContent.innerHTML = sortedStores.map(([store, stats]) => {
-      const avg = stats.prices.reduce((s, p) => s + p, 0) / stats.prices.length;
-      return `<div class="radar-item"><strong>${store}</strong> - متوسط: ${avg.toFixed(1)} ريال (رخيص: ${stats.cheap}, غالي: ${stats.expensive})</div>`;
-    }).join('');
-  };
-
-  const renderAnalytics = () => {
-    const posts = window.postStorage.getAll();
-    if (posts.length === 0) return;
-
-    // Volume Chart (Posts per day)
-    const volumeData = {};
-    posts.forEach(p => {
-      const date = new Date(p.timestamp).toISOString().split('T')[0];
-      volumeData[date] = (volumeData[date] || 0) + 1;
-    });
-    const volumeLabels = Object.keys(volumeData).sort();
-    const volumeValues = volumeLabels.map(l => volumeData[l]);
-
-    // Price Chart (Average price per day)
-    const priceData = {};
-    posts.forEach(p => {
-      if (!p.price) return;
-      const date = new Date(p.timestamp).toISOString().split('T')[0];
-      if (!priceData[date]) priceData[date] = [];
-      priceData[date].push(p.price);
-    });
-    const priceLabels = Object.keys(priceData).sort();
-    const priceValues = priceLabels.map(l => priceData[l].reduce((s, p) => s + p, 0) / priceData[l].length);
-
-    // Stores Chart (Post count per store)
-    const storeData = {};
-    posts.forEach(p => {
-      storeData[p.store] = (storeData[p.store] || 0) + 1;
-    });
-    const storeLabels = Object.keys(storeData);
-    const storeValues = storeLabels.map(l => storeData[l]);
-
-    // Update Charts
-    const charts = {};
-    const createChart = (ctxId, type, labels, data, label) => {
-      const ctx = document.getElementById(ctxId);
-      if (!ctx) return;
-      if (charts[ctxId]) charts[ctxId].destroy();
-      charts[ctxId] = new Chart(ctx, {
-        type: type,
-        data: { labels: labels, datasets: [{ label: label, data: data }] },
-        options: { responsive: true, maintainAspectRatio: false }
+  // 5. Event Listeners
+  document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('publishBtn')) {
+      document.getElementById('publishBtn').addEventListener('click', () => {
+        const content = document.getElementById('content').value.trim();
+        if (content) {
+          const post = {
+            author: document.getElementById('author').value.trim(),
+            content: content,
+            timestamp: Date.now()
+          };
+          window.publishPost(post);
+          document.getElementById('content').value = '';
+        }
       });
-    };
+    }
 
-    createChart('chartVolume', 'bar', volumeLabels, volumeValues, 'عدد المنشورات');
-    createChart('chartPrice', 'line', priceLabels, priceValues, 'متوسط السعر');
-    createChart('chartStores', 'pie', storeLabels, storeValues, 'المتاجر');
+    if (document.getElementById('analyticsToggle')) {
+      document.getElementById('analyticsToggle').addEventListener('click', () => {
+        const panel = document.getElementById('analyticsPanel');
+        if (panel) panel.classList.toggle('hidden');
+      });
+    }
+
+    window.addEventListener('storage:update', () => renderPosts());
+    renderPosts();
+  });
+
+  // 6. Helper Functions
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"]/g, function(c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+    });
   }
+
+  // 7. Compare Modal
+  window.showCompare = () => {
+    const overlay = document.getElementById('compareOverlay');
+    const content = document.getElementById('compareContent');
+    if (overlay && content) {
+      overlay.classList.remove('hidden');
+      content.innerHTML = '<h3>مقارنة الأسعار</h3><div id="compareResults">جارٍ المقارنة...</div>';
+      // Implement comparison logic here
+    }
+  };
+
+  if (document.getElementById('closeCompare')) {
+    document.getElementById('closeCompare').addEventListener('click', () => {
+      const overlay = document.getElementById('compareOverlay');
+      if (overlay) overlay.classList.add('hidden');
+    });
+  }
+
+  // 8. Initialize
+  window.addEventListener('load', () => {
+    // Wake up Render server
+    fetch('https://sudan-market-2.onrender.com/health')
+      .then(() => console.log('Render server awakened'))
+      .catch(err => console.warn('Failed to wake up server', err));
+  });
+
+})();

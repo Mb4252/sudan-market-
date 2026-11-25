@@ -30,7 +30,7 @@
   function publishPost(post) {
     try {
       if (window.tagPost) {
-        post.priceTag = window.tagPost(post);
+        post = window.tagPost(post);
       }
       if (window.postStorage) {
         window.postStorage.addPost(post);
@@ -43,10 +43,3 @@
       console.warn('Publish error', err);
     }
   }
-
-  window.publishPost = publishPost;
-  connectWS();
-  window.addEventListener('online', connectWS);
-  window.addEventListener('offline', () => { if (ws) { ws.close(); ws = null; } });
-  window.addEventListener('beforeunload', () => { if (ws) ws.close(); });
-})();
