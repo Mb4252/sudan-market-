@@ -6,8 +6,8 @@
     wsUrl: 'wss://browser-relay-server.onrender.com',
     storageKey: 'smart_posts_v1',
     maxPosts: 500,
-    priceRegex: /(\\d+(\\.\\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
-    storeRegex: /(في|من|عند)\s+([\\u0600-\\u06FF\\s]+)/i
+    priceRegex: /(\d+(\.\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
+    storeRegex: /(في|من|عند)\s+([\u0600-\u06FF\s]+)/i
   };
   
   // 2. Storage Manager (Source of Truth)
@@ -44,7 +44,7 @@
     
     // Extract Price
     const priceMatch = text.match(window.APP_CONFIG.priceRegex);
-    post.price = priceMatch ? parseFloat(priceMatch[0].replace(/[^\\d.]/g, '')) : null;
+    post.price = priceMatch ? parseFloat(priceMatch[0].replace(/[^\d.]/g, '')) : null;
     
     // Extract Store Name
     const storeMatch = text.match(window.APP_CONFIG.storeRegex);
@@ -68,87 +68,89 @@
           ? 'cheap'
           : post.price > avgPrice * 1.1
             ? 'expensive'
-            : 'normal';
-      } else {
-        post.priceTag = 'normal';
+            : '';
       }
     }
-    
-    return post;
   };
-
-  // 4. UI Rendering
-  function renderPosts(posts) {
-    const postsContainer = document.getElementById('posts');
-    postsContainer.innerHTML = '';
-    
-    posts.forEach(post => {
-      const postElement = document.createElement('div');
-      postElement.className = `post ${post.priceTag || ''}`;
-      
-      const authorElement = document.createElement('div');
-      authorElement.className = 'author';
-      authorElement.textContent = post.author || 'مجهول';
-      
-      const contentElement = document.createElement('div');
-      contentElement.className = 'content';
-      contentElement.textContent = post.content;
-      
-      const metaElement = document.createElement('div');
-      metaElement.className = 'meta';
-      metaElement.innerHTML = `
-        <span class="store">${post.store}</span>
-        <span class="price">${post.price ? `${post.price} ريال` : 'سعر غير محدد'}</span>
-        <span class="time">${new Date(post.timestamp).toLocaleString()}</span>
-      `;
-      
-      postElement.appendChild(authorElement);
-      postElement.appendChild(contentElement);
-      postElement.appendChild(metaElement);
-      
-      postsContainer.appendChild(postElement);
-    });
-  }
   
-  // 5. Event Listeners
-  document.getElementById('publishBtn').addEventListener('click', () => {
-    const author = document.getElementById('author').value.trim();
-    const content = document.getElementById('content').value.trim();
+  // 4. UI Initialization
+  document.addEventListener('DOMContentLoaded', () => {
+    const contentInput = document.getElementById('content');
+    const publishBtn = document.getElementById('publishBtn');
+    const postsContainer = document.getElementById('posts');
+    const statusElement = document.getElementById('status');
+    const compareOverlay = document.getElementById('compareOverlay');
+    const compareContent = document.getElementById('compareContent');
+    const compareResults = document.getElementById('compareResults');
+    const closeCompareBtn = document.getElementById('closeCompare');
+    const analyticsPanel = document.getElementById('analyticsPanel');
+    const analyticsToggle = document.getElementById('analyticsToggle');
+    const radarContent = document.getElementById('radarContent');
     
-    if (!content) {
-      showError('الرجاء كتابة منشور', 'warning');
-      return;
+    // Initialize UI
+    updateUIStatus('جاهز', navigator.onLine);
+    renderPosts();
+    
+    // Event Listeners
+    contentInput.addEventListener('input', () => {
+      publishBtn.disabled = contentInput.value.trim() === '';
+    });
+    
+    publishBtn.addEventListener('click', () => {
+      publishBtn.disabled = true;
+      const content = contentInput.value.trim();
+      const author = document.getElementById('author').value.trim();
+      
+      const post = {
+        id: Date.now().toString(),
+        content,
+        author: author || 'مجهول',
+        timestamp: Date.now()
+      };
+      
+      window.tagPost(post);
+      window.postStorage.addPost(post);
+      contentInput.value = '';
+      publishBtn.disabled = false;
+      
+      // Broadcast the post
+      const channel = new BroadcastChannel('posts');
+      channel.postMessage(post);
+    });
+    
+    // Render posts from storage
+    function renderPosts(filter = '') {
+      const posts = window.postStorage.getAll();
+      postsContainer.innerHTML = '';
+      
+      posts.forEach(post => {
+        if (filter && post.priceTag !== filter) return;
+        
+        const postElement = document.createElement('div');
+        postElement.className = `post ${post.priceTag || ''}`;
+        postElement.innerHTML = `
+          <div class="post-header">
+            <span class="author">${post.author}</span>
+            <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
+          </div>
+          <div class="post-content">${post.content}</div>
+          ${post.price ? `<div class="post-price">السعر: ${post.price} ${post.priceTag === 'cheap' ? '🟢' : post.priceTag === 'expensive' ? '🔴' : ''}</div>` : ''}
+          ${post.store ? `<div class="post-store">المحل: ${post.store}</div>` : ''}
+        `;
+        postsContainer.appendChild(postElement);
+      });
     }
     
-    const post = {
-      id: Date.now().toString(),
-      author: author || null,
-      content: content,
-      timestamp: Date.now()
-    };
-    
-    const taggedPost = window.tagPost(post);
-    window.postStorage.addPost(taggedPost);
-    
-    document.getElementById('author').value = '';
-    document.getElementById('content').value = '';
-    
-    showError('تم نشر المنشور بنجاح!', 'success');
-  });
-  
-  // 6. Initialization
-  document.addEventListener('DOMContentLoaded', () => {
-    const posts = window.postStorage.getAll();
-    renderPosts(posts);
-    
-    // Enable publish button when content is entered
-    document.getElementById('content').addEventListener('input', (e) => {
-      document.getElementById('publishBtn').disabled = e.target.value.trim() === '';
+    // Filter buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderPosts(btn.dataset.filter || '');
+      });
     });
-  });
-
-  // 7. Storage Update Listener
-  window.addEventListener('storage:update', (e) => {
-    renderPosts(e.detail);
-  });
-}
+    
+    // Compare button
+    document.getElementById('compareBtn').addEventListener('click', () => {
+      const posts = window.postStorage.getAll();
+      const products = {}
