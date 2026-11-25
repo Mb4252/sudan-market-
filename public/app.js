@@ -8,14 +8,7 @@
     maxPosts: 500
   };
 
-  // 2. Service Worker Registration (Robust)
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW Registration failed:', err));
-    });
-  }
-
-  // 3. Storage Manager (Source of Truth)
+  // 2. Storage Manager (Source of Truth)
   window.postStorage = {
     getAll: () => {
       try {
@@ -33,154 +26,141 @@
     clear: () => localStorage.removeItem(window.APP_CONFIG.storageKey)
   };
 
-  // 4. Price Extraction & Tagging Engine
+  // 3. Price Extraction & Smart Tagging Engine (Time-Based Clustering)
   window.tagPost = (post) => {
     const text = post.content || '';
     const priceMatch = text.match(/(\d+(?:\.\d+)?)/);
     post.price = priceMatch ? parseFloat(priceMatch[1]) : null;
     
-    // Simple Heuristic for Cheap/Expensive (Threshold 50 SAR example)
-    if (post.price !== null) {
-      post.priceTag = post.price < 50 ? 'cheap' : 'expensive';
-    }
-    
-    // Extract Store Name (Simple Regex: text after 'في' or 'من')
+    // Extract Store Name
     const storeMatch = text.match(/(?:في|من|عند)\s+([\u0600-\u06FF\s]+)/);
     post.store = storeMatch ? storeMatch[1].trim().substring(0, 20) : 'غير محدد';
+    
+    // Smart Dynamic Tagging: Compare with 24h average for same store/item
+    if (post.price !== null) {
+      const posts = window.postStorage.getAll();
+      const now = Date.now();
+      const dayAgo = now - (24 * 60 * 60 * 1000);
+      
+      // Filter posts from last 24 hours, same store, and has price
+      const relevantPosts = posts.filter(p => 
+        p.timestamp > dayAgo && 
+        p.store === post.store && 
+        p.price !== null
+      );
+      
+      if (relevantPosts.length > 0) {
+        const avgPrice = relevantPosts.reduce((sum, p) => sum + p.price, 0) / relevantPosts.length;
+        // If current price is 10% lower than average, it's cheap; 10% higher, it's expensive
+        post.priceTag = post.price < avgPrice * 0.9 ? 'cheap' : (post.price > avgPrice * 1.1 ? 'expensive' : 'normal');
+      } else {
+        // Fallback if no history: use absolute threshold
+        post.priceTag = post.price < 50 ? 'cheap' : 'expensive';
+      }
+    }
     
     return post;
   };
 
-  // 5. Broadcast Channel (Offline-First Sync)
-  const channel = new BroadcastChannel('posts_sync');
-  channel.onmessage = (e) => {
-    if (e.data.type === 'NEW_POST' && window.postStorage) {
-      window.postStorage.addPost(e.data);
-    }
-  };
-
-  // 6. WebSocket Relay (Background Sync)
-  let ws = null;
-  function connectWS() {
-    if (!window.APP_CONFIG.wsUrl) return;
-    try {
-      ws = new WebSocket(window.APP_CONFIG.wsUrl);
-      ws.onopen = () => {
-        const badge = document.getElementById('syncBadge');
-        if(badge) { badge.className = 'badge online'; badge.title = 'مزامن'; badge.textContent = '☁️'; }
-      };
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'NEW_POST' && window.postStorage) {
-            window.postStorage.addPost(data);
-          }
-        } catch (e) { console.warn('WS Parse Error', e); }
-      };
-      ws.onclose = () => {
-        const badge = document.getElementById('syncBadge');
-        if(badge) { badge.className = 'badge offline'; badge.title = 'غير مزامن'; badge.textContent = '☁️'; }
-        setTimeout(connectWS, 5000); // Reconnect
-      };
-    } catch (e) { console.warn('WS Connection Error', e); }
-  }
-
-  // 7. UI Rendering & Logic
-  function renderPosts(filter = '') {
+  // 4. UI Rendering & Analytics
+  const renderPosts = (filter = '') => {
     const posts = window.postStorage.getAll();
     const container = document.getElementById('posts');
     if (!container) return;
     
-    let filtered = posts;
-    if (filter) filtered = posts.filter(p => p.priceTag === filter);
-
-    container.innerHTML = filtered.map(p => `
-      <div class="post-item ${p.priceTag || ''}">
-        <div class="post-header">
-          <strong>${p.author || 'مجهول'}</strong>
-          <small>${new Date(p.timestamp).toLocaleTimeString('ar-SA')}</small>
-        </div>
-        <p>${p.content}</p>
-        <div class="post-meta">
-          ${p.price ? `<span class="price">${p.price} ر.س</span>` : ''}
-          ${p.store ? `<span class="store">🏪 ${p.store}</span>` : ''}
-        </div>
-      </div>
-    `).join('') || '<p>لا توجد منشورات</p>';
-
-    renderRadar(filtered);
-  }
-
-  function renderRadar(posts) {
-    const radarContent = document.getElementById('radarContent');
-    if (!radarContent) return;
+    const filtered = filter ? posts.filter(p => p.priceTag === filter) : posts;
     
-    const pricedPosts = posts.filter(p => p.price !== null);
-    if (pricedPosts.length === 0) {
-      radarContent.innerHTML = '<p>لا توجد بيانات أسعار كافية.</p>';
+    if (filtered.length === 0) {
+      container.innerHTML = '<p>لا توجد منشورات.</p>';
       return;
     }
 
-    // Group by Store
-    const storePrices = {};
-    pricedPosts.forEach(p => {
-      if (!storePrices[p.store]) storePrices[p.store] = [];
-      storePrices[p.store].push(p.price);
-    });
-
-    // Calculate Averages
-    const storeAvgs = Object.keys(storePrices).map(store => {
-      const prices = storePrices[store];
-      const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
-      return { store, avg, count: prices.length };
-    }).sort((a, b) => a.avg - b.avg);
-
-    const cheapest = storeAvgs[0];
-    const mostExpensive = storeAvgs[storeAvgs.length - 1];
-
-    radarContent.innerHTML = `
-      <div class="radar-stats">
-        <div class="stat cheap">🟢 أرخص: ${cheapest.store} (${cheapest.avg.toFixed(2)} ر.س)</div>
-        <div class="stat expensive">🔴 أغلى: ${mostExpensive.store} (${mostExpensive.avg.toFixed(2)} ر.س)</div>
+    container.innerHTML = filtered.map(p => `
+      <div class="post-item">
+        <strong>${p.author || 'مجهول'}</strong> - ${p.content}
+        <span class="tag ${p.priceTag}">${p.priceTag === 'cheap' ? 'رخيص 🟢' : p.priceTag === 'expensive' ? 'غالي 🔴' : 'عادي'}</span>
       </div>
-      <table class="radar-table">
-        <thead><tr><th>المتجر</th><th>متوسط السعر</th><th>العدد</th></tr></thead>
-        <tbody>
-          ${storeAvgs.map(s => `<tr><td>${s.store}</td><td>${s.avg.toFixed(2)}</td><td>${s.count}</td></tr>`).join('')}
-        </tbody>
-      </table>
-    `;
-  }
+    `).join('');
+  };
 
-  function renderAnalytics() {
+  const renderRadar = () => {
     const posts = window.postStorage.getAll();
-    const priced = posts.filter(p => p.price !== null);
+    const radarContent = document.getElementById('radarContent');
+    if (!radarContent) return;
     
-    if (priced.length === 0) return;
-
-    // Chart 1: Price Distribution
-    const ctx1 = document.getElementById('chartVolume').getContext('2d');
-    if (window.chartVolume) window.chartVolume.destroy();
-    window.chartVolume = new Chart(ctx1, {
-      type: 'bar',
-      data: {
-        labels: ['رخيص', 'غالي'],
-        datasets: [{
-          label: 'العدد',
-          data: [priced.filter(p=>p.priceTag==='cheap').length, priced.filter(p=>p.priceTag==='expensive').length],
-          backgroundColor: ['#4CAF50', '#F44336']
-        }]
-      },
-      options: { responsive: true, plugins: { legend: { display: false } } }
+    // Group by store and find cheapest/most expensive
+    const storeStats = {};
+    posts.forEach(p => {
+      if (!p.price) return;
+      if (!storeStats[p.store]) storeStats[p.store] = { prices: [], cheap: 0, expensive: 0 };
+      storeStats[p.store].prices.push(p.price);
+      if (p.priceTag === 'cheap') storeStats[p.store].cheap++;
+      if (p.priceTag === 'expensive') storeStats[p.store].expensive++;
     });
 
-    // Chart 2: Avg Price by Store
-    const storePrices = {};
-    priced.forEach(p => {
-      if (!storePrices[p.store]) storePrices[p.store] = [];
-      storePrices[p.store].push(p.price);
+    const sortedStores = Object.entries(storeStats).sort((a, b) => {
+      const avgA = a[1].prices.reduce((s, p) => s + p, 0) / a[1].prices.length;
+      const avgB = b[1].prices.reduce((s, p) => s + p, 0) / b[1].prices.length;
+      return avgA - avgB;
     });
-    const storeAvgs = Object.keys(storePrices).map(s => ({
-      store: s,
-      avg: storePrices[s].reduce((a,b)=>a+b,0)/storePrices[s].length
+
+    if (sortedStores.length === 0) {
+      radarContent.innerHTML = '<p>لا توجد بيانات كافية للتحليل.</p>';
+      return;
     }
+
+    radarContent.innerHTML = sortedStores.map(([store, stats]) => {
+      const avg = stats.prices.reduce((s, p) => s + p, 0) / stats.prices.length;
+      return `<div class="radar-item"><strong>${store}</strong> - متوسط: ${avg.toFixed(1)} ريال (رخيص: ${stats.cheap}, غالي: ${stats.expensive})</div>`;
+    }).join('');
+  };
+
+  const renderAnalytics = () => {
+    const posts = window.postStorage.getAll();
+    if (posts.length === 0) return;
+
+    // Volume Chart (Posts per day)
+    const volumeData = {};
+    posts.forEach(p => {
+      const date = new Date(p.timestamp).toISOString().split('T')[0];
+      volumeData[date] = (volumeData[date] || 0) + 1;
+    });
+    const volumeLabels = Object.keys(volumeData).sort();
+    const volumeValues = volumeLabels.map(l => volumeData[l]);
+
+    // Price Chart (Average price per day)
+    const priceData = {};
+    posts.forEach(p => {
+      if (!p.price) return;
+      const date = new Date(p.timestamp).toISOString().split('T')[0];
+      if (!priceData[date]) priceData[date] = [];
+      priceData[date].push(p.price);
+    });
+    const priceLabels = Object.keys(priceData).sort();
+    const priceValues = priceLabels.map(l => priceData[l].reduce((s, p) => s + p, 0) / priceData[l].length);
+
+    // Stores Chart (Post count per store)
+    const storeData = {};
+    posts.forEach(p => {
+      storeData[p.store] = (storeData[p.store] || 0) + 1;
+    });
+    const storeLabels = Object.keys(storeData);
+    const storeValues = storeLabels.map(l => storeData[l]);
+
+    // Update Charts
+    const charts = {};
+    const createChart = (ctxId, type, labels, data, label) => {
+      const ctx = document.getElementById(ctxId);
+      if (!ctx) return;
+      if (charts[ctxId]) charts[ctxId].destroy();
+      charts[ctxId] = new Chart(ctx, {
+        type: type,
+        data: { labels: labels, datasets: [{ label: label, data: data }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+    };
+
+    createChart('chartVolume', 'bar', volumeLabels, volumeValues, 'عدد المنشورات');
+    createChart('chartPrice', 'line', priceLabels, priceValues, 'متوسط السعر');
+    createChart('chartStores', 'pie', storeLabels, storeValues, 'المتاجر');
+  }
