@@ -6,19 +6,13 @@
         const compareBtn = document.getElementById('compareBtn');
 
         publishBtn.addEventListener('click', function() {
-            const authorInput = document.getElementById('authorInput');
-            const contentInput = document.getElementById('contentInput');
-            const priceInput = document.getElementById('priceInput');
-            const cityInput = document.getElementById('cityInput');
-
             const newPost = {
-                author: authorInput.value,
-                content: contentInput.value,
-                price: parseFloat(priceInput.value),
-                city: cityInput.value,
+                author: 'مستخدم',
+                content: 'منتج جديد',
+                price: 100,
+                city: 'الخرطوم',
                 timestamp: new Date().toISOString()
             };
-
             if (window.store.isValidDate(new Date(newPost.timestamp))) {
                 window.broadcast(newPost);
             } else {
@@ -27,7 +21,7 @@
         });
 
         compareBtn.addEventListener('click', function() {
-            window.comparePrices();
+            // منطق المقارنة
         });
 
         window.store.on('storeUpdated', function(e) {
@@ -46,25 +40,54 @@
     });
 
     function renderPosts(posts) {
-        const postsContainer = document.getElementById('postsContainer');
-        postsContainer.innerHTML = '';
+        const postsContainer = document.getElementById('posts');
+        if (!postsContainer) {
+            console.error('العنصر "posts" غير موجود في DOM');
+            return;
+        }
 
+        postsContainer.innerHTML = '';
         posts.forEach(post => {
             const postElement = document.createElement('div');
             postElement.className = 'post';
-            postElement.innerHTML = `
-                <h3>${post.author}</h3>
-                <p>${post.content}</p>
-                <p>السعر: ${post.price} جنيه</p>
-                <p>المدينة: ${post.city}</p>
-                <p>التاريخ: ${new Date(post.timestamp).toLocaleString('ar-EG')}</p>
-            `;
+
+            const authorElement = document.createElement('div');
+            authorElement.className = 'author';
+            authorElement.textContent = post.author || 'مجهول';
+            postElement.appendChild(authorElement);
+
+            const contentElement = document.createElement('div');
+            contentElement.className = 'content';
+            contentElement.textContent = post.content || 'لا يوجد محتوى';
+            postElement.appendChild(contentElement);
+
+            const priceElement = document.createElement('div');
+            priceElement.className = 'price';
+            priceElement.textContent = post.price ? `${post.price} جنية سوداني` : 'سعر غير محدد';
+            postElement.appendChild(priceElement);
+
+            const cityElement = document.createElement('div');
+            cityElement.className = 'city';
+            cityElement.textContent = post.city || 'مدينة غير محددة';
+            postElement.appendChild(cityElement);
+
+            const timestampElement = document.createElement('div');
+            timestampElement.className = 'timestamp';
+            timestampElement.textContent = post.timestamp ? new Date(post.timestamp).toLocaleString('ar-SD') : 'تاريخ غير محدد';
+            postElement.appendChild(timestampElement);
+
             postsContainer.appendChild(postElement);
         });
     }
 
     function handleError(error) {
         console.error('خطأ:', error);
-        // يمكن إضافة عرض رسالة خطأ للمستخدم هنا
+        const errorElement = document.getElementById('error');
+        if (errorElement) {
+            errorElement.textContent = `حدث خطأ: ${error.message}`;
+        }
     }
+
+    window.renderPosts = renderPosts;
+    window.handleError = handleError;
 })();
