@@ -1,14 +1,31 @@
 (function() {
     'use strict';
 
-    function renderPluginInfo(pluginId) {
-        const pluginInfoElement = document.getElementById(`plugin-info-${pluginId}`);
-        if (pluginInfoElement) {
-            pluginInfoElement.textContent = `Plugin ${pluginId} info`;
+    const plugins = {};
+
+    function register(name, plugin) {
+        if (!plugins[name]) {
+            plugins[name] = plugin;
+            if (typeof plugin.init === 'function') {
+                plugin.init();
+            }
+            console.log(`تم تسجيل الوحدة ${name}`);
         } else {
-            console.error(`Plugin info element for ${pluginId} not found`);
+            console.warn(`الوحدة ${name} مسجلة مسبقاً`);
         }
     }
 
-    // إضافة أي وظائف إضافية هنا
+    function update(name, data) {
+        if (plugins[name] && typeof plugins[name].update === 'function') {
+            plugins[name].update(data);
+        } else {
+            console.warn(`الوحدة ${name} غير مسجلة أو لا تحتوي على دالة تحديث`);
+        }
+    }
+
+    // تصدير الدوال العامة
+    window.pluginRegistry = {
+        register,
+        update
+    };
 })();
