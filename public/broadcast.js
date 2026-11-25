@@ -8,28 +8,29 @@
         socket = new WebSocket(WS_URL);
 
         socket.onopen = function() {
-            console.log('متصل بالبث المباشر');
+            console.log('تم الاتصال بالبث المباشر');
         };
 
         socket.onmessage = function(event) {
             const data = JSON.parse(event.data);
-            window.store.update({ posts: [...window.store.get().posts, data] });
+            if (data.type === 'post') {
+                window.store.updateStore({ posts: [...window.store.posts, data.post] });
+            }
         };
 
         socket.onclose = function() {
-            console.log('تم قطع الاتصال، محاولة إعادة الاتصال...');
-            setTimeout(connect, 5000);
+            console.log('تم إغلاق الاتصال');
+            setTimeout(connect, 5000); // إعادة الاتصال بعد 5 ثوان
         };
     }
 
     function broadcast(post) {
         if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify(post));
-        } else {
-            console.error('غير متصل بالبث');
+            socket.send(JSON.stringify({ type: 'post', post }));
         }
     }
 
-    window.broadcast = broadcast;
     connect();
+
+    window.broadcast = broadcast;
 })();
