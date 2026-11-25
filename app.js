@@ -47,9 +47,9 @@
                 <div class="post">
                     <h3>${post.author}</h3>
                     <p>${post.content}</p>
-                    <p>السعر: ${post.price} جنية</p>
+                    <p>السعر: ${post.price} جنيها</p>
                     <p>المدينة: ${post.city}</p>
-                    <p>التاريخ: ${window.formatDate(date)}</p>
+                    <p>الوقت: ${window.formatDate(date)}</p>
                 </div>
             `;
         }).join('');
@@ -57,9 +57,9 @@
 
     function handleError(error) {
         console.error('خطأ:', error);
-        const errorElement = document.getElementById('error');
-        if (errorElement) {
-            errorElement.textContent = `خطأ: ${error.message}`;
-        }
+        const errorElement = document.createElement('div');
+        errorElement.className = 'error';
+        errorElement.textContent = `خطأ: ${error.message}`;
+        document.body.appendChild(errorElement);
     }
 })();
