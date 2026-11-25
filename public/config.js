@@ -1,4 +1,4 @@
 window.APP_CONFIG = {
-  wsUrl: "",
+  wsUrl: (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws',
   storageKey: "posts_v2"
 };
