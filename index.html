@@ -3,79 +3,123 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>سوق السودان - المنشورات الحية</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            direction: rtl;
-            text-align: center;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        #posts-list {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-        .post-item {
-            padding: 15px;
-            border-bottom: 1px solid #eee;
-            border-radius: 5px;
-            background-color: #fff;
-        }
-        .post-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            color: #555;
-        }
-        .post-author {
-            font-weight: bold;
-            color: #2c3e50;
-        }
-        .post-city {
-            font-size: 0.9em;
-            color: #7f8c8d;
-        }
-        .post-date {
-            font-size: 0.8em;
-            color: #95a5a6;
-        }
-        .post-content {
-            margin-bottom: 10px;
-            color: #34495e;
-        }
-        .post-price {
-            font-weight: bold;
-            color: #e74c3c;
-        }
-        #status {
-            margin: 20px 0;
-            font-weight: bold;
-            color: #2c3e50;
-        }
-    </style>
+    <title>سوق السودان - البث الحي</title>
+    <link rel="stylesheet" href="styles/theme.css">
+    <link rel="stylesheet" href="styles/layout.css">
 </head>
 <body>
-    <h1>سوق السودان - المنشورات الحية</h1>
-    <div id="status">الوضع: متصل بالشبكة</div>
-    <ul id="posts-list"></ul>
+    <div class="app-container">
+        <header class="app-header">
+            <h1>سوق السودان</h1>
+        </header>
+        <div class="live-status">
+            <div class="live-dot"></div>
+            <span id="status">جارٍ الاتصال...</span>
+        </div>
+        <main class="app-main">
+            <form id="publishForm" class="publish-form">
+                <input type="text" id="postTitle" placeholder="عنوان المنتج" required>
+                <input type="number" id="postPrice" placeholder="السعر" required>
+                <input type="text" id="postCity" placeholder="المدينة" required>
+                <button type="submit">نشر فوري</button>
+            </form>
+            <div id="postsList" class="posts-list"></div>
+        </main>
+    </div>
 
-    <script src="public/store/post-store.js"></script>
-    <script src="public/sync/render-socket.js"></script>
-    <script src="public/ui/render-posts.js"></script>
-
+    <script src="api.js"></script>
+    <script src="store/post-store.js"></script>
+    <script src="sync/render-socket.js"></script>
+    <script src="ui/render-posts.js"></script>
     <script>
-        // استماع إلى حالة الاتصال ب Render
-        window.renderSocket.on('socketStatus', (data) => {
-            document.getElementById('status').textContent = `الوضع: ${data.status}`;
-        });
+        (function() {
+            'use strict';
+
+            // فحص صحة التاريخ قبل أي استخدام
+            window.isValidDate = function(d) {
+                return d instanceof Date && !isNaN(d.getTime());
+            };
+
+            document.addEventListener('DOMContentLoaded', function() {
+                const form = document.getElementById('publishForm');
+                const statusEl = document.getElementById('status');
+                const postsListEl = document.getElementById('postsList');
+
+                if (!form || !statusEl || !postsListEl) return;
+
+                // ربط النموذج بالنشر الفوري
+                form.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const title = document.getElementById('postTitle').value.trim();
+                    const price = parseFloat(document.getElementById('postPrice').value);
+                    const city = document.getElementById('postCity').value.trim();
+
+                    if (!title || isNaN(price) || !city) return;
+
+                    const newPost = {
+                        author: 'أنت',
+                        content: title,
+                        price: price,
+                        city: city,
+                        timestamp: new Date().toISOString()
+                    };
+
+                    if (window.isValidDate(new Date(newPost.timestamp))) {
+                        // حفظ محلي + بث
+                        const localPosts = JSON.parse(localStorage.getItem('sudan_posts') || '[]');
+                        localPosts.unshift(newPost);
+                        localStorage.setItem('sudan_posts', JSON.stringify(localPosts));
+
+                        // إرسال للسيرفر
+                        if (window.api && window.api.createPost) {
+                            window.api.createPost(newPost).catch(err => console.error('نشر فاشل:', err));
+                        }
+
+                        // تحديث الواجهة فوراً
+                        renderPost(newPost);
+                        statusEl.textContent = 'تم النشر بنجاح';
+                        setTimeout(() => statusEl.textContent = 'متصل مباشرة', 2000);
+
+                        form.reset();
+                    }
+                });
+
+                // دالة عرض منشور واحد
+                function renderPost(post) {
+                    const card = document.createElement('div');
+                    card.className = 'post-card';
+                    
+                    const title = document.createElement('div');
+                    title.className = 'post-title';
+                    title.textContent = post.content || 'منتج';
+
+                    const meta = document.createElement('div');
+                    meta.className = 'post-meta';
+                    const dateStr = window.isValidDate(new Date(post.timestamp)) ? new Date(post.timestamp).toLocaleString('ar-SD') : 'غير معروف';
+                    meta.textContent = `${post.city} • ${post.price} ج.س • ${dateStr}`;
+
+                    card.appendChild(title);
+                    card.appendChild(meta);
+                    postsListEl.insertBefore(card, postsListEl.firstChild);
+                }
+
+                // تحميل المنشورات المحلية عند البدء
+                const localPosts = JSON.parse(localStorage.getItem('sudan_posts') || '[]');
+                localPosts.forEach(p => renderPost(p));
+
+                // الاستماع للبث الحي من Render (إذا كان مفعلاً)
+                if (window.renderSocket) {
+                    window.renderSocket.on('post', function(post) {
+                        if (window.isValidDate(new Date(post.timestamp))) {
+                            renderPost(post);
+                        }
+                    });
+                    window.renderSocket.on('status', function(status) {
+                        if (statusEl) statusEl.textContent = status;
+                    });
+                }
+            });
+        })();
     </script>
 </body>
 </html>
