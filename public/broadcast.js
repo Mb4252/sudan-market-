@@ -23,7 +23,7 @@
     } else {
       syncBadge.classList.remove('online');
       syncBadge.classList.add('offline');
-      syncBadge.title = 'وضع محلي سريع';
+      syncBadge.title = 'وضع محلي سري';
       document.getElementById('publishBtn').disabled = false;
       document.getElementById('compareBtn').disabled = false;
       document.getElementById('analyticsToggle').disabled = false;
@@ -35,7 +35,7 @@
     if (ws && ws.readyState === WebSocket.OPEN) return;
 
     if (connectionAttempts >= maxAttempts) {
-      updateUIStatus('وضع محلي سريع', false);
+      updateUIStatus('فشل الاتصال: وضع محلي سري', false);
       return;
     }
 
@@ -47,7 +47,7 @@
     ws.onopen = () => {
       connectionAttempts = 0;
       isConnecting = false;
-      updateUIStatus('متصل بالجسر', true);
+      updateUIStatus('متصل', true);
 
       // Send all local posts to server
       const posts = window.postStorage.getAll();
@@ -68,4 +68,3 @@
       } catch (e) {
         console.error('Error parsing message:', e);
       }
-    }

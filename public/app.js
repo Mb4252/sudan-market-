@@ -68,137 +68,77 @@
           ? 'cheap'
           : post.price > avgPrice * 1.1
             ? 'expensive'
-            : '';
+            : 'normal';
+      } else {
+        post.priceTag = 'normal';
       }
     }
 
     return post;
   };
 
-  // 4. UI Initialization
-  document.addEventListener('DOMContentLoaded', () => {
-    // Ensure DOM elements exist
-    const requiredIds = ['status', 'author', 'content', 'publishBtn', 'posts', 'compareOverlay', 'compareContent'];
-    const missingIds = requiredIds.filter(id => !document.getElementById(id));
+  // 4. UI Rendering
+  function renderPosts(posts, filter = '') {
+    const postsContainer = document.getElementById('posts');
+    postsContainer.innerHTML = '';
 
-    if (missingIds.length > 0) {
-      console.error('Missing DOM elements:', missingIds);
-      return;
-    }
+    posts
+      .filter(post => !filter || post.priceTag === filter)
+      .forEach(post => {
+        const postElement = document.createElement('div');
+        postElement.className = `post ${post.priceTag || ''}`;
+        postElement.innerHTML = `
+          <div class="post-header">
+            <span class="author">${post.author || 'مجهول'}</span>
+            <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
+          </div>
+          <div class="post-content">${post.content}</div>
+          <div class="post-meta">
+            <span class="price">${post.price ? `${post.price} ريال` : 'سعر غير محدد'}</span>
+            <span class="store">${post.store}</span>
+          </div>
+        `;
+        postsContainer.appendChild(postElement);
+      });
+  }
 
-    // Initialize UI
-    document.getElementById('status').textContent = 'جاهز للنشر'; // Updated status text
-    renderPosts();
-
-    // Event Listeners
-    document.getElementById('publishBtn').addEventListener('click', publishPost);
-    document.getElementById('compareBtn').addEventListener('click', showCompareOverlay);
-    document.getElementById('analyticsToggle').addEventListener('click', toggleAnalytics);
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', filterPosts);
-    });
-
-    // Storage Update Listener
-    window.addEventListener('storage:update', (e) => {
-      renderPosts();
-      updateRadar();
-    });
-  });
-
-  // 5. Publish Post
-  function publishPost() {
-    const content = document.getElementById('content').value.trim();
+  // 5. Event Handlers
+  document.getElementById('publishBtn').addEventListener('click', () => {
     const author = document.getElementById('author').value.trim();
+    const content = document.getElementById('content').value.trim();
 
     if (!content) {
-      showError('الرجاء كتابة المنشور', 'warning');
+      showError('المنشور فارغ!', 'validation');
       return;
     }
 
     const post = {
       id: Date.now().toString(),
-      content,
       author: author || 'مجهول',
+      content,
       timestamp: Date.now()
     };
 
-    // Tag post before saving
     const taggedPost = window.tagPost(post);
     window.postStorage.addPost(taggedPost);
-
-    // Clear input
     document.getElementById('content').value = '';
-    document.getElementById('author').value = '';
+  });
 
-    // Show success message
-    showError('تم نشر المنشور بنجاح!', 'success');
-  }
-
-  // 6. Render Posts
-  function renderPosts(filter = '') {
-    const posts = window.postStorage.getAll();
-    const postsContainer = document.getElementById('posts');
-
-    if (posts.length === 0) {
-      postsContainer.innerHTML = '<p>لا توجد منشورات بعد. كن أول من ينشر!</p>';
-      return;
-    }
-
-    let filteredPosts = posts;
-    if (filter === 'cheap') {
-      filteredPosts = posts.filter(p => p.priceTag === 'cheap');
-    } else if (filter === 'expensive') {
-      filteredPosts = posts.filter(p => p.priceTag === 'expensive');
-    }
-
-    postsContainer.innerHTML = filteredPosts.map(post => {
-      const priceTag = post.priceTag ? `<span class="price-tag ${post.priceTag}">${post.priceTag === 'cheap' ? 'رخيص' : 'غالي'}</span>` : '';
-      return `
-        <div class="post" data-id="${post.id}">
-          <div class="post-header">
-            <span class="author">${post.author}</span>
-            <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
-          </div>
-          <div class="post-content">${post.content}</div>
-          <div class="post-footer">
-            ${priceTag}
-            <span class="store">${post.store}</span>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  // 7. Filter Posts
-  function filterPosts(e) {
-    const filter = e.target.getAttribute('data-filter');
-    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-    e.target.classList.add('active');
-    renderPosts(filter);
-  }
-
-  // 8. Compare Prices
-  function showCompareOverlay() {
-    const posts = window.postStorage.getAll();
-    const compareOverlay = document.getElementById('compareOverlay');
-    const compareContent = document.getElementById('compareContent');
-
-    if (posts.length < 2) {
-      showError('تحتاج إلى منشورين على الأقل للمقارنة', 'warning');
-      return;
-    }
-
-    // Group posts by store
-    const stores = {};
-    posts.forEach(post => {
-      if (!stores[post.store]) stores[post.store] = [];
-      stores[post.store].push(post);
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const filter = btn.getAttribute('data-filter');
+      renderPosts(window.postStorage.getAll(), filter);
     });
+  });
 
-    // Find stores with multiple posts
-    const comparableStores = Object.entries(stores).filter(([store, posts]) => posts.length > 1);
+  // 6. Initialize
+  window.addEventListener('DOMContentLoaded', () => {
+    renderPosts(window.postStorage.getAll());
+  });
 
-    if (comparableStores.length === 0) {
-      showError('لا توجد منشورات من نفس المتجر للمقارنة', 'warning');
-      return;
-    }
+  window.addEventListener('storage:update', (e) => {
+    renderPosts(e.detail);
+  });
+})();
