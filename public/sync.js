@@ -1,1 +1,0 @@
-if('SyncManager' in navigator && 'serviceWorker' in navigator){navigator.serviceWorker.ready.then(sw=>{sw.sync.register('postSync').catch(()=>{});});}
