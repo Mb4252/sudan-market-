@@ -1,29 +1,32 @@
 (function() {
     'use strict';
 
-    const plugins = new Map();
+    // تسجيل الأخطاء
+    function registerErrorHandler() {
+        window.onerror = function(message, source, lineno, colno, error) {
+            window.extensions.module3.handleError(error);
+        };
 
-    function registerPlugin(name, plugin) {
-        if (typeof plugin.init === 'function') {
-            plugins.set(name, plugin);
-            plugin.init();
-        } else {
-            console.error(`الملحق ${name} ليس له دالة 'init'`);
-        }
+        window.addEventListener('unhandledrejection', function(event) {
+            window.extensions.module3.handleError(event.reason);
+        });
     }
 
-    function getPlugin(name) {
-        return plugins.get(name);
+    // دالة لتحميل السكربتات
+    function loadScript(url) {
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = url;
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
     }
 
-    function getAllPlugins() {
-        return Array.from(plugins.values());
-    }
-
-    // تصدير الواجهة
-    window.pluginRegistry = {
-        registerPlugin,
-        getPlugin,
-        getAllPlugins
+    // تصدير الدوال
+    window.plugins = window.plugins || {};
+    window.plugins.registry = {
+        registerErrorHandler,
+        loadScript
     };
 })();
