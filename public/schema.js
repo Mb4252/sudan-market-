@@ -1,0 +1,1 @@
+export const schema={posts:{id:'number',author:'string',content:'string',timestamp:'number',priceTag:'string'}};
