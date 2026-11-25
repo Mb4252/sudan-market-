@@ -79,10 +79,10 @@ jobs:
               goal: "توسيع المشروع بنظام إضافات ووحدات صغيرة بلغات أخرى قوية (مثل Python لتحليل الأسعار وTypeScript للتحقق من البيانات) في مجلدات مستقلة."
             },
             {
-              id: "stage-6-live-modules-bridge",
-              title: "ربط وتفعيل الوحدات التوسعية داخل الواجهة الحية وlocalStorage وبث Render",
-              files: ["public/modules/modules-bridge.js", "public/modules/modules-ui-panel.js"],
-              goal: "إنشاء جسر يكتشف ويربط الوحدات التوسعية الجديدة بأمان مع بيانات localStorage وبث wss://sudan-market-2.onrender.com وعرض أثرها داخل واجهة تفاعلية دون المساس بالملفات المقفلة."
+              id: "stage-6-wire-existing-and-locked",
+              title: "ربط الملفات المقفلة والموجودة مسبقاً بنقطة تنسيق واحدة قبل إنشاء الجديد",
+              files: ["public/modules/existing-modules-linker.js", "public/modules/linked-workspace-view.js"],
+              goal: "فحص وربط الملفات المقفلة والموجودة سابقاً بأمان عبر سجل موحد يتصل بـ localStorage وبث wss://sudan-market-2.onrender.com ويعرض حالة الوحدات المرتبطة دون المساس بأي ملف مقفل."
             }
           ];
 
@@ -130,18 +130,18 @@ jobs:
               }
             }
             const nextNum = (stagesState.extraStageCounter || 0) + 1;
-            const dynamicId = `stage-${ROADMAP_STAGES.length + nextNum}-scale-expansion`;
+            const dynamicId = `stage-${ROADMAP_STAGES.length + nextNum}-wired-expansion`;
             return {
               id: dynamicId,
-              title: `توسعة معمارية ضخمة #${nextNum}`,
+              title: `توسعة مرتبطة مسبقاً #${nextNum}`,
               files: [
                 `public/modules/feature-${nextNum}-ui.js`,
                 `public/modules/feature-${nextNum}-logic.js`,
                 `services/py/worker_${nextNum}.py`
               ],
               goal: hasCriticalRuntimeIssue
-                ? "إصلاح أي خلل تشغيلي مكتشف في الملفات غير المقفلة دون إعادة بناء الملفات المقفلة سابقاً."
-                : "إضافة ميزات جديدة قوية ومبتكرة في ملفات صغيرة جديدة (JS / CSS / Python / TypeScript) وربطها بالمنظومة القائمة دون العودة لما تم إنجازه."
+                ? "إصلاح أي خلل تشغيلي مكتشف في الملفات غير المقفلة فقط دون المساس بالملفات المقفلة."
+                : "إنشاء ملفات صغيرة جديدة في ميزات إضافية وتسجيلها وربطها تلقائياً بالمنظومة المربوطة من لحظة إنشائها، ثم قفلها وعدم العودة إليها أبداً."
             };
           }
 
@@ -183,7 +183,7 @@ jobs:
                 continue;
               }
               if (lockedFilesSet && lockedFilesSet.has(cleanPath)) {
-                errors.push(`الملف ${cleanPath} مقفل ومستقر ولا يُعاد بناؤه من الصفر.`);
+                errors.push(`الملف ${cleanPath} مقفل وممنوع التصرف فيه أو إعادة بنائه.`);
                 continue;
               }
               if (cleanPath.endsWith(".json")) {
@@ -586,9 +586,16 @@ jobs:
             const activeStage = selectActiveStage(stagesState, diag.hasCritical);
             const liveReport = await probeLiveEndpoints(pagesUrl, renderUrl);
 
+            const isWiringExistingStage = activeStage.id === "stage-6-wire-existing-and-locked";
+            const existingTargetsSummary = filesList
+              .map(f => f.fullPath)
+              .filter(p => !lockedSet.has(p) || /feature-|worker_|plugin-hub|price_analyzer|schema_guard/i.test(p))
+              .slice(0, 80)
+              .join(", ");
+
             console.log(`🎯 المرحلة الحصرية الحالية: [${activeStage.id}] — ${activeStage.title}`);
             console.log(`✅ المراحل المكتملة: ${stagesState.completedStages.join(", ") || "لا يوجد"}`);
-            console.log(`🔒 الملفات المقفلة (لا تتراجع): ${stagesState.lockedFiles.join(", ") || "لا يوجد"}`);
+            console.log(`🔒 الملفات المقفلة (لا تتصرف فيها مرة أخرى): ${stagesState.lockedFiles.join(", ") || "لا يوجد"}`);
             console.log("🩺 تقرير التشخيص:\n" + diag.text + "\n\n--- فحص الموقع الحي والجسر ---\n" + liveReport);
 
             const currentFiles = filesList
@@ -601,8 +608,11 @@ jobs:
               `رابط جسر Render الصحيح: ${renderUrl} (للبث المباشر عبر wss://sudan-market-2.onrender.com وطلب الإيقاظ /health).`,
               `المرحلة الحصرية المطلوبة الآن: ${activeStage.id} (${activeStage.title})`,
               `هدف هذه المرحلة فقط: ${activeStage.goal}`,
-              `الملفات المقترحة لهذه المرحلة: ${activeStage.files.join(" ، ")} (اجعل كل ملف صغيراً ومتخصصاً وقابلاً للتوسع، واربط الوحدات ببعضها وبـ localStorage وبث Render دون المساس بالملفات المقفلة).`,
-              `قفل الاستقرار — ممنوع إعادة كتابة الملفات المقفلة التالية: [${stagesState.lockedFiles.join(", ") || "لا يوجد"}]. ابنِ فوقها بإضافة ملفات جديدة أو توسعات متماسكة فقط.`,
+              `الملفات المقترحة لهذه المرحلة: ${activeStage.files.join(" ، ")} (اجعل كل ملف صغيراً ومتخصصاً وقابلاً للتوسع).`,
+              isWiringExistingStage
+                ? `مهمة ربط الموجود والمقفل أولاً: اجمع واربِط الوحدات الموجودة والمقفلة سابقاً (${existingTargetsSummary || "الملفات الحالية"}) عبر نقطة تنسيق جديدة متصلة بـ localStorage وبث wss://sudan-market-2.onrender.com بحيث تصبح مرتبطة من الآن فصاعداً وتُقفل تلقائياً بعد إنشائها.`
+                : "مهمة البناء المربوط مسبقاً: اجعل أي ملف جديد تنشئه في هذه المرحلة مسجّلاً ومرتبطاً تلقائياً بمنظومة الربط الموجودة منذ لحظة إنشائه، ثم يُقفل ولا يُعاد التصرف فيه مرة أخرى.",
+              `قفل صارم — ممنوع إعادة كتابة أو التصرف في الملفات المقفلة التالية: [${stagesState.lockedFiles.join(", ") || "لا يوجد"}].`,
               "يمكن استخدام لغات وأدوات منظمة ضمن مساراتها المخصصة مثل: public/... (JS/CSS/HTML/JSON)، services/py/... (Python)، tools/ts/... (TypeScript). يُمنع تماماً أسماء مثل file_1_..."
             ].join("\n");
 
@@ -615,14 +625,14 @@ jobs:
               console.log(`🤝 حوار التشخيص والابتكار نشط بين: [${p1.label}] و [${p2.label}]`);
               try {
                 const propRes = await p1.runText(
-                  "أنت مهندس معماري لمشروع ضخم قابل للتوسع. ضع خطة لمرحلة واحدة فقط موزعة على ملفات صغيرة جديدة ومرتبطة ببعضها دون التراجع عن الملفات المقفلة.",
+                  "أنت مهندس معماري لمشروع ضخم قابل للتوسع. ضع خطة لمرحلة واحدة فقط موزعة على ملفات صغيرة جديدة مع احترام قفل الملفات وعدم التصرف فيها مرة أخرى.",
                   `${stageMandate}\n\nالتشخيص:\n${diag.text}\n\nالملفات الحالية:\n${currentFiles}`,
                   450
                 );
                 console.log(`💡 مقترح ${propRes.detail} جاهز للمراجعة.`);
                 try {
                   const revRes = await p2.runText(
-                    "أنت المدقق الهندسي. راجع الخطة وتأكد من ربط الوحدات ببعضها وعدم المساس بالملفات المقفلة وتوزيع العمل على ملفات صغيرة قابلة للتوسع، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
+                    "أنت المدقق الهندسي. راجع الخطة وتأكد من عدم التصرف في الملفات المقفلة ومن ربط الموجود أولاً ثم جعل الجديد مربوطاً من لحظة إنشائه، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
                     `مقترح الطرف الأول:\n${propRes.text}\n\n${stageMandate}`,
                     450
                   );
@@ -637,7 +647,7 @@ jobs:
               } catch (propErr) {
                 console.warn(`⚠️ تعذر الطرف الأول (${propErr.message}) — ينتقل الطرف الثاني للعمل المستقل الفوري.`);
                 const soloRes = await p2.runText(
-                  "أنت المنفذ المستقل. ضع خطة لمرحلة واحدة فقط موزعة على ملفات صغيرة قابلة للتوسع ومرتبطة ببعضها.",
+                  "أنت المنفذ المستقل. ضع خطة لمرحلة واحدة فقط موزعة على ملفات صغيرة قابلة للتوسع مع احترام القفل.",
                   `${stageMandate}\n\n${currentFiles}`,
                   450
                 );
@@ -650,12 +660,12 @@ jobs:
 
             const systemJsonInstruction = [
               "أنت مهندس برمجيات لمشروع ضخم قابل للتوسع. أعد كائن JSON صالحاً فقط بدون أي نص خارجه.",
-              "وزّع العمل على ملفات صغيرة ومتخصصة ومرتبطة ببعضها دون المساس بالملفات المقفلة، ويمكن تضمين ملفات بلغات أخرى مثل Python أو TypeScript في مساراتها المخصصة.",
+              "وزّع العمل على ملفات صغيرة ومتخصصة دون التصرف في الملفات المقفلة، واجعل الموجود مربوطاً أولاً ثم أي ملف جديد مربوطاً منذ إنشائه.",
               "الشكل المطلوب: {\"files\":{\"مسار_ملف\":\"محتواه\"},\"summary\":\"ملخص مختصر\"}"
             ].join("\n");
 
             const executionPrompt = [
-              "نفّذ هذه المرحلة الحصرية عبر ملفات صغيرة وقابلة للتوسع ومرتبطة ببعضها:",
+              "نفّذ هذه المرحلة الحصرية عبر ملفات صغيرة وقابلة للتوسع:",
               agreedPlan,
               "",
               stageMandate,
@@ -701,7 +711,7 @@ jobs:
                 const cleanPath = String(filePath).replace(/^\/+/, "").trim();
                 if (!isValidCleanFilePath(cleanPath) || typeof content !== "string" || !content.trim()) continue;
                 if (lockedSet.has(cleanPath)) {
-                  console.log(`🔒 تخطي الملف المقفل للحفاظ على الاستقرار: ${cleanPath}`);
+                  console.log(`🔒 تخطي الملف المقفل (لن يُعاد التصرف فيه): ${cleanPath}`);
                   continue;
                 }
                 if (cleanPath.endsWith(".json")) {
@@ -745,7 +755,7 @@ jobs:
               };
               fs.mkdirSync("public", { recursive: true });
               fs.writeFileSync(STAGES_FILE, JSON.stringify(updatedStagesState, null, 2), "utf8");
-              console.log(`🏁 تم إنهاء المرحلة [${activeStage.id}] وقفل ملفاتها والانتقال إلى [${nextStageObj.id}]`);
+              console.log(`🏁 تم إنهاء المرحلة [${activeStage.id}] وقفل ملفاتها نهائياً والانتقال إلى [${nextStageObj.id}]`);
               fs.writeFileSync("last_ai_change.txt", String(parsed.summary || `${activeStage.id}: ${activeStage.title}`).replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
             }
 
@@ -770,7 +780,7 @@ jobs:
             echo "ℹ️ nothing to commit, working tree clean."
             exit 0
           fi
-          SUMMARY="Scalable multi-module evolution with locked stability"
+          SUMMARY="Wire existing modules first then build linked immutable modules"
           if [ -f last_ai_change.txt ]; then
             SUMMARY=$(head -n 1 last_ai_change.txt)
             rm -f last_ai_change.txt
