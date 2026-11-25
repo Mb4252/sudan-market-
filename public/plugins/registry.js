@@ -4,11 +4,11 @@
     const plugins = new Map();
 
     function registerPlugin(name, plugin) {
-        if (typeof plugin.init === 'function') {
+        if (!plugins.has(name)) {
             plugins.set(name, plugin);
-            plugin.init();
+            console.log(`Plugin ${name} registered successfully`);
         } else {
-            console.warn(`الملحق ${name} ليس له دالة 'init'`);
+            console.warn(`Plugin ${name} is already registered`);
         }
     }
 
@@ -16,18 +16,13 @@
         return plugins.get(name);
     }
 
-    function unregisterPlugin(name) {
-        const plugin = plugins.get(name);
-        if (plugin && typeof plugin.destroy === 'function') {
-            plugin.destroy();
-        }
-        plugins.delete(name);
+    function getAllPlugins() {
+        return Array.from(plugins.values());
     }
 
-    // تصدير الوظائف
     window.pluginRegistry = {
         registerPlugin,
         getPlugin,
-        unregisterPlugin
+        getAllPlugins
     };
 })();
