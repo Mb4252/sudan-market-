@@ -6,8 +6,10 @@
   <title>Sudan Market</title>
   <script src="core/dom-date-guard.js"></script>
   <script src="core/local-posts-store.js"></script>
+  <script src="core/render-stream.js"></script>
   <script src="sdm/sdm-storage.js"></script>
   <script src="sdm/sdm-engine.js"></script>
+  <script src="sdm/sdm-shell.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -51,6 +53,28 @@
     #send-message {
       padding: 8px 15px;
     }
+    .message {
+      margin-bottom: 10px;
+      padding: 8px;
+      border-radius: 5px;
+    }
+    .message.user {
+      background-color: #e3f2fd;
+      margin-left: 20%;
+    }
+    .message.sdm {
+      background-color: #f1f1f1;
+      margin-right: 20%;
+    }
+    .message-sender {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    .message-time {
+      font-size: 0.8em;
+      color: #666;
+      text-align: right;
+    }
   </style>
 </head>
 <body>
@@ -59,93 +83,13 @@
 
   <div id="sdm-chat">
     <h2>SDM Chat</h2>
-    <div id="chat-messages"></div>
-    <input type="text" id="user-message" placeholder="اكتب رسالتك...">
-    <button id="send-message">إرسال</button>
   </div>
 
   <script>
-    // دالة لعرض المنشورات
-    function displayPosts() {
-      const postsContainer = document.getElementById('posts-container');
-      if (!postsContainer) return;
-
-      const posts = window.localPostsStore.getAllPosts();
-      postsContainer.innerHTML = '';
-
-      if (posts.length === 0) {
-        postsContainer.innerHTML = '<p>No posts available.</p>';
-        return;
-      }
-
-      posts.forEach(post => {
-        const postElement = document.createElement('div');
-        postElement.className = 'post';
-
-        const titleElement = document.createElement('div');
-        titleElement.className = 'post-title';
-        safeSetTextContent(titleElement, post.title);
-
-        const dateElement = document.createElement('div');
-        dateElement.className = 'post-date';
-        const postDate = new Date(post.date);
-        safeSetTextContent(dateElement, safeFormatDate(postDate));
-
-        const contentElement = document.createElement('div');
-        contentElement.className = 'post-content';
-        safeSetTextContent(contentElement, post.content);
-
-        postElement.appendChild(titleElement);
-        postElement.appendChild(dateElement);
-        postElement.appendChild(contentElement);
-
-        postsContainer.appendChild(postElement);
-      });
-    }
-
-    // تهيئة الدردشة مع SDM
-    function initSDMChat() {
-      const chatMessages = document.getElementById('chat-messages');
-      const userMessage = document.getElementById('user-message');
-      const sendButton = document.getElementById('send-message');
-
-      if (!chatMessages || !userMessage || !sendButton) return;
-
-      // عرض الرسائل السابقة
-      const chatHistory = window.sdmEngine.loadChatHistory();
-      chatHistory.forEach(entry => {
-        const messageElement = document.createElement('div');
-        messageElement.innerHTML = `<strong>أنت:</strong> ${entry.message}<br><strong>SDM:</strong> ${entry.response}`;
-        chatMessages.appendChild(messageElement);
-      });
-
-      // إرسال الرسالة
-      function sendMessage() {
-        const message = userMessage.value.trim();
-        if (message) {
-          const response = window.sdmEngine.processMessage(message);
-
-          const messageElement = document.createElement('div');
-          messageElement.innerHTML = `<strong>أنت:</strong> ${message}<br><strong>SDM:</strong> ${response}`;
-          chatMessages.appendChild(messageElement);
-
-          userMessage.value = '';
-          chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-      }
-
-      sendButton.addEventListener('click', sendMessage);
-      userMessage.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-          sendMessage();
-        }
-      });
-    }
-
-    // تهيئة التطبيق عند تحميل الصفحة
+    // تهيئة واجهة السوق عند تحميل الصفحة
     document.addEventListener('DOMContentLoaded', function() {
-      displayPosts();
-      initSDMChat();
+      // هنا يمكنك إضافة منطق تهيئة واجهة السوق
+      // مثل تحميل المنشورات من التخزين المحلي
     });
   </script>
 </body>
