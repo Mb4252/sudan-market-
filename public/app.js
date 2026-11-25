@@ -29,11 +29,11 @@
   // 3. Price Extraction & Smart Tagging Engine (Time-Based Clustering)
   window.tagPost = (post) => {
     const text = post.content || '';
-    const priceMatch = text.match(/(\d+(?:\.\d+)?)/);
+    const priceMatch = text.match(/(\\d+(?:\\.\\d+)?)/);
     post.price = priceMatch ? parseFloat(priceMatch[1]) : null;
     
     // Extract Store Name
-    const storeMatch = text.match(/(?:في|من|عند)\s+([\u0600-\u06FF\s]+)/);
+    const storeMatch = text.match(/(?:في|من|عند)\\s+([\\u0600-\\u06FF\\s]+)/);
     post.store = storeMatch ? storeMatch[1].trim().substring(0, 20) : 'غير محدد';
     
     // Smart Dynamic Tagging: Compare with 24h average for same store/item
@@ -65,57 +65,54 @@
   // 4. UI Rendering & Analytics
   const renderPosts = (filter = '') => {
     const posts = window.postStorage.getAll();
-    const postsContainer = document.getElementById('posts');
-    if (!postsContainer) return;
-    
-    postsContainer.innerHTML = posts.length === 0 ? '<p>لا توجد منشورات بعد</p>' : '';
-    
+    const container = document.getElementById('posts');
+    if (!container) return;
+
+    container.innerHTML = posts.length === 0 ? '<p>لا توجد منشورات بعد. كن أول من ينشر!</p>' : '';
+
     posts.forEach(post => {
       if (filter && post.priceTag !== filter) return;
-      
+
       const postElement = document.createElement('div');
       postElement.className = `post ${post.priceTag || ''}`;
       postElement.innerHTML = `
         <div class="post-header">
-          <span class="post-author">${post.author || 'مجهول'}</span>
-          <span class="post-time">${new Date(post.timestamp).toLocaleTimeString()}</span>
+          <span class="author">${esc(post.author || 'مجهول')}</span>
+          <span class="time">${new Date(post.timestamp).toLocaleTimeString('ar-EG')}</span>
         </div>
-        <div class="post-content">${post.content}</div>
-        <div class="post-footer">
-          <span class="post-store">🏪 ${post.store}</span>
-          ${post.price ? `<span class="post-price">${post.price} ريال</span>` : ''}
+        <div class="post-content">${esc(post.content)}</div>
+        <div class="post-meta">
+          <span class="store">🏪 ${esc(post.store)}</span>
+          ${post.price !== null ? `<span class="price">💰 ${post.price} ريال</span>` : ''}
         </div>
       `;
-      postsContainer.appendChild(postElement);
+      container.appendChild(postElement);
     });
   };
 
   // 5. Event Listeners
   document.addEventListener('DOMContentLoaded', () => {
-    // Publish Button
-    const publishBtn = document.getElementById('publishBtn');
-    if (publishBtn) {
-      publishBtn.addEventListener('click', () => {
-        const content = document.getElementById('content').value.trim();
-        if (!content) return;
-        
-        const post = {
-          content,
-          author: document.getElementById('author').value.trim() || 'مجهول',
-          timestamp: Date.now()
-        };
-        
-        if (window.publishPost) {
-          window.publishPost(post);
-        } else if (window.postStorage) {
-          window.postStorage.addPost(post);
-        }
-        
-        document.getElementById('content').value = '';
-      });
-    }
+    // Initial render
+    renderPosts();
 
-    // Filter Buttons
+    // Publish button
+    document.getElementById('publishBtn')?.addEventListener('click', () => {
+      const content = document.getElementById('content')?.value.trim();
+      if (!content) return;
+
+      const post = {
+        author: document.getElementById('author')?.value.trim() || 'مجهول',
+        content,
+        timestamp: Date.now()
+      };
+
+      window.tagPost(post);
+      window.postStorage.addPost(post);
+      document.getElementById('content').value = '';
+      renderPosts();
+    });
+
+    // Filter buttons
     document.querySelectorAll('.filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -124,47 +121,27 @@
       });
     });
 
-    // Analytics Toggle
-    const analyticsToggle = document.getElementById('analyticsToggle');
-    if (analyticsToggle) {
-      analyticsToggle.addEventListener('click', () => {
-        const panel = document.getElementById('analyticsPanel');
-        if (panel) panel.classList.toggle('hidden');
-      });
-    }
+    // Analytics toggle
+    document.getElementById('analyticsToggle')?.addEventListener('click', () => {
+      const panel = document.getElementById('analyticsPanel');
+      if (panel) panel.classList.toggle('hidden');
+    });
 
-    // Initial Render
-    renderPosts();
+    // Compare button
+    document.getElementById('compareBtn')?.addEventListener('click', () => {
+      window.openCompare();
+    });
   });
 
-  // 6. Storage Update Listener
+  // 6. Helper Functions
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"]/g, function(c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+    });
+  }
+
+  // 7. Storage Update Listener
   window.addEventListener('storage:update', () => {
     renderPosts(document.querySelector('.filter-btn.active')?.dataset.filter || '');
   });
-
-  // 7. Wake Up Server
-  function wakeUpServer() {
-    const statusElement = document.getElementById('status');
-    if (!statusElement) return;
-    
-    statusElement.textContent = 'جاري الاتصال...';
-    statusElement.className = 'status connecting';
-    
-    fetch('https://browser-relay-server.onrender.com/health', { mode: 'no-cors' })
-      .then(() => {
-        statusElement.textContent = 'متصل بنجاح';
-        statusElement.className = 'status online';
-      })
-      .catch(() => {
-        statusElement.textContent = 'غير متصل (العمل محلياً)';
-        statusElement.className = 'status offline';
-      });
-  }
-
-  // 8. Initialize
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', wakeUpServer);
-  } else {
-    wakeUpServer();
-  }
 })();
