@@ -7,7 +7,8 @@
     storageKey: 'smart_posts_v1',
     maxPosts: 500,
     priceRegex: /(\d+(\.\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
-    storeRegex: /(في|من|عند)\s+([\u0600-\u06FF\s]+)/i
+    storeRegex: /(في|من|عند)\s+([\u0600-\u06FF\s]+)/i,
+    connectionTimeout: 5000
   };
 
   // 2. Storage Manager (Source of Truth)
@@ -34,6 +35,7 @@
 
       localStorage.setItem(window.APP_CONFIG.storageKey, JSON.stringify(posts));
       window.dispatchEvent(new CustomEvent('storage:update', { detail: posts }));
+      updateUIStatus('وضع محلي سريع', false);
     },
     clear: () => localStorage.removeItem(window.APP_CONFIG.storageKey)
   };
@@ -67,90 +69,121 @@
         post.priceTag = post.price < avgPrice * 0.9
           ? 'cheap'
           : post.price > avgPrice * 1.1
-            ? 'expensive'
-            : 'normal';
-      } else {
-        post.priceTag = 'normal';
+          ? 'expensive'
+          : null;
       }
     }
 
     return post;
   };
 
-  // 4. UI Rendering Engine
-  function renderPosts(posts, filter = '') {
-    const postsContainer = document.getElementById('posts');
-    postsContainer.innerHTML = '';
+  // 4. UI State Management
+  function updateUIStatus(status, isOnline) {
+    const statusElement = document.getElementById('status');
+    const syncBadge = document.getElementById('syncBadge');
 
-    const filteredPosts = filter
-      ? posts.filter(p => p.priceTag === filter)
-      : posts;
+    statusElement.textContent = status;
+    statusElement.className = 'status ' + (isOnline ? 'online' : 'offline');
 
-    filteredPosts.forEach(post => {
-      const postElement = document.createElement('div');
-      postElement.className = `post ${post.priceTag || ''}`;
-      postElement.innerHTML = `
-        <div class="post-header">
-          <span class="author">${post.author || 'مجهول'}</span>
-          <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
-        </div>
-        <div class="post-content">${post.content}</div>
-        <div class="post-meta">
-          <span class="store">🏪 ${post.store}</span>
-          ${post.price ? `<span class="price">💰 ${post.price} ريال</span>` : ''}
-        </div>
-      `;
-      postsContainer.appendChild(postElement);
-    });
+    if (isOnline) {
+      syncBadge.classList.remove('offline');
+      syncBadge.classList.add('online');
+      syncBadge.title = 'متصل بالجسر';
+      document.getElementById('publishBtn').disabled = false;
+      document.getElementById('compareBtn').disabled = false;
+      document.getElementById('analyticsToggle').disabled = false;
+    } else {
+      syncBadge.classList.remove('online');
+      syncBadge.classList.add('offline');
+      syncBadge.title = 'وضع محلي سريع';
+      document.getElementById('publishBtn').disabled = false;
+      document.getElementById('compareBtn').disabled = false;
+      document.getElementById('analyticsToggle').disabled = false;
+    }
   }
 
-  // 5. Event Listeners
+  // 5. WebSocket Connection Handler
+  function connectWebSocket() {
+    let ws = null;
+    let connectionAttempts = 0;
+    const maxAttempts = 5;
+    const attemptDelay = 3000;
+
+    function attemptConnection() {
+      ws = new WebSocket(window.APP_CONFIG.wsUrl);
+
+      ws.onopen = () => {
+        connectionAttempts = 0;
+        updateUIStatus('متصل بالجسر', true);
+        console.log('Connected to WebSocket server');
+      };
+
+      ws.onclose = () => {
+        if (connectionAttempts < maxAttempts) {
+          const delay = attemptDelay * (connectionAttempts + 1);
+          setTimeout(attemptConnection, delay);
+          connectionAttempts++;
+          updateUIStatus('جارِ الاتصال...', false);
+        } else {
+          updateUIStatus('فشل الاتصال بعد عدة محاولات', false);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        updateUIStatus('خطأ في الاتصال', false);
+      };
+    }
+
+    attemptConnection();
+    return ws;
+  }
+
+  // 6. Publish Button Handler
   document.getElementById('publishBtn').addEventListener('click', () => {
-    const author = document.getElementById('author').value.trim();
+    const author = document.getElementById('author').value.trim() || 'مستخدم مجهول';
     const content = document.getElementById('content').value.trim();
 
     if (!content) {
-      showError('المنشور فارغ!', 'empty');
+      showError('من فضلك أدخل نص المنشور', 'warning');
       return;
     }
 
     const post = {
-      id: Date.now().toString(36) + Math.random().toString(36).substring(2),
-      author: author || null,
+      id: Date.now().toString(),
+      author,
       content,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      isLocal: true
     };
 
     const taggedPost = window.tagPost(post);
     window.postStorage.addPost(taggedPost);
     document.getElementById('content').value = '';
-    showSuccess('تم النشر محلياً!');
+    showError('تم حفظ المنشور محلياً!', 'success');
+
+    // Trigger UI update
+    window.dispatchEvent(new CustomEvent('posts:update'));
   });
 
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderPosts(window.postStorage.getAll(), btn.dataset.filter);
-    });
-  });
+  // 7. Compare Button Handler
+  document.getElementById('compareBtn').addEventListener('click', () => {
+    const compareOverlay = document.getElementById('compareOverlay');
+    const compareContent = document.getElementById('compareContent');
 
-  // 6. Initialization
-  window.addEventListener('DOMContentLoaded', () => {
-    renderPosts(window.postStorage.getAll());
-  });
+    if (compareOverlay.classList.contains('hidden')) {
+      compareOverlay.classList.remove('hidden');
+      compareContent.innerHTML = '<p>جارِ تحميل المقارنة...</p>';
+      compareContent.classList.remove('hidden');
 
-  window.addEventListener('storage:update', (e) => {
-    renderPosts(e.detail);
-  });
-
-  function showSuccess(message) {
-    const successElement = document.createElement('div');
-    successElement.className = 'success-message';
-    successElement.textContent = message;
-    document.body.appendChild(successElement);
-    setTimeout(() => {
-      successElement.remove();
-    }, 5000);
-  }
-})();
+      // Simulate comparison logic
+      setTimeout(() => {
+        compareContent.innerHTML = '<p>مقارنة الأسعار بين المتاجر المختلفة...</p>';
+        const posts = window.postStorage.getAll();
+        const storesWithPrices = posts.filter(p => p.price !== null && p.store).reduce((acc, post) => {
+          if (!acc[post.store]) {
+            acc[post.store] = [];
+          }
+          acc[post.store].push(post.price);
+          return acc;
+        }, {}
