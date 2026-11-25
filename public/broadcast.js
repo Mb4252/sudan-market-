@@ -1,35 +1,29 @@
 (function() {
     'use strict';
 
-    const WS_URL = 'wss://sudan-market-2.onrender.com';
-    let socket;
+    const socket = new WebSocket('wss://sudan-market-2.onrender.com');
 
-    function connect() {
-        socket = new WebSocket(WS_URL);
+    socket.onopen = function() {
+        console.log('متصل بالبث');
+    };
 
-        socket.onopen = function() {
-            console.log('متصل بالبث المباشر');
-        };
-
-        socket.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            if (data.type === 'newPost') {
-                window.dispatchEvent(new CustomEvent('newPost', { detail: data.post }));
-            }
-        };
-
-        socket.onclose = function() {
-            console.log('تم قطع الاتصال. إعادة الاتصال...');
-            setTimeout(connect, 5000);
-        };
-    }
+    socket.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        if (data.type === 'post') {
+            window.store.addPost(data.post);
+        }
+    };
 
     function broadcast(post) {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'newPost', post }));
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+                type: 'post',
+                post: post
+            }));
+        } else {
+            console.error('غير متصل بالبث');
         }
     }
 
-    connect();
     window.broadcast = broadcast;
 })();

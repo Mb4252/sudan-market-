@@ -43,23 +43,26 @@
         const postsContainer = document.getElementById('posts');
         postsContainer.innerHTML = posts.map(post => {
             const date = new Date(post.timestamp);
-            return `
-                <div class="post">
-                    <h3>${post.author}</h3>
-                    <p>${post.content}</p>
-                    <p>السعر: ${post.price} جنيها</p>
-                    <p>المدينة: ${post.city}</p>
-                    <p>الوقت: ${window.formatDate(date)}</p>
-                </div>
-            `;
+            if (isNaN(date.getTime())) {
+                return "<div class='post'>تاريخ غير صالح</div>";
+            }
+            return `<div class='post'>
+                <h3>${post.author}</h3>
+                <p>${post.content}</p>
+                <p>السعر: ${post.price}</p>
+                <p>المدينة: ${post.city}</p>
+                <p>التاريخ: ${date.toLocaleDateString()}</p>
+                <p>الوقت: ${date.toLocaleTimeString()}</p>
+            </div>`;
         }).join('');
     }
 
     function handleError(error) {
-        console.error('خطأ:', error);
-        const errorElement = document.createElement('div');
-        errorElement.className = 'error';
-        errorElement.textContent = `خطأ: ${error.message}`;
-        document.body.appendChild(errorElement);
+        console.error('Error:', error);
+        const errorElement = document.getElementById('globalError');
+        if (errorElement) {
+            errorElement.textContent = error.message;
+            errorElement.style.display = 'block';
+        }
     }
 })();
