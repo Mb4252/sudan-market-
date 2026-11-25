@@ -6,8 +6,8 @@
     wsUrl: 'wss://browser-relay-server.onrender.com',
     storageKey: 'smart_posts_v1',
     maxPosts: 500,
-    priceRegex: /(\\d+(\\.\\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
-    storeRegex: /(في|من|عند)\s+([\\u0600-\\u06FF\\s]+)/i
+    priceRegex: /(\d+(\.\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
+    storeRegex: /(في|من|عند)\s+([\u0600-\u06FF\s]+)/i
   };
   
   // 2. Storage Manager (Source of Truth)
@@ -44,7 +44,7 @@
     
     // Extract Price
     const priceMatch = text.match(window.APP_CONFIG.priceRegex);
-    post.price = priceMatch ? parseFloat(priceMatch[0].replace(/[^\\d.]/g, '')) : null;
+    post.price = priceMatch ? parseFloat(priceMatch[0].replace(/[^\d.]/g, '')) : null;
     
     // Extract Store Name
     const storeMatch = text.match(window.APP_CONFIG.storeRegex);
@@ -68,102 +68,106 @@
           ? 'cheap'
           : post.price > avgPrice * 1.1
             ? 'expensive'
-            : 'normal';
-      } else {
-        post.priceTag = 'normal';
+            : '';
       }
     }
     
     return post;
   };
-
+  
   // 4. UI Initialization
   document.addEventListener('DOMContentLoaded', () => {
-    // Initialize UI elements
-    const statusElement = document.getElementById('status');
-    const authorInput = document.getElementById('author');
-    const contentInput = document.getElementById('content');
     const publishBtn = document.getElementById('publishBtn');
-    const postsContainer = document.getElementById('posts');
-    const filterBtns = document.querySelectorAll('.filter-btn');
-    const compareBtn = document.getElementById('compareBtn');
-    const analyticsToggle = document.getElementById('analyticsToggle');
-    const analyticsPanel = document.getElementById('analyticsPanel');
-    const compareOverlay = document.getElementById('compareOverlay');
-    const compareContent = document.getElementById('compareContent');
-    const closeBtn = document.querySelector('.close-btn');
+    const contentInput = document.getElementById('content');
+    const authorInput = document.getElementById('author');
     
-    // Initialize charts
-    const chartVolume = new Chart(document.getElementById('chartVolume'), {
-      type: 'bar',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'عدد المنشورات',
-          data: [],
-          backgroundColor: 'rgba(54, 162, 235, 0.5)'
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          y: {
-            beginAtZero: true
-          }
-        }
-      }
-    });
-    
-    const chartPriceTrends = new Chart(document.getElementById('chartPriceTrends'), {
-      type: 'line',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'متوسط السعر',
-          data: [],
-          borderColor: 'rgba(255, 99, 132, 1)',
-          tension: 0.1
-        }]
-      },
-      options: {
-        responsive: true
-      }
-    });
+    // Check connection status
+    checkConnection();
     
     // Load posts from storage
-    function loadPosts(filter = '') {
-      const posts = window.postStorage.getAll();
-      postsContainer.innerHTML = '';
-      
-      posts.forEach(post => {
-        if (filter && post.priceTag !== filter) return;
-        
-        const postElement = document.createElement('div');
-        postElement.className = `post ${post.priceTag || ''}`;
-        postElement.innerHTML = `
-          <div class="post-header">
-            <span class="author">${post.author || 'مجهول'}</span>
-            <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
-          </div>
-          <div class="post-content">${post.content}</div>
-          <div class="post-footer">
-            <span class="store">🏪 ${post.store}</span>
-            ${post.price !== null ? `<span class="price">💰 ${post.price} ريال</span>` : ''}
-          </div>
-        `;
-        postsContainer.appendChild(postElement);
-      });
-    }
+    renderPosts(window.postStorage.getAll());
     
-    // Update UI based on connection status
-    function updateConnectionStatus(isOnline) {
-      if (isOnline) {
-        statusElement.textContent = 'متصل'; 
-        statusElement.classList.remove('offline');
-        statusElement.classList.add('online');
-      } else {
-        statusElement.textContent = 'وضع محلي (غير متصل)';
-        statusElement.classList.remove('online');
-        statusElement.classList.add('offline');
-      }
+    // Event Listeners
+    publishBtn.addEventListener('click', handlePublish);
+    contentInput.addEventListener('input', validateInput);
+    authorInput.addEventListener('input', validateInput);
+    
+    // Storage update listener
+    window.addEventListener('storage:update', (e) => {
+      renderPosts(e.detail);
+      updateRadar();
+    });
+  });
+  
+  // 5. Connection Check
+  function checkConnection() {
+    const statusElement = document.getElementById('status');
+    const syncBadge = document.getElementById('syncBadge');
+    
+    if (navigator.onLine) {
+      fetch('/health', { method: 'HEAD', mode: 'no-cors' })
+        .then(() => {
+          statusElement.textContent = 'متصل بالجسر';
+          syncBadge.classList.remove('offline');
+          syncBadge.classList.add('online');
+          syncBadge.title = 'متصل';
+          document.getElementById('publishBtn').disabled = false;
+          document.getElementById('compareBtn').disabled = false;
+          document.getElementById('analyticsToggle').disabled = false;
+        })
+        .catch(() => {
+          statusElement.textContent = 'وضع محلي سريع';
+          syncBadge.classList.remove('online');
+          syncBadge.classList.add('offline');
+          syncBadge.title = 'غير مزامن';
+        });
+    } else {
+      statusElement.textContent = 'وضع محلي سريع';
+      syncBadge.classList.remove('online');
+      syncBadge.classList.add('offline');
+      syncBadge.title = 'غير مزامن';
+    }
+  }
+  
+  // 6. Publish Handler
+  function handlePublish() {
+    const content = document.getElementById('content').value.trim();
+    const author = document.getElementById('author').value.trim();
+    
+    if (!content) return;
+    
+    const post = {
+      id: Date.now().toString(),
+      content,
+      author: author || 'مجهول',
+      timestamp: Date.now()
+    };
+    
+    // Tag post and save locally
+    const taggedPost = window.tagPost(post);
+    window.postStorage.addPost(taggedPost);
+    
+    // Clear input
+    document.getElementById('content').value = '';
+    document.getElementById('author').value = '';
+    document.getElementById('publishBtn').disabled = true;
+    
+    // Show success message
+    showToast('تم نشر المنشور بنجاح!', 'success');
+  }
+  
+  // 7. Input Validation
+  function validateInput() {
+    const content = document.getElementById('content').value.trim();
+    document.getElementById('publishBtn').disabled = !content;
+  }
+  
+  // 8. Render Posts
+  function renderPosts(posts) {
+    const postsContainer = document.getElementById('posts');
+    postsContainer.innerHTML = '';
+    
+    if (posts.length === 0) {
+      postsContainer.innerHTML = '<p>لا توجد منشورات بعد.</p>';
+      return;
     }
