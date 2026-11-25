@@ -67,23 +67,41 @@
         post.priceTag = post.price < avgPrice * 0.9 ? 'cheap' : post.price > avgPrice * 1.1 ? 'expensive' : '';
       }
     }
-    
-    return post;
   };
   
   // 4. UI Initialization
   document.addEventListener('DOMContentLoaded', () => {
-    const publishBtn = document.getElementById('publishBtn');
     const contentInput = document.getElementById('content');
-    const authorInput = document.getElementById('author');
+    const publishBtn = document.getElementById('publishBtn');
     const postsContainer = document.getElementById('posts');
-    const radarContent = document.getElementById('radarContent');
+    const filterBtns = document.querySelectorAll('.filter-btn');
+    const analyticsToggle = document.getElementById('analyticsToggle');
+    const analyticsPanel = document.getElementById('analyticsPanel');
     
-    // Initialize UI
-    updatePostsUI();
-    updateRadarUI();
+    // Render Posts
+    function renderPosts(filter = '') {
+      const posts = window.postStorage.getAll();
+      postsContainer.innerHTML = '';
+      
+      posts.filter(post => !filter || post.priceTag === filter).forEach(post => {
+        const postElement = document.createElement('div');
+        postElement.className = `post ${post.priceTag || ''}`;
+        postElement.innerHTML = `
+          <div class="post-header">
+            <span class="author">${post.author || 'مجهول'}</span>
+            <span class="timestamp">${new Date(post.timestamp).toLocaleString()}</span>
+          </div>
+          <div class="post-content">${post.content}</div>
+          <div class="post-meta">
+            <span class="store">🏪 ${post.store}</span>
+            <span class="price">💰 ${post.price || 'غير محدد'}</span>
+          </div>
+        `;
+        postsContainer.appendChild(postElement);
+      });
+    }
     
-    // Event Listeners
+    // Publish New Post
     publishBtn.addEventListener('click', () => {
       const content = contentInput.value.trim();
       if (!content) return;
@@ -91,81 +109,31 @@
       const post = {
         id: Date.now().toString(),
         content,
-        author: authorInput.value.trim() || 'مجهول',
+        author: document.getElementById('author').value.trim() || 'مجهول',
         timestamp: Date.now()
       };
       
-      // Save locally first
-      window.postStorage.addPost(window.tagPost(post));
-      updatePostsUI();
-      updateRadarUI();
-      
-      // Clear input
+      window.tagPost(post);
+      window.postStorage.addPost(post);
       contentInput.value = '';
-      authorInput.value = '';
-      
-      // Show confirmation
-      showError('تم الحفظ محلياً!', 'success');
+      renderPosts();
     });
     
-    contentInput.addEventListener('input', () => {
-      publishBtn.disabled = !contentInput.value.trim();
-    });
-    
-    // Storage Update Listener
-    window.addEventListener('storage:update', (e) => {
-      updatePostsUI();
-      updateRadarUI();
-    });
-    
-    // Filter Buttons
-    document.querySelectorAll('.filter-btn').forEach(btn => {
+    // Filter Posts
+    filterBtns.forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        filterBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        updatePostsUI(btn.dataset.filter);
+        renderPosts(btn.dataset.filter);
       });
     });
     
-    // Analytics Toggle
-    document.getElementById('analyticsToggle').addEventListener('click', () => {
-      document.getElementById('analyticsPanel').classList.toggle('hidden');
+    // Toggle Analytics Panel
+    analyticsToggle.addEventListener('click', () => {
+      analyticsPanel.classList.toggle('hidden');
     });
     
-    // Compare Button
-    document.getElementById('compareBtn').addEventListener('click', () => {
-      const posts = window.postStorage.getAll();
-      const stores = [...new Set(posts.map(p => p.store))];
-      
-      if (stores.length < 2) {
-        showError('لا توجد بيانات كافية للمقارنة', 'warning');
-        return;
-      }
-      
-      // Simple comparison logic
-      const comparison = stores.map(store => {
-        const storePosts = posts.filter(p => p.store === store && p.price !== null);
-        if (storePosts.length === 0) return null;
-        
-        const avgPrice = storePosts.reduce((sum, p) => sum + p.price, 0) / storePosts.length;
-        return { store, avgPrice, count: storePosts.length };
-      }).filter(Boolean).sort((a, b) => a.avgPrice - b.avgPrice);
-      
-      // Display comparison
-      let comparisonText = '<h4>مقارنة الأسعار:</h4><ul>';
-      comparison.forEach((item, i) => {
-        comparisonText += `<li>${item.store}: ${item.avgPrice.toFixed(2)} ريال (${item.count} منشور)</li>`;
-      });
-      comparisonText += '</ul>';
-      
-      radarContent.innerHTML = comparisonText;
-    });
-    
-    // UI Update Functions
-    function updatePostsUI(filter = '') {
-      const posts = window.postStorage.getAll();
-      
-      let filteredPosts = posts;
-      if (filter) {
-        filteredPosts = posts.filter(p => p.priceTag === filter);
-      }
+    // Initial Render
+    renderPosts();
+  });
+})();
