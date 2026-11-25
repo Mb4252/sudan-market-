@@ -9,8 +9,8 @@ channel.addEventListener('message', e => {
         div.dataset.timestamp = e.data.timestamp;
         div.innerHTML = `<div class="meta">${e.data.author || 'مجهول'} — ${new Date(e.data.timestamp).toLocaleString()}</div><div>${e.data.content}</div>`;
         postsDiv.prepend(div);
-        applyFilter(window.currentFilter);
-        // Persist to localStorage
+        window.applyFilter && window.applyFilter(window.currentFilter);
+        
         const stored = JSON.parse(localStorage.getItem(window.APP_CONFIG.storageKey) || '[]');
         stored.unshift(e.data);
         localStorage.setItem(window.APP_CONFIG.storageKey, JSON.stringify(stored));
@@ -20,6 +20,7 @@ channel.addEventListener('message', e => {
     console.warn('Broadcast handler error', err);
   }
 });
+
 function publishPost(post) {
   try{
     if (window.tagPost) {
