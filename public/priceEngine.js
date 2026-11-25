@@ -1,9 +1,13 @@
 (function(){
-  function tagPost(post) {
+  const keywords = {
+    cheap: ['رخيص', 'خصم', 'تخفيض', 'عرض', 'سعر منخفض', 'صفقة'],
+    expensive: ['غالي', 'سعر مرتفع', 'مكلف', 'أسعار مرتفعة', 'فاخر', 'مميز']
+  };
+
+  window.tagPost = function(post) {
     const text = (post.content || '').toLowerCase();
-    if (text.includes('خصم') || text.includes('رخيص') || text.includes('تخفيض') || text.includes('عرض')) return 'cheap';
-    if (text.includes('محدود') || text.includes('غالي') || text.includes('فاخر') || text.includes('حصري')) return 'expensive';
+    if (keywords.cheap.some(k => text.includes(k))) return 'cheap';
+    if (keywords.expensive.some(k => text.includes(k))) return 'expensive';
     return 'normal';
-  }
-  window.tagPost = tagPost;
+  };
 })();
