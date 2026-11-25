@@ -29,11 +29,11 @@
   // 3. Price Extraction & Smart Tagging Engine (Time-Based Clustering)
   window.tagPost = (post) => {
     const text = post.content || '';
-    const priceMatch = text.match(/(\\d+(?:\\.\\d+)?)/);
+    const priceMatch = text.match(/(\d+(?:\.\d+)?)/);
     post.price = priceMatch ? parseFloat(priceMatch[1]) : null;
     
     // Extract Store Name
-    const storeMatch = text.match(/(?:في|من|عند)\\s+([\\u0600-\\u06FF\\s]+)/);
+    const storeMatch = text.match(/(?:في|من|عند)\s+([\u0600-\u06FF\s]+)/);
     post.store = storeMatch ? storeMatch[1].trim().substring(0, 20) : 'غير محدد';
     
     // Smart Dynamic Tagging: Compare with 24h average for same store/item
@@ -67,85 +67,104 @@
     const posts = window.postStorage.getAll();
     const postsContainer = document.getElementById('posts');
     if (!postsContainer) return;
-
-    postsContainer.innerHTML = posts.length === 0 ? '<p>لا توجد منشورات بعد</p>' :
-      posts.filter(p => filter === '' || p.priceTag === filter)
-        .map(p => {
-          const priceTag = p.priceTag === 'cheap' ? '🟢' : (p.priceTag === 'expensive' ? '🔴' : '');
-          return `<div class="post ${p.priceTag}">
-            <div class="post-header">
-              <span class="author">${esc(p.author || 'مجهول')}</span>
-              <span class="price-tag">${priceTag}</span>
-            </div>
-            <div class="post-content">${esc(p.content)}</div>
-            <div class="post-footer">
-              <span class="store">${esc(p.store)}</span>
-              <span class="price">${p.price ? `${p.price} ريال` : ''}</span>
-              <span class="time">${new Date(p.timestamp).toLocaleTimeString()}</span>
-            </div>
-          </div>`;
-        }).join('');
+    
+    postsContainer.innerHTML = posts.length === 0 ? '<p>لا توجد منشورات بعد</p>' : '';
+    
+    posts.forEach(post => {
+      if (filter && post.priceTag !== filter) return;
+      
+      const postElement = document.createElement('div');
+      postElement.className = `post ${post.priceTag || ''}`;
+      postElement.innerHTML = `
+        <div class="post-header">
+          <span class="post-author">${post.author || 'مجهول'}</span>
+          <span class="post-time">${new Date(post.timestamp).toLocaleTimeString()}</span>
+        </div>
+        <div class="post-content">${post.content}</div>
+        <div class="post-footer">
+          <span class="post-store">🏪 ${post.store}</span>
+          ${post.price ? `<span class="post-price">${post.price} ريال</span>` : ''}
+        </div>
+      `;
+      postsContainer.appendChild(postElement);
+    });
   };
 
   // 5. Event Listeners
   document.addEventListener('DOMContentLoaded', () => {
-    if (document.getElementById('publishBtn')) {
-      document.getElementById('publishBtn').addEventListener('click', () => {
+    // Publish Button
+    const publishBtn = document.getElementById('publishBtn');
+    if (publishBtn) {
+      publishBtn.addEventListener('click', () => {
         const content = document.getElementById('content').value.trim();
-        if (content) {
-          const post = {
-            author: document.getElementById('author').value.trim(),
-            content: content,
-            timestamp: Date.now()
-          };
+        if (!content) return;
+        
+        const post = {
+          content,
+          author: document.getElementById('author').value.trim() || 'مجهول',
+          timestamp: Date.now()
+        };
+        
+        if (window.publishPost) {
           window.publishPost(post);
-          document.getElementById('content').value = '';
+        } else if (window.postStorage) {
+          window.postStorage.addPost(post);
         }
+        
+        document.getElementById('content').value = '';
       });
     }
 
-    if (document.getElementById('analyticsToggle')) {
-      document.getElementById('analyticsToggle').addEventListener('click', () => {
+    // Filter Buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderPosts(btn.dataset.filter || '');
+      });
+    });
+
+    // Analytics Toggle
+    const analyticsToggle = document.getElementById('analyticsToggle');
+    if (analyticsToggle) {
+      analyticsToggle.addEventListener('click', () => {
         const panel = document.getElementById('analyticsPanel');
         if (panel) panel.classList.toggle('hidden');
       });
     }
 
-    window.addEventListener('storage:update', () => renderPosts());
+    // Initial Render
     renderPosts();
   });
 
-  // 6. Helper Functions
-  function esc(v) {
-    return String(v == null ? '' : v).replace(/[&<>"]/g, function(c) {
-      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
-    });
-  }
+  // 6. Storage Update Listener
+  window.addEventListener('storage:update', () => {
+    renderPosts(document.querySelector('.filter-btn.active')?.dataset.filter || '');
+  });
 
-  // 7. Compare Modal
-  window.showCompare = () => {
-    const overlay = document.getElementById('compareOverlay');
-    const content = document.getElementById('compareContent');
-    if (overlay && content) {
-      overlay.classList.remove('hidden');
-      content.innerHTML = '<h3>مقارنة الأسعار</h3><div id="compareResults">جارٍ المقارنة...</div>';
-      // Implement comparison logic here
-    }
-  };
-
-  if (document.getElementById('closeCompare')) {
-    document.getElementById('closeCompare').addEventListener('click', () => {
-      const overlay = document.getElementById('compareOverlay');
-      if (overlay) overlay.classList.add('hidden');
-    });
+  // 7. Wake Up Server
+  function wakeUpServer() {
+    const statusElement = document.getElementById('status');
+    if (!statusElement) return;
+    
+    statusElement.textContent = 'جاري الاتصال...';
+    statusElement.className = 'status connecting';
+    
+    fetch('https://browser-relay-server.onrender.com/health', { mode: 'no-cors' })
+      .then(() => {
+        statusElement.textContent = 'متصل بنجاح';
+        statusElement.className = 'status online';
+      })
+      .catch(() => {
+        statusElement.textContent = 'غير متصل (العمل محلياً)';
+        statusElement.className = 'status offline';
+      });
   }
 
   // 8. Initialize
-  window.addEventListener('load', () => {
-    // Wake up Render server
-    fetch('https://sudan-market-2.onrender.com/health')
-      .then(() => console.log('Render server awakened'))
-      .catch(err => console.warn('Failed to wake up server', err));
-  });
-
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wakeUpServer);
+  } else {
+    wakeUpServer();
+  }
 })();
