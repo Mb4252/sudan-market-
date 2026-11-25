@@ -49,40 +49,22 @@ jobs:
 
           const ROADMAP_STAGES = [
             {
-              id: "stage-1-sdm-core-storage",
-              title: "نواة التخزين الفوري في المتصفح (localStorage) وإدارة هوية كل شخص ومحادثاته",
-              files: ["public/sdm/sdm-storage.js"],
-              goal: "إنشاء ملف نواة واحد متخصص بالحفظ الفوري في localStorage مع فحص آمن للتواريخ وفصل الدردشة الخاصة بكل شخص. بعد اكتماله يُقفل ولا يُعدل مرة أخرى."
+              id: "stage-sdm-smart-replies",
+              title: "تطوير ردود SDM الذكية للأسئلة والمقارنة والحفظ لكل شخص في localStorage",
+              files: ["public/sdm/sdm-smart-reply.js"],
+              goal: "إنشاء ملف صغير واحد مستقل ومقفل يطوّر ردود SDM لتجيب بذكاء ووضوح عن أسئلة المستخدم والمقارنة والأسعار والمدن وتساعده، ويحفظ سجل دردشة كل شخص فوراً في localStorage مع تنسيق تاريخ آمن (بدون Invalid Date) دون تكرار نص الرسالة كقالب جامد. اربطه في index.html بـ defer وtry/catch."
             },
             {
-              id: "stage-2-sdm-ai-engine",
-              title: "نواة محرك الذكاء الاصطناعي SDM والرد الفوري الذكي",
-              files: ["public/sdm/sdm-engine.js"],
-              goal: "إنشاء ملف واحد متخصص بمحرك الذكاء الاصطناعي SDM الذي يقرأ سياق دردشة الشخص الخاص ويعطي ردوداً فورية ومفيدة محلياً وعبر الشبكة دون تعطل. بعد اكتماله يُقفل ولا يُعدل مرة أخرى."
+              id: "stage-sdm-mobile-layout",
+              title: "تحسين ترتيب حقول الدردشة والرسائل على شاشة الهاتف في ملف صغير مستقل",
+              files: ["public/sdm/sdm-mobile-layout.js"],
+              goal: "إنشاء ملف صغير واحد مستقل ومقفل يحسّن تنسيق وترتيب حقول الاسم والرسالة وزر الإرسال وصندوق الدردشة على شاشات الهاتف بوضوح دون تكدس أو شاشة بيضاء. اربطه في index.html بـ defer وtry/catch."
             },
             {
-              id: "stage-3-sdm-private-chat-ui",
-              title: "واجهة الدردشة الخاصة بكل شخص مع SDM وتعمل فوراً في الصفحة",
-              files: ["public/sdm/sdm-chat-ui.js"],
-              goal: "إنشاء ملف واجهة واحد متخصص ببناء وعرض دردشة خاصة بكل شخص مع SDM مع التحقق الآمن من وجود عناصر DOM قبل إسناد .textContent. بعد اكتماله يُقفل ولا يُعدل مرة أخرى."
-            },
-            {
-              id: "stage-4-render-live-bridge",
-              title: "نواة البث المباشر عبر WebSocket إلى Render ومزامنة الحالة",
-              files: ["public/sdm/sdm-render-sync.js"],
-              goal: "إنشاء ملف واحد متخصص بالاتصال المباشر عبر wss://sudan-market-2.onrender.com مع إعادة الاتصال التلقائي وتحديث حالة الاتصال في الواجهة. بعد اكتماله يُقفل ولا يُعدل مرة أخرى."
-            },
-            {
-              id: "stage-5-market-shell-and-loader",
-              title: "واجهة المنصة وتجميع الملفات المقفلة لتعمل فوراً في index.html",
-              files: ["public/sdm/sdm-shell.js", "index.html"],
-              goal: "إنشاء ملف واحد للواجهة الرئيسية وتحديث index.html لضم واجهة مرئية واضحة ومضمونة دائماً وتحميل الملفات المقفلة بأمان مع defer."
-            },
-            {
-              id: "stage-6-sdm-smart-commands",
-              title: "إضافة أوامر سريعة ومقارنة أسعار داخل دردشة SDM في ملف مقفل مستقل",
-              files: ["public/sdm/sdm-commands.js"],
-              goal: "إنشاء ملف مستقل واحد يضيف أوامر سريعة ومقارنة أسعار داخل دردشة SDM ويعمل فوراً في الواجهة دون إعادة تعديل الملفات المقفلة السابقة. بعد اكتماله يُقفل نهائياً."
+              id: "stage-sdm-per-person-switcher",
+              title: "إدارة وتبديل دردشة كل شخص وحفظ محادثاته المستقلة في localStorage",
+              files: ["public/sdm/sdm-person-sessions.js"],
+              goal: "إنشاء ملف صغير واحد مستقل ومقفل يتيح التبديل بين هوية/شخص وآخر وعرض وحفظ محادثة كل شخص بشكل مستقل في localStorage فوراً. اربطه في index.html بـ defer وtry/catch."
             }
           ];
 
@@ -125,27 +107,56 @@ jobs:
             }
           }
 
-          function selectActiveStage(stagesState, hasCriticalRuntimeIssue) {
-            const nextNum = (stagesState.extraStageCounter || 0) + 1;
-            if (nextNum === 1 || hasCriticalRuntimeIssue) {
-              return {
-                id: `stage-fix-send-action-${nextNum}`,
-                title: `تفعيل زر الإرسال وحفظ دردشة الشخص والرد الفوري لـ SDM في ملف مستقل #${nextNum}`,
-                files: [`public/sdm/sdm-chat-sender-${nextNum}.js`, "index.html"],
-                goal: "إنشاء ملف مستقل واحد يربط زر الإرسال وحقول الاسم والرسالة وصندوق الدردشة بمرونة عالية، ويحفظ محادثة كل شخص فوراً في localStorage، ويعرض رد SDM فوراً دون توقف أو انتظار الشبكة، ويُضمَّن في index.html بـ defer مع try/catch. بعد اكتماله يُقفل نهائياً ولا يُعدل مرة أخرى."
-              };
-            }
-            for (const st of ROADMAP_STAGES) {
-              if (!stagesState.completedStages.includes(st.id)) {
-                return st;
+          function isFileValidAndComplete(filePath) {
+            const clean = String(filePath || "").replace(/^\/+/, "").trim();
+            if (!clean || !fs.existsSync(clean)) return false;
+            try {
+              const raw = fs.readFileSync(clean, "utf8").trim();
+              if (raw.length < 40) return false;
+              if (clean.endsWith(".js")) {
+                new vm.Script(raw, { filename: clean });
+              } else if (clean.endsWith(".json")) {
+                JSON.parse(raw);
               }
+              return true;
+            } catch {
+              return false;
             }
-            const dynamicId = `stage-${ROADMAP_STAGES.length + nextNum}-sdm-extension`;
+          }
+
+          function selectActiveStage(stagesState, lockedSet) {
+            for (const st of ROADMAP_STAGES) {
+              const primaryFiles = (st.files || []).filter(f => f !== "index.html");
+              const allAlreadyDoneAndValid =
+                stagesState.completedStages.includes(st.id) &&
+                primaryFiles.length > 0 &&
+                primaryFiles.every(f => lockedSet.has(f) && isFileValidAndComplete(f));
+
+              if (allAlreadyDoneAndValid) {
+                console.log(`⏭️ المرحلة [${st.id}] مكتملة وملفاتها موجودة ومقفلة وسليمة؛ لن يتم تعديلها.`);
+                continue;
+              }
+
+              const anyPrimaryExistsAndValid = primaryFiles.length > 0 && primaryFiles.every(f => isFileValidAndComplete(f));
+              if (anyPrimaryExistsAndValid) {
+                console.log(`🔒 ملفات المرحلة [${st.id}] موجودة وسليمة في المستودع؛ سيتم قفلها دون تعديل والانتقال للتالية.`);
+                for (const pf of primaryFiles) lockedSet.add(pf);
+                if (!stagesState.completedStages.includes(st.id)) {
+                  stagesState.completedStages.push(st.id);
+                }
+                continue;
+              }
+
+              return st;
+            }
+
+            const nextNum = (stagesState.extraStageCounter || 0) + 1;
+            const dynamicId = `stage-sdm-small-module-${nextNum}`;
             return {
               id: dynamicId,
-              title: `توسعة جديدة مقفلة لـ SDM #${nextNum} تعمل فوراً في الواجهة`,
-              files: [`public/sdm/sdm-addon-${nextNum}.js`, "index.html"],
-              goal: "إضافة ميزة جديدة صغيرة في ملف جديد واحد مربوط ومفعّل فوراً في الواجهة (عبر تضمينه في index.html بـ defer وtry/catch) ومرتبط بـ SDM وlocalStorage، ثم قفله نهائياً وعدم تعديله مرة أخرى."
+              title: `ملف صغير جديد ومقفل لـ SDM #${nextNum} بوظيفة واحدة`,
+              files: [`public/sdm/sdm-module-${nextNum}.js`],
+              goal: "إنشاء ملف صغير جداً (أقل من 140 سطر) بوظيفة واحدة واضحة ومرتبطة بـ SDM وlocalStorage والواجهة عبر index.html بـ defer وtry/catch، ثم قفله نهائياً وعدم تعديله مرة أخرى."
             };
           }
 
@@ -159,8 +170,8 @@ jobs:
                 collectProjectFiles(fullPath, depth + 1, out);
               } else if (/\.(js|html|css|json|py|ts)$/i.test(entry.name)) {
                 const content = fs.readFileSync(fullPath, "utf8");
-                const clipped = content.length > 1300
-                  ? content.slice(0, 1300) + "\n/* ...مقتطع للاختصار... */"
+                const clipped = content.length > 1400
+                  ? content.slice(0, 1400) + "\n/* ...مقتطع للاختصار... */"
                   : content;
                 out.push({ fullPath, raw: content, content: clipped });
               }
@@ -420,7 +431,7 @@ jobs:
                   { role: "user", content: usrPrompt }
                 ],
                 max_tokens: maxTokens,
-                temperature: 0.5
+                temperature: 0.4
               }
             );
             const out = data?.choices?.[0]?.message?.content || "";
@@ -440,7 +451,7 @@ jobs:
                     { role: "user", content: usrPrompt }
                   ],
                   max_tokens: maxTokens,
-                  temperature: 0.5
+                  temperature: 0.4
                 };
                 if (jsonMode && m !== "codestral-latest") {
                   body.response_format = { type: "json_object" };
@@ -465,6 +476,22 @@ jobs:
             const list = [];
             const seen = new Set();
 
+            if (openRouterKey) {
+              seen.add(openRouterKey);
+              list.push({
+                id: "openrouter",
+                label: "OpenRouter (ChatGPT-style strong model)",
+                runText: async (sysPrompt, usrPrompt, maxTokens = 550) => {
+                  const out = await callOpenRouterWithRetry(openRouterKey, sysPrompt, usrPrompt, maxTokens);
+                  return { text: out, detail: "OpenRouter (openrouter/free)" };
+                },
+                runJson: async (sysPrompt, usrPrompt, maxTokens = 6500) => {
+                  const raw = await callOpenRouterWithRetry(openRouterKey, sysPrompt, usrPrompt, maxTokens);
+                  return { parsed: extractJsonObject(raw), detail: "OpenRouter (openrouter/free)" };
+                }
+              });
+            }
+
             if (mistralKey) {
               seen.add(mistralKey);
               list.push({
@@ -479,7 +506,7 @@ jobs:
               });
             }
 
-            const otherKeys = [primaryKey, openRouterKey].map(k => (k || "").trim()).filter(Boolean);
+            const otherKeys = [primaryKey].map(k => (k || "").trim()).filter(Boolean);
             for (const key of otherKeys) {
               if (seen.has(key)) continue;
               seen.add(key);
@@ -503,7 +530,7 @@ jobs:
                               { role: "user", content: usrPrompt }
                             ],
                             max_tokens: maxTokens,
-                            temperature: 0.5
+                            temperature: 0.4
                           }
                         );
                         const out = data?.choices?.[0]?.message?.content || "";
@@ -534,7 +561,7 @@ jobs:
                               ],
                               response_format: { type: "json_object" },
                               max_tokens: maxTokens,
-                              temperature: 0.5
+                              temperature: 0.4
                             }
                           );
                         } catch (jErr) {
@@ -549,7 +576,7 @@ jobs:
                                 { role: "user", content: usrPrompt }
                               ],
                               max_tokens: maxTokens,
-                              temperature: 0.5
+                              temperature: 0.4
                             }
                           );
                         }
@@ -562,19 +589,6 @@ jobs:
                       }
                     }
                     throw lastErr || new Error("فشل توليد JSON من Groq");
-                  }
-                });
-              } else if (key.startsWith("sk-or-")) {
-                list.push({
-                  id: "openrouter",
-                  label: "OpenRouter (ChatGPT-style partner)",
-                  runText: async (sysPrompt, usrPrompt, maxTokens = 550) => {
-                    const out = await callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens);
-                    return { text: out, detail: "OpenRouter (openrouter/free)" };
-                  },
-                  runJson: async (sysPrompt, usrPrompt, maxTokens = 4500) => {
-                    const raw = await callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens);
-                    return { parsed: extractJsonObject(raw), detail: "OpenRouter (openrouter/free)" };
                   }
                 });
               }
@@ -613,9 +627,30 @@ jobs:
 
             const stagesState = loadStagesState();
             const lockedSet = new Set(stagesState.lockedFiles);
+            const activeStage = selectActiveStage(stagesState, lockedSet);
+
+            // فحص المستودع أولاً: إذا كانت ملفات المرحلة موجودة ومرتبة وسليمة لا نعدّلها
+            const stageNewFiles = (activeStage.files || []).filter(f => f !== "index.html");
+            if (stageNewFiles.length > 0 && stageNewFiles.every(f => isFileValidAndComplete(f))) {
+              console.log(`✅ ملفات المرحلة [${activeStage.id}] موجودة وسليمة بالفعل في المستودع؛ سيتم قفلها دون تعديل.`);
+              for (const f of stageNewFiles) lockedSet.add(f);
+              const nextCompleted = Array.from(new Set([...stagesState.completedStages, activeStage.id]));
+              const nextLocked = Array.from(lockedSet);
+              const nextStages = {
+                ...stagesState,
+                completedStages: nextCompleted,
+                lockedFiles: nextLocked,
+                currentStage: nextCompleted.length >= ROADMAP_STAGES.length
+                  ? `stage-sdm-small-module-${(stagesState.extraStageCounter || 0) + 1}`
+                  : ROADMAP_STAGES.find(s => !nextCompleted.includes(s.id))?.id || activeStage.id
+              };
+              fs.mkdirSync("public", { recursive: true });
+              fs.writeFileSync(STAGES_FILE, JSON.stringify(nextStages, null, 2), "utf8");
+              process.exit(0);
+            }
+
             const filesList = collectProjectFiles(".");
             const diag = runSelfDiagnostics(filesList, renderUrl);
-            const activeStage = selectActiveStage(stagesState, diag.hasCritical);
             const liveReport = await probeLiveEndpoints(pagesUrl, renderUrl);
 
             console.log(`🎯 المرحلة الحصرية الحالية: [${activeStage.id}] — ${activeStage.title}`);
@@ -634,8 +669,8 @@ jobs:
               `رابط جسر Render الصحيح: ${renderUrl} (للبث المباشر عبر wss://sudan-market-2.onrender.com وطلب الإيقاظ /health).`,
               `المرحلة الحصرية المطلوبة الآن: ${activeStage.id} (${activeStage.title})`,
               `هدف هذه المرحلة فقط: ${activeStage.goal}`,
-              `الملفات المطلوبة لهذه المرحلة: ${activeStage.files.join(" ، ")} (كل ملف يحتوي على وظيفة واحدة مكتملة ويعمل فوراً في الواجهة).`,
-              "مهم جداً: عند الضغط على زر الإرسال يجب أن تُضاف الرسالة وتُحفظ في localStorage وتُعرض فوراً في صندوق الدردشة الخاصة بالشخص مع رد فوري من SDM دون أن يتوقف الإرسال عند عدم توفر اتصال Render.",
+              `الملف/الملفات المطلوبة لهذه المرحلة: ${activeStage.files.join(" ، ")} (اجعل كل ملف صغيراً جداً ومكتملاً دون قطع أو اختصار).`,
+              "انظر أولاً إلى الملفات الموجودة في المستودع: إذا كان ملف المرحلة موجوداً بالفعل وسليماً ومرتباً فلا تعدله، واكتفِ بربطه في index.html عند الحاجة.",
               "احرص على تضمين أي ملف JS جديد في index.html مع defer، وتغليف التنفيذ داخل try { ... } catch (e) {}، والتحقق من وجود عناصر DOM قبل إسناد .textContent، وتجنّب Invalid Date.",
               `قفل صارم — الملفات التالية مقفلة وممنوع تعديلها أو إعادة كتابتها مرة أخرى: [${lockedListForPrompt}].`
             ].join("\n");
@@ -649,14 +684,14 @@ jobs:
               console.log(`🤝 حوار التشخيص والابتكار نشط بين: [${p1.label}] و [${p2.label}]`);
               try {
                 const propRes = await p1.runText(
-                  "أنت مهندس برمجيات. ضع خطة لمرحلة واحدة فقط تضمن أن زر الإرسال يعمل فوراً ويحفظ في localStorage ويعرض دردشة الشخص ورد SDM دون تعطل، مع وظيفة واحدة لكل ملف واحترام قفل الملفات المقفلة.",
+                  "أنت مهندس برمجيات خبير مثل ChatGPT. افحص المستودع أولاً وضع خطة لملف صغير واحد مكتمل بوظيفة واحدة واضحة دون قطع، مع احترام الملفات المقفلة والموجودة مسبقاً.",
                   `${stageMandate}\n\nالتشخيص:\n${diag.text}\n\nالملفات الحالية:\n${currentFiles}`,
                   450
                 );
                 console.log(`💡 مقترح ${propRes.detail} جاهز للمراجعة.`);
                 try {
                   const revRes = await p2.runText(
-                    "أنت المدقق الهندسي. راجع الخطة وتأكد من عمل زر الإرسال وحفظ localStorage والرد الفوري لـ SDM وعدم تعديل أي ملف مقفل، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
+                    "أنت المدقق الهندسي. راجع الخطة وتأكد أن الملف صغير ومكتمل بلا قطع ويعمل فوراً في الواجهة وأن الملفات المقفلة أو السليمة لا تُعدل، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
                     `مقترح الطرف الأول:\n${propRes.text}\n\n${stageMandate}`,
                     450
                   );
@@ -671,7 +706,7 @@ jobs:
               } catch (propErr) {
                 console.warn(`⚠️ تعذر الطرف الأول (${propErr.message}) — ينتقل الطرف الثاني للعمل المستقل الفوري.`);
                 const soloRes = await p2.runText(
-                  "أنت المنفذ المستقل. ضع خطة لمرحلة واحدة فقط تضمن عمل زر الإرسال وحفظ localStorage والرد الفوري لـ SDM.",
+                  "أنت المنفذ المستقل. ضع خطة لملف صغير واحد مكتمل بلا قطع ويعمل فوراً في الواجهة.",
                   `${stageMandate}\n\n${currentFiles}`,
                   450
                 );
@@ -683,13 +718,13 @@ jobs:
             }
 
             const systemJsonInstruction = [
-              "أنت مهندس برمجيات. أعد كائن JSON صالحاً فقط بدون أي نص خارجه.",
-              "اجعل كل ملف ذا وظيفة واحدة مكتملة ويعمل فوراً في الواجهة، ولا تعدّل أي ملف مقفل.",
+              "أنت مهندس برمجيات خبير مثل ChatGPT. أعد كائن JSON صالحاً فقط بدون أي نص خارجه.",
+              "اكتب كوداً كاملاً غير مقطوع لملف صغير بوظيفة واحدة واضحة يعمل فوراً في الواجهة، ولا تعدّل أي ملف مقفل أو موجود وسليم.",
               "الشكل المطلوب: {\"files\":{\"مسار_ملف\":\"محتواه\"},\"summary\":\"ملخص نصي واضح\"}"
             ].join("\n");
 
             const executionPrompt = [
-              "نفّذ هذه المرحلة الحصرية عبر ملفات ذات وظيفة واحدة مكتملة وتعمل فوراً في الواجهة:",
+              "نفّذ هذه المرحلة الحصرية عبر ملف صغير كامل غير مقطوع:",
               agreedPlan,
               "",
               stageMandate,
@@ -739,6 +774,11 @@ jobs:
                   console.log(`🔒 الملف مقفل ولن يُعدل مرة أخرى: ${cleanPath}`);
                   continue;
                 }
+                if (cleanPath !== "index.html" && isFileValidAndComplete(cleanPath)) {
+                  console.log(`✅ الملف موجود وسليم بالفعل في المستودع ولن يُعاد كتابته: ${cleanPath}`);
+                  newlyLockedFiles.push(cleanPath);
+                  continue;
+                }
                 if (cleanPath.endsWith(".json")) {
                   try { JSON.parse(content); } catch { continue; }
                 } else if (cleanPath.endsWith(".js")) {
@@ -758,7 +798,7 @@ jobs:
               }
             }
 
-            if (updatedCount > 0) {
+            if (updatedCount > 0 || newlyLockedFiles.length > 0) {
               const isBaseStage = ROADMAP_STAGES.some(s => s.id === activeStage.id);
               const nextCompleted = Array.from(new Set([...stagesState.completedStages, activeStage.id]));
               const nextLocked = Array.from(new Set([...stagesState.lockedFiles, ...newlyLockedFiles]));
@@ -766,17 +806,17 @@ jobs:
                 {
                   completedStages: nextCompleted,
                   lockedFiles: nextLocked,
-                  extraStageCounter: !isBaseStage
+                  extraStageCounter: (!isBaseStage && updatedCount > 0)
                     ? (stagesState.extraStageCounter || 0) + 1
                     : stagesState.extraStageCounter
                 },
-                false
+                new Set(nextLocked)
               );
               const updatedStagesState = {
                 completedStages: nextCompleted,
                 lockedFiles: nextLocked,
                 currentStage: nextStageObj.id,
-                extraStageCounter: !isBaseStage
+                extraStageCounter: (!isBaseStage && updatedCount > 0)
                   ? (stagesState.extraStageCounter || 0) + 1
                   : stagesState.extraStageCounter,
                 wipedFromScratchDone: true
@@ -787,11 +827,13 @@ jobs:
                 console.log(`🔒 تم قفل الملفات المكتملة (لن تُعدل مرة أخرى): ${newlyLockedFiles.join(", ")}`);
               }
               console.log(`🏁 تم إنهاء المرحلة [${activeStage.id}] والانتقال إلى [${nextStageObj.id}]`);
-              fs.writeFileSync(
-                "last_ai_change.txt",
-                summaryText.replace(/[\r\n]+/g, " ").slice(0, 120),
-                "utf8"
-              );
+              if (updatedCount > 0) {
+                fs.writeFileSync(
+                  "last_ai_change.txt",
+                  summaryText.replace(/[\r\n]+/g, " ").slice(0, 120),
+                  "utf8"
+                );
+              }
             }
 
             console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
@@ -815,7 +857,7 @@ jobs:
             echo "ℹ️ nothing to commit, working tree clean."
             exit 0
           fi
-          SUMMARY="Enable instant chat send, localStorage persistence, and SDM reply"
+          SUMMARY="SDM smart replies in small locked module"
           if [ -f last_ai_change.txt ]; then
             SUMMARY=$(head -n 1 last_ai_change.txt)
             rm -f last_ai_change.txt
