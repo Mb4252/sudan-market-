@@ -26,3 +26,12 @@
       syncBadge.title = 'وض';
     }
   }
+  
+  // WebSocket Connection
+  function connectWebSocket() {
+    if (ws && ws.readyState === WebSocket.OPEN) return;
+    
+    if (connectionAttempts >= maxAttempts) {
+      updateUIStatus('فشل الاتصال', false);
+      return;
+    }
