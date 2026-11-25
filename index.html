@@ -1,43 +1,1052 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>سوق السودان - واجهة SDM</title>
-    <link rel="stylesheet" href="public/sdm/sdm-chat-ui.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>رادار أسعار الحي</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Cairo', sans-serif; background-color: #eef5f0; color: #0f172a; }
+    @keyframes slideIn { from { transform: translateY(-8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 0 0 rgba(27, 122, 67, 0.4); } 50% { box-shadow: 0 0 0 8px rgba(27, 122, 67, 0); } }
+    .slide-in { animation: slideIn 0.25s ease-out; }
+    .pulse-glow { animation: pulseGlow 2s infinite; }
+    .card-hover { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    .card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 24px -6px rgba(27, 122, 67, 0.18); }
+    .hidden { display: none !important; }
+    .ws-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .ws-dot.connected { background: #16a34a; }
+    .ws-dot.connecting { background: #f59e0b; animation: pulseGlow 1.5s infinite; }
+    .ws-dot.disconnected { background: #dc2626; }
+    .stars { color: #f59e0b; letter-spacing: 1px; }
+    .modal-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(15, 23, 42, 0.55); display: none; align-items: center; justify-content: center; padding: 1rem; }
+    .modal-backdrop.show { display: flex; }
+  </style>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>سوق السودان - واجهة SDM</h1>
+<body class="min-h-screen pb-24">
+
+  <!-- ===================== HEADER ===================== -->
+  <header class="sticky top-0 z-30 bg-[#e4f0e8]/95 backdrop-blur border-b border-emerald-900/10">
+    <div class="max-w-xl mx-auto px-3.5 py-3 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <button onclick="goHome()" class="w-9 h-9 rounded-full bg-white border border-emerald-700/20 flex items-center justify-center text-base shrink-0">🌾</button>
+        <div class="min-w-0">
+          <h1 id="headerTitle" class="text-sm font-extrabold text-slate-900 leading-tight truncate">رادار أسعار الحي</h1>
+          <div class="flex items-center gap-1.5 mt-0.5 text-[10px] font-bold text-slate-700">
+            <span class="ws-dot connecting" id="wsDot"></span>
+            <span id="wsStatus">جاري الاتصال...</span>
+            <span id="onlineBadge" class="bg-white text-[#1b7a43] border border-emerald-700/20 px-2 py-0.5 rounded-full">متصل: 1</span>
+          </div>
         </div>
-
-        <div id="sdm-chat" class="chat-container"></div>
-        <input type="text" id="sdm-name" placeholder="أدخل هويتك للدردشة" class="input-field">
-        <input type="text" id="sdm-message" placeholder="اكتب رسالتك أو اسأل عن سعر سلعة" class="input-field">
-        <button id="sdm-send-btn" class="send-button" type="button">إرسال</button>
-        <div id="connection-status" class="connection-status">غير متصل</div>
-
-        <!-- مؤشر الأسعار اليومي -->
-        <div id="sdm-price-box" class="price-box">
-            <input type="text" id="price-item-input" placeholder="اسم السلعة (مثال: سكر)" class="input-field">
-            <input type="number" id="price-value-input" placeholder="السعر" class="input-field">
-            <input type="text" id="price-area-input" placeholder="المنطقة / الحي" class="input-field">
-            <button id="price-add-btn" class="send-button" type="button">حفظ السعر</button>
-            <div id="sdm-price-list" class="price-list"></div>
-        </div>
-
-        <!-- تضمين ملفات JS مع defer وحماية داخل الوحدات -->
-        <script src="public/core/dom-date-guard.js" defer></script>
-        <script src="public/core/local-posts-store.js" defer></script>
-        <script src="public/core/render-stream.js" defer></script>
-        <script src="public/sdm/sdm-mobile-layout.js" defer></script>
-        <script src="public/sdm/sdm-chat-sender-66.js" defer></script>
-        <script src="public/sdm/sdm-module-67.js" defer></script>
-        <script src="public/sdm/sdm-module-71.js" defer></script>
-        <script src="public/sdm/sdm-module-72.js" defer></script>
-        <script src="public/sdm/sdm-price-tracker.js" defer></script>
-        <script src="public/sdm/sdm-price-ui.js" defer></script>
+      </div>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button onclick="openProfile()" class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs font-bold px-2.5 py-2 rounded-xl">حسابي</button>
+        <button onclick="openAddMenu()" class="bg-[#1b7a43] hover:bg-[#156235] text-white text-xs font-extrabold px-3 py-2 rounded-xl">+ إضافة</button>
+      </div>
     </div>
+    <div id="breadcrumb" class="max-w-xl mx-auto px-3.5 pb-2 text-[11px] font-bold text-slate-500 hidden"></div>
+  </header>
+
+  <!-- ===================== MAIN ===================== -->
+  <main class="max-w-xl mx-auto px-4 mt-4 space-y-4">
+
+    <!-- شاشة 1: اختيار القرية -->
+    <section id="viewVillages" class="space-y-3">
+      <div class="bg-white rounded-2xl border border-emerald-700/20 p-4 shadow-sm space-y-3">
+        <div>
+          <h2 class="text-sm font-extrabold text-slate-900">اختر قريتك</h2>
+          <p class="text-[11px] text-slate-500 mt-0.5">اضغط على اسم القرية لعرض متاجرها وأسعارها</p>
+        </div>
+        <input id="villageSearch" type="text" oninput="renderVillages()" placeholder="ابحث عن قرية..." class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:bg-white focus:border-emerald-600" />
+        <div id="villagesList" class="space-y-2 max-h-[60vh] overflow-y-auto"></div>
+      </div>
+      <button onclick="openAddVillage()" class="w-full bg-[#1b7a43] hover:bg-[#156235] text-white text-sm font-extrabold py-3 rounded-2xl transition">+ إضافة قرية جديدة</button>
+    </section>
+
+    <!-- شاشة 2: صفحة القرية -->
+    <section id="viewVillage" class="space-y-3 hidden">
+      <div class="bg-gradient-to-br from-[#1b7a43] to-[#0f4d29] rounded-2xl p-4 text-white shadow-lg">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-[10px] font-bold text-emerald-100">القرية</div>
+            <h2 id="villageTitle" class="text-lg font-extrabold"></h2>
+            <div id="villageMeta" class="text-[11px] text-emerald-100 mt-0.5"></div>
+          </div>
+          <div class="text-3xl">🏘️</div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-emerald-700/20 p-3 shadow-sm space-y-2">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs font-extrabold text-slate-900">🏪 متاجر القرية</h3>
+          <button onclick="openAddShop()" class="text-[11px] font-extrabold text-[#1b7a43] hover:underline">+ متجر جديد</button>
+        </div>
+        <div id="shopsList" class="space-y-2"></div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-emerald-700/20 p-3 shadow-sm space-y-2">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs font-extrabold text-slate-900">💰 آخر أسعار القرية</h3>
+          <span id="villagePricesCount" class="text-[10px] font-bold text-slate-500"></span>
+        </div>
+        <div id="villagePricesList" class="space-y-2"></div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-emerald-700/20 p-3 shadow-sm space-y-2">
+        <h3 class="text-xs font-extrabold text-slate-900">🏆 تحديات القرية</h3>
+        <div id="villageBattle" class="space-y-1.5"></div>
+      </div>
+    </section>
+
+    <!-- شاشة 3: صفحة المتجر -->
+    <section id="viewShop" class="space-y-3 hidden">
+      <div class="bg-white rounded-2xl border border-emerald-700/20 p-4 shadow-sm space-y-2">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div id="shopVillageLabel" class="text-[10px] font-bold text-slate-500"></div>
+            <h2 id="shopTitle" class="text-lg font-extrabold text-slate-900"></h2>
+            <div id="shopOwner" class="text-[11px] text-slate-500"></div>
+          </div>
+          <div id="shopRankBadge" class="text-right shrink-0"></div>
+        </div>
+        <div id="shopRatingSummary" class="flex items-center gap-2 text-xs"></div>
+        <div id="shopRatingButtons" class="grid grid-cols-3 gap-2 pt-1"></div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-emerald-700/20 p-3 shadow-sm space-y-2">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs font-extrabold text-slate-900">💰 أسعار هذا المتجر</h3>
+          <button onclick="openAddPrice()" class="text-[11px] font-extrabold text-[#1b7a43] hover:underline">+ سعر</button>
+        </div>
+        <div id="shopPricesList" class="space-y-2"></div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-emerald-700/20 p-3 shadow-sm space-y-2">
+        <h3 class="text-xs font-extrabold text-slate-900">💬 ملاحظات المستهلكين</h3>
+        <form onsubmit="submitShopNote(event)" class="flex gap-2">
+          <input id="shopNoteInput" type="text" maxlength="120" required placeholder="مثال: السكر هنا أرخص 200 جنيه" class="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:bg-white focus:border-emerald-600" />
+          <button type="submit" class="bg-[#235d9f] hover:bg-[#1b4b82] text-white text-xs font-extrabold px-3 py-2 rounded-xl shrink-0">إرسال</button>
+        </form>
+        <div id="shopNotesList" class="space-y-1.5"></div>
+      </div>
+    </section>
+
+    <!-- شاشة 4: لوحة التحديات العامة -->
+    <section id="viewLeaderboard" class="space-y-3 hidden">
+      <div class="bg-white rounded-2xl border border-emerald-700/20 p-4 shadow-sm space-y-3">
+        <h2 class="text-sm font-extrabold text-slate-900">🏆 لوحة التحديات</h2>
+        <div class="flex gap-1.5">
+          <button onclick="setLeaderboardTab('shops')" data-tab="shops" class="lb-tab flex-1 text-xs font-extrabold py-2 rounded-xl bg-[#1b7a43] text-white">المتاجر</button>
+          <button onclick="setLeaderboardTab('villages')" data-tab="villages" class="lb-tab flex-1 text-xs font-extrabold py-2 rounded-xl bg-slate-100 text-slate-700">القرى</button>
+          <button onclick="setLeaderboardTab('states')" data-tab="states" class="lb-tab flex-1 text-xs font-extrabold py-2 rounded-xl bg-slate-100 text-slate-700">الولايات</button>
+        </div>
+        <div id="leaderboardList" class="space-y-2"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===================== BOTTOM NAV ===================== -->
+  <nav class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200">
+    <div class="max-w-xl mx-auto grid grid-cols-3 text-center">
+      <button onclick="goHome()" class="py-2.5 text-[10px] font-extrabold text-slate-600">
+        <div class="text-lg">🏘️</div>القرى
+      </button>
+      <button onclick="openLeaderboard()" class="py-2.5 text-[10px] font-extrabold text-slate-600">
+        <div class="text-lg">🏆</div>التحديات
+      </button>
+      <button onclick="openProfile()" class="py-2.5 text-[10px] font-extrabold text-slate-600">
+        <div class="text-lg">👤</div>حسابي
+      </button>
+    </div>
+  </nav>
+
+  <!-- ===================== MODALS ===================== -->
+  <!-- إضافة قرية -->
+  <div id="modalAddVillage" class="modal-backdrop">
+    <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-3 slide-in">
+      <div class="flex items-center justify-between border-b pb-2">
+        <h2 class="font-extrabold text-base">إضافة قرية</h2>
+        <button onclick="closeModal('modalAddVillage')" class="text-slate-400 text-lg">✕</button>
+      </div>
+      <input id="newVillageName" type="text" placeholder="اسم القرية" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
+      <input id="newVillageState" type="text" placeholder="الولاية (اختياري)" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
+      <button onclick="submitVillage()" class="w-full bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl">إضافة</button>
+    </div>
+  </div>
+
+  <!-- إضافة متجر -->
+  <div id="modalAddShop" class="modal-backdrop">
+    <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-3 slide-in">
+      <div class="flex items-center justify-between border-b pb-2">
+        <h2 class="font-extrabold text-base">إضافة متجر</h2>
+        <button onclick="closeModal('modalAddShop')" class="text-slate-400 text-lg">✕</button>
+      </div>
+      <input id="newShopName" type="text" placeholder="اسم المتجر" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
+      <input id="newShopOwner" type="text" placeholder="اسم صاحب المتجر" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
+      <button onclick="submitShop()" class="w-full bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl">إضافة</button>
+    </div>
+  </div>
+
+  <!-- إضافة سعر -->
+  <div id="modalAddPrice" class="modal-backdrop">
+    <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-3 slide-in">
+      <div class="flex items-center justify-between border-b pb-2">
+        <h2 class="font-extrabold text-base">نشر سعر</h2>
+        <button onclick="closeModal('modalAddPrice')" class="text-slate-400 text-lg">✕</button>
+      </div>
+      <input id="newPriceName" type="text" placeholder="السلعة (سكر، دقيق...)" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
+      <div class="grid grid-cols-2 gap-2">
+        <input id="newPriceValue" type="number" step="any" placeholder="السعر" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
+        <input id="newPriceUnit" type="text" value="كيس / وحدة" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
+      </div>
+      <button onclick="submitPrice()" class="w-full bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl">نشر</button>
+    </div>
+  </div>
+
+  <!-- حسابي -->
+  <div id="modalProfile" class="modal-backdrop">
+    <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-3 slide-in">
+      <div class="flex items-center justify-between border-b pb-2">
+        <h2 class="font-extrabold text-base">حسابي</h2>
+        <button onclick="closeModal('modalProfile')" class="text-slate-400 text-lg">✕</button>
+      </div>
+      <input id="profileName" type="text" placeholder="اسمك (اختياري)" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
+      <div class="text-[11px] bg-slate-50 rounded-xl px-3 py-2 flex justify-between">
+        <span class="text-slate-500">معرفك:</span>
+        <span id="profileId" class="font-bold"></span>
+      </div>
+      <button onclick="saveProfile()" class="w-full bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl">حفظ</button>
+      <div class="grid grid-cols-2 gap-2 pt-2 border-t">
+        <button onclick="exportData()" class="bg-slate-100 text-xs font-bold py-2 rounded-xl">تصدير JSON</button>
+        <label class="bg-slate-100 text-xs font-bold py-2 rounded-xl text-center cursor-pointer">
+          استيراد JSON
+          <input type="file" accept=".json" onchange="importData(event)" class="hidden" />
+        </label>
+      </div>
+      <button onclick="clearLocalData()" class="w-full bg-rose-50 text-rose-700 text-xs font-extrabold py-2 rounded-xl">مسح البيانات المحلية</button>
+    </div>
+  </div>
+
+  <!-- قائمة إضافة -->
+  <div id="modalAddMenu" class="modal-backdrop">
+    <div class="bg-white w-full max-w-sm rounded-2xl p-4 shadow-xl space-y-2 slide-in">
+      <h2 class="font-extrabold text-base text-center mb-1">ماذا تريد أن تضيف؟</h2>
+      <button onclick="closeModal('modalAddMenu'); openAddVillage()" class="w-full bg-slate-50 hover:bg-emerald-50 text-right px-3 py-3 rounded-xl text-sm font-bold">🏘️ قرية جديدة</button>
+      <button onclick="closeModal('modalAddMenu'); openAddShop()" class="w-full bg-slate-50 hover:bg-emerald-50 text-right px-3 py-3 rounded-xl text-sm font-bold">🏪 متجر جديد</button>
+      <button onclick="closeModal('modalAddMenu'); openAddPrice()" class="w-full bg-slate-50 hover:bg-emerald-50 text-right px-3 py-3 rounded-xl text-sm font-bold">💰 سعر جديد</button>
+      <button onclick="closeModal('modalAddMenu')" class="w-full text-slate-500 text-xs font-bold py-2">إلغاء</button>
+    </div>
+  </div>
+
+  <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg hidden"></div>
+
+  <script>
+    /* ============================================================
+       الإعدادات والثوابت
+    ============================================================ */
+    const WS_URL = "wss://radar-ws-relay.onrender.com/ws"; // ⚠️ غيّرها لرابط خادمك
+    const UID_KEY = "radar_uid_v9";
+    const NAME_KEY = "radar_name_v9";
+    const DATA_KEY = "radar_data_v9"; // كل البيانات في مفتاح واحد
+    const MAX_LOCAL_ITEMS = 500;
+
+    /* ============================================================
+       الحالة
+    ============================================================ */
+    const myUserId = getOrCreateUid();
+    let state = loadData();
+    let currentView = "villages"; // villages | village | shop | leaderboard
+    let currentVillageId = null;
+    let currentShopId = null;
+    let leaderboardTab = "shops";
+    let ws = null;
+    let wsReconnectTimer = null;
+    let wsReconnectDelay = 1000;
+    let onlineCount = 1;
+
+    /* ============================================================
+       أدوات مساعدة
+    ============================================================ */
+    function getOrCreateUid() {
+      let id = localStorage.getItem(UID_KEY);
+      if (!id) {
+        id = "u_" + Math.random().toString(36).substring(2, 10);
+        localStorage.setItem(UID_KEY, id);
+      }
+      return id;
+    }
+    function getUserName() { return localStorage.getItem(NAME_KEY) || "زائر"; }
+    function norm(s) {
+      return String(s || "").toLowerCase()
+        .replace(/[\u064B-\u065F\u0670]/g, "")
+        .replace(/[إأآا]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+        .replace(/\s+/g, " ").trim();
+    }
+    function esc(s) {
+      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+    function uid() { return "id_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7); }
+    function timeAgo(ts) {
+      const sec = Math.max(1, Math.floor((Date.now() - Number(ts || 0)) / 1000));
+      if (sec < 60) return "منذ " + sec + " ث";
+      const min = Math.floor(sec / 60);
+      if (min < 60) return "منذ " + min + " د";
+      const hr = Math.floor(min / 60);
+      if (hr < 24) return "منذ " + hr + " س";
+      return "منذ " + Math.floor(hr / 24) + " ي";
+    }
+    function showToast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.remove("hidden");
+      clearTimeout(window._toastT);
+      window._toastT = setTimeout(() => el.classList.add("hidden"), 2500);
+    }
+    function openModal(id) { document.getElementById(id).classList.add("show"); }
+    function closeModal(id) { document.getElementById(id).classList.remove("show"); }
+
+    /* ============================================================
+       تحميل وحفظ البيانات محلياً
+    ============================================================ */
+    function loadData() {
+      try {
+        const raw = localStorage.getItem(DATA_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          return {
+            villages: parsed.villages || {},
+            shops: parsed.shops || {},
+            prices: parsed.prices || {},
+            ratings: parsed.ratings || {}, // { shopId: { userId: { cheap, fair, expensive } } }
+            notes: parsed.notes || {},
+            lastSync: parsed.lastSync || 0
+          };
+        }
+      } catch (e) {}
+      return { villages: {}, shops: {}, prices: {}, ratings: {}, notes: {}, lastSync: 0 };
+    }
+
+    function saveData() {
+      try {
+        // تقليم البيانات إذا تجاوزت الحد
+        trimData();
+        localStorage.setItem(DATA_KEY, JSON.stringify(state));
+      } catch (e) { console.warn("فشل الحفظ:", e); }
+    }
+
+    function trimData() {
+      const priceList = Object.values(state.prices).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      if (priceList.length > MAX_LOCAL_ITEMS) {
+        const keep = new Set(priceList.slice(0, MAX_LOCAL_ITEMS).map(p => p.id));
+        Object.keys(state.prices).forEach(id => { if (!keep.has(id)) delete state.prices[id]; });
+      }
+      const noteList = Object.values(state.notes).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      if (noteList.length > 200) {
+        const keep = new Set(noteList.slice(0, 200).map(n => n.id));
+        Object.keys(state.notes).forEach(id => { if (!keep.has(id)) delete state.notes[id]; });
+      }
+    }
+
+    /* ============================================================
+       WebSocket: الاتصال، البث، إعادة المحاولة، SYNC
+    ============================================================ */
+    function connectWS() {
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+      setWSStatus("connecting");
+      try {
+        ws = new WebSocket(WS_URL);
+      } catch (e) {
+        setWSStatus("disconnected");
+        scheduleReconnect();
+        return;
+      }
+
+      ws.onopen = () => {
+        wsReconnectDelay = 1000;
+        setWSStatus("connected");
+        sendWS({ type: "HELLO", userId: myUserId });
+        // اطلب مزامنة عند الاتصال
+        requestSync();
+        // أرسل أحدث بياناتي للآخرين (اختياري لكنه يفيد الجدد)
+        broadcastMyRecent();
+      };
+
+      ws.onmessage = (evt) => {
+        let msg;
+        try { msg = JSON.parse(evt.data); } catch (e) { return; }
+        handleWSMessage(msg);
+      };
+
+      ws.onclose = () => {
+        setWSStatus("disconnected");
+        scheduleReconnect();
+      };
+      ws.onerror = () => {
+        setWSStatus("disconnected");
+      };
+    }
+
+    function scheduleReconnect() {
+      clearTimeout(wsReconnectTimer);
+      wsReconnectTimer = setTimeout(() => {
+        wsReconnectDelay = Math.min(wsReconnectDelay * 1.5, 15000);
+        connectWS();
+      }, wsReconnectDelay);
+    }
+
+    function sendWS(obj) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try { ws.send(JSON.stringify(obj)); return true; } catch (e) {}
+      }
+      return false;
+    }
+
+    function setWSStatus(status) {
+      const dot = document.getElementById("wsDot");
+      const txt = document.getElementById("wsStatus");
+      dot.className = "ws-dot " + status;
+      if (status === "connected") txt.textContent = "متصل مباشر";
+      else if (status === "connecting") txt.textContent = "جاري الاتصال...";
+      else txt.textContent = "غير متصل (يعمل محلياً)";
+    }
+
+    function updateOnlineBadge(n) {
+      onlineCount = Math.max(1, n || 1);
+      document.getElementById("onlineBadge").textContent = "متصل: " + onlineCount;
+    }
+
+    function requestSync() {
+      sendWS({ type: "REQUEST_SYNC", userId: myUserId });
+    }
+
+    function broadcastMyRecent() {
+      // أرسل آخر 30 سعراً للآخرين (اختياري) لتسريع تزامن الجدد
+      const recentPrices = Object.values(state.prices)
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+        .slice(0, 30);
+      if (recentPrices.length > 0) {
+        sendWS({ type: "SYNC_DATA", userId: myUserId, prices: recentPrices });
+      }
+    }
+
+    function handleWSMessage(msg) {
+      switch (msg.type) {
+        case "PRESENCE":
+          updateOnlineBadge(msg.count);
+          break;
+        case "NEW_VILLAGE":
+          if (msg.village && !state.villages[msg.village.id]) {
+            state.villages[msg.village.id] = msg.village;
+            saveData();
+            renderCurrentView();
+          }
+          break;
+        case "NEW_SHOP":
+          if (msg.shop && !state.shops[msg.shop.id]) {
+            state.shops[msg.shop.id] = msg.shop;
+            saveData();
+            renderCurrentView();
+          }
+          break;
+        case "NEW_PRICE":
+          if (msg.price && !state.prices[msg.price.id]) {
+            state.prices[msg.price.id] = msg.price;
+            saveData();
+            renderCurrentView();
+          }
+          break;
+        case "NEW_RATING":
+          if (msg.rating && msg.shopId) {
+            if (!state.ratings[msg.shopId]) state.ratings[msg.shopId] = {};
+            state.ratings[msg.shopId][msg.rating.userId] = msg.rating;
+            saveData();
+            renderCurrentView();
+          }
+          break;
+        case "NEW_NOTE":
+          if (msg.note && !state.notes[msg.note.id]) {
+            state.notes[msg.note.id] = msg.note;
+            saveData();
+            renderCurrentView();
+          }
+          break;
+        case "REQUEST_SYNC":
+          // شخص آخر يطلب بيانات — أرسل له أحدث ما لدي
+          if (msg.userId !== myUserId) {
+            const recentPrices = Object.values(state.prices)
+              .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+              .slice(0, 50);
+            if (recentPrices.length > 0) {
+              sendWS({ type: "SYNC_DATA", userId: myUserId, prices: recentPrices, villages: state.villages, shops: state.shops });
+            }
+          }
+          break;
+        case "SYNC_DATA":
+          // استقبل بيانات من آخر
+          if (msg.prices && Array.isArray(msg.prices)) {
+            let added = 0;
+            msg.prices.forEach(p => {
+              if (p && p.id && !state.prices[p.id]) { state.prices[p.id] = p; added++; }
+            });
+            if (msg.villages) Object.keys(msg.villages).forEach(k => { if (!state.villages[k]) { state.villages[k] = msg.villages[k]; added++; } });
+            if (msg.shops) Object.keys(msg.shops).forEach(k => { if (!state.shops[k]) { state.shops[k] = msg.shops[k]; added++; } });
+            if (added > 0) {
+              saveData();
+              renderCurrentView();
+              showToast("تمت مزامنة " + added + " عنصراً من مستخدم آخر ✓");
+            }
+          }
+          break;
+      }
+    }
+
+    /* ============================================================
+       التنقل بين الشاشات
+    ============================================================ */
+    function goHome() {
+      currentView = "villages";
+      currentVillageId = null;
+      currentShopId = null;
+      renderCurrentView();
+    }
+    function goVillage(villageId) {
+      currentView = "village";
+      currentVillageId = villageId;
+      currentShopId = null;
+      renderCurrentView();
+    }
+    function goShop(shopId) {
+      currentView = "shop";
+      currentShopId = shopId;
+      renderCurrentView();
+    }
+    function openLeaderboard() {
+      currentView = "leaderboard";
+      renderCurrentView();
+    }
+
+    function renderCurrentView() {
+      document.getElementById("viewVillages").classList.add("hidden");
+      document.getElementById("viewVillage").classList.add("hidden");
+      document.getElementById("viewShop").classList.add("hidden");
+      document.getElementById("viewLeaderboard").classList.add("hidden");
+      document.getElementById("breadcrumb").classList.add("hidden");
+
+      if (currentView === "villages") {
+        document.getElementById("viewVillages").classList.remove("hidden");
+        document.getElementById("headerTitle").textContent = "رادار أسعار الحي";
+        renderVillages();
+      } else if (currentView === "village") {
+        document.getElementById("viewVillage").classList.remove("hidden");
+        renderVillagePage();
+      } else if (currentView === "shop") {
+        document.getElementById("viewShop").classList.remove("hidden");
+        renderShopPage();
+      } else if (currentView === "leaderboard") {
+        document.getElementById("viewLeaderboard").classList.remove("hidden");
+        document.getElementById("headerTitle").textContent = "🏆 التحديات";
+        renderLeaderboard();
+      }
+    }
+
+    /* ============================================================
+       عرض القرى
+    ============================================================ */
+    function renderVillages() {
+      const q = norm(document.getElementById("villageSearch").value);
+      const list = Object.values(state.villages)
+        .filter(v => !q || norm(v.name).includes(q))
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+      const container = document.getElementById("villagesList");
+      if (list.length === 0) {
+        container.innerHTML = '<div class="text-center text-xs text-slate-400 py-6 bg-slate-50 rounded-xl">لا توجد قرى بعد. أضف قريتك لتظهر للجميع!</div>';
+        return;
+      }
+      container.innerHTML = list.map(v => {
+        const shopCount = Object.values(state.shops).filter(s => s.villageId === v.id).length;
+        const priceCount = Object.values(state.prices).filter(p => p.villageId === v.id).length;
+        return `<button onclick="goVillage('${v.id}')" class="card-hover w-full text-right bg-slate-50 hover:bg-emerald-50 border border-slate-200 rounded-xl px-3.5 py-3 flex items-center justify-between gap-2">
+          <div>
+            <div class="text-sm font-extrabold text-slate-900">${esc(v.name)}</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">${v.state ? esc(v.state) + " • " : ""}${shopCount} متجر • ${priceCount} سعر</div>
+          </div>
+          <div class="text-2xl">🏘️</div>
+        </button>`;
+      }).join("");
+    }
+
+    /* ============================================================
+       صفحة القرية
+    ============================================================ */
+    function renderVillagePage() {
+      const v = state.villages[currentVillageId];
+      if (!v) { goHome(); return; }
+      document.getElementById("headerTitle").textContent = esc(v.name);
+      document.getElementById("villageTitle").textContent = esc(v.name);
+      const shopCount = Object.values(state.shops).filter(s => s.villageId === v.id).length;
+      const priceCount = Object.values(state.prices).filter(p => p.villageId === v.id).length;
+      document.getElementById("villageMeta").textContent = (v.state ? esc(v.state) + " • " : "") + shopCount + " متجر • " + priceCount + " سعر";
+
+      // المتاجر
+      const shops = Object.values(state.shops)
+        .filter(s => s.villageId === v.id)
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      const shopsEl = document.getElementById("shopsList");
+      if (shops.length === 0) {
+        shopsEl.innerHTML = '<div class="text-center text-[11px] text-slate-400 py-3 bg-slate-50 rounded-lg">لا توجد متاجر بعد — كن أول من يضيف متجراً</div>';
+      } else {
+        shopsEl.innerHTML = shops.map(s => {
+          const rating = getShopRating(s.id);
+          const rank = getShopRankInVillage(s.id, v.id);
+          return `<button onclick="goShop('${s.id}')" class="card-hover w-full text-right bg-slate-50 hover:bg-emerald-50 border border-slate-200 rounded-xl px-3 py-2.5">
+            <div class="flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-sm font-extrabold text-slate-900 truncate">${esc(s.name)}</div>
+                <div class="text-[10px] text-slate-500">${esc(s.owner || "صاحب غير معروف")}</div>
+              </div>
+              <div class="text-right shrink-0">
+                <div class="text-xs">${rank ? rank : ""}</div>
+                <div class="stars text-[11px]">${ratingToStars(rating.avg)}</div>
+              </div>
+            </div>
+          </button>`;
+        }).join("");
+      }
+
+      // الأسعار
+      const prices = Object.values(state.prices)
+        .filter(p => p.villageId === v.id)
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      document.getElementById("villagePricesCount").textContent = prices.length + " سعر";
+      const pricesEl = document.getElementById("villagePricesList");
+      if (prices.length === 0) {
+        pricesEl.innerHTML = '<div class="text-center text-[11px] text-slate-400 py-3 bg-slate-50 rounded-lg">لا توجد أسعار بعد في هذه القرية</div>';
+      } else {
+        pricesEl.innerHTML = prices.map(p => {
+          const shop = state.shops[p.shopId];
+          const isLowest = isLowestPriceInVillage(p);
+          return `<div class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
+            <div class="flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-sm font-extrabold text-slate-900">${esc(p.name)} ${isLowest ? '<span class="text-[9px] bg-[#1b7a43] text-white px-1.5 py-0.5 rounded-full mr-1">الأرخص</span>' : ""}</div>
+                <div class="text-[10px] text-slate-500">${shop ? "من: " + esc(shop.name) : ""} • ${timeAgo(p.createdAt)}</div>
+              </div>
+              <div class="text-left shrink-0">
+                <div class="text-base font-extrabold text-slate-900">${Number(p.price).toLocaleString()} <span class="text-[10px] text-slate-500">ج.س</span></div>
+                <div class="text-[10px] text-slate-500">${esc(p.unit)}</div>
+              </div>
+            </div>
+          </div>`;
+        }).join("");
+      }
+
+      // تحدي القرية
+      renderVillageBattle(v.id);
+    }
+
+    function renderVillageBattle(villageId) {
+      const shops = Object.values(state.shops).filter(s => s.villageId === villageId);
+      if (shops.length === 0) {
+        document.getElementById("villageBattle").innerHTML = '<div class="text-[10px] text-slate-400 text-center py-3">أضف متاجر لبدء التحدي</div>';
+        return;
+      }
+      const ranked = shops.map(s => ({ shop: s, rating: getShopRating(s.id).avg }))
+        .sort((a, b) => b.rating - a.rating);
+      const medals = ["🥇", "🥈", "🥉"];
+      document.getElementById("villageBattle").innerHTML = ranked.slice(0, 5).map((r, i) => {
+        const pct = ranked[0].rating > 0 ? (r.rating / ranked[0].rating) * 100 : 0;
+        return `<div class="flex items-center gap-2">
+          <span class="text-sm w-5 text-center">${medals[i] || (i + 1)}</span>
+          <div class="flex-1">
+            <div class="flex justify-between text-[10px] font-bold">
+              <span class="text-slate-800">${esc(r.shop.name)}</span>
+              <span class="text-slate-500">${r.rating.toFixed(1)} ⭐</span>
+            </div>
+            <div class="h-1.5 bg-slate-200 rounded-full mt-0.5 overflow-hidden"><div class="h-full bg-[#1b7a43]" style="width:${pct}%"></div></div>
+          </div>
+        </div>`;
+      }).join("");
+    }
+
+    /* ============================================================
+       صفحة المتجر
+    ============================================================ */
+    function renderShopPage() {
+      const s = state.shops[currentShopId];
+      if (!s) { goHome(); return; }
+      const v = state.villages[s.villageId];
+      document.getElementById("headerTitle").textContent = esc(s.name);
+      document.getElementById("shopVillageLabel").textContent = v ? "في " + esc(v.name) : "";
+      document.getElementById("shopTitle").textContent = esc(s.name);
+      document.getElementById("shopOwner").textContent = "صاحب المتجر: " + (s.owner ? esc(s.owner) : "غير معروف");
+
+      // شارة الترتيب
+      const rank = getShopRankInVillage(s.id, s.villageId);
+      document.getElementById("shopRankBadge").innerHTML = rank || "";
+
+      // ملخص التقييم
+      const rating = getShopRating(s.id);
+      const total = rating.count;
+      document.getElementById("shopRatingSummary").innerHTML = total === 0
+        ? '<span class="text-slate-500 text-[11px]">لا توجد تقييمات بعد — كن أول من يقيّم</span>'
+        : `<span class="stars">${ratingToStars(rating.avg)}</span><span class="font-bold text-slate-700">${rating.avg.toFixed(1)}</span><span class="text-slate-500 text-[10px]">(${total} تقييم)</span>`;
+
+      // أزرار التقييم
+      const myRating = state.ratings[s.id] && state.ratings[s.id][myUserId];
+      document.getElementById("shopRatingButtons").innerHTML = `
+        <button onclick="rateShop('${s.id}', 'cheap')" class="text-xs font-extrabold py-2.5 rounded-xl ${myRating && myRating.cheap ? 'bg-[#1b7a43] text-white' : 'bg-emerald-50 text-[#1b7a43] border border-emerald-200'}">🟢 رخيص</button>
+        <button onclick="rateShop('${s.id}', 'fair')" class="text-xs font-extrabold py-2.5 rounded-xl ${myRating && myRating.fair ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 border border-amber-200'}">🟡 معقول</button>
+        <button onclick="rateShop('${s.id}', 'expensive')" class="text-xs font-extrabold py-2.5 rounded-xl ${myRating && myRating.expensive ? 'bg-rose-500 text-white' : 'bg-rose-50 text-rose-700 border border-rose-200'}">🔴 غالي</button>
+      `;
+
+      // الأسعار
+      const prices = Object.values(state.prices)
+        .filter(p => p.shopId === s.id)
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      const pricesEl = document.getElementById("shopPricesList");
+      if (prices.length === 0) {
+        pricesEl.innerHTML = '<div class="text-center text-[11px] text-slate-400 py-3 bg-slate-50 rounded-lg">لا توجد أسعار منشورة بعد</div>';
+      } else {
+        pricesEl.innerHTML = prices.map(p => `
+          <div class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 flex items-center justify-between">
+            <div>
+              <div class="text-sm font-extrabold text-slate-900">${esc(p.name)}</div>
+              <div class="text-[10px] text-slate-500">${timeAgo(p.createdAt)}</div>
+            </div>
+            <div class="text-left">
+              <div class="text-base font-extrabold text-slate-900">${Number(p.price).toLocaleString()} <span class="text-[10px] text-slate-500">ج.س</span></div>
+              <div class="text-[10px] text-slate-500">${esc(p.unit)}</div>
+            </div>
+          </div>
+        `).join("");
+      }
+
+      // الملاحظات
+      const notes = Object.values(state.notes)
+        .filter(n => n.shopId === s.id)
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      const notesEl = document.getElementById("shopNotesList");
+      if (notes.length === 0) {
+        notesEl.innerHTML = '<div class="text-[10px] text-slate-400 text-center py-2">لا توجد ملاحظات</div>';
+      } else {
+        notesEl.innerHTML = notes.map(n => `
+          <div class="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2">
+            <p class="text-[11px] font-bold text-slate-800">${esc(n.text)}</p>
+            <div class="text-[9px] text-slate-400 mt-1">${esc(n.author)} • ${timeAgo(n.createdAt)}</div>
+          </div>
+        `).join("");
+      }
+    }
+
+    /* ============================================================
+       التقييمات
+    ============================================================ */
+    function getShopRating(shopId) {
+      const r = state.ratings[shopId] || {};
+      let cheap = 0, fair = 0, expensive = 0;
+      Object.values(r).forEach(v => {
+        if (v.cheap) cheap++;
+        if (v.fair) fair++;
+        if (v.expensive) expensive++;
+      });
+      const count = cheap + fair + expensive;
+      // متوسط مرجح: cheap=3, fair=2, expensive=1
+      const totalScore = cheap * 3 + fair * 2 + expensive * 1;
+      const avg = count > 0 ? totalScore / count : 0;
+      return { avg, count, cheap, fair, expensive };
+    }
+    function ratingToStars(avg) {
+      if (avg <= 0) return "☆☆☆☆☆";
+      const full = Math.round(avg);
+      return "★".repeat(full) + "☆".repeat(5 - full);
+    }
+    function getShopRankInVillage(shopId, villageId) {
+      const shops = Object.values(state.shops).filter(s => s.villageId === villageId);
+      const ranked = shops.map(s => ({ id: s.id, avg: getShopRating(s.id).avg }))
+        .sort((a, b) => b.avg - a.avg);
+      const idx = ranked.findIndex(r => r.id === shopId);
+      if (idx === -1) return "";
+      if (idx === 0 && ranked[0].avg > 0) return '<div class="bg-[#1b7a43] text-white text-[9px] font-extrabold px-2 py-1 rounded-full">🥇 الأرخص في القرية</div>';
+      if (idx === 1 && ranked[1].avg > 0) return '<div class="bg-slate-400 text-white text-[9px] font-extrabold px-2 py-1 rounded-full">🥈 الثاني</div>';
+      if (idx === 2 && ranked[2].avg > 0) return '<div class="bg-amber-600 text-white text-[9px] font-extrabold px-2 py-1 rounded-full">🥉 الثالث</div>';
+      return "";
+    }
+    function isLowestPriceInVillage(priceItem) {
+      const sameGood = Object.values(state.prices)
+        .filter(p => p.villageId === priceItem.villageId && norm(p.name) === norm(priceItem.name));
+      if (sameGood.length < 2) return false;
+      const min = Math.min(...sameGood.map(p => Number(p.price)));
+      return Number(priceItem.price) === min;
+    }
+
+    function rateShop(shopId, type) {
+      if (!state.ratings[shopId]) state.ratings[shopId] = {};
+      const current = state.ratings[shopId][myUserId] || {};
+      // إزالة التقييم السابق
+      if (current[type]) {
+        delete current[type];
+      } else {
+        // إزالة كل التقييمات السابقة ثم تعيين الجديد
+        current.cheap = false;
+        current.fair = false;
+        current.expensive = false;
+        current[type] = true;
+      }
+      current.userId = myUserId;
+      current.updatedAt = Date.now();
+      state.ratings[shopId][myUserId] = current;
+      saveData();
+      sendWS({ type: "NEW_RATING", shopId, rating: current });
+      renderShopPage();
+      showToast("تم تسجيل تقييمك ✓");
+    }
+
+    /* ============================================================
+       إضافة عناصر
+    ============================================================ */
+    function openAddVillage() {
+      document.getElementById("newVillageName").value = "";
+      document.getElementById("newVillageState").value = "";
+      openModal("modalAddVillage");
+      setTimeout(() => document.getElementById("newVillageName").focus(), 100);
+    }
+    function submitVillage() {
+      const name = document.getElementById("newVillageName").value.trim();
+      const stateName = document.getElementById("newVillageState").value.trim();
+      if (!name) { showToast("اكتب اسم القرية"); return; }
+      // منع التكرار
+      const exists = Object.values(state.villages).find(v => norm(v.name) === norm(name));
+      if (exists) { showToast("هذه القرية موجودة بالفعل"); closeModal("modalAddVillage"); goVillage(exists.id); return; }
+      const v = { id: uid(), name, state: stateName, userId: myUserId, author: getUserName(), createdAt: Date.now() };
+      state.villages[v.id] = v;
+      saveData();
+      sendWS({ type: "NEW_VILLAGE", village: v });
+      closeModal("modalAddVillage");
+      showToast("تمت إضافة القرية ✓");
+      goVillage(v.id);
+    }
+
+    function openAddShop() {
+      if (!currentVillageId) { showToast("اختر قرية أولاً"); return; }
+      document.getElementById("newShopName").value = "";
+      document.getElementById("newShopOwner").value = "";
+      openModal("modalAddShop");
+      setTimeout(() => document.getElementById("newShopName").focus(), 100);
+    }
+    function submitShop() {
+      const name = document.getElementById("newShopName").value.trim();
+      const owner = document.getElementById("newShopOwner").value.trim();
+      if (!name || !currentVillageId) { showToast("اكتب اسم المتجر"); return; }
+      const shop = { id: uid(), villageId: currentVillageId, name, owner, userId: myUserId, author: getUserName(), createdAt: Date.now() };
+      state.shops[shop.id] = shop;
+      saveData();
+      sendWS({ type: "NEW_SHOP", shop });
+      closeModal("modalAddShop");
+      showToast("تمت إضافة المتجر ✓");
+      goShop(shop.id);
+    }
+
+    function openAddPrice() {
+      if (!currentShopId) { showToast("اختر متجراً أولاً"); return; }
+      document.getElementById("newPriceName").value = "";
+      document.getElementById("newPriceValue").value = "";
+      document.getElementById("newPriceUnit").value = "كيس / وحدة";
+      openModal("modalAddPrice");
+      setTimeout(() => document.getElementById("newPriceName").focus(), 100);
+    }
+    function submitPrice() {
+      const name = document.getElementById("newPriceName").value.trim();
+      const price = Number(document.getElementById("newPriceValue").value);
+      const unit = document.getElementById("newPriceUnit").value.trim() || "وحدة";
+      const shop = state.shops[currentShopId];
+      if (!name || !price || price <= 0 || !shop) { showToast("أكمل البيانات"); return; }
+      const p = {
+        id: uid(), shopId: shop.id, villageId: shop.villageId,
+        name, price, unit, userId: myUserId, author: getUserName(), createdAt: Date.now()
+      };
+      state.prices[p.id] = p;
+      saveData();
+      sendWS({ type: "NEW_PRICE", price: p });
+      closeModal("modalAddPrice");
+      showToast("تم نشر السعر ✓");
+      renderShopPage();
+    }
+
+    function submitShopNote(e) {
+      e.preventDefault();
+      const input = document.getElementById("shopNoteInput");
+      const text = input.value.trim();
+      if (!text || !currentShopId) return;
+      const note = { id: uid(), shopId: currentShopId, text, userId: myUserId, author: getUserName(), createdAt: Date.now() };
+      state.notes[note.id] = note;
+      saveData();
+      sendWS({ type: "NEW_NOTE", note });
+      input.value = "";
+      renderShopPage();
+      showToast("تمت إضافة ملاحظتك ✓");
+    }
+
+    function openAddMenu() { openModal("modalAddMenu"); }
+
+    /* ============================================================
+       لوحة التحديات
+    ============================================================ */
+    function setLeaderboardTab(tab) {
+      leaderboardTab = tab;
+      document.querySelectorAll(".lb-tab").forEach(b => {
+        if (b.dataset.tab === tab) b.className = "lb-tab flex-1 text-xs font-extrabold py-2 rounded-xl bg-[#1b7a43] text-white";
+        else b.className = "lb-tab flex-1 text-xs font-extrabold py-2 rounded-xl bg-slate-100 text-slate-700";
+      });
+      renderLeaderboard();
+    }
+    function renderLeaderboard() {
+      const el = document.getElementById("leaderboardList");
+      if (leaderboardTab === "shops") {
+        const shops = Object.values(state.shops).map(s => ({ ...s, rating: getShopRating(s.id) }))
+          .filter(s => s.rating.count > 0)
+          .sort((a, b) => b.rating.avg - a.rating.avg)
+          .slice(0, 10);
+        if (shops.length === 0) { el.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">لا توجد تقييمات كافية بعد</div>'; return; }
+        const medals = ["🥇", "🥈", "🥉"];
+        el.innerHTML = shops.map((s, i) => {
+          const v = state.villages[s.villageId];
+          return `<div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+            <div class="flex items-center gap-2">
+              <span class="text-lg w-6 text-center">${medals[i] || (i + 1)}</span>
+              <div>
+                <div class="text-xs font-extrabold text-slate-900">${esc(s.name)}</div>
+                <div class="text-[10px] text-slate-500">${v ? esc(v.name) : ""}</div>
+              </div>
+            </div>
+            <div class="text-left">
+              <div class="stars text-xs">${ratingToStars(s.rating.avg)}</div>
+              <div class="text-[10px] text-slate-500">${s.rating.avg.toFixed(1)} (${s.rating.count})</div>
+            </div>
+          </div>`;
+        }).join("");
+      } else if (leaderboardTab === "villages") {
+        const villages = Object.values(state.villages).map(v => {
+          const shops = Object.values(state.shops).filter(s => s.villageId === v.id);
+          const ratings = shops.map(s => getShopRating(s.id).avg).filter(a => a > 0);
+          const avg = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
+          return { ...v, avg, shopCount: shops.length };
+        }).filter(v => v.shopCount > 0).sort((a, b) => b.avg - a.avg).slice(0, 10);
+        if (villages.length === 0) { el.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">لا توجد بيانات كافية</div>'; return; }
+        const medals = ["🥇", "🥈", "🥉"];
+        el.innerHTML = villages.map((v, i) => `
+          <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+            <div class="flex items-center gap-2">
+              <span class="text-lg w-6 text-center">${medals[i] || (i + 1)}</span>
+              <div>
+                <div class="text-xs font-extrabold text-slate-900">${esc(v.name)}</div>
+                <div class="text-[10px] text-slate-500">${v.state ? esc(v.state) + " • " : ""}${v.shopCount} متجر</div>
+              </div>
+            </div>
+            <div class="text-sm font-extrabold text-[#1b7a43]">${v.avg.toFixed(1)} ⭐</div>
+          </div>
+        `).join("");
+      } else if (leaderboardTab === "states") {
+        const byState = {};
+        Object.values(state.shops).forEach(s => {
+          const v = state.villages[s.villageId];
+          if (!v) return;
+          const st = v.state || "غير محدد";
+          if (!byState[st]) byState[st] = { state: st, ratings: [], shopCount: 0 };
+          const r = getShopRating(s.id).avg;
+          if (r > 0) byState[st].ratings.push(r);
+          byState[st].shopCount++;
+        });
+        const list = Object.values(byState).map(s => ({
+          ...s, avg: s.ratings.length > 0 ? s.ratings.reduce((a, b) => a + b, 0) / s.ratings.length : 0
+        })).sort((a, b) => b.avg - a.avg).slice(0, 10);
+        if (list.length === 0) { el.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">لا توجد بيانات كافية</div>'; return; }
+        const medals = ["🥇", "🥈", "🥉"];
+        el.innerHTML = list.map((s, i) => `
+          <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+            <div class="flex items-center gap-2">
+              <span class="text-lg w-6 text-center">${medals[i] || (i + 1)}</span>
+              <div>
+                <div class="text-xs font-extrabold text-slate-900">${esc(s.state)}</div>
+                <div class="text-[10px] text-slate-500">${s.shopCount} متجر</div>
+              </div>
+            </div>
+            <div class="text-sm font-extrabold text-[#1b7a43]">${s.avg.toFixed(1)} ⭐</div>
+          </div>
+        `).join("");
+      }
+    }
+
+    /* ============================================================
+       الملف الشخصي والبيانات
+    ============================================================ */
+    function openProfile() {
+      document.getElementById("profileName").value = localStorage.getItem(NAME_KEY) || "";
+      document.getElementById("profileId").textContent = myUserId;
+      openModal("modalProfile");
+    }
+    function saveProfile() {
+      const name = document.getElementById("profileName").value.trim();
+      if (name) localStorage.setItem(NAME_KEY, name);
+      else localStorage.removeItem(NAME_KEY);
+      closeModal("modalProfile");
+      showToast("تم الحفظ ✓");
+    }
+    function exportData() {
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "radar-data-" + Date.now() + ".json";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+    function importData(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(reader.result);
+          if (parsed.villages) Object.assign(state.villages, parsed.villages);
+          if (parsed.shops) Object.assign(state.shops, parsed.shops);
+          if (parsed.prices) Object.assign(state.prices, parsed.prices);
+          if (parsed.ratings) Object.assign(state.ratings, parsed.ratings);
+          if (parsed.notes) Object.assign(state.notes, parsed.notes);
+          saveData();
+          renderCurrentView();
+          showToast("تم الاستيراد ✓");
+        } catch (err) { showToast("ملف غير صالح"); }
+        e.target.value = "";
+      };
+      reader.readAsText(file);
+    }
+    function clearLocalData() {
+      if (!confirm("سيتم مسح جميع البيانات المحلية (القرى، المتاجر، الأسعار، التقييمات). هل أنت متأكد؟")) return;
+      localStorage.removeItem(DATA_KEY);
+      state = { villages: {}, shops: {}, prices: {}, ratings: {}, notes: {}, lastSync: 0 };
+      saveData();
+      closeModal("modalProfile");
+      goHome();
+      showToast("تم مسح البيانات");
+    }
+
+    /* ============================================================
+       التهيئة
+    ============================================================ */
+    function init() {
+      connectWS();
+      renderCurrentView();
+      // إعادة مزامنة عند عودة الاتصال بالإنترنت
+      window.addEventListener("online", () => { connectWS(); requestSync(); });
+      // إعادة مزامنة دورية خفيفة (كل 5 دقائق) إذا كان الاتصال مفتوحاً
+      setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) requestSync(); }, 5 * 60 * 1000);
+    }
+    init();
+  </script>
 </body>
 </html>
