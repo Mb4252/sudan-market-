@@ -10,16 +10,13 @@
     socket.onmessage = function(event) {
         const data = JSON.parse(event.data);
         if (data.type === 'post') {
-            window.store.addPost(data.post);
+            window.store.posts = [...window.store.posts, data.post];
         }
     };
 
     function broadcast(post) {
         if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                type: 'post',
-                post: post
-            }));
+            socket.send(JSON.stringify({ type: 'post', post }));
         } else {
             console.error('غير متصل بالبث');
         }
