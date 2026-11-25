@@ -73,99 +73,99 @@
   
   // 4. UI Initialization
   document.addEventListener('DOMContentLoaded', () => {
-    const contentInput = document.getElementById('content');
     const publishBtn = document.getElementById('publishBtn');
+    const contentInput = document.getElementById('content');
+    const authorInput = document.getElementById('author');
     const postsContainer = document.getElementById('posts');
-    const filterButtons = document.querySelectorAll('.filter-btn');
-    const compareBtn = document.getElementById('compareBtn');
-    const analyticsToggle = document.getElementById('analyticsToggle');
-    const analyticsPanel = document.getElementById('analyticsPanel');
-    const compareOverlay = document.getElementById('compareOverlay');
-    const compareContent = document.getElementById('compareContent');
-    const closeCompareBtn = document.getElementById('closeCompare');
-    const compareResults = document.getElementById('compareResults');
+    const radarContent = document.getElementById('radarContent');
     
     // Initialize UI
-    renderPosts(window.postStorage.getAll());
+    updatePostsUI();
+    updateRadarUI();
     
     // Event Listeners
-    contentInput.addEventListener('input', () => {
-      publishBtn.disabled = contentInput.value.trim() === '';
-    });
-    
     publishBtn.addEventListener('click', () => {
       const content = contentInput.value.trim();
-      if (content) {
-        const post = {
-          id: Date.now().toString(),
-          content,
-          author: document.getElementById('author').value.trim() || 'مجهول',
-          timestamp: Date.now(),
-          price: null,
-          store: null,
-          priceTag: null
-        };
-        
-        const taggedPost = window.tagPost(post);
-        window.postStorage.addPost(taggedPost);
-        contentInput.value = '';
-        publishBtn.disabled = true;
-      }
+      if (!content) return;
+      
+      const post = {
+        id: Date.now().toString(),
+        content,
+        author: authorInput.value.trim() || 'مجهول',
+        timestamp: Date.now()
+      };
+      
+      // Save locally first
+      window.postStorage.addPost(window.tagPost(post));
+      updatePostsUI();
+      updateRadarUI();
+      
+      // Clear input
+      contentInput.value = '';
+      authorInput.value = '';
+      
+      // Show confirmation
+      showError('تم الحفظ محلياً!', 'success');
     });
     
-    filterButtons.forEach(btn => {
+    contentInput.addEventListener('input', () => {
+      publishBtn.disabled = !contentInput.value.trim();
+    });
+    
+    // Storage Update Listener
+    window.addEventListener('storage:update', (e) => {
+      updatePostsUI();
+      updateRadarUI();
+    });
+    
+    // Filter Buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        filterButtons.forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        renderPosts(window.postStorage.getAll(), btn.dataset.filter);
+        updatePostsUI(btn.dataset.filter);
       });
     });
     
-    compareBtn.addEventListener('click', () => {
+    // Analytics Toggle
+    document.getElementById('analyticsToggle').addEventListener('click', () => {
+      document.getElementById('analyticsPanel').classList.toggle('hidden');
+    });
+    
+    // Compare Button
+    document.getElementById('compareBtn').addEventListener('click', () => {
       const posts = window.postStorage.getAll();
-      const products = {};
+      const stores = [...new Set(posts.map(p => p.store))];
       
-      posts.forEach(post => {
-        if (post.price && post.store) {
-          if (!products[post.content]) {
-            products[post.content] = {
-              name: post.content,
-              prices: []
-            };
-          }
-          products[post.content].prices.push({
-            store: post.store,
-            price: post.price
-          });
-        }
+      if (stores.length < 2) {
+        showError('لا توجد بيانات كافية للمقارنة', 'warning');
+        return;
+      }
+      
+      // Simple comparison logic
+      const comparison = stores.map(store => {
+        const storePosts = posts.filter(p => p.store === store && p.price !== null);
+        if (storePosts.length === 0) return null;
+        
+        const avgPrice = storePosts.reduce((sum, p) => sum + p.price, 0) / storePosts.length;
+        return { store, avgPrice, count: storePosts.length };
+      }).filter(Boolean).sort((a, b) => a.avgPrice - b.avgPrice);
+      
+      // Display comparison
+      let comparisonText = '<h4>مقارنة الأسعار:</h4><ul>';
+      comparison.forEach((item, i) => {
+        comparisonText += `<li>${item.store}: ${item.avgPrice.toFixed(2)} ريال (${item.count} منشور)</li>`;
       });
+      comparisonText += '</ul>';
       
-      compareResults.innerHTML = '';
-      Object.values(products).forEach(product => {
-        if (product.prices.length > 1) {
-          const productDiv = document.createElement('div');
-          productDiv.className = 'product-comparison';
-          
-          const title = document.createElement('h4');
-          title.textContent = product.name;
-          productDiv.appendChild(title);
-          
-          const pricesDiv = document.createElement('div');
-          pricesDiv.className = 'prices';
-          
-          product.prices.sort((a, b) => a.price - b.price);
-          
-          product.prices.forEach(price => {
-            const priceDiv = document.createElement('div');
-            priceDiv.className = 'price-item';
-            priceDiv.innerHTML = `<span class="store">${price.store}</span><span class="price">${price.price} ريال</span>`;
-            pricesDiv.appendChild(priceDiv);
-          });
-          
-          productDiv.appendChild(pricesDiv);
-          compareResults.appendChild(productDiv);
-        }
-      });
+      radarContent.innerHTML = comparisonText;
+    });
+    
+    // UI Update Functions
+    function updatePostsUI(filter = '') {
+      const posts = window.postStorage.getAll();
       
-      compareOverlay.classList.remove('hidden');
-    }
+      let filteredPosts = posts;
+      if (filter) {
+        filteredPosts = posts.filter(p => p.priceTag === filter);
+      }
