@@ -40,32 +40,17 @@
       document.getElementById('status').textContent = 'غير متصل';
       document.getElementById('syncBadge').classList.remove('online');
       document.getElementById('syncBadge').classList.add('offline');
-      ws = null;
-      setTimeout(connectWebSocket, 5000);
-    };
-
-    ws.onerror = err => {
-      console.error('WebSocket error:', err);
-      ws.close();
     };
   }
 
-  // Try to connect immediately
+  // Connect immediately
   connectWebSocket();
 
-  // Wake up Render server
-  const wakeUpRender = async () => {
-    try {
-      const response = await fetch('https://browser-relay-server.onrender.com/health');
-      if (response.ok) {
-        console.log('Render server woke up successfully');
-      }
-    } catch (err) {
-      console.error('Failed to wake up Render server:', err);
+  // Reconnect if connection drops
+  setInterval(() => {
+    if (!ws || ws.readyState === WebSocket.CLOSED) {
+      connectWebSocket();
     }
-  };
-
-  // Wake up server when page loads
-  wakeUpRender();
+  }, 30000);
 
 })();

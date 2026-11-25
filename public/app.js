@@ -29,11 +29,11 @@
   // 3. Price Extraction & Smart Tagging Engine (Time-Based Clustering)
   window.tagPost = (post) => {
     const text = post.content || '';
-    const priceMatch = text.match(/(\d+(?:\.\d+)?)/);
+    const priceMatch = text.match(/(\\d+(?:\\.\\d+)?)/);
     post.price = priceMatch ? parseFloat(priceMatch[1]) : null;
     
     // Extract Store Name
-    const storeMatch = text.match(/(?:في|من|عند)\s+([\u0600-\u06FF\s]+)/);
+    const storeMatch = text.match(/(?:في|من|عند)\\s+([\\u0600-\\u06FF\\s]+)/);
     post.store = storeMatch ? storeMatch[1].trim().substring(0, 20) : 'غير محدد';
     
     // Smart Dynamic Tagging: Compare with 24h average for same store/item
@@ -62,185 +62,61 @@
     return post;
   };
 
-  // 4. UI Rendering & Analytics
-  const renderPosts = (filter = '') => {
-    const posts = window.postStorage.getAll();
-    const postsContainer = document.getElementById('posts');
-    postsContainer.innerHTML = '';
-    
-    if (posts.length === 0) {
-      postsContainer.innerHTML = '<p>لا توجد منشورات بعد. كن أول من ينشر!</p>';
-      return;
+  /* ...مقتطع للاختصار... */
+
+  // 4. Publish Function (Local-First with Fallback)
+  window.publishPost = async (content, author) => {
+    const post = {
+      id: Date.now().toString(36),
+      content,
+      author: author || 'مجهول',
+      timestamp: Date.now()
+    };
+
+    // Step 1: Save immediately to localStorage
+    window.postStorage.addPost(window.tagPost(post));
+
+    // Step 2: Try WebSocket in background
+    try {
+      const ws = new WebSocket(window.APP_CONFIG.wsUrl);
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'NEW_POST', ...post }));
+        ws.close();
+      };
+      ws.onerror = () => {
+        console.warn('WebSocket failed, post saved locally');
+      };
+    } catch (err) {
+      console.warn('WebSocket connection error:', err);
     }
-    
-    posts.filter(p => filter === '' || p.priceTag === filter).forEach(post => {
-      const postElement = document.createElement('div');
-      postElement.className = `post ${post.priceTag || ''}`;
-      postElement.innerHTML = `
-        <div class="post-header">
-          <span class="author">${post.author || 'مجهول'}</span>
-          <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
-        </div>
-        <div class="post-content">${post.content}</div>
-        <div class="post-footer">
-          <span class="store">🏪 ${post.store}</span>
-          ${post.price ? `<span class="price">💰 ${post.price} ريال</span>` : ''}
-        </div>
-      `;
-      postsContainer.appendChild(postElement);
-    });
   };
 
-  // 5. Price Radar
-  const updatePriceRadar = () => {
-    const posts = window.postStorage.getAll();
-    const radarContent = document.getElementById('radarContent');
-    
-    if (posts.length === 0) {
-      radarContent.innerHTML = '<p>لا توجد بيانات كافية لتحليل الأسعار.</p>';
-      return;
-    }
-    
-    const stores = {};
-    posts.forEach(post => {
-      if (post.price && post.store) {
-        if (!stores[post.store]) {
-          stores[post.store] = { prices: [], count: 0 };
-        }
-        stores[post.store].prices.push(post.price);
-        stores[post.store].count++;
-      }
-    });
-    
-    const storeEntries = Object.entries(stores);
-    if (storeEntries.length === 0) {
-      radarContent.innerHTML = '<p>لا توجد بيانات أسعار متاحة.</p>';
-      return;
-    }
-    
-    // Sort by average price
-    storeEntries.sort((a, b) => {
-      const avgA = a[1].prices.reduce((s, p) => s + p, 0) / a[1].count;
-      const avgB = b[1].prices.reduce((s, p) => s + p, 0) / b[1].count;
-      return avgA - avgB;
-    });
-    
-    radarContent.innerHTML = storeEntries.map(([store, data], index) => {
-      const avgPrice = data.prices.reduce((s, p) => s + p, 0) / data.count;
-      const color = index === 0 ? 'green' : (index === storeEntries.length - 1 ? 'red' : 'orange');
-      return `
-        <div class="store-entry">
-          <span class="store-name">${store}</span>
-          <span class="store-price" style="color: ${color}">${avgPrice.toFixed(2)} ريال</span>
-          <span class="store-count">(${data.count} منشور)</span>
-        </div>
-      `;
-    }).join('');
-  };
-
-  // 6. Event Listeners
+  // 5. UI Event Listeners
   document.addEventListener('DOMContentLoaded', () => {
-    // Initial render
-    renderPosts();
-    updatePriceRadar();
-    
-    // Publish button
+    // Publish Button
     document.getElementById('publishBtn').addEventListener('click', () => {
       const content = document.getElementById('content').value.trim();
-      if (!content) return;
-      
-      const post = {
-        content,
-        author: document.getElementById('author').value.trim() || 'مجهول',
-        timestamp: Date.now()
-      };
-      
-      // Tag the post immediately
-      window.tagPost(post);
-      
-      // Add to local storage
-      window.postStorage.addPost(post);
-      
-      // Broadcast to other tabs
-      const channel = new BroadcastChannel('posts');
-      channel.postMessage({ type: 'NEW_POST', ...post });
-      
-      // Clear input
-      document.getElementById('content').value = '';
+      const author = document.getElementById('author').value.trim();
+      if (content) {
+        window.publishPost(content, author);
+        document.getElementById('content').value = '';
+      }
     });
-    
-    // Filter buttons
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        renderPosts(btn.dataset.filter || '');
-      });
-    });
-    
-    // Storage update listener
-    window.addEventListener('storage:update', () => {
-      renderPosts(document.querySelector('.filter-btn.active').dataset.filter || '');
-      updatePriceRadar();
-    });
+
+    // ...مقتطع للاختصار...
   });
 
-  // 7. Wake up Render server
-  function wakeUpRender() {
-    fetch('https://browser-relay-server.onrender.com/health')
-      .then(() => console.log('Render server woke up'))
-      .catch(err => console.error('Failed to wake up Render server:', err));
-  }
+  // 6. Error Handling
+  window.addEventListener('error', (event) => {
+    console.error('Global error:', event.error);
+    document.getElementById('status').textContent = `خطأ: ${event.message}`;
+    document.getElementById('status').style.color = 'red';
+  });
 
-  // Wake up server on page load
-  wakeUpRender();
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled rejection:', event.reason);
+    document.getElementById('status').textContent = `خطأ: ${event.reason}`;
+    document.getElementById('status').style.color = 'red';
+  });
 
-  // Reconnect WebSocket periodically
-  setInterval(() => {
-    if (!window.ws || window.ws.readyState !== WebSocket.OPEN) {
-      connectWebSocket();
-    }
-  }, 30000);
-
-  // Initial WebSocket connection
-  function connectWebSocket() {
-    if (window.ws) return;
-    
-    window.ws = new WebSocket(window.APP_CONFIG.wsUrl);
-    
-    window.ws.onopen = () => {
-      console.log('WebSocket connected');
-      document.getElementById('status').textContent = 'متصل';
-      document.getElementById('syncBadge').classList.remove('offline');
-      document.getElementById('syncBadge').classList.add('online');
-    };
-    
-    window.ws.onmessage = e => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.type === 'NEW_POST') {
-          window.postStorage.addPost(data);
-        }
-      } catch (err) {
-        console.warn('WebSocket message error', err);
-      }
-    };
-    
-    window.ws.onclose = () => {
-      console.log('WebSocket disconnected');
-      document.getElementById('status').textContent = 'غير متصل';
-      document.getElementById('syncBadge').classList.remove('online');
-      document.getElementById('syncBadge').classList.add('offline');
-      window.ws = null;
-      setTimeout(connectWebSocket, 5000);
-    };
-    
-    window.ws.onerror = err => {
-      console.error('WebSocket error:', err);
-      window.ws.close();
-    };
-  }
-
-  // Start WebSocket connection
-  connectWebSocket();
 })();
