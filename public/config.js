@@ -1,0 +1,1 @@
+window.APP_CONFIG={wsUrl:"wss://example.com/socket"};
