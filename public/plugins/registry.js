@@ -1,36 +1,28 @@
 (function() {
     'use strict';
 
-    // مصفوفة لتخزين السجلات
-    const registry = [];
+    const plugins = new Map();
 
-    // دالة لتسجيل الوحدات
-    function register(moduleName, module) {
-        if (!moduleName || !module) {
-            throw new Error('اسم الوحدة ووحدة غير صالحين');
+    function registerPlugin(name, plugin) {
+        if (typeof plugin.init === 'function') {
+            plugins.set(name, plugin);
+            plugin.init();
+        } else {
+            throw new Error(`Plugin ${name} must have an init function`);
         }
-        registry.push({ moduleName, module });
-        console.log(`تم تسجيل الوحدة: ${moduleName}`);
     }
 
-    // دالة لاسترجاع الوحدة
-    function getModule(moduleName) {
-        const found = registry.find(item => item.moduleName === moduleName);
-        if (!found) {
-            throw new Error(`الوحدة ${moduleName} غير مسجلة`);
-        }
-        return found.module;
+    function getPlugin(name) {
+        return plugins.get(name);
     }
 
-    // دالة للحصول على جميع الوحدات المسجلة
-    function getAllModules() {
-        return registry.map(item => item.module);
+    function getAllPlugins() {
+        return Array.from(plugins.values());
     }
 
-    // تصدير الوظائف المطلوبة
-    window.registry = {
-        register,
-        getModule,
-        getAllModules
+    window.pluginRegistry = {
+        registerPlugin,
+        getPlugin,
+        getAllPlugins
     };
 })();
