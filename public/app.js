@@ -68,7 +68,7 @@
         const avgPrice = relevantPosts.reduce((sum, p) => sum + p.price, 0) / relevantPosts.length;
         post.priceTag = post.price < avgPrice ? 'cheap' : 'expensive';
       } else {
-        post.priceTag = 'neutral';
+        post.priceTag = 'normal';
       }
     }
 
@@ -92,105 +92,121 @@
     } else {
       syncBadge.classList.remove('online');
       syncBadge.classList.add('offline');
-      syncBadge.title = 'وضع محلي';
+      syncBadge.title = 'وضع محلي سري';
       document.getElementById('publishBtn').disabled = false;
       document.getElementById('compareBtn').disabled = false;
       document.getElementById('analyticsToggle').disabled = false;
     }
   }
 
-  // 5. Smart Opportunities Radar
-  function updateRadar() {
-    const posts = window.postStorage.getAll();
-    const radarContent = document.getElementById('radarContent');
+  // 5. Initialize
+  document.addEventListener('DOMContentLoaded', () => {
+    // Render initial posts
+    renderPosts(window.postStorage.getAll());
 
-    if (posts.length === 0) {
-      radarContent.innerHTML = '<p>لا توجد منشورات بعد</p>';
-      return;
-    }
-
-    const now = Date.now();
-    const dayAgo = now - (24 * 60 * 60 * 1000);
-    const relevantPosts = posts.filter(p => p.timestamp > dayAgo && p.price !== null);
-
-    if (relevantPosts.length === 0) {
-      radarContent.innerHTML = '<p>لا توجد منشورات ذات أسعار في اليوم الأخير</p>';
-      return;
-    }
-
-    // Group by store and item
-    const grouped = {};
-    relevantPosts.forEach(post => {
-      const key = `${post.store}|${post.content.split(' ')[0]}`;
-      if (!grouped[key]) {
-        grouped[key] = {
-          store: post.store,
-          item: post.content.split(' ')[0],
-          prices: []
-        };
-      }
-      grouped[key].prices.push(post.price);
+    // Set up event listeners
+    document.getElementById('publishBtn').addEventListener('click', publishPost);
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', filterPosts);
     });
+    document.getElementById('compareBtn').addEventListener('click', comparePrices);
+    document.getElementById('analyticsToggle').addEventListener('click', toggleAnalytics);
 
-    // Calculate opportunities
-    const opportunities = Object.values(grouped)
-      .map(group => {
-        const minPrice = Math.min(...group.prices);
-        const maxPrice = Math.max(...group.prices);
-        const avgPrice = group.prices.reduce((sum, price) => sum + price, 0) / group.prices.length;
-        const savings = ((maxPrice - minPrice) / maxPrice) * 100;
+    // Set initial status
+    updateUIStatus('جاري الاتصال...', false);
+  });
 
-        return {
-          store: group.store,
-          item: group.item,
-          minPrice,
-          maxPrice,
-          avgPrice,
-          savings: savings.toFixed(1)
-        };
-      })
-      .filter(op => op.savings > 5)
-      .sort((a, b) => b.savings - a.savings);
+  // 6. Core Functions
+  function publishPost() {
+    const content = document.getElementById('content').value.trim();
+    const author = document.getElementById('author').value.trim();
 
-    // Render opportunities
-    if (opportunities.length > 0) {
-      radarContent.innerHTML = opportunities.map(op => {
-        return `
-          <div class="opportunity">
-            <h4>${op.item} في ${op.store}</h4>
-            <p>أرخص: ${op.minPrice} ريال</p>
-            <p>أغلى: ${op.maxPrice} ريال</p>
-            <p>توفير: ${op.savings}%</p>
-          </div>
-        `;
-      }).join('');
-    } else {
-      radarContent.innerHTML = '<p>لا توجد فرص توفير اليوم</p>';
+    if (!content) {
+      showError('الرجاء كتابة المنشور', 'warning');
+      return;
     }
+
+    const post = {
+      id: Date.now().toString(),
+      content,
+      author: author || 'مجهول',
+      timestamp: Date.now()
+    };
+
+    // Tag the post
+    window.tagPost(post);
+
+    // Save to local storage
+    window.postStorage.addPost(post);
+
+    // Clear input
+    document.getElementById('content').value = '';
+    document.getElementById('author').value = '';
+
+    // Show success message
+    showError('تم الحفظ محلياً', 'success');
+
+    // Broadcast to other tabs
+    channel.postMessage({ type: 'NEW_POST', post });
   }
 
-  // 6. Event Listeners
-  document.addEventListener('DOMContentLoaded', () => {
-    // Initialize UI
-    updateUIStatus('جاري الاتصال...', false);
-    updateRadar();
+  function renderPosts(posts) {
+    const postsContainer = document.getElementById('posts');
+    postsContainer.innerHTML = '';
 
-    // Publish Button
-    document.getElementById('publishBtn').addEventListener('click', () => {
-      const content = document.getElementById('content').value.trim();
-      const author = document.getElementById('author').value.trim();
+    if (posts.length === 0) {
+      postsContainer.innerHTML = '<p>لا توجد منشورات بعد</p>';
+      return;
+    }
 
-      if (!content) {
-        showError('الرجاء كتابة المنشور', 'warning');
-        return;
+    posts.forEach(post => {
+      const postElement = document.createElement('div');
+      postElement.className = 'post';
+
+      if (post.priceTag) {
+        postElement.classList.add(post.priceTag);
       }
 
-      const post = {
-        id: Date.now().toString(),
-        content,
-        author: author || 'مجهول',
-        timestamp: Date.now(),
-        price: null,
-        store: 'غير محدد',
-        priceTag: 'neutral'
-      }
+      postElement.innerHTML = `
+        <div class="post-header">
+          <span class="post-author">${post.author}</span>
+          <span class="post-time">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
+        </div>
+        <div class="post-content">${post.content}</div>
+        ${post.price ? `<div class="post-price">السعر: ${post.price} ${post.priceTag === 'cheap' ? '🟢' : post.priceTag === 'expensive' ? '🔴' : ''}</div>` : ''}
+        ${post.store ? `<div class="post-store">المتجر: ${post.store}</div>` : ''}
+      `;
+
+      postsContainer.appendChild(postElement);
+    });
+  }
+
+  function filterPosts(e) {
+    const filter = e.target.getAttribute('data-filter');
+    const posts = window.postStorage.getAll();
+
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    e.target.classList.add('active');
+
+    if (!filter) {
+      renderPosts(posts);
+      return;
+    }
+
+    const filteredPosts = posts.filter(post => post.priceTag === filter);
+    renderPosts(filteredPosts);
+  }
+
+  function comparePrices() {
+    const posts = window.postStorage.getAll();
+    const now = Date.now();
+    const dayAgo = now - (24 * 60 * 60 * 1000);
+
+    const recentPosts = posts.filter(p => p.timestamp > dayAgo && p.price !== null);
+
+    if (recentPosts.length < 2) {
+      showError('لا توجد بيانات كافية للمقارنة', 'warning');
+      return;
+    }
