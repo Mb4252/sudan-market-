@@ -30,52 +30,98 @@
         .entity-item { color: var(--primary); font-weight: bold; }
         .entity-price { color: var(--warning); font-weight: bold; font-size: 1.1em; }
         .entity-place { color: #777; font-size: 0.9em; }
-        .forecast-section { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ddd; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-        .forecast-label { font-size: 0.9em; color: #555; }
-        .forecast-price { font-weight: bold; color: var(--secondary); font-size: 1.1em; }
-        .confidence-indicator { font-size: 0.85em; font-weight: bold; }
-        .anomaly-badge { background: var(--danger); color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin-top: 5px; display: inline-block; }
-        .input-group { display: flex; gap: 10px; margin-bottom: 10px; }
-        input, textarea, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; }
-        textarea { resize: vertical; min-height: 80px; }
-        button { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: background 0.2s; }
-        button:hover { background: #45a049; }
-        .empty-state { text-align: center; color: #999; padding: 40px; font-size: 1.2em; }
-        .form-title { margin-bottom: 15px; font-size: 1.2em; color: var(--text); }
+        .forecast-section { margin-top: 20px; }
+        #chartVolume, #chartPrice { height: 300px; margin-bottom: 20px; }
+        #status { display: none; }
+        #syncBadge { display: none; }
+        #compareOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; z-index: 1000; }
+        #compareContent { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; z-index: 1001; display: none; }
+        #posts { margin-top: 20px; }
+        #radarContent { display: none; }
+        #publishBtn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em; }
+        #author { display: block; margin-bottom: 10px; }
+        #content { width: 100%; height: 100px; margin-bottom: 10px; }
+        #compareBtn { background: var(--secondary); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em; margin-top: 10px; }
+        #priceRadar { display: none; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div id="status-indicator" class="status-indicator offline">جارٍ الاتصال...</div>
-
+        <h1>سوق السودان</h1>
+        <div id="status" class="status-indicator offline">غير متصل</div>
+        <div id="syncBadge" class="status-indicator offline">غير متزامن</div>
         <div class="card">
-            <h2 class="form-title">إضافة منشور جديد</h2>
-            <form id="post-form">
-                <div class="input-group">
-                    <input type="text" id="post-author" placeholder="اسم البائع (اختياري)">
-                    <input type="text" id="post-city" placeholder="المدينة (اختياري)">
-                </div>
-                <div class="input-group">
-                    <input type="text" id="post-item" placeholder="اسم المنتج">
-                    <input type="number" id="post-price" placeholder="السعر بالجنيه السوداني" min="0" step="any">
-                </div>
-                <textarea id="post-content" placeholder="وصف المنتج..." required></textarea>
-                <br>
-                <button type="submit">نشر</button>
-            </form>
+            <h2>إضافة منشور جديد</h2>
+            <span id="author" contenteditable="true" placeholder="اسمك"></span>
+            <textarea id="content" placeholder="وصف المنتج والسعر والمكان"></textarea>
+            <button id="publishBtn">نشر</button>
         </div>
-
         <div class="card">
-            <h2>المنشورات المباشرة</h2>
-            <div id="posts-container">
-                <div class="empty-state">جارٍ التحميل...</div>
-            </div>
+            <h2>المنشورات</h2>
+            <div id="posts"></div>
+        </div>
+        <div class="card">
+            <h2>تحليلات السوق</h2>
+            <div id="chartVolume"></div>
+            <div id="chartPrice"></div>
+            <div id="radarContent"></div>
+            <button id="compareBtn">مقارنة الأسعار</button>
+            <span id="priceRadar"></span>
         </div>
     </div>
-
-    <!-- Load Forecast Plugin first -->
-    <script src="public/plugins/forecast.js"></script>
-    <!-- Load Main App -->
+    <div id="compareOverlay"></div>
+    <div id="compareContent"></div>
     <script src="public/app.js"></script>
+    <script src="public/plugins/forecast.js"></script>
+    <script>
+        // WebSocket connection
+        const socket = new WebSocket('wss://sudan-market-2.onrender.com');
+        
+        // Save data to localStorage
+        function saveToLocalStorage(data) {
+            localStorage.setItem('marketData', JSON.stringify(data));
+        }
+        
+        // Broadcast data via WebSocket
+        function broadcastData(data) {
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify(data));
+            }
+        }
+        
+        // Update UI
+        function updateUI(data) {
+            // Update posts, charts, etc.
+        }
+        
+        // Load data on page load
+        window.onload = function() {
+            const savedData = localStorage.getItem('marketData');
+            if (savedData) {
+                updateUI(JSON.parse(savedData));
+            }
+        }
+        
+        // WebSocket event handlers
+        socket.onopen = function() {
+            document.getElementById('status').textContent = 'متصل';
+            document.getElementById('status').className = 'status-indicator online';
+        };
+        
+        socket.onclose = function() {
+            document.getElementById('status').textContent = 'غير متصل';
+            document.getElementById('status').className = 'status-indicator offline';
+            // Attempt to reconnect
+            setTimeout(() => {
+                socket = new WebSocket('wss://sudan-market-2.onrender.com');
+            }, 5000);
+        };
+        
+        socket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            updateUI(data);
+            saveToLocalStorage(data);
+        };
+    </script>
 </body>
 </html>
