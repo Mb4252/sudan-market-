@@ -72,8 +72,8 @@ jobs:
                 collectProjectFiles(fullPath, depth + 1, out);
               } else if (/\.(js|html|css|json)$/i.test(entry.name)) {
                 const content = fs.readFileSync(fullPath, "utf8");
-                const clipped = content.length > 2000
-                  ? content.slice(0, 2000) + "\n/* ...مقتطع للاختصار... */"
+                const clipped = content.length > 1600
+                  ? content.slice(0, 1600) + "\n/* ...مقتطع للاختصار... */"
                   : content;
                 out.push({ fullPath, raw: content, content: clipped });
               }
@@ -85,14 +85,6 @@ jobs:
             const errors = [];
             if (!filesMap || typeof filesMap !== "object") {
               return ["كائن files مفقود أو غير صالح."];
-            }
-
-            const htmlEntry = filesMap["index.html"];
-            const htmlIds = new Set();
-            if (typeof htmlEntry === "string") {
-              for (const m of htmlEntry.matchAll(/\bid=["'\'']([^"'\'']+)["'\'']/g)) {
-                htmlIds.add(m[1]);
-              }
             }
 
             for (const [rawPath, content] of Object.entries(filesMap)) {
@@ -151,6 +143,7 @@ jobs:
             const issues = [];
             const htmlFile = filesList.find(f => f.fullPath === "index.html");
             const jsFiles = filesList.filter(f => f.fullPath.endsWith(".js") && f.fullPath !== "server.js");
+            const hasSwFile = filesList.some(f => /(^|\/)(sw|service-worker)\.js$/i.test(f.fullPath));
 
             if (!htmlFile) {
               issues.push("ملف index.html مفقود في الجذر.");
@@ -160,6 +153,14 @@ jobs:
             const htmlIds = new Set([...htmlFile.raw.matchAll(/\bid=["'\'']([^"'\'']+)["'\'']/g)].map(m => m[1]));
             const allJsRaw = jsFiles.map(f => f.raw).join("\n");
             const combinedRaw = allJsRaw + "\n" + htmlFile.raw;
+
+            if (/getElementById\([^)]+\)\.textContent\s*=|querySelector\([^)]+\)\.textContent\s*=/.test(combinedRaw)) {
+              issues.push("إسناد مباشر لـ .textContent دون التحقق من وجود العنصر مما قد يسبب TypeError.");
+            }
+
+            if (/serviceWorker\.register/.test(combinedRaw) && !hasSwFile) {
+              issues.push("محاولة تسجيل Service Worker دون وجود ملف خدمة ويب؛ احمِ التسجيل أو أضف ./sw.js.");
+            }
 
             if (/YOUR-SERVICE|example\.onrender\.com/i.test(combinedRaw)) {
               issues.push(`يوجد رابط Render وهمي غير حقيقي في الكود؛ استبدله بالرابط الصحيح: ${renderUrl}`);
@@ -184,7 +185,7 @@ jobs:
 
             return issues.length
               ? issues.map((x, i) => `${i + 1}. ${x}`).join("\n")
-              : "لا توجد أخطاء بنيوية واضحة في الفحص الساكن، ركّز على توسيع البنية المعيارية والميزات المتقدمة غير التقليدية.";
+              : "لا توجد أخطاء بنيوية واضحة في الفحص الساكن، ركّز على توزيع المهام على ملفات متخصصة وتطوير ميزات ذكية.";
           }
 
           async function getGroqModelsOrdered(apiKey) {
@@ -399,10 +400,10 @@ jobs:
               list.push({
                 id: "mistral",
                 label: "Mistral AI",
-                runText: async (sysPrompt, usrPrompt, maxTokens = 650) => {
+                runText: async (sysPrompt, usrPrompt, maxTokens = 600) => {
                   return await callMistral(mistralKey, sysPrompt, usrPrompt, maxTokens, false);
                 },
-                runJson: async (sysPrompt, usrPrompt, maxTokens = 4200) => {
+                runJson: async (sysPrompt, usrPrompt, maxTokens = 6500) => {
                   const res = await callMistral(mistralKey, sysPrompt, usrPrompt, maxTokens, true);
                   return { parsed: extractJsonObject(res.text), detail: res.detail };
                 }
@@ -418,7 +419,7 @@ jobs:
                 list.push({
                   id: "groq",
                   label: "Groq",
-                  runText: async (sysPrompt, usrPrompt, maxTokens = 650) => {
+                  runText: async (sysPrompt, usrPrompt, maxTokens = 600) => {
                     const models = await getGroqModelsOrdered(key);
                     const groqUrl = sanitizeUrl("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)");
                     const headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
@@ -445,7 +446,7 @@ jobs:
                     }
                     throw lastErr || new Error("فشل نماذج Groq");
                   },
-                  runJson: async (sysPrompt, usrPrompt, maxTokens = 3200) => {
+                  runJson: async (sysPrompt, usrPrompt, maxTokens = 4500) => {
                     const models = await getGroqModelsOrdered(key);
                     const groqUrl = sanitizeUrl("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)");
                     const headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
@@ -492,11 +493,11 @@ jobs:
                 list.push({
                   id: "openrouter",
                   label: "OpenRouter (ChatGPT-style partner)",
-                  runText: async (sysPrompt, usrPrompt, maxTokens = 650) => {
+                  runText: async (sysPrompt, usrPrompt, maxTokens = 600) => {
                     const out = await callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens);
                     return { text: out, detail: "OpenRouter (openrouter/free)" };
                   },
-                  runJson: async (sysPrompt, usrPrompt, maxTokens = 3200) => {
+                  runJson: async (sysPrompt, usrPrompt, maxTokens = 4500) => {
                     const raw = await callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens);
                     return { parsed: extractJsonObject(raw), detail: "OpenRouter (openrouter/free)" };
                   }
@@ -527,14 +528,14 @@ jobs:
             const currentFiles = filesList
               .map(f => `--- FILE: ${f.fullPath} ---\n${f.content}`)
               .join("\n\n")
-              .slice(0, 5500);
+              .slice(0, 4600);
 
             const architectureMandate = [
               `رابط GitHub Pages الصحيح: ${pagesUrl}`,
               `رابط جسر Render الصحيح: ${renderUrl} (للبث المباشر عبر wss:// وطلب الإيقاظ /health).`,
-              "1) بنية متقدمة وقابلة للتوسيع: صمّم وحدات معيارية وحالة تفاعلية وأدوات تحليل ذكية غير تقليدية، واختر في هذه الجولة أهم ملفين أو ثلاثة فقط لتفادي قطع الاستجابة.",
-              "2) حفظ محلي في المتصفح + بث مباشر عبر Render: عند النشر، احفظ فوراً في localStorage وأعد البناء الفوري للواجهة دون تأخير، وأرسل الحدث عبر WebSocket إلى wss://sudan-market-2.onrender.com لبثه لبقية المتصلين مع منع التكرار وتحديث مؤشر الحالة.",
-              "3) كود خالٍ من الأخطاء قدر الإمكان: تأكد من تطابق معرّفات DOM، وفحص كل عنصر قبل الوصول إليه، وإضافة ملتقط أخطاء عام (window.onerror و unhandledrejection)."
+              "1) توزيع المهام على عدة ملفات صغيرة متخصصة (تجنب ملفاً واحداً ضخماً): وزّع الكود على 2 إلى 3 ملفات صغيرة ومحددة المسؤولية في الجولة الواحدة (مثل index.html للهيكل والمعرّفات، public/store.js للحالة وlocalStorage، public/broadcast.js لاتصال wss://sudan-market-2.onrender.com والبث المباشر، أو public/radar.js للتحليل والمقارنة) مع إبقاء كل ملف مركزاً ومختصراً لتفادي قطع JSON.",
+              "2) حفظ محلي في المتصفح + بث مباشر عبر Render: حفظ فوري في localStorage عند النشر مع إرسال الحدث عبر WebSocket إلى wss://sudan-market-2.onrender.com لبثه للآخرين.",
+              "3) كود خالٍ من الأخطاء قدر الإمكان: تحقّق من وجود عناصر DOM قبل تعديل خصائصها، وأضف ملتقط أخطاء عام (window.onerror و unhandledrejection)."
             ].join("\n");
 
             let agreedPlan = "";
@@ -547,17 +548,17 @@ jobs:
 
               try {
                 const propRes = await p1.runText(
-                  "أنت مهندس معماري ومبتكر واجهات متقدمة. حدد أهم ملفين أو ثلاثة لإصلاح معرّفات DOM وتفعيل الحفظ المحلي والبث عبر Render بأسلوب غير تقليدي.",
+                  "أنت مهندس معماري ومبتكر واجهات متقدمة. وزّع المسؤوليات على 2 إلى 3 ملفات صغيرة متخصصة بدلاً من ملف واحد ضخم، وخطط للحفظ المحلي والبث عبر Render.",
                   `التقرير:\n${diagnosticReport}\n\nالقواعد:\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
-                  550
+                  480
                 );
                 console.log(`💡 مقترح ${propRes.detail} جاهز للمراجعة.`);
 
                 try {
                   const revRes = await p2.runText(
-                    "أنت المدقق الهندسي. راجع الخطة باختصار واكتب [اتفقنا] متبوعاً بالخطة النهائية.",
+                    "أنت المدقق الهندسي. راجع توزيع الملفات الصغيرة واكتب [اتفقنا] متبوعاً بالخطة النهائية لـ 2 إلى 3 ملفات متخصصة.",
                     `مقترح الطرف الأول:\n${propRes.text}\n\nالتقرير:\n${diagnosticReport}`,
-                    550
+                    480
                   );
                   agreedPlan = revRes.text;
                   activeExecutor = p2;
@@ -570,25 +571,25 @@ jobs:
               } catch (propErr) {
                 console.warn(`⚠️ تعذر الطرف الأول (${propErr.message}) — ينتقل الطرف الثاني للعمل المستقل الفوري.`);
                 const soloRes = await p2.runText(
-                  "أنت المنفذ المستقل. ضع خطة مركزة لأهم ملفين أو ثلاثة لحل المشاكل وإضافة ميزة متقدمة.",
+                  "أنت المنفذ المستقل. ضع خطة لتوزيع المسؤوليات على 2 إلى 3 ملفات صغيرة متخصصة بدلاً من ملف ضخم واحد.",
                   `التقرير:\n${diagnosticReport}\n\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
-                  550
+                  480
                 );
                 agreedPlan = `[عمل مستقل فوري]\n${soloRes.text}`;
                 activeExecutor = p2;
               }
             } else {
-              agreedPlan = `نفّذ المعمارية المتقدمة وحل المشاكل التالية:\n${diagnosticReport}`;
+              agreedPlan = `وزّع المهام على 2 إلى 3 ملفات صغيرة متخصصة وحل المشاكل التالية:\n${diagnosticReport}`;
             }
 
             const systemJsonInstruction = [
               "أنت مهندس برمجيات محترف. أعد كائن JSON صالحاً ومختصراً وبدون أي نص خارجه.",
-              "عدّل أهم ملفين أو ثلاثة فقط في هذه الجولة ليكون الرد كاملاً وغير مقطوع.",
-              "الشكل المطلوب: {\"files\":{\"مسار_الملف\":\"محتواه_الكامل\"},\"summary\":\"ملخص مختصر\"}"
+              "وزّع الكود على 2 إلى 3 ملفات صغيرة متخصصة بدلاً من ملف واحد ضخم، واجعل كل ملف نظيفاً ومكتملاً.",
+              "الشكل المطلوب: {\"files\":{\"ملف1\":\"محتواه\",\"ملف2\":\"محتواه\"},\"summary\":\"ملخص مختصر\"}"
             ].join("\n");
 
             const executionPrompt = [
-              "نفّذ الخطة بدقة واختر أهم ملفين أو ثلاثة فقط:",
+              "نفّذ الخطة ووزّع المهام على 2 إلى 3 ملفات صغيرة متخصصة:",
               agreedPlan,
               "",
               "=== التقرير التشخيصي ===",
@@ -606,7 +607,7 @@ jobs:
 
             for (const execProvider of orderedExecutors) {
               try {
-                execResult = await execProvider.runJson(systemJsonInstruction, executionPrompt, 4200);
+                execResult = await execProvider.runJson(systemJsonInstruction, executionPrompt, 6500);
                 const errs = validateGeneratedFiles(execResult?.parsed?.files);
                 if (errs.length) {
                   console.warn(`⚠️ ملاحظات تحقق في مخرجات ${execProvider.label}: ${errs.join(" | ")}`);
@@ -652,7 +653,7 @@ jobs:
 
             console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
             if (updatedCount > 0) {
-              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Advanced modular UI with localStorage & Render live broadcast").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
+              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Modular multi-file architecture with localStorage & Render live broadcast").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
             }
           }
 
@@ -674,7 +675,7 @@ jobs:
             echo "ℹ️ nothing to commit, working tree clean."
             exit 0
           fi
-          SUMMARY="Advanced modular UI with localStorage & Render live broadcast"
+          SUMMARY="Modular multi-file architecture with localStorage & Render live broadcast"
           if [ -f last_ai_change.txt ]; then
             SUMMARY=$(head -n 1 last_ai_change.txt)
             rm -f last_ai_change.txt
