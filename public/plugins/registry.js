@@ -1,23 +1,14 @@
 (function() {
     'use strict';
 
-    // تسجيل الوحدات
-    const modules = {
-        module12: window.module12
-    };
-
-    // دالة للحصول على وحدة
-    function getModule(moduleName) {
-        if (modules[moduleName]) {
-            return modules[moduleName];
+    function renderPluginInfo(pluginId) {
+        const pluginInfoElement = document.getElementById(`plugin-info-${pluginId}`);
+        if (pluginInfoElement) {
+            pluginInfoElement.textContent = `Plugin ${pluginId} info`;
         } else {
-            console.warn(`الوحدة ${moduleName} غير مسجلة`);
-            return null;
+            console.error(`Plugin info element for ${pluginId} not found`);
         }
     }
 
-    // تصدير الدالة
-    window.registry = {
-        getModule
-    };
+    // إضافة أي وظائف إضافية هنا
 })();
