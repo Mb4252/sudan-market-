@@ -1,32 +1,46 @@
 (function() {
-    'use strict'
+    'use strict';
 
-    const BROADCAST_CHANNEL = 'sudanMarketBroadcast'
+    const BROADCAST_URL = 'wss://sudan-market-2.onrender.com';
+    let socket;
 
-    class Broadcast {
-        constructor() {
-            this.channel = new BroadcastChannel(BROADCAST_CHANNEL)
-            this.setupEventListeners()
-        }
+    function connect() {
+        socket = new WebSocket(BROADCAST_URL);
 
-        setupEventListeners() {
-            this.channel.onmessage = (event) => {
-                if (window.store.isValidDate(new Date(event.data.timestamp))) {
-                    window.store.add(event.data)
-                }
-            }
-        }
+        socket.onopen = function() {
+            console.log('متصل بالبث المباشر');
+            document.getElementById('broadcastStatus').textContent = 'متصل بالبث';
+            document.getElementById('broadcastStatus').style.color = 'var(--success-color)';
+        };
 
-        send(post) {
-            try {
-                this.channel.postMessage(post)
-            } catch (error) {
-                console.error('خطأ في بث عبر BroadcastChannel:', error)
-            }
+        socket.onmessage = function(event) {
+            const newPost = JSON.parse(event.data);
+            window.store.posts = [newPost, ...window.store.posts];
+        };
+
+        socket.onclose = function() {
+            console.log('تم قطع الاتصال بالبث المباشر');
+            document.getElementById('broadcastStatus').textContent = 'غير متصل بالبث';
+            document.getElementById('broadcastStatus').style.color = 'var(--error-color)';
+            // إعادة الاتصال بعد 5 ثوان
+            setTimeout(connect, 5000);
+        };
+
+        socket.onerror = function(error) {
+            console.error('خطأ في البث المباشر:', error);
+        };
+    }
+
+    function broadcast(post) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify(post));
+        } else {
+            console.error('غير متصل بالبث المباشر');
         }
     }
 
-    // إنشاء Instance
-    window.broadcast = new Broadcast()
+    // بدء الاتصال عند تحميل الصفحة
+    connect();
 
+    window.broadcast = broadcast;
 })();

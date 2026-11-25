@@ -1,42 +1,43 @@
 (function() {
-    'use strict'
+    'use strict';
 
-    class Radar {
-        constructor() {
-            this.data = []
-            this.setupStoreListener()
-        }
+    async function renderRadarChart() {
+        try {
+            const radarData = await window.api.fetchRadarData();
+            const radarChart = document.getElementById('radarChart');
+            radarChart.innerHTML = '';
 
-        setupStoreListener() {
-            window.store.on('storeUpdated', (event) => {
-                this.data = event.detail.posts
-                this.processData()
-            })
-        }
+            // إنشاء رسم بياني نصي مبسط
+            const chart = document.createElement('div');
+            chart.className = 'radar-chart';
 
-        processData() {
-            const cities = this.getUniqueCities()
-            const cityData = this.calculateCityData(cities)
-            window.store.emit('radarDataUpdated', { cities: cityData })
-        }
+            // إضافة عناوين المحاور
+            const axes = ['الخرطوم', 'أم درمان', 'بورتسودان', 'كردفان', 'دارفور'];
+            axes.forEach(axis => {
+                const axisElement = document.createElement('div');
+                axisElement.className = 'radar-axis';
+                axisElement.textContent = axis;
+                chart.appendChild(axisElement);
+            });
 
-        getUniqueCities() {
-            const cities = new Set()
-            this.data.forEach(post => cities.add(post.city))
-            return Array.from(cities)
-        }
+            // إضافة نقاط البيانات
+            radarData.forEach((point, index) => {
+                const pointElement = document.createElement('div');
+                pointElement.className = 'radar-point';
+                pointElement.style.left = `${(index + 1) * 20}%`;
+                pointElement.style.bottom = `${point.price * 0.5}%`;
+                pointElement.textContent = point.price;
+                chart.appendChild(pointElement);
+            });
 
-        calculateCityData(cities) {
-            return cities.reduce((acc, city) => {
-                const cityPosts = this.data.filter(post => post.city === city)
-                const avgPrice = cityPosts.reduce((sum, post) => sum + post.price, 0) / cityPosts.length
-                acc[city] = { avgPrice, count: cityPosts.length }
-                return acc
-            }, {})
+            radarChart.appendChild(chart);
+        } catch (error) {
+            console.error('خطأ في عرض الرسم البياني:', error);
         }
     }
 
-    // إنشاء Instance
-    window.radar = new Radar()
+    // استدعاء الدالة عند تحميل الصفحة
+    document.addEventListener('DOMContentLoaded', renderRadarChart);
 
+    window.renderRadarChart = renderRadarChart;
 })();
