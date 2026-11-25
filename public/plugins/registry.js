@@ -1,28 +1,32 @@
 (function() {
     'use strict';
 
-    const plugins = new Map();
+    // سجل التوسعات
+    const extensions = new Map();
 
-    function registerPlugin(name, plugin) {
-        if (!plugins.has(name)) {
-            plugins.set(name, plugin);
-            console.log(`Plugin ${name} registered successfully`);
-        } else {
-            console.warn(`Plugin ${name} is already registered`);
+    // دالة لتسجيل توسعة جديدة
+    function registerExtension(name, extension) {
+        if (!name || typeof extension !== 'object') {
+            throw new Error('اسم التوسعة أو التوسعة غير صالح');
         }
+        extensions.set(name, extension);
+        console.log(`تم تسجيل التوسعة: ${name}`);
     }
 
-    function getPlugin(name) {
-        return plugins.get(name);
+    // دالة للحصول على توسعة
+    function getExtension(name) {
+        return extensions.get(name);
     }
 
-    function getAllPlugins() {
-        return Array.from(plugins.values());
+    // دالة للحصول على جميع التوسعات
+    function getAllExtensions() {
+        return Array.from(extensions.values());
     }
 
+    // تصدير الوظائف
     window.pluginRegistry = {
-        registerPlugin,
-        getPlugin,
-        getAllPlugins
+        registerExtension,
+        getExtension,
+        getAllExtensions
     };
 })();
