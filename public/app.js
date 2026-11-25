@@ -1,3 +1,4 @@
+/*! Smart Market Price Tagger v1.0 - Fixed & Optimized */
 (function() {
   'use strict';
 
@@ -43,6 +44,7 @@
   // 3. Price Extraction & Smart Tagging Engine
   window.tagPost = (post) => {
     const text = post.content || '';
+    const now = Date.now();
 
     // Extract Price
     const priceMatch = text.match(window.APP_CONFIG.priceRegex);
@@ -55,122 +57,181 @@
     // Smart Dynamic Tagging
     if (post.price !== null) {
       const posts = window.postStorage.getAll();
-      const now = Date.now();
       const dayAgo = now - (24 * 60 * 60 * 1000);
 
-      const relevantPosts = posts.filter(p =>
-        p.timestamp > dayAgo &&
-        p.store === post.store &&
+      const relevantPosts = posts.filter(p => 
+        p.timestamp > dayAgo && 
+        p.store === post.store && 
         p.price !== null
       );
 
       if (relevantPosts.length > 0) {
         const avgPrice = relevantPosts.reduce((sum, p) => sum + p.price, 0) / relevantPosts.length;
-        post.priceTag = post.price < avgPrice ? 'cheap' : 'expensive';
-      } else {
-        post.priceTag = 'neutral';
+        post.priceTag = post.price < avgPrice * 0.9 ? 'cheap' : 'expensive';
+        post.priceDiff = ((post.price - avgPrice) / avgPrice * 100).toFixed(1) + '%';
       }
     }
 
+    // Add metadata
+    post.id = 'post_' + now;
+    post.timestamp = now;
+    post.author = post.author || 'مستخدم مجهول';
     return post;
   };
 
-  // 4. UI Rendering
-  function renderPosts(posts) {
-    const postsContainer = document.getElementById('posts');
-    if (!postsContainer) return;
-
-    postsContainer.innerHTML = posts.length ? posts.map(p => {
-      const priceTag = p.priceTag === 'cheap' ? '🟢' : p.priceTag === 'expensive' ? '🔴' : '';
-      return `
-        <div class="post" data-id="${p.id}">
-          <div class="post-header">
-            <span class="author">${p.author || 'مجهول'}</span>
-            <span class="timestamp">${new Date(p.timestamp).toLocaleString('ar-EG')}</span>
-          </div>
-          <div class="post-content">${p.content}</div>
-          <div class="post-meta">
-            <span class="price">${p.price !== null ? `${p.price} ريال` : 'سعر غير محدد'}</span>
-            <span class="store">${p.store}</span>
-            <span class="price-tag">${priceTag}</span>
-          </div>
-        </div>
-      `;
-    }).join('') : '<div class="empty">لا توجد منشورات بعد</div>';
-  }
-
-  // 5. Event Handlers
-  document.getElementById('publishBtn').addEventListener('click', () => {
-    const content = document.getElementById('content').value.trim();
-    const author = document.getElementById('author').value.trim();
-
-    if (!content) {
-      showError('الرجاء كتابة المنشور', 'warning');
-      return;
-    }
-
-    const post = {
-      id: Date.now().toString(),
-      content,
-      author: author || null,
-      timestamp: Date.now()
-    };
-
-    const taggedPost = window.tagPost(post);
-    window.postStorage.addPost(taggedPost);
-    document.getElementById('content').value = '';
-    renderPosts(window.postStorage.getAll());
-  });
-
-  // 6. Initialization
+  // 4. DOM Ready & Event Listeners
   document.addEventListener('DOMContentLoaded', () => {
-    renderPosts(window.postStorage.getAll());
+    // Initialize UI
+    updateUIStatus('جارٍ الاتصال...', false);
+    renderPosts();
+
+    // Event Listeners
+    document.getElementById('publishBtn').addEventListener('click', publishPost);
+    document.getElementById('compareBtn').addEventListener('click', comparePosts);
+    document.getElementById('analyticsToggle').addEventListener('click', toggleAnalytics);
+
+    // Filter buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        filterPosts(btn.dataset.filter);
+      });
+    });
+
+    // Storage sync listener
+    window.addEventListener('storage:update', renderPosts);
   });
 
-  // 7. Helper Functions
+  // 5. UI Functions
   function updateUIStatus(status, isOnline) {
     const statusElement = document.getElementById('status');
     const syncBadge = document.getElementById('syncBadge');
 
-    if (statusElement) statusElement.textContent = status;
-    if (syncBadge) {
-      if (isOnline) {
-        syncBadge.classList.remove('offline');
-        syncBadge.classList.add('online');
-        syncBadge.title = 'متصل';
-      } else {
-        syncBadge.classList.remove('online');
-        syncBadge.classList.add('offline');
-        syncBadge.title = 'وضع محلي سريع';
-      }
+    statusElement.textContent = status;
+
+    if (isOnline) {
+      syncBadge.classList.remove('offline');
+      syncBadge.classList.add('online');
+      syncBadge.title = 'متصل';
+      document.getElementById('publishBtn').disabled = false;
+      document.getElementById('compareBtn').disabled = false;
+      document.getElementById('analyticsToggle').disabled = false;
+    } else {
+      syncBadge.classList.remove('online');
+      syncBadge.classList.add('offline');
+      syncBadge.title = 'غير مزامن';
+      document.getElementById('publishBtn').disabled = false;
+      document.getElementById('compareBtn').disabled = true;
+      document.getElementById('analyticsToggle').disabled = true;
     }
   }
 
-  // 8. Filtering
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-
-      const filter = btn.dataset.filter;
-      const posts = window.postStorage.getAll();
-
-      if (filter === 'cheap') {
-        renderPosts(posts.filter(p => p.priceTag === 'cheap'));
-      } else if (filter === 'expensive') {
-        renderPosts(posts.filter(p => p.priceTag === 'expensive'));
-      } else {
-        renderPosts(posts);
-      }
-    });
-  });
-
-  // 9. Compare Prices
-  document.getElementById('compareBtn').addEventListener('click', () => {
+  function renderPosts() {
+    const postsContainer = document.getElementById('posts');
     const posts = window.postStorage.getAll();
+
+    postsContainer.innerHTML = '';
+
+    if (posts.length === 0) {
+      postsContainer.innerHTML = '<p>لا يوجد منشورات بعد</p>';
+      return;
+    }
+
+    posts.forEach(post => {
+      const postElement = document.createElement('div');
+      postElement.className = 'post-card ' + (post.priceTag || '');
+      postElement.innerHTML = `
+        <div class="post-header">
+          <span class="post-author">${post.author}</span>
+          <span class="post-time">منذ ${Math.floor((Date.now() - post.timestamp) / 60000)} دقيقة</span>
+        </div>
+        <div class="post-content">${post.content}</div>
+        ${post.price !== null ? `<div class="post-price">${post.price} ريال ${post.priceTag ? `<span class="price-tag">(${post.priceTag === 'cheap' ? '🟢' : '🔴'}) ${post.priceDiff}</span>` : ''}</div>` : ''}
+        <div class="post-store">في ${post.store}</div>
+      `;
+      postsContainer.appendChild(postElement);
+    });
+  }
+
+  function filterPosts(filter) {
+    const posts = window.postStorage.getAll();
+    const filteredPosts = filter ? posts.filter(p => p.priceTag === filter) : posts;
+    renderPosts();
+  }
+
+  function comparePosts() {
+    const posts = window.postStorage.getAll().filter(p => p.price !== null);
+    if (posts.length < 2) {
+      alert('يحتاج المقارنة إلى أكثر من منشور');
+      return;
+    }
+
+    const sortedPosts = [...posts].sort((a, b) => a.price - b.price);
+    const cheapest = sortedPosts[0];
+    const mostExpensive = sortedPosts[sortedPosts.length - 1];
+
     const compareOverlay = document.getElementById('compareOverlay');
-    const compareResults = document.getElementById('compareResults');
+    compareOverlay.innerHTML = `
+      <div class="compare-overlay-content">
+        <h3>مقارنة الأسعار</h3>
+        <div class="compare-item">
+          <h4>أرخص</h4>
+          <p>${cheapest.content}</p>
+          <p>${cheapest.price} ريال في ${cheapest.store}</p>
+        </div>
+        <div class="compare-item">
+          <h4>أغلى</h4>
+          <p>${mostExpensive.content}</p>
+          <p>${mostExpensive.price} ريال في ${mostExpensive.store}</p>
+        </div>
+        <button id="closeCompare" class="close-btn">إغلاق</button>
+      </div>
+    `;
 
-    if (!compareOverlay || !compareResults) return;
+    compareOverlay.classList.remove('hidden');
+    document.getElementById('closeCompare').addEventListener('click', () => {
+      compareOverlay.classList.add('hidden');
+    });
+  }
 
-    const products = {}
+  function toggleAnalytics() {
+    const analyticsPanel = document.getElementById('analyticsPanel');
+    analyticsPanel.classList.toggle('hidden');
+    if (!analyticsPanel.classList.contains('hidden')) {
+      updateAnalyticsCharts();
+    }
+  }
+
+  function updateAnalyticsCharts() {
+    // Placeholder for analytics chart logic
+    console.log('Updating analytics charts...');
+  }
+
+  // 6. Publish Logic
+  function publishPost() {
+    const content = document.getElementById('content').value.trim();
+    const author = document.getElementById('author').value.trim() || 'مستخدم مجهول';
+
+    if (!content) {
+      alert('يرجى إدخال نص المنشور');
+      return;
+    }
+
+    const post = {
+      content: content,
+      author: author
+    };
+
+    const taggedPost = window.tagPost(post);
+    window.postStorage.addPost(taggedPost);
+
+    // Clear input
+    document.getElementById('content').value = '';
+    document.getElementById('author').value = '';
+
+    // Show success message
+    updateUIStatus('منشور محلي بنجاح!', false);
+  }
+
+})();
