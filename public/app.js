@@ -6,8 +6,8 @@
     wsUrl: 'wss://browser-relay-server.onrender.com',
     storageKey: 'smart_posts_v1',
     maxPosts: 500,
-    priceRegex: /(\\d+(\\.\\d{1,2})?)\\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
-    storeRegex: /(في|من|عند)\\s+([\\u0600-\\u06FF\\s]+)/i
+    priceRegex: /(\d+(\.\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
+    storeRegex: /(في|من|عند)\s+([\u0600-\u06FF\s]+)/i
   };
   
   // 2. Storage Manager (Source of Truth)
@@ -44,7 +44,7 @@
     
     // Extract Price
     const priceMatch = text.match(window.APP_CONFIG.priceRegex);
-    post.price = priceMatch ? parseFloat(priceMatch[0].replace(/[^\\d.]/g, '')) : null;
+    post.price = priceMatch ? parseFloat(priceMatch[0].replace(/[^\d.]/g, '')) : null;
     
     // Extract Store Name
     const storeMatch = text.match(window.APP_CONFIG.storeRegex);
@@ -72,76 +72,89 @@
     
     return post;
   };
-  
+
   // 4. UI Initialization
   document.addEventListener('DOMContentLoaded', () => {
-    const contentInput = document.getElementById('content');
+    // Initialize UI Elements
     const publishBtn = document.getElementById('publishBtn');
+    const contentInput = document.getElementById('content');
+    const authorInput = document.getElementById('author');
+    const postsContainer = document.getElementById('posts');
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    const compareBtn = document.getElementById('compareBtn');
+    const analyticsToggle = document.getElementById('analyticsToggle');
+    const analyticsPanel = document.getElementById('analyticsPanel');
+    const compareOverlay = document.getElementById('compareOverlay');
+    const compareContent = document.getElementById('compareContent');
+    const closeBtn = compareContent.querySelector('.close-btn');
     
-    // Enable publish button when content is entered
-    contentInput.addEventListener('input', () => {
-      publishBtn.disabled = contentInput.value.trim() === '';
-    });
+    // Initialize UI State
+    updateUIStatus('جاري الاتصال...', false);
     
-    // Publish button click handler
-    publishBtn.addEventListener('click', () => {
-      const author = document.getElementById('author').value.trim();
-      const content = contentInput.value.trim();
-      
-      if (content) {
-        const post = {
-          id: Date.now().toString(),
-          author: author || 'مجهول',
-          content: content,
-          timestamp: Date.now()
-        };
-        
-        // Tag the post
-        window.tagPost(post);
-        
-        // Save to local storage
-        window.postStorage.addPost(post);
-        
-        // Clear input
-        contentInput.value = '';
-        publishBtn.disabled = true;
-        
-        // Broadcast the post
-        channel.postMessage({ type: 'NEW_POST', data: post });
-      }
-    });
+    // Event Listeners
+    publishBtn.addEventListener('click', publishPost);
+    contentInput.addEventListener('input', validateInput);
+    authorInput.addEventListener('input', validateInput);
+    filterButtons.forEach(btn => btn.addEventListener('click', filterPosts));
+    compareBtn.addEventListener('click', showCompareModal);
+    analyticsToggle.addEventListener('click', toggleAnalytics);
+    closeBtn.addEventListener('click', hideCompareModal);
     
-    // Load posts from storage
-    window.postStorage.getAll().then(posts => {
-      renderPosts(posts);
+    // Initialize Posts
+    renderPosts(window.postStorage.getAll());
+    
+    // Storage Update Listener
+    window.addEventListener('storage:update', (e) => {
+      renderPosts(e.detail);
+      updateRadar();
     });
   });
-  
-  // 5. Render Posts
-  function renderPosts(posts) {
-    const postsContainer = document.getElementById('posts');
-    postsContainer.innerHTML = '';
+
+  // 5. Core Functions
+  function publishPost() {
+    const content = document.getElementById('content').value.trim();
+    const author = document.getElementById('author').value.trim();
     
-    posts.forEach(post => {
+    if (!content) return;
+    
+    const post = {
+      id: Date.now().toString(),
+      content,
+      author: author || 'مجهول',
+      timestamp: Date.now()
+    };
+    
+    // Tag the post
+    window.tagPost(post);
+    
+    // Save to storage
+    window.postStorage.addPost(post);
+    
+    // Clear input
+    document.getElementById('content').value = '';
+    document.getElementById('author').value = '';
+    
+    // Update UI
+    validateInput();
+  }
+
+  function validateInput() {
+    const content = document.getElementById('content').value.trim();
+    document.getElementById('publishBtn').disabled = !content;
+  }
+
+  function renderPosts(posts, filter = '') {
+    const container = document.getElementById('posts');
+    container.innerHTML = '';
+    
+    posts.filter(p => !filter || p.priceTag === filter).forEach(post => {
       const postElement = document.createElement('div');
       postElement.className = `post ${post.priceTag || ''}`;
-      
       postElement.innerHTML = `
         <div class="post-header">
-          <span class="author">${post.author}</span>
-          <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
+          <span class="post-author">${escapeHtml(post.author)}</span>
+          <span class="post-time">${formatTime(post.timestamp)}</span>
         </div>
-        <div class="post-content">${post.content}</div>
-        ${post.price ? `<div class="post-price">السعر: ${post.price} ريال</div>` : ''}
-        ${post.store ? `<div class="post-store">المحل: ${post.store}</div>` : ''}
-      `;
-      
-      postsContainer.appendChild(postElement);
-    });
-  }
-  
-  // 6. Listen for storage updates
-  window.addEventListener('storage:update', (e) => {
-    renderPosts(e.detail);
-  });
-})();
+        <div class="post-content">${escapeHtml(post.content)}</div>
+        ${post.price ? `<div class="post-price">${post.price} ${getCurrency(post.content)}</div>` : ''}
+        ${post.store ? `<div class="post-store">${escapeHtml(post.store)}</div>` : ''}
