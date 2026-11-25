@@ -45,6 +45,40 @@ jobs:
 
           const CANONICAL_PAGES_URL = "https://mb4252.github.io/sudan-market-/";
           const CANONICAL_RENDER_URL = "https://sudan-market-2.onrender.com";
+          const STAGES_FILE = "public/stages.json";
+
+          const ROADMAP_STAGES = [
+            {
+              id: "stage-1-core-store-and-sync",
+              title: "نواة التخزين الفوري (localStorage) وبث Render المباشر وصحة التواريخ",
+              files: ["public/store.js", "public/broadcast.js"],
+              goal: "بناء مخزن تفاعلي يحفظ فوراً في localStorage مع دالة موثوقة لصحة التواريخ (بدون Invalid Date أبداً) ووحدة بث عبر wss://sudan-market-2.onrender.com مع إعادة اتصال تلقائية."
+            },
+            {
+              id: "stage-2-modern-ui-shell",
+              title: "واجهة عصرية جذابة وغير تقليدية ونموذج نشر فوري",
+              files: ["index.html", "public/styles.css"],
+              goal: "تصميم واجهة حديثة وجذابة بعيداً عن البطاقات التقليدية البسيطة، مع شريط حالة للبث، حقول نشر فوري، وحاويات واضحة للمنشورات والرادار والمقارنة وربط الملفات المعيارية."
+            },
+            {
+              id: "stage-3-price-radar-and-compare",
+              title: "رادار الأسعار الذكي والمقارنة الفورية",
+              files: ["public/radar.js", "public/compare.js"],
+              goal: "إضافة وحدات متخصصة لاستخراج الأسعار والسلع من المنشورات، وعرض رادار الأسعار ومقارنة العروض بشكل تفاعلي."
+            },
+            {
+              id: "stage-4-search-filters-and-analytics",
+              title: "البحث والتصفية الفورية ولوحة التحليلات",
+              files: ["public/filters.js", "public/analytics.js"],
+              goal: "إضافة بحث فوري وتصفية حسب الاسم أو السعر أو المحتوى ولوحة إحصاءات ومؤشرات نشاط السوق."
+            },
+            {
+              id: "stage-5-extensible-plugins-hub",
+              title: "منظومة إضافات قابلة للتوسيع (Plugin Registry)",
+              files: ["public/plugins/registry.js", "public/plugins/alerts.js"],
+              goal: "بناء سجل إضافات مرن يسمح بإضافة أدوات وميزات جديدة بسهولة مستقبلاً دون تضخيم ملف واحد."
+            }
+          ];
 
           function failWithReason(reason) {
             console.error("❌ AI STATUS: FAILED");
@@ -62,8 +96,45 @@ jobs:
             return u || fallbackUrl;
           }
 
+          function loadStagesState() {
+            const defaultState = {
+              completedStages: [],
+              currentStage: ROADMAP_STAGES[0].id,
+              extraStageCounter: 0
+            };
+            try {
+              if (!fs.existsSync(STAGES_FILE)) return defaultState;
+              const parsed = JSON.parse(fs.readFileSync(STAGES_FILE, "utf8"));
+              return {
+                completedStages: Array.isArray(parsed.completedStages) ? parsed.completedStages : [],
+                currentStage: typeof parsed.currentStage === "string" ? parsed.currentStage : ROADMAP_STAGES[0].id,
+                extraStageCounter: Number.isFinite(parsed.extraStageCounter) ? parsed.extraStageCounter : 0
+              };
+            } catch {
+              return defaultState;
+            }
+          }
+
+          function selectActiveStage(stagesState, hasCriticalRuntimeIssue) {
+            for (const st of ROADMAP_STAGES) {
+              if (!stagesState.completedStages.includes(st.id)) {
+                return st;
+              }
+            }
+            const nextNum = (stagesState.extraStageCounter || 0) + 1;
+            const dynamicId = `stage-${ROADMAP_STAGES.length + nextNum}-advanced-module`;
+            return {
+              id: dynamicId,
+              title: `تطوير توسعي متقدم #${nextNum}`,
+              files: [`public/extensions/module-${nextNum}.js`, "public/plugins/registry.js"],
+              goal: hasCriticalRuntimeIssue
+                ? "معالجة أي خلل تشغيلي مكتشف دون إعادة بناء المراحل المكتملة."
+                : "إضافة وحدة تطوير متقدمة ومبتكرة جديدة تتكامل مع النظام القائم دون العودة للمراحل السابقة."
+            };
+          }
+
           function collectProjectFiles(dir = ".", depth = 0, out = []) {
-            if (depth > 2) return out;
+            if (depth > 3) return out;
             const ignore = new Set(["node_modules", ".git", ".github"]);
             for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
               if (ignore.has(entry.name)) continue;
@@ -72,8 +143,8 @@ jobs:
                 collectProjectFiles(fullPath, depth + 1, out);
               } else if (/\.(js|html|css|json)$/i.test(entry.name)) {
                 const content = fs.readFileSync(fullPath, "utf8");
-                const clipped = content.length > 1500
-                  ? content.slice(0, 1500) + "\n/* ...مقتطع للاختصار... */"
+                const clipped = content.length > 1400
+                  ? content.slice(0, 1400) + "\n/* ...مقتطع للاختصار... */"
                   : content;
                 out.push({ fullPath, raw: content, content: clipped });
               }
@@ -127,9 +198,6 @@ jobs:
               const html = await res.text();
               const scriptSrcs = [...html.matchAll(/<script[^>]+src=["'\'']([^"'\'']+)["'\'']/gi)].map(m => m[1]);
               lines.push(`صفحة GitHub Pages (${cleanPages}): HTTP ${res.status} | عدد السكربتات: ${scriptSrcs.length} (${scriptSrcs.join(", ") || "لا يوجد"})`);
-              if (/جاري الاتصال\.\.\./.test(html) && !/bridgeStatus|statusText|connectionStatus/i.test(html)) {
-                lines.push("⚠️ نص ثابت (جاري الاتصال...) موجود في HTML دون مؤشر حالة ديناميكي واضح.");
-              }
             } catch (e) {
               lines.push(`تعذر فحص صفحة GitHub Pages (${cleanPages}): ${e.message}`);
             }
@@ -149,58 +217,34 @@ jobs:
             const issues = [];
             const htmlFile = filesList.find(f => f.fullPath === "index.html");
             const jsFiles = filesList.filter(f => f.fullPath.endsWith(".js") && f.fullPath !== "server.js");
-            const cssFiles = filesList.filter(f => f.fullPath.endsWith(".css"));
-            const hasSwFile = filesList.some(f => /(^|\/)(sw|service-worker)\.js$/i.test(f.fullPath));
 
             if (!htmlFile) {
               issues.push("ملف index.html مفقود في الجذر.");
-              return issues.join("\n");
+              return { text: issues.join("\n"), hasCritical: true };
             }
 
-            if (!cssFiles.length) {
-              issues.push("لا يوجد ملف CSS مستقل لتنسيق الواجهة بشكل حديث ومتقن.");
-            }
-
-            const htmlIds = new Set([...htmlFile.raw.matchAll(/\bid=["'\'']([^"'\'']+)["'\'']/g)].map(m => m[1]));
             const allJsRaw = jsFiles.map(f => f.raw).join("\n");
             const combinedRaw = allJsRaw + "\n" + htmlFile.raw;
 
-            if (/toLocaleString|toLocaleDateString|toLocaleTimeString/.test(allJsRaw) && !/isNaN\(Date\.parse|Number\.isFinite/.test(allJsRaw)) {
-              issues.push("تنسيق التاريخ قد يظهر Invalid Date عند وصول تاريخ غير صالح أو مفقود؛ تحقّق من صلاحية التاريخ قبل تنسيقه.");
+            if (/window\.isValidDate|\bisValidDate\b/.test(combinedRaw) && !/window\.isValidDate\s*=|function\s+isValidDate\b/.test(combinedRaw)) {
+              issues.push("استدعاء isValidDate أو window.isValidDate دون تعريفها على window.");
             }
-
             if (/getElementById\([^)]+\)\.textContent\s*=|querySelector\([^)]+\)\.textContent\s*=/.test(combinedRaw)) {
-              issues.push("إسناد مباشر لـ .textContent دون التحقق من وجود العنصر مما قد يسبب TypeError.");
+              issues.push("إسناد مباشر لـ .textContent دون التحقق من وجود العنصر.");
             }
-
-            if (/serviceWorker\.register/.test(combinedRaw) && !hasSwFile) {
-              issues.push("محاولة تسجيل Service Worker دون وجود ملف خدمة ويب؛ احمِ التسجيل أو أضف ./sw.js.");
-            }
-
             if (/YOUR-SERVICE|example\.onrender\.com/i.test(combinedRaw)) {
-              issues.push(`يوجد رابط Render وهمي غير حقيقي في الكود؛ استبدله بالرابط الصحيح: ${renderUrl}`);
+              issues.push(`رابط Render وهمي موجود في الكود؛ استخدم ${renderUrl}`);
             }
-            if (/location\.host/.test(allJsRaw) && !/sudan-market-2\.onrender\.com/.test(allJsRaw)) {
-              issues.push(`الكود يستخدم location.host للـ WebSocket بدلاً من الجسر الصحيح ${renderUrl}`);
-            }
-
-            const referencedIds = [...allJsRaw.matchAll(/getElementById\(["'\'']([^"'\'']+)["'\'']\)/g)].map(m => m[1]);
-            const missingIds = [...new Set(referencedIds.filter(id => !htmlIds.has(id)))];
-            if (missingIds.length) {
-              issues.push(`معرّفات DOM مفقودة في index.html وتسبب توقف السكربت بصمت: ${missingIds.join(", ")}`);
-            }
-
             if (!/localStorage/.test(allJsRaw)) {
-              issues.push("التخزين المحلي localStorage غير مفعّل بشكل واضح عند النشر.");
+              issues.push("التخزين المحلي localStorage غير مفعّل.");
             }
 
-            if (!/window\.addEventListener\(["'\'']error["'\'']|onunhandledrejection/.test(combinedRaw)) {
-              issues.push("لا يوجد ملتقط أخطاء عام (window.onerror / unhandledrejection) يظهر الخطأ بوضوح في الواجهة واللوغو.");
-            }
-
-            return issues.length
-              ? issues.map((x, i) => `${i + 1}. ${x}`).join("\n")
-              : "لا توجد أخطاء بنيوية واضحة في الفحص الساكن، ركّز على تطوير التصميم البصري العصري والميزات الذكية القابلة للتوسيع وتوزيع الملفات.";
+            return {
+              text: issues.length
+                ? issues.map((x, i) => `${i + 1}. ${x}`).join("\n")
+                : "لا توجد أخطاء حرجة في الفحص الساكن.",
+              hasCritical: issues.length > 0
+            };
           }
 
           async function getGroqModelsOrdered(apiKey) {
@@ -211,10 +255,8 @@ jobs:
               "llama-3.3-70b-versatile",
               "llama-3.1-8b-instant"
             ];
-
             try {
-              const modelsUrl = sanitizeUrl("https://api.groq.com/openai/v1/models");
-              const res = await fetch(modelsUrl, {
+              const res = await fetch(sanitizeUrl("https://api.groq.com/openai/v1/models"), {
                 headers: { Authorization: `Bearer ${apiKey}` }
               });
               if (!res.ok) return fallbackModels;
@@ -222,7 +264,6 @@ jobs:
               const ids = (data.data || [])
                 .map(m => m.id)
                 .filter(id => id && !/whisper|tts|guard|prompt-guard|safeguard|embed|allam|orpheus/i.test(id));
-
               const ordered = [];
               for (const p of fallbackModels) {
                 if (ids.includes(p) && !ordered.includes(p)) ordered.push(p);
@@ -242,21 +283,9 @@ jobs:
             let esc = false;
             for (let i = 0; i < raw.length; i++) {
               const ch = raw[i];
-              if (esc) {
-                out += ch;
-                esc = false;
-                continue;
-              }
-              if (ch === "\\") {
-                out += ch;
-                esc = true;
-                continue;
-              }
-              if (ch === "\"") {
-                out += ch;
-                inStr = !inStr;
-                continue;
-              }
+              if (esc) { out += ch; esc = false; continue; }
+              if (ch === "\\") { out += ch; esc = true; continue; }
+              if (ch === "\"") { out += ch; inStr = !inStr; continue; }
               if (inStr) {
                 if (ch === "\n") { out += "\\n"; continue; }
                 if (ch === "\r") { out += "\\r"; continue; }
@@ -304,7 +333,6 @@ jobs:
                 .replace(/```\s*$/i, "")
                 .trim()
             );
-
             try {
               return JSON.parse(cleaned);
             } catch {
@@ -322,8 +350,7 @@ jobs:
           }
 
           async function callChatCompletion(targetUrl, targetHeaders, payloadBody) {
-            const cleanUrl = sanitizeUrl(targetUrl);
-            const res = await fetch(cleanUrl, {
+            const res = await fetch(sanitizeUrl(targetUrl), {
               method: "POST",
               headers: targetHeaders,
               body: JSON.stringify(payloadBody)
@@ -347,38 +374,32 @@ jobs:
           }
 
           async function callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens) {
-            const url = sanitizeUrl("[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)");
-            const headers = {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${key}`,
-              "HTTP-Referer": CANONICAL_PAGES_URL,
-              "X-Title": "sudan-market-autopilot"
-            };
-            const body = {
-              model: "openrouter/free",
-              messages: [
-                { role: "system", content: sysPrompt },
-                { role: "user", content: usrPrompt }
-              ],
-              max_tokens: maxTokens,
-              temperature: 0.5
-            };
-
-            const data = await callChatCompletion(url, headers, body);
+            const data = await callChatCompletion(
+              "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)",
+              {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${key}`,
+                "HTTP-Referer": CANONICAL_PAGES_URL,
+                "X-Title": "sudan-market-autopilot"
+              },
+              {
+                model: "openrouter/free",
+                messages: [
+                  { role: "system", content: sysPrompt },
+                  { role: "user", content: usrPrompt }
+                ],
+                max_tokens: maxTokens,
+                temperature: 0.5
+              }
+            );
             const out = data?.choices?.[0]?.message?.content || "";
             if (!out.trim()) throw new Error("رد فارغ من OpenRouter");
             return out;
           }
 
           async function callMistral(key, sysPrompt, usrPrompt, maxTokens, jsonMode = false) {
-            const url = sanitizeUrl("[https://api.mistral.ai/v1/chat/completions](https://api.mistral.ai/v1/chat/completions)");
-            const headers = {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${key}`
-            };
             const models = ["codestral-latest", "mistral-small-latest", "open-mistral-nemo"];
             let lastErr = null;
-
             for (const m of models) {
               try {
                 const body = {
@@ -393,14 +414,17 @@ jobs:
                 if (jsonMode && m !== "codestral-latest") {
                   body.response_format = { type: "json_object" };
                 }
-                const data = await callChatCompletion(url, headers, body);
+                const data = await callChatCompletion(
+                  "[https://api.mistral.ai/v1/chat/completions](https://api.mistral.ai/v1/chat/completions)",
+                  { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+                  body
+                );
                 const out = data?.choices?.[0]?.message?.content || "";
                 if (!out.trim()) throw new Error(`رد فارغ من Mistral (${m})`);
                 return { text: out, detail: `Mistral (${m})` };
               } catch (e) {
                 lastErr = e;
                 console.warn(`⚠️ نموذج Mistral (${m}) تعذر: ${e.message}`);
-                continue;
               }
             }
             throw lastErr || new Error("فشل جميع نماذج Mistral");
@@ -415,9 +439,8 @@ jobs:
               list.push({
                 id: "mistral",
                 label: "Mistral AI",
-                runText: async (sysPrompt, usrPrompt, maxTokens = 600) => {
-                  return await callMistral(mistralKey, sysPrompt, usrPrompt, maxTokens, false);
-                },
+                runText: async (sysPrompt, usrPrompt, maxTokens = 550) =>
+                  await callMistral(mistralKey, sysPrompt, usrPrompt, maxTokens, false),
                 runJson: async (sysPrompt, usrPrompt, maxTokens = 6500) => {
                   const res = await callMistral(mistralKey, sysPrompt, usrPrompt, maxTokens, true);
                   return { parsed: extractJsonObject(res.text), detail: res.detail };
@@ -434,63 +457,70 @@ jobs:
                 list.push({
                   id: "groq",
                   label: "Groq",
-                  runText: async (sysPrompt, usrPrompt, maxTokens = 600) => {
+                  runText: async (sysPrompt, usrPrompt, maxTokens = 550) => {
                     const models = await getGroqModelsOrdered(key);
-                    const groqUrl = sanitizeUrl("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)");
-                    const headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
                     let lastErr = null;
                     for (const m of models) {
                       try {
-                        const data = await callChatCompletion(groqUrl, headers, {
-                          model: m,
-                          messages: [
-                            { role: "system", content: sysPrompt },
-                            { role: "user", content: usrPrompt }
-                          ],
-                          max_tokens: maxTokens,
-                          temperature: 0.5
-                        });
+                        const data = await callChatCompletion(
+                          "[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)",
+                          { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+                          {
+                            model: m,
+                            messages: [
+                              { role: "system", content: sysPrompt },
+                              { role: "user", content: usrPrompt }
+                            ],
+                            max_tokens: maxTokens,
+                            temperature: 0.5
+                          }
+                        );
                         const out = data?.choices?.[0]?.message?.content || "";
                         if (!out.trim()) throw new Error("رد فارغ");
                         return { text: out, detail: `Groq (${m})` };
                       } catch (e) {
                         lastErr = e;
                         console.warn(`⚠️ نموذج Groq (${m}) تعذر: ${e.message}`);
-                        continue;
                       }
                     }
                     throw lastErr || new Error("فشل نماذج Groq");
                   },
                   runJson: async (sysPrompt, usrPrompt, maxTokens = 4500) => {
                     const models = await getGroqModelsOrdered(key);
-                    const groqUrl = sanitizeUrl("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)");
-                    const headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
                     let lastErr = null;
                     for (const m of models) {
                       try {
                         let data;
                         try {
-                          data = await callChatCompletion(groqUrl, headers, {
-                            model: m,
-                            messages: [
-                              { role: "system", content: sysPrompt },
-                              { role: "user", content: usrPrompt }
-                            ],
-                            response_format: { type: "json_object" },
-                            max_tokens: maxTokens,
-                            temperature: 0.5
-                          });
+                          data = await callChatCompletion(
+                            "[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)",
+                            { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+                            {
+                              model: m,
+                              messages: [
+                                { role: "system", content: sysPrompt },
+                                { role: "user", content: usrPrompt }
+                              ],
+                              response_format: { type: "json_object" },
+                              max_tokens: maxTokens,
+                              temperature: 0.5
+                            }
+                          );
                         } catch (jErr) {
                           if (jErr.status === 429 || jErr.status === 400) throw jErr;
-                          data = await callChatCompletion(groqUrl, headers, {
-                            model: m,
-                            messages: [
-                              { role: "system", content: sysPrompt },
-                              { role: "user", content: usrPrompt }
-                            ],
-                            max_tokens: maxTokens,
-                            temperature: 0.5
-                          });
+                          data = await callChatCompletion(
+                            "[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)",
+                            { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+                            {
+                              model: m,
+                              messages: [
+                                { role: "system", content: sysPrompt },
+                                { role: "user", content: usrPrompt }
+                              ],
+                              max_tokens: maxTokens,
+                              temperature: 0.5
+                            }
+                          );
                         }
                         const raw = data?.choices?.[0]?.message?.content || "";
                         if (!raw.trim()) throw new Error("رد فارغ");
@@ -498,7 +528,6 @@ jobs:
                       } catch (e) {
                         lastErr = e;
                         console.warn(`⚠️ نموذج Groq (${m}) تعذر في JSON: ${e.message}`);
-                        continue;
                       }
                     }
                     throw lastErr || new Error("فشل توليد JSON من Groq");
@@ -508,7 +537,7 @@ jobs:
                 list.push({
                   id: "openrouter",
                   label: "OpenRouter (ChatGPT-style partner)",
-                  runText: async (sysPrompt, usrPrompt, maxTokens = 600) => {
+                  runText: async (sysPrompt, usrPrompt, maxTokens = 550) => {
                     const out = await callOpenRouterWithRetry(key, sysPrompt, usrPrompt, maxTokens);
                     return { text: out, detail: "OpenRouter (openrouter/free)" };
                   },
@@ -534,24 +563,28 @@ jobs:
               failWithReason("لا يوجد أي مفتاح API صالح في Secrets.");
             }
 
+            const stagesState = loadStagesState();
             const filesList = collectProjectFiles(".");
-            const staticReport = runSelfDiagnostics(filesList, renderUrl);
+            const diag = runSelfDiagnostics(filesList, renderUrl);
+            const activeStage = selectActiveStage(stagesState, diag.hasCritical);
             const liveReport = await probeLiveEndpoints(pagesUrl, renderUrl);
-            const diagnosticReport = `${staticReport}\n\n--- فحص الموقع الحي والجسر ---\n${liveReport}`;
-            console.log("🩺 تقرير التشخيص الشامل (الثابت والحي):\n" + diagnosticReport);
+
+            console.log(`🎯 المرحلة الحصرية الحالية: [${activeStage.id}] — ${activeStage.title}`);
+            console.log(`✅ المراحل المكتملة سابقاً: ${stagesState.completedStages.join(", ") || "لا يوجد"}`);
+            console.log("🩺 تقرير التشخيص:\n" + diag.text + "\n\n--- فحص الموقع الحي والجسر ---\n" + liveReport);
 
             const currentFiles = filesList
               .map(f => `--- FILE: ${f.fullPath} ---\n${f.content}`)
               .join("\n\n")
-              .slice(0, 4400);
+              .slice(0, 4200);
 
-            const architectureMandate = [
+            const stageMandate = [
               `رابط GitHub Pages الصحيح: ${pagesUrl}`,
               `رابط جسر Render الصحيح: ${renderUrl} (للبث المباشر عبر wss://sudan-market-2.onrender.com وطلب الإيقاظ /health).`,
-              "مهم جداً — أسماء الملفات المسموحة فقط: index.html أو app.js أو api.js أو styles.css أو ملفات داخل public/ مثل public/store.js وpublic/broadcast.js وpublic/radar.js. يُمنع منعاً باتاً استخدام أسماء مثل file_1_... أو أي أسماء وصفية.",
-              "1) إصلاح Invalid Date بشكل جذري: أي تاريخ يُعرض في المنشورات يجب التحقق من صحته أولاً، وعند غيابه أو عدم صلاحيته يُعرض وقت صالح (مثل Date.now()) أو نص واضح مثل 'الآن' دون ظهور Invalid Date أبداً.",
-              "2) حفظ فوري في المتصفح + بث مباشر عبر Render: حفظ فوري في localStorage عند النشر مع إرسال الحدث عبر WebSocket إلى wss://sudan-market-2.onrender.com لبثه لبقية المتصلين مع منع التكرار.",
-              "3) بنية موزعة قابلة للتوسيع وتصميم حديث غير تقليدي: توزيع المسؤوليات على ملفات نظيفة ومضافة ميزات تحليل/بحث/تصفية أو تحسين المظهر البصري خطوة بخطوة دون كسر النشر الفوري."
+              `المرحلة الحصرية المطلوبة الآن: ${activeStage.id} (${activeStage.title})`,
+              `هدف هذه المرحلة فقط: ${activeStage.goal}`,
+              `الملفات المقترحة لهذه المرحلة: ${activeStage.files.join(" ، ")} (وزّع العمل على ملفات متعددة نظيفة ولا تعد بناء المراحل المكتملة سابقاً: [${stagesState.completedStages.join(", ")}]).`,
+              "أسماء الملفات المسموحة فقط: index.html أو app.js أو api.js أو styles.css أو ملفات داخل public/ مثل public/store.js وpublic/broadcast.js وpublic/radar.js."
             ].join("\n");
 
             let agreedPlan = "";
@@ -561,20 +594,18 @@ jobs:
               const p1 = providers[0];
               const p2 = providers[1];
               console.log(`🤝 حوار التشخيص والابتكار نشط بين: [${p1.label}] و [${p2.label}]`);
-
               try {
                 const propRes = await p1.runText(
-                  "أنت مهندس معماري ومصمم واجهات متقدمة. ضع خطة لـ 2 إلى 3 ملفات بأسماء نظيفة (مثل index.html وpublic/store.js وpublic/broadcast.js) لإزالة Invalid Date وتطوير الميزات والتصميم مع الحفظ المحلي والبث عبر Render.",
-                  `التقرير:\n${diagnosticReport}\n\nالقواعد:\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
-                  480
+                  "أنت مهندس معماري. ضع خطة حصرية لمرحلة واحدة فقط موزعة على ملفات متعددة نظيفة وقابلة للتوسع.",
+                  `${stageMandate}\n\nالتشخيص:\n${diag.text}\n\nالملفات الحالية:\n${currentFiles}`,
+                  450
                 );
                 console.log(`💡 مقترح ${propRes.detail} جاهز للمراجعة.`);
-
                 try {
                   const revRes = await p2.runText(
-                    "أنت المدقق الهندسي. راجع الخطة وتأكد من أن أسماء الملفات نظيفة ومن حل Invalid Date وعدم كسر النشر الفوري، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
-                    `مقترح الطرف الأول:\n${propRes.text}\n\nالتقرير:\n${diagnosticReport}`,
-                    480
+                    "أنت المدقق الهندسي. راجع الخطة وركز على المرحلة الحصرية فقط دون العودة لمراحل سابقة، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
+                    `مقترح الطرف الأول:\n${propRes.text}\n\n${stageMandate}`,
+                    450
                   );
                   agreedPlan = revRes.text;
                   activeExecutor = p2;
@@ -587,31 +618,28 @@ jobs:
               } catch (propErr) {
                 console.warn(`⚠️ تعذر الطرف الأول (${propErr.message}) — ينتقل الطرف الثاني للعمل المستقل الفوري.`);
                 const soloRes = await p2.runText(
-                  "أنت المنفذ المستقل. ضع خطة لـ 2 إلى 3 ملفات بأسماء نظيفة لإزالة Invalid Date وتطوير الميزات والتصميم.",
-                  `التقرير:\n${diagnosticReport}\n\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
-                  480
+                  "أنت المنفذ المستقل. ضع خطة لمرحلة واحدة فقط موزعة على ملفات متعددة.",
+                  `${stageMandate}\n\n${currentFiles}`,
+                  450
                 );
                 agreedPlan = `[عمل مستقل فوري]\n${soloRes.text}`;
                 activeExecutor = p2;
               }
             } else {
-              agreedPlan = `نفّذ الخطة وحل المشاكل التالية:\n${diagnosticReport}`;
+              agreedPlan = `نفّذ المرحلة الحصرية التالية فقط:\n${stageMandate}`;
             }
 
             const systemJsonInstruction = [
-              "أنت مهندس واجهات ومعماري برمجيات محترف. أعد كائن JSON صالحاً فقط بدون أي نص خارجه.",
-              "استخدم أسماء ملفات نظيفة فقط مثل: index.html أو app.js أو api.js أو styles.css أو public/store.js أو public/broadcast.js أو public/radar.js.",
-              "الشكل المطلوب: {\"files\":{\"مسار_نظيف\":\"محتواه\"},\"summary\":\"ملخص مختصر\"}"
+              "أنت مهندس برمجيات محترف. أعد كائن JSON صالحاً فقط بدون أي نص خارجه.",
+              "وزّع العمل على عدة ملفات نظيفة مخصصة لهذه المرحلة فقط دون العودة لمراحل مكتملة سابقاً.",
+              "الشكل المطلوب: {\"files\":{\"مسار_ملف\":\"محتواه\"},\"summary\":\"ملخص مختصر\"}"
             ].join("\n");
 
             const executionPrompt = [
-              "نفّذ الخطة بدقة ووزّع المهام على 2 إلى 3 ملفات بأسماء نظيفة:",
+              "نفّذ هذه المرحلة الحصرية بدقة عبر ملفات متعددة متخصصة:",
               agreedPlan,
               "",
-              "=== التقرير التشخيصي ===",
-              diagnosticReport,
-              "",
-              architectureMandate,
+              stageMandate,
               "",
               "=== CURRENT FILES ===",
               currentFiles
@@ -644,7 +672,7 @@ jobs:
 
             const parsed = execResult.parsed;
             console.log(`✅ AI STATUS: WORKING (${execResult.detail})`);
-            console.log("ملخص التحديث:", parsed.summary || "تم التطوير والمعالجة");
+            console.log("ملخص التحديث:", parsed.summary || activeStage.title);
 
             let updatedCount = 0;
             if (parsed.files && typeof parsed.files === "object") {
@@ -667,10 +695,32 @@ jobs:
               }
             }
 
-            console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
             if (updatedCount > 0) {
-              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Clean modular files with localStorage & Render live broadcast").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
+              const isBaseStage = ROADMAP_STAGES.some(s => s.id === activeStage.id);
+              const nextCompleted = Array.from(new Set([...stagesState.completedStages, activeStage.id]));
+              const nextStageObj = selectActiveStage(
+                {
+                  completedStages: nextCompleted,
+                  extraStageCounter: isBaseStage
+                    ? stagesState.extraStageCounter
+                    : (stagesState.extraStageCounter || 0) + 1
+                },
+                false
+              );
+              const updatedStagesState = {
+                completedStages: nextCompleted,
+                currentStage: nextStageObj.id,
+                extraStageCounter: isBaseStage
+                  ? stagesState.extraStageCounter
+                  : (stagesState.extraStageCounter || 0) + 1
+              };
+              fs.mkdirSync("public", { recursive: true });
+              fs.writeFileSync(STAGES_FILE, JSON.stringify(updatedStagesState, null, 2), "utf8");
+              console.log(`🏁 تم إنهاء المرحلة [${activeStage.id}] والانتقال حصرياً إلى [${nextStageObj.id}]`);
+              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || `${activeStage.id}: ${activeStage.title}`).replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
             }
+
+            console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
           }
 
           run();
@@ -691,7 +741,7 @@ jobs:
             echo "ℹ️ nothing to commit, working tree clean."
             exit 0
           fi
-          SUMMARY="Clean modular files with localStorage & Render live broadcast"
+          SUMMARY="Staged modular evolution for Sudan Market"
           if [ -f last_ai_change.txt ]; then
             SUMMARY=$(head -n 1 last_ai_change.txt)
             rm -f last_ai_change.txt
