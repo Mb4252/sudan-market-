@@ -68,139 +68,159 @@
           ? 'cheap'
           : post.price > avgPrice * 1.1
             ? 'expensive'
-            : '';
+            : 'normal';
+      } else {
+        post.priceTag = 'normal';
       }
     }
+
+    return post;
   };
 
   // 4. UI Initialization
   document.addEventListener('DOMContentLoaded', () => {
-    // Initialize UI elements
-    const statusElement = document.getElementById('status');
-    const syncBadge = document.getElementById('syncBadge');
-    const publishBtn = document.getElementById('publishBtn');
-    const compareBtn = document.getElementById('compareBtn');
-    const analyticsToggle = document.getElementById('analyticsToggle');
-    const postsContainer = document.getElementById('posts');
-    const radarContent = document.getElementById('radarContent');
-    const analyticsPanel = document.getElementById('analyticsPanel');
-    const compareOverlay = document.getElementById('compareOverlay');
-    const compareContent = document.getElementById('compareContent');
-    const closeCompare = document.getElementById('closeCompare');
-    const compareResults = document.getElementById('compareResults');
-
-    // Set initial UI state
-    statusElement.textContent = 'جارٍ الاتصال...';
-    syncBadge.classList.add('offline');
-    syncBadge.title = 'غير مزامن';
-    publishBtn.disabled = true;
-    compareBtn.disabled = true;
-    analyticsToggle.disabled = true;
-
-    // Load existing posts
+    // Initialize UI
     renderPosts();
+    updateRadar();
+    updateAnalytics();
 
     // Event Listeners
-    publishBtn.addEventListener('click', publishPost);
-    compareBtn.addEventListener('click', showCompareOverlay);
-    analyticsToggle.addEventListener('click', toggleAnalyticsPanel);
-    closeCompare.addEventListener('click', hideCompareOverlay);
+    document.getElementById('publishBtn').addEventListener('click', publishPost);
+    document.getElementById('compareBtn').addEventListener('click', comparePrices);
+    document.getElementById('analyticsToggle').addEventListener('click', toggleAnalytics);
 
-    // Storage Update Listener
-    window.addEventListener('storage:update', (e) => {
-      renderPosts();
-      updateRadar();
+    // Filter Buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderPosts(btn.dataset.filter);
+      });
     });
 
-    // Initialize WebSocket connection
-    connectWebSocket();
+    // Storage Update Listener
+    window.addEventListener('storage:update', () => {
+      renderPosts();
+      updateRadar();
+      updateAnalytics();
+    });
   });
 
-  // 5. WebSocket Connection
-  function connectWebSocket() {
-    const ws = new WebSocket(window.APP_CONFIG.wsUrl);
-
-    ws.onopen = () => {
-      const statusElement = document.getElementById('status');
-      const syncBadge = document.getElementById('syncBadge');
-      const publishBtn = document.getElementById('publishBtn');
-      const compareBtn = document.getElementById('compareBtn');
-      const analyticsToggle = document.getElementById('analyticsToggle');
-
-      statusElement.textContent = 'متصل بالجسر';
-      syncBadge.classList.remove('offline');
-      syncBadge.classList.add('online');
-      syncBadge.title = 'متصل';
-      publishBtn.disabled = false;
-      compareBtn.disabled = false;
-      analyticsToggle.disabled = false;
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'POST') {
-          window.postStorage.addPost(data.post);
-        }
-      } catch (e) {
-        console.error('WebSocket message error:', e);
-      }
-    };
-
-    ws.onclose = () => {
-      const statusElement = document.getElementById('status');
-      const syncBadge = document.getElementById('syncBadge');
-      const publishBtn = document.getElementById('publishBtn');
-      const compareBtn = document.getElementById('compareBtn');
-      const analyticsToggle = document.getElementById('analyticsToggle');
-
-      statusElement.textContent = 'وضع محلي سريع';
-      syncBadge.classList.remove('online');
-      syncBadge.classList.add('offline');
-      syncBadge.title = 'غير مزامن';
-      publishBtn.disabled = false;
-      compareBtn.disabled = false;
-      analyticsToggle.disabled = false;
-
-      // Attempt to reconnect after a delay
-      setTimeout(connectWebSocket, 5000);
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-  }
-
-  // 6. Post Publishing
+  // 5. Core Functions
   function publishPost() {
-    const authorInput = document.getElementById('author');
-    const contentInput = document.getElementById('content');
-    const statusElement = document.getElementById('status');
-
-    const author = authorInput.value.trim();
-    const content = contentInput.value.trim();
+    const content = document.getElementById('content').value.trim();
+    const author = document.getElementById('author').value.trim();
 
     if (!content) {
-      showError('المنشور فارغ!', 'error');
+      showError('الرجاء كتابة المنشور', 'validation');
       return;
     }
 
     const post = {
       id: Date.now().toString(),
+      content,
       author: author || 'مجهول',
-      content: content,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      price: null,
+      store: 'غير محدد',
+      priceTag: 'normal'
     };
 
-    // Tag the post
-    window.tagPost(post);
+    // Tag the post immediately
+    const taggedPost = window.tagPost(post);
 
     // Save to local storage
-    try {
-      window.postStorage.addPost(post);
-      statusElement.textContent = 'تم الحفظ محلياً، جارٍ المزامنة...';
-    } catch (e) {
-      showError('فشل الحفظ المحلي!', 'error');
-      console.error('Local storage error:', e);
+    window.postStorage.addPost(taggedPost);
+
+    // Clear input fields
+    document.getElementById('content').value = '';
+    document.getElementById('author').value = '';
+
+    // Show success message
+    showSuccess('تم نشر المنشور بنجاح!');
+  }
+
+  function renderPosts(filter = '') {
+    const posts = window.postStorage.getAll();
+    const postsContainer = document.getElementById('posts');
+    postsContainer.innerHTML = '';
+
+    if (posts.length === 0) {
+      postsContainer.innerHTML = '<p>لا توجد منشورات بعد</p>';
       return;
     }
+
+    const filteredPosts = filter
+      ? posts.filter(p => p.priceTag === filter)
+      : posts;
+
+    filteredPosts.forEach(post => {
+      const postElement = document.createElement('div');
+      postElement.className = 'post';
+
+      if (post.priceTag === 'cheap') {
+        postElement.classList.add('cheap');
+      } else if (post.priceTag === 'expensive') {
+        postElement.classList.add('expensive');
+      }
+
+      postElement.innerHTML = `
+        <div class="post-header">
+          <span class="post-author">${post.author}</span>
+          <span class="post-time">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
+        </div>
+        <div class="post-content">${post.content}</div>
+        <div class="post-meta">
+          <span class="post-store">${post.store}</span>
+          ${post.price ? `<span class="post-price">${post.price} ريال</span>` : ''}
+        </div>
+      `;
+
+      postsContainer.appendChild(postElement);
+    });
+  }
+
+  function updateRadar() {
+    const posts = window.postStorage.getAll();
+    const radarContent = document.getElementById('radarContent');
+
+    if (posts.length === 0) {
+      radarContent.innerHTML = 'لا توجد بيانات كافية لتحليل الفرص';
+      return;
+    }
+
+    // Find the cheapest and most expensive items
+    const items = {};
+
+    posts.forEach(post => {
+      if (post.price !== null) {
+        if (!items[post.store]) {
+          items[post.store] = {
+            minPrice: post.price,
+            maxPrice: post.price,
+            minItem: post.content,
+            maxItem: post.content
+          };
+        } else {
+          if (post.price < items[post.store].minPrice) {
+            items[post.store].minPrice = post.price;
+            items[post.store].minItem = post.content;
+          }
+          if (post.price > items[post.store].maxPrice) {
+            items[post.store].maxPrice = post.price;
+            items[post.store].maxItem = post.content;
+          }
+        }
+      }
+    });
+
+    // Generate radar content
+    let radarHTML = '<ul>';
+
+    for (const store in items) {
+      radarHTML += `
+        <li>
+          <strong>${store}</strong>:
+          <ul>
+            <li class="cheap">أرخص: ${items[store].minItem} (${items[store].minPrice} ريال)</li>
+            <li class="expensive">أغلى: ${items[store].maxItem}
