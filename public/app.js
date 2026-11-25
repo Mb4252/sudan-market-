@@ -6,8 +6,8 @@
     wsUrl: 'wss://browser-relay-server.onrender.com',
     storageKey: 'smart_posts_v1',
     maxPosts: 500,
-    priceRegex: /(\\d+(\\.\\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
-    storeRegex: /(في|من|عند)\s+([\\u0600-\\u06FF\\s]+)/i,
+    priceRegex: /(\d+(\.\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
+    storeRegex: /(في|من|عند)\s+([\u0600-\u06FF\s]+)/i,
     connectionTimeout: 5000
   };
 
@@ -46,7 +46,7 @@
 
     // Extract Price
     const priceMatch = text.match(window.APP_CONFIG.priceRegex);
-    post.price = priceMatch ? parseFloat(priceMatch[0].replace(/[^\\d.]/g, '')) : null;
+    post.price = priceMatch ? parseFloat(priceMatch[0].replace(/[^\d.]/g, '')) : null;
 
     // Extract Store Name
     const storeMatch = text.match(window.APP_CONFIG.storeRegex);
@@ -92,17 +92,88 @@
     } else {
       syncBadge.classList.remove('online');
       syncBadge.classList.add('offline');
-      syncBadge.title = 'وضع محلي سري';
-      document.getElementById('publishBtn').disabled = true;
-      document.getElementById('compareBtn').disabled = true;
-      document.getElementById('analyticsToggle').disabled = true;
+      syncBadge.title = 'وضع محلي';
+      document.getElementById('publishBtn').disabled = false;
+      document.getElementById('compareBtn').disabled = false;
+      document.getElementById('analyticsToggle').disabled = false;
     }
   }
 
-  // 5. Event Listeners
+  // 5. Smart Opportunities Radar
+  function updateRadar() {
+    const posts = window.postStorage.getAll();
+    const radarContent = document.getElementById('radarContent');
+
+    if (posts.length === 0) {
+      radarContent.innerHTML = '<p>لا توجد منشورات بعد</p>';
+      return;
+    }
+
+    const now = Date.now();
+    const dayAgo = now - (24 * 60 * 60 * 1000);
+    const relevantPosts = posts.filter(p => p.timestamp > dayAgo && p.price !== null);
+
+    if (relevantPosts.length === 0) {
+      radarContent.innerHTML = '<p>لا توجد منشورات ذات أسعار في اليوم الأخير</p>';
+      return;
+    }
+
+    // Group by store and item
+    const grouped = {};
+    relevantPosts.forEach(post => {
+      const key = `${post.store}|${post.content.split(' ')[0]}`;
+      if (!grouped[key]) {
+        grouped[key] = {
+          store: post.store,
+          item: post.content.split(' ')[0],
+          prices: []
+        };
+      }
+      grouped[key].prices.push(post.price);
+    });
+
+    // Calculate opportunities
+    const opportunities = Object.values(grouped)
+      .map(group => {
+        const minPrice = Math.min(...group.prices);
+        const maxPrice = Math.max(...group.prices);
+        const avgPrice = group.prices.reduce((sum, price) => sum + price, 0) / group.prices.length;
+        const savings = ((maxPrice - minPrice) / maxPrice) * 100;
+
+        return {
+          store: group.store,
+          item: group.item,
+          minPrice,
+          maxPrice,
+          avgPrice,
+          savings: savings.toFixed(1)
+        };
+      })
+      .filter(op => op.savings > 5)
+      .sort((a, b) => b.savings - a.savings);
+
+    // Render opportunities
+    if (opportunities.length > 0) {
+      radarContent.innerHTML = opportunities.map(op => {
+        return `
+          <div class="opportunity">
+            <h4>${op.item} في ${op.store}</h4>
+            <p>أرخص: ${op.minPrice} ريال</p>
+            <p>أغلى: ${op.maxPrice} ريال</p>
+            <p>توفير: ${op.savings}%</p>
+          </div>
+        `;
+      }).join('');
+    } else {
+      radarContent.innerHTML = '<p>لا توجد فرص توفير اليوم</p>';
+    }
+  }
+
+  // 6. Event Listeners
   document.addEventListener('DOMContentLoaded', () => {
-    // Hide initial status message
-    document.getElementById('status').style.display = 'none';
+    // Initialize UI
+    updateUIStatus('جاري الاتصال...', false);
+    updateRadar();
 
     // Publish Button
     document.getElementById('publishBtn').addEventListener('click', () => {
@@ -110,7 +181,7 @@
       const author = document.getElementById('author').value.trim();
 
       if (!content) {
-        showError('الرجاء كتابة منشور', 'error');
+        showError('الرجاء كتابة المنشور', 'warning');
         return;
       }
 
@@ -118,61 +189,8 @@
         id: Date.now().toString(),
         content,
         author: author || 'مجهول',
-        timestamp: Date.now()
-      };
-
-      // Tag post and save locally
-      const taggedPost = window.tagPost(post);
-      window.postStorage.addPost(taggedPost);
-
-      // Clear input
-      document.getElementById('content').value = '';
-      document.getElementById('author').value = '';
-
-      // Show success message
-      showError('تم النشر بنجاح!', 'success');
-    });
-
-    // Filter Buttons
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-      });
-    });
-
-    // Analytics Toggle
-    document.getElementById('analyticsToggle').addEventListener('click', () => {
-      document.getElementById('analyticsPanel').classList.toggle('hidden');
-    });
-  });
-
-  // 6. Initial UI Setup
-  updateUIStatus('جارٍ الاتصال...', false);
-
-  // 7. Storage Update Listener
-  window.addEventListener('storage:update', (e) => {
-    // Update UI with new posts
-  });
-
-  // 8. Error Handling
-  window.onerror = (msg, url, line, col, error) => {
-    console.error(msg, url, line, col, error);
-    showError(`خطأ: ${msg}`, 'error');
-  };
-
-  window.addEventListener('unhandledrejection', e => {
-    console.error(e.reason);
-    showError(`الرفض غير معالج: ${e.reason}`, 'error');
-  });
-
-  // 9. Local-First Implementation
-  function savePostLocally(post) {
-    const posts = JSON.parse(localStorage.getItem('localPosts') || '[]');
-    posts.unshift(post);
-    localStorage.setItem('localPosts', JSON.stringify(posts));
-  }
-
-  function syncPostsWithServer() {
-    // Implementation for syncing with server
-  }
+        timestamp: Date.now(),
+        price: null,
+        store: 'غير محدد',
+        priceTag: 'neutral'
+      }
