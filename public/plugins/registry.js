@@ -1,28 +1,36 @@
 (function() {
     'use strict';
 
-    const plugins = new Map();
+    // مصفوفة لتخزين السجلات
+    const registry = [];
 
-    function registerPlugin(name, plugin) {
-        if (!name || typeof name !== 'string') {
-            throw new Error('اسم المكوّن الإضافي مطلوب ويجب أن يكون نصًا');
+    // دالة لتسجيل الوحدات
+    function register(moduleName, module) {
+        if (!moduleName || !module) {
+            throw new Error('اسم الوحدة ووحدة غير صالحين');
         }
-        if (!plugin || typeof plugin !== 'object') {
-            throw new Error('المكوّن الإضافي مطلوب ويجب أن يكون كائنًا');
-        }
-        plugins.set(name, plugin);
+        registry.push({ moduleName, module });
+        console.log(`تم تسجيل الوحدة: ${moduleName}`);
     }
 
-    function getPlugin(name) {
-        if (!plugins.has(name)) {
-            throw new Error(`المكوّن الإضافي ${name} غير مسجل`);
+    // دالة لاسترجاع الوحدة
+    function getModule(moduleName) {
+        const found = registry.find(item => item.moduleName === moduleName);
+        if (!found) {
+            throw new Error(`الوحدة ${moduleName} غير مسجلة`);
         }
-        return plugins.get(name);
+        return found.module;
     }
 
-    // تصدير الوظائف
-    window.plugins = {
-        registerPlugin,
-        getPlugin
+    // دالة للحصول على جميع الوحدات المسجلة
+    function getAllModules() {
+        return registry.map(item => item.module);
+    }
+
+    // تصدير الوظائف المطلوبة
+    window.registry = {
+        register,
+        getModule,
+        getAllModules
     };
 })();
