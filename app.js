@@ -46,32 +46,32 @@
 
             const header = document.createElement('div');
             header.className = 'post-header';
-            header.innerHTML = `<span>${post.author || 'مجهول'}</span><span>${new Date(post.time).toLocaleString()}</span>`;
+            header.innerHTML = `<strong>${post.author}</strong><span>${new Date(post.timestamp).toLocaleString('ar-EG')}</span>`;
 
-            const body = document.createElement('div');
-            body.textContent = post.content;
+            const content = document.createElement('div');
+            content.textContent = post.content;
 
             div.appendChild(header);
-            div.appendChild(body);
+            div.appendChild(content);
             container.appendChild(div);
         });
     }
 
-    // دالة لتحميل المنشورات
+    // دالة لجلب المنشورات
     async function loadPosts() {
         try {
             store.status = 'جارِ التحميل...';
-            const posts = await fetchPosts();
+            const posts = await window.api.fetchPosts();
             store.posts = posts;
             store.status = 'تم التحميل بنجاح';
         } catch (error) {
-            console.error('خطأ في تحميل المنشورات:', error);
+            console.error('خطأ في جلب المنشورات:', error);
             store.status = 'خطأ في التحميل';
         }
     }
 
-    // دالة لنشر منشور جديد
-    async function publishPost() {
+    // دالة لإنشاء منشور جديد
+    async function handlePost() {
         const author = safeText('author');
         const content = safeText('content');
 
@@ -82,58 +82,90 @@
 
         try {
             store.status = 'جارِ النشر...';
-            const newPost = await createPost(author, content);
-            store.posts = [...store.posts, newPost];
-            store.status = 'تم النشر بنجاح';
-
-            // مسح الحقول بعد النشر
-            qs('author').value = '';
+            await window.api.createPost(author, content);
+            await loadPosts();
             qs('content').value = '';
         } catch (error) {
-            console.error('خطأ في النشر:', error);
+            console.error('خطأ في إنشاء المنشور:', error);
             store.status = 'خطأ في النشر';
         }
     }
 
-    // دالة لفتح نافذة المقارنة
-    function openCompare() {
-        const overlay = qs('compareOverlay');
-        if (overlay) overlay.classList.remove('hidden');
+    // دالة لتهيئة المخططات
+    function initCharts() {
+        const volumeCtx = qs('chartVolume');
+        const priceCtx = qs('chartPrice');
+
+        if (volumeCtx && priceCtx) {
+            new Chart(volumeCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو'],
+                    datasets: [{
+                        label: 'حجم التداول',
+                        data: [12, 19, 3, 5, 2, 3],
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            new Chart(priceCtx, {
+                type: 'line',
+                data: {
+                    labels: ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو'],
+                    datasets: [{
+                        label: 'سعر السوق',
+                        data: [65, 59, 80, 81, 56, 55],
+                        fill: false,
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true
+                }
+            });
+        }
     }
 
-    // دالة لإغلاق نافذة المقارنة
-    function closeCompare() {
-        const overlay = qs('compareOverlay');
-        if (overlay) overlay.classList.add('hidden');
+    // دالة لتهيئة الرادار
+    async function initRadar() {
+        const radarEl = qs('radarContent');
+        if (!radarEl) return;
+
+        try {
+            const data = await window.api.fetchRadarData();
+            radarEl.innerHTML = `<h3>رادار السوق</h3><p>${data.message}</p>`;
+        } catch (error) {
+            console.error('خطأ في جلب بيانات الرادار:', error);
+            radarEl.innerHTML = '<p>خطأ في تحميل بيانات الرادار</p>';
+        }
     }
 
     // دالة لتهيئة التطبيق
-    function init() {
-        // تهيئة الأحداث
-        const publishBtn = qs('publishBtn');
-        if (publishBtn) publishBtn.addEventListener('click', publishPost);
-
-        const compareBtn = qs('compareBtn');
-        if (compareBtn) compareBtn.addEventListener('click', openCompare);
-
-        const overlay = qs('compareOverlay');
-        if (overlay) overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) closeCompare();
-        });
-
-        // تحميل المنشورات عند بدء التطبيق
+    function initApp() {
+        qs('postBtn')?.addEventListener('click', handlePost);
         loadPosts();
+        initCharts();
+        initRadar();
     }
 
-    // بدء التطبيق
-    document.addEventListener('DOMContentLoaded', init);
+    // بدء التطبيق عند تحميل الصفحة
+    window.addEventListener('DOMContentLoaded', initApp);
 
     // تصدير الدوال العامة
     window.app = {
-        store,
         loadPosts,
-        publishPost,
-        openCompare,
-        closeCompare
+        handlePost
     };
 })();
