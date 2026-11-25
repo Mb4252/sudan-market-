@@ -77,117 +77,80 @@
     return post;
   };
 
-  // 4. UI Components
-  const elements = {
-    status: document.getElementById('status'),
-    author: document.getElementById('author'),
-    content: document.getElementById('content'),
-    publishBtn: document.getElementById('publishBtn'),
-    postsContainer: document.getElementById('posts'),
-    syncBadge: document.getElementById('syncBadge'),
-    radarContent: document.getElementById('radarContent'),
-    compareOverlay: document.getElementById('compareOverlay'),
-    compareContent: document.getElementById('compareContent'),
-    closeCompare: document.getElementById('closeCompare'),
-    comparisonResults: document.getElementById('comparisonResults'),
-    analyticsPanel: document.getElementById('analyticsPanel'),
-    analyticsToggle: document.getElementById('analyticsToggle'),
-    chartVolume: document.getElementById('chartVolume'),
-    chartPrice: document.getElementById('chartPrice')
-  };
+  // 4. UI Rendering Engine
+  function renderPosts(posts, filter = '') {
+    const postsContainer = document.getElementById('posts');
+    postsContainer.innerHTML = '';
 
-  // 5. Event Listeners
-  elements.publishBtn.addEventListener('click', publishPost);
-  elements.closeCompare.addEventListener('click', closeCompare);
-  elements.analyticsToggle.addEventListener('click', toggleAnalytics);
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', filterPosts);
-  });
-  document.getElementById('compareBtn').addEventListener('click', showCompareOverlay);
+    const filteredPosts = filter
+      ? posts.filter(p => p.priceTag === filter)
+      : posts;
 
-  // 6. Initialize
-  initializeApp();
-
-  // 7. Functions
-  function initializeApp() {
-    updateUIStatus('جاري التحميل...', false);
-    renderPosts();
-    updateRadar();
-    updateAnalytics();
-    window.addEventListener('storage:update', handleStorageUpdate);
-  }
-
-  function publishPost() {
-    const author = elements.author.value.trim();
-    const content = elements.content.value.trim();
-
-    if (!content) {
-      showError('المنشور فارغ!', 'error');
-      return;
-    }
-
-    const post = {
-      id: Date.now().toString(),
-      author: author || 'مجهول',
-      content: content,
-      timestamp: Date.now()
-    };
-
-    // Local-First Publish
-    window.postStorage.addPost(window.tagPost(post));
-    elements.content.value = '';
-    showSuccess('تم حفظ المنشور محلياً!');
-  }
-
-  function renderPosts(filter = '') {
-    const posts = window.postStorage.getAll();
-    elements.postsContainer.innerHTML = '';
-
-    if (posts.length === 0) {
-      elements.postsContainer.innerHTML = '<p>لا توجد منشورات بعد.</p>';
-      return;
-    }
-
-    posts.forEach(post => {
-      if (filter && post.priceTag !== filter) return;
-
+    filteredPosts.forEach(post => {
       const postElement = document.createElement('div');
       postElement.className = `post ${post.priceTag || ''}`;
       postElement.innerHTML = `
         <div class="post-header">
-          <span class="post-author">${post.author}</span>
-          <span class="post-time">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
+          <span class="author">${post.author || 'مجهول'}</span>
+          <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
         </div>
         <div class="post-content">${post.content}</div>
-        ${post.price ? `<div class="post-price">السعر: ${post.price} ريال</div>` : ''}
-        ${post.store ? `<div class="post-store">المتجر: ${post.store}</div>` : ''}
+        <div class="post-meta">
+          <span class="store">🏪 ${post.store}</span>
+          ${post.price ? `<span class="price">💰 ${post.price} ريال</span>` : ''}
+        </div>
       `;
-
-      elements.postsContainer.appendChild(postElement);
+      postsContainer.appendChild(postElement);
     });
   }
 
-  function updateRadar() {
-    const posts = window.postStorage.getAll();
-    const now = Date.now();
-    const dayAgo = now - (24 * 60 * 60 * 1000);
+  // 5. Event Listeners
+  document.getElementById('publishBtn').addEventListener('click', () => {
+    const author = document.getElementById('author').value.trim();
+    const content = document.getElementById('content').value.trim();
 
-    const recentPosts = posts.filter(p => p.timestamp > dayAgo && p.price !== null);
-
-    if (recentPosts.length === 0) {
-      elements.radarContent.innerHTML = 'لا توجد بيانات كافية لتحليل الفرص.';
+    if (!content) {
+      showError('المنشور فارغ!', 'empty');
       return;
     }
 
-    const stores = {};
-    recentPosts.forEach(post => {
-      if (!stores[post.store]) {
-        stores[post.store] = {
-          prices: [],
-          cheapest: null,
-          mostExpensive: null
-        };
-      }
+    const post = {
+      id: Date.now().toString(36) + Math.random().toString(36).substring(2),
+      author: author || null,
+      content,
+      timestamp: Date.now()
+    };
 
-      stores[post.store].prices.push(post.price);
-    }
+    const taggedPost = window.tagPost(post);
+    window.postStorage.addPost(taggedPost);
+    document.getElementById('content').value = '';
+    showSuccess('تم النشر محلياً!');
+  });
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderPosts(window.postStorage.getAll(), btn.dataset.filter);
+    });
+  });
+
+  // 6. Initialization
+  window.addEventListener('DOMContentLoaded', () => {
+    renderPosts(window.postStorage.getAll());
+  });
+
+  window.addEventListener('storage:update', (e) => {
+    renderPosts(e.detail);
+  });
+
+  function showSuccess(message) {
+    const successElement = document.createElement('div');
+    successElement.className = 'success-message';
+    successElement.textContent = message;
+    document.body.appendChild(successElement);
+    setTimeout(() => {
+      successElement.remove();
+    }, 5000);
+  }
+})();

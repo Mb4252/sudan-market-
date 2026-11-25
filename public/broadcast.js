@@ -35,7 +35,7 @@
     if (ws && ws.readyState === WebSocket.OPEN) return;
 
     if (connectionAttempts >= maxAttempts) {
-      updateUIStatus('فشل الاتصال: وضع محلي سري', false);
+      updateUIStatus('وضع محلي سري', false);
       return;
     }
 
@@ -47,24 +47,13 @@
     ws.onopen = () => {
       connectionAttempts = 0;
       isConnecting = false;
-      updateUIStatus('متصل', true);
-
-      // Send all local posts to server
-      const posts = window.postStorage.getAll();
-      if (posts.length > 0) {
-        ws.send(JSON.stringify({ type: 'SYNC', data: posts }));
-      }
+      updateUIStatus('متصل بالجسر', true);
+      syncLocalPosts();
     };
 
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-
-        if (message.type === 'POST') {
-          window.postStorage.addPost(message.data);
-        } else if (message.type === 'SYNC') {
-          message.data.forEach(post => window.postStorage.addPost(post));
-        }
-      } catch (e) {
-        console.error('Error parsing message:', e);
+    ws.onclose = () => {
+      if (!isConnecting) {
+        connectionAttempts++;
+        setTimeout(connectWebSocket, attemptDelay);
       }
+    }
