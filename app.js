@@ -16,7 +16,7 @@
             if (window.isValidDate(new Date(newPost.timestamp))) {
                 window.broadcast(newPost);
             } else {
-                console.error('تاريخ غير صالح');
+                handleError(new Error('تاريخ غير صالح'));
             }
         });
 
@@ -29,6 +29,14 @@
             document.getElementById('status').textContent = status;
             renderPosts(posts);
         });
+
+        window.onerror = function(message, source, lineno, colno, error) {
+            handleError(error);
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+            handleError(event.reason);
+        });
     });
 
     function renderPosts(posts) {
@@ -40,9 +48,20 @@
                 <h3>${post.author}</h3>
                 <p>${post.content}</p>
                 <p>السعر: ${post.price} جنية</p>
-                <p>المدينة: ${post.city}</p>
                 <p>التاريخ: ${formattedDate}</p>
             </div>`;
         }).join('');
     }
+
+    function handleError(error) {
+        const errorDisplay = document.getElementById('errorDisplay');
+        if (errorDisplay) {
+            errorDisplay.textContent = `خطأ: ${error.message}`;
+            errorDisplay.style.display = 'block';
+        }
+        console.error('خطأ:', error);
+    }
+
+    window.renderPosts = renderPosts;
+    window.handleError = handleError;
 })();
