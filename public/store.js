@@ -1,41 +1,32 @@
 (function() {
     'use strict';
 
-    const store = {
-        posts: [],
-        status: 'غير متزامن',
-        radarData: null,
-        compareData: null
-    };
-
-    const eventTarget = new EventTarget();
-
-    const reactiveStore = new Proxy(store, {
-        set(target, property, value) {
-            target[property] = value;
-            eventTarget.dispatchEvent(new CustomEvent('storeUpdated', { detail: store }));
-            return true;
-        }
-    });
-
+    // التحقق من صحة التاريخ
     function isValidDate(date) {
         return date instanceof Date && !isNaN(date);
     }
 
-    function formatDate(date) {
-        if (!isValidDate(date)) {
-            return 'الآن';
+    // حفظ البيانات في localStorage
+    function saveToLocalStorage(key, data) {
+        try {
+            localStorage.setItem(key, JSON.stringify(data));
+        } catch (error) {
+            console.error('خطأ في حفظ البيانات:', error);
         }
-        return date.toLocaleString('ar-SD', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
     }
 
-    window.store = reactiveStore;
+    // تحميل البيانات من localStorage
+    function loadFromLocalStorage(key) {
+        try {
+            const data = localStorage.getItem(key);
+            return data ? JSON.parse(data) : null;
+        } catch (error) {
+            console.error('خطأ في تحميل البيانات:', error);
+            return null;
+        }
+    }
+
     window.isValidDate = isValidDate;
-    window.formatDate = formatDate;
+    window.saveToLocalStorage = saveToLocalStorage;
+    window.loadFromLocalStorage = loadFromLocalStorage;
 })();

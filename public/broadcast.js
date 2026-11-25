@@ -2,10 +2,9 @@
     'use strict';
 
     const WS_URL = 'wss://sudan-market-2.onrender.com';
-
     let socket;
 
-    function connectWebSocket() {
+    function connect() {
         socket = new WebSocket(WS_URL);
 
         socket.onopen = function() {
@@ -14,23 +13,23 @@
 
         socket.onmessage = function(event) {
             const data = JSON.parse(event.data);
-            if (data.type === 'post') {
-                window.store.posts = [data.post, ...window.store.posts];
+            if (data.type === 'newPost') {
+                window.dispatchEvent(new CustomEvent('newPost', { detail: data.post }));
             }
         };
 
         socket.onclose = function() {
-            console.log('تم قطع الاتصال، محاولة إعادة الاتصال...');
-            setTimeout(connectWebSocket, 5000);
+            console.log('تم قطع الاتصال. إعادة الاتصال...');
+            setTimeout(connect, 5000);
         };
     }
 
     function broadcast(post) {
         if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'post', post: post }));
+            socket.send(JSON.stringify({ type: 'newPost', post }));
         }
     }
 
-    connectWebSocket();
+    connect();
     window.broadcast = broadcast;
 })();
