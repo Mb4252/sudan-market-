@@ -67,98 +67,105 @@
         post.priceTag = post.price < avgPrice * 0.9 ? 'cheap' : post.price > avgPrice * 1.1 ? 'expensive' : '';
       }
     }
+    
+    return post;
   };
-
+  
   // 4. UI Initialization
   document.addEventListener('DOMContentLoaded', () => {
     const contentInput = document.getElementById('content');
     const publishBtn = document.getElementById('publishBtn');
     const postsContainer = document.getElementById('posts');
-    const radarContent = document.getElementById('radarContent');
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    const compareBtn = document.getElementById('compareBtn');
     const analyticsToggle = document.getElementById('analyticsToggle');
     const analyticsPanel = document.getElementById('analyticsPanel');
+    const compareOverlay = document.getElementById('compareOverlay');
+    const compareContent = document.getElementById('compareContent');
+    const closeCompareBtn = document.getElementById('closeCompare');
+    const compareResults = document.getElementById('compareResults');
     
-    // Initialize UI State
-    updatePostsList();
-    updatePriceRadar();
+    // Initialize UI
+    renderPosts(window.postStorage.getAll());
     
     // Event Listeners
     contentInput.addEventListener('input', () => {
-      publishBtn.disabled = contentInput.value.trim().length === 0;
+      publishBtn.disabled = contentInput.value.trim() === '';
     });
     
     publishBtn.addEventListener('click', () => {
       const content = contentInput.value.trim();
-      if (content.length === 0) return;
-      
-      const post = {
-        id: Date.now().toString(),
-        content,
-        author: document.getElementById('author').value.trim() || 'مجهول',
-        timestamp: Date.now()
-      };
-      
-      window.tagPost(post);
-      window.postStorage.addPost(post);
-      contentInput.value = '';
-      publishBtn.disabled = true;
+      if (content) {
+        const post = {
+          id: Date.now().toString(),
+          content,
+          author: document.getElementById('author').value.trim() || 'مجهول',
+          timestamp: Date.now(),
+          price: null,
+          store: null,
+          priceTag: null
+        };
+        
+        const taggedPost = window.tagPost(post);
+        window.postStorage.addPost(taggedPost);
+        contentInput.value = '';
+        publishBtn.disabled = true;
+      }
     });
     
-    window.addEventListener('storage:update', () => {
-      updatePostsList();
-      updatePriceRadar();
-    });
-    
-    analyticsToggle.addEventListener('click', () => {
-      analyticsPanel.classList.toggle('hidden');
-    });
-    
-    // Filter Buttons
-    document.querySelectorAll('.filter-btn').forEach(btn => {
+    filterButtons.forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        filterButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        updatePostsList(btn.dataset.filter);
+        renderPosts(window.postStorage.getAll(), btn.dataset.filter);
       });
     });
     
-    // Compare Button
-    document.getElementById('compareBtn').addEventListener('click', () => {
+    compareBtn.addEventListener('click', () => {
       const posts = window.postStorage.getAll();
-      const stores = [...new Set(posts.map(p => p.store))];
+      const products = {};
       
-      let comparisonHTML = '<h4>مقارنة الأسعار</h4>';
-      stores.forEach(store => {
-        const storePosts = posts.filter(p => p.store === store && p.price !== null);
-        if (storePosts.length > 1) {
-          const minPrice = Math.min(...storePosts.map(p => p.price));
-          const maxPrice = Math.max(...storePosts.map(p => p.price));
-          
-          comparisonHTML += `<div class="comparison-item">
-            <strong>${store}</strong><br>
-            أرخص: ${minPrice} ريال<br>
-            أغلى: ${maxPrice} ريال<br>
-            فرق: ${maxPrice - minPrice} ريال
-          </div>`;
+      posts.forEach(post => {
+        if (post.price && post.store) {
+          if (!products[post.content]) {
+            products[post.content] = {
+              name: post.content,
+              prices: []
+            };
+          }
+          products[post.content].prices.push({
+            store: post.store,
+            price: post.price
+          });
         }
       });
       
-      radarContent.innerHTML = comparisonHTML;
-    });
-    
-    // Update Functions
-    function updatePostsList(filter = '') {
-      const posts = window.postStorage.getAll();
-      let filteredPosts = posts;
+      compareResults.innerHTML = '';
+      Object.values(products).forEach(product => {
+        if (product.prices.length > 1) {
+          const productDiv = document.createElement('div');
+          productDiv.className = 'product-comparison';
+          
+          const title = document.createElement('h4');
+          title.textContent = product.name;
+          productDiv.appendChild(title);
+          
+          const pricesDiv = document.createElement('div');
+          pricesDiv.className = 'prices';
+          
+          product.prices.sort((a, b) => a.price - b.price);
+          
+          product.prices.forEach(price => {
+            const priceDiv = document.createElement('div');
+            priceDiv.className = 'price-item';
+            priceDiv.innerHTML = `<span class="store">${price.store}</span><span class="price">${price.price} ريال</span>`;
+            pricesDiv.appendChild(priceDiv);
+          });
+          
+          productDiv.appendChild(pricesDiv);
+          compareResults.appendChild(productDiv);
+        }
+      });
       
-      if (filter) {
-        filteredPosts = posts.filter(p => p.priceTag === filter);
-      }
-      
-      postsContainer.innerHTML = filteredPosts.length > 0 ?
-        filteredPosts.map(p => {
-          const priceTag = p.priceTag ? `<span class="price-tag ${p.priceTag}">${p.priceTag === 'cheap' ? 'رخيص' : 'غالي'}</span>` : '';
-          return `<div class="post">
-            <div class="post-header">
-              <span class="post-author">${p.author}</span>
-              <span class="post-time">${new Date(p.timestamp).toLocaleString('ar-EG')}
+      compareOverlay.classList.remove('hidden');
+    }
