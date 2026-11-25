@@ -43,26 +43,18 @@
         const postsContainer = document.getElementById('posts');
         postsContainer.innerHTML = posts.map(post => {
             const date = new Date(post.timestamp);
-            if (isNaN(date.getTime())) {
-                return "<div class='post'>تاريخ غير صالح</div>";
-            }
-            return `<div class='post'>
+            return `<div class="post">
                 <h3>${post.author}</h3>
                 <p>${post.content}</p>
-                <p>السعر: ${post.price}</p>
+                <p>السعر: ${post.price} جنية</p>
                 <p>المدينة: ${post.city}</p>
-                <p>التاريخ: ${date.toLocaleDateString()}</p>
-                <p>الوقت: ${date.toLocaleTimeString()}</p>
+                <p>التاريخ: ${window.formatDate(date)}</p>
             </div>`;
         }).join('');
     }
 
     function handleError(error) {
-        console.error('Error:', error);
-        const errorElement = document.getElementById('globalError');
-        if (errorElement) {
-            errorElement.textContent = error.message;
-            errorElement.style.display = 'block';
-        }
+        console.error('خطأ:', error);
+        document.getElementById('status').textContent = `خطأ: ${error.message}`;
     }
 })();
