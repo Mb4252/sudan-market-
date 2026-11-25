@@ -1,6 +1,6 @@
 /* =====================================================================
- * SUDAN MARKET — AUTONOMOUS MULTI-AGENT AUTOPILOT (v3.1)
- * ملف مستقل — لا اقتباسات هشة داخل YAML
+ * SUDAN MARKET — AUTONOMOUS MULTI-AGENT AUTOPILOT (v3.2 - Resilient)
+ * إصلاحات: Groq نماذج حية، قطع Mistral، 429 OpenRouter، حفظ آمن
  * ===================================================================== */
 const fs = require("fs");
 const path = require("path");
@@ -28,20 +28,29 @@ function sanitizeUrl(rawUrl, fallbackUrl = "") {
 
 function loadMemory() {
   try {
-    if (!fs.existsSync(MEMORY_FILE)) return { history: [], ideas: [], knownIssues: [] };
+    if (!fs.existsSync(MEMORY_FILE)) return { history: [], ideas: [], knownIssues: [], disabledModels: {}, openRouterBlockedUntil: 0 };
     const raw = JSON.parse(fs.readFileSync(MEMORY_FILE, "utf8"));
     return {
       history: Array.isArray(raw.history) ? raw.history : [],
       ideas: Array.isArray(raw.ideas) ? raw.ideas : [],
-      knownIssues: Array.isArray(raw.knownIssues) ? raw.knownIssues : []
+      knownIssues: Array.isArray(raw.knownIssues) ? raw.knownIssues : [],
+      disabledModels: raw.disabledModels && typeof raw.disabledModels === "object" ? raw.disabledModels : {},
+      openRouterBlockedUntil: Number(raw.openRouterBlockedUntil || 0)
     };
-  } catch { return { history: [], ideas: [], knownIssues: [] }; }
+  } catch {
+    return { history: [], ideas: [], knownIssues: [], disabledModels: {}, openRouterBlockedUntil: 0 };
+  }
 }
 
 function saveMemory(mem) {
   mem.history = mem.history.slice(-MAX_MEMORY_ITEMS);
   mem.ideas = [...new Set(mem.ideas)].slice(-MAX_MEMORY_ITEMS);
   mem.knownIssues = [...new Set(mem.knownIssues)].slice(-MAX_MEMORY_ITEMS);
+  // تنظيف disabledModels المنتهية (أكثر من 24 ساعة)
+  const now = Date.now();
+  for (const k of Object.keys(mem.disabledModels)) {
+    if (mem.disabledModels[k] < now) delete mem.disabledModels[k];
+  }
   fs.writeFileSync(MEMORY_FILE, JSON.stringify(mem, null, 2), "utf8");
 }
 
@@ -157,19 +166,25 @@ function runSelfDiagnostics(filesList, pagesUrl, renderUrl) {
 }
 
 // ---------- provider layer ----------
-async function getGroqModelsOrdered(apiKey) {
-  const fallback = ["llama-3.3-70b-versatile","openai/gpt-oss-120b","llama-3.1-8b-instant","openai/gpt-oss-20b"];
+async function getGroqModelsOrdered(apiKey, disabledModels) {
+  const preferred = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant", "openai/gpt-oss-20b", "gemma2-9b-it", "mixtral-8x7b-32768"];
   try {
     const res = await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${apiKey}` } });
-    if (!res.ok) return fallback;
+    if (!res.ok) return preferred.filter(m => !(disabledModels[m] > Date.now()));
     const data = await res.json();
-    const ids = (data.data || []).map(m => m.id).filter(id => id && !/whisper|tts|guard|embed|allam|orpheus/i.test(id));
+    const now = Date.now();
+    const available = (data.data || [])
+      .map(m => m.id)
+      .filter(id => id && !/whisper|tts|guard|embed|allam|orpheus/i.test(id))
+      .filter(id => !(disabledModels[id] > now)); // استبعد المعطّلة
+    // رتّب: المفضلة أولاً إن وُجدت، ثم الباقي
     const ordered = [];
-    for (const p of fallback) if (ids.includes(p) && !ordered.includes(p)) ordered.push(p);
-    for (const id of ids) if (!ordered.includes(id)) ordered.push(id);
-    for (const p of fallback) if (!ordered.includes(p)) ordered.push(p);
-    return ordered.length ? ordered : fallback;
-  } catch { return fallback; }
+    for (const p of preferred) if (available.includes(p) && !ordered.includes(p)) ordered.push(p);
+    for (const id of available) if (!ordered.includes(id)) ordered.push(id);
+    return ordered.length ? ordered : preferred.filter(m => !(disabledModels[m] > now));
+  } catch {
+    return preferred.filter(m => !(disabledModels[m] > Date.now()));
+  }
 }
 
 function tryRepairJson(candidate) {
@@ -213,64 +228,144 @@ async function callChatCompletion(url, headers, body) {
   return data;
 }
 
-function buildProviders(primaryKey, openRouterKey, mistralKey) {
+// ✅ إصلاح 3: فحص اكتمال الرد — إذا لم ينتهِ بـ } فهذا يعني قطع
+function isTruncatedResponse(text) {
+  const t = String(text || "").trim();
+  if (!t.endsWith("}")) return true;
+  // فحص توازن الأقواس
+  let depth = 0, inStr = false, esc = false;
+  for (const c of t) {
+    if (esc) { esc = false; continue; }
+    if (c === "\\") { esc = true; continue; }
+    if (c === "\"") { inStr = !inStr; continue; }
+    if (!inStr) { if (c === "{") depth++; else if (c === "}") depth--; }
+  }
+  return depth !== 0;
+}
+
+function buildProviders(primaryKey, openRouterKey, mistralKey, memory) {
   const list = []; const seen = new Set();
+  const now = Date.now();
+
   const wrap = (id, label, runner) => {
     list.push({
       id, label,
       runText: async (sys, usr, max = 700) => ({ text: await runner(sys, usr, max, false), detail: label }),
-      runJson: async (sys, usr, max = 3000) => ({ parsed: extractJsonObject(await runner(sys, usr, max, true)), detail: label })
+      runJson: async (sys, usr, max = 8000) => {
+        const raw = await runner(sys, usr, max, true);
+        if (isTruncatedResponse(raw)) {
+          const e = new Error(`رد ${label} مقطوع (لم ينتهِ بـ } أو غير متوازن)`);
+          throw e;
+        }
+        return { parsed: extractJsonObject(raw), detail: label };
+      }
     });
   };
 
+  // ✅ إصلاح 2: Mistral أولاً وبـ max_tokens أقصى
   if (mistralKey && !seen.has(mistralKey)) {
     seen.add(mistralKey);
     wrap("mistral", "Mistral", async (sys, usr, max, jsonMode) => {
       const models = ["codestral-latest", "mistral-small-latest", "open-mistral-nemo"];
       let lastErr;
       for (const m of models) {
+        if (memory.disabledModels[m] > now) { console.warn(`⏭️ تخطي ${m} (معطّل مؤقتاً)`); continue; }
         try {
-          const body = { model: m, messages: [{ role: "system", content: sys }, { role: "user", content: usr }], max_tokens: max, temperature: 0.6 };
+          const body = {
+            model: m,
+            messages: [{ role: "system", content: sys }, { role: "user", content: usr }],
+            max_tokens: Math.min(max, 8192),  // ✅ 8192 كحد أقصى
+            temperature: 0.6
+          };
           if (jsonMode && m !== "codestral-latest") body.response_format = { type: "json_object" };
-          const d = await callChatCompletion("https://api.mistral.ai/v1/chat/completions", { "Content-Type": "application/json", Authorization: `Bearer ${mistralKey}` }, body);
+          const d = await callChatCompletion(
+            "https://api.mistral.ai/v1/chat/completions",
+            { "Content-Type": "application/json", Authorization: `Bearer ${mistralKey}` },
+            body
+          );
           const out = d?.choices?.[0]?.message?.content || "";
           if (out.trim()) return out;
-        } catch (e) { lastErr = e; }
+        } catch (e) {
+          lastErr = e;
+          if (e.status === 404) { memory.disabledModels[m] = now + 24 * 3600 * 1000; }
+        }
       }
       throw lastErr || new Error("Mistral failed");
     });
   }
+
+  // ✅ إصلاح 1: Groq — قائمة ديناميكية + استبعاد المعطّل
   for (const key of [primaryKey, openRouterKey].map(k => (k || "").trim()).filter(Boolean)) {
     if (seen.has(key)) continue; seen.add(key);
     if (key.startsWith("gsk_")) {
       wrap("groq", "Groq", async (sys, usr, max, jsonMode) => {
-        const models = await getGroqModelsOrdered(key);
+        const models = await getGroqModelsOrdered(key, memory.disabledModels);
         let lastErr;
         for (const m of models) {
           try {
-            const body = { model: m, messages: [{ role: "system", content: sys }, { role: "user", content: usr }], max_tokens: max, temperature: 0.6 };
+            const body = {
+              model: m,
+              messages: [{ role: "system", content: sys }, { role: "user", content: usr }],
+              max_tokens: Math.min(max, 8192),
+              temperature: 0.6
+            };
             if (jsonMode) body.response_format = { type: "json_object" };
-            const d = await callChatCompletion("https://api.groq.com/openai/v1/chat/completions", { "Content-Type": "application/json", Authorization: `Bearer ${key}` }, body);
+            const d = await callChatCompletion(
+              "https://api.groq.com/openai/v1/chat/completions",
+              { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+              body
+            );
             const out = d?.choices?.[0]?.message?.content || "";
             if (out.trim()) return out;
-          } catch (e) { lastErr = e; if (e.status === 429) continue; }
+          } catch (e) {
+            lastErr = e;
+            // ✅ إذا 404 (نموذج غير موجود) → عطّله 24 ساعة
+            if (e.status === 404 || /does not exist|not have access/i.test(e.message)) {
+              console.warn(`⛔ تعطيل ${m} لمدة 24 ساعة (غير متاح)`);
+              memory.disabledModels[m] = now + 24 * 3600 * 1000;
+              continue;
+            }
+            if (e.status === 429) continue;
+          }
         }
         throw lastErr || new Error("Groq failed");
       });
     } else if (key.startsWith("sk-or-")) {
+      // ✅ إصلاح 3: احترام حظر OpenRouter اليومي
       wrap("openrouter", "OpenRouter", async (sys, usr, max) => {
-        const d = await callChatCompletion("https://openrouter.ai/api/v1/chat/completions", {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${key}`,
-          "HTTP-Referer": CANONICAL_PAGES_URL,
-          "X-Title": "sudan-market-autopilot"
-        }, { model: "openrouter/free", messages: [{ role: "system", content: sys }, { role: "user", content: usr }], max_tokens: max, temperature: 0.6 });
-        const out = d?.choices?.[0]?.message?.content || "";
-        if (!out.trim()) throw new Error("OpenRouter empty");
-        return out;
+        if (memory.openRouterBlockedUntil > now) {
+          const hours = Math.ceil((memory.openRouterBlockedUntil - now) / 3600000);
+          throw new Error(`OpenRouter محظور مؤقتاً لمدة ~${hours} ساعة (429 سابق)`);
+        }
+        try {
+          const d = await callChatCompletion("https://openrouter.ai/api/v1/chat/completions", {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${key}`,
+            "HTTP-Referer": CANONICAL_PAGES_URL,
+            "X-Title": "sudan-market-autopilot"
+          }, {
+            model: "openrouter/free",
+            messages: [{ role: "system", content: sys }, { role: "user", content: usr }],
+            max_tokens: Math.min(max, 8192),
+            temperature: 0.6
+          });
+          const out = d?.choices?.[0]?.message?.content || "";
+          if (!out.trim()) throw new Error("OpenRouter empty");
+          return out;
+        } catch (e) {
+          if (e.status === 429) {
+            memory.openRouterBlockedUntil = now + 12 * 3600 * 1000;
+            console.warn("⛔ OpenRouter محظور لمدة 12 ساعة (429)");
+          }
+          throw e;
+        }
       });
     }
   }
+
+  // ✅ ترتيب الأولوية: Mistral أولاً (سخي)، ثم Groq، ثم OpenRouter
+  const priority = { mistral: 1, groq: 2, openrouter: 3 };
+  list.sort((a, b) => (priority[a.id] || 9) - (priority[b.id] || 9));
   return list;
 }
 
@@ -281,56 +376,70 @@ async function run() {
   const mistralKey = (process.env.MISTRAL_API_KEY || "").trim();
   const pagesUrl = sanitizeUrl(process.env.PAGES_URL, CANONICAL_PAGES_URL);
   const renderUrl = sanitizeUrl(process.env.RENDER_URL, CANONICAL_RENDER_URL);
-  const providers = buildProviders(primaryKey, openRouterKey, mistralKey);
+  const memory = loadMemory();
+  const providers = buildProviders(primaryKey, openRouterKey, mistralKey, memory);
   if (!providers.length) failWithReason("لا يوجد أي مفتاح API صالح في Secrets.");
 
-  const memory = loadMemory();
+  console.log("📋 المزودون المتاحون بالترتيب:", providers.map(p => p.label).join(" → "));
+
   const filesList = collectProjectFiles(".");
   const staticReport = runSelfDiagnostics(filesList, pagesUrl, renderUrl);
   const liveReport = await probeLiveEndpoints(pagesUrl, renderUrl);
   const diagnosticReport = `${staticReport}\n\n--- فحص الموقع الحي ---\n${liveReport}`;
   console.log("🩺 التشخيص:\n" + diagnosticReport);
 
-  const currentFiles = filesList.map(f => `--- ${f.fullPath} ---\n${f.content}`).join("\n\n").slice(0, 6000);
+  // ✅ إصلاح 4: أرسل فقط الملفات ذات الصلة (وليس كل شيء)
+  const relevantFiles = filesList.filter(f => {
+    if (f.fullPath === "index.html") return true;
+    if (f.fullPath.startsWith("public/")) return true;
+    if (f.fullPath === "server.js") return true;
+    if (f.fullPath === "ai-memory.json") return false;
+    return false;
+  });
+  const currentFiles = relevantFiles.map(f => `--- ${f.fullPath} ---\n${f.content}`).join("\n\n").slice(0, 5000);
+
   const memoryContext = [
-    `آخر ${memory.history.length} دورة سابقة (ملخص):`,
+    `آخر ${memory.history.length} دورة:`,
     memory.history.slice(-6).map(h => `• ${h.ts}: ${h.summary}`).join("\n") || "(لا يوجد)",
     "",
-    "أفكار سابقة لم تُنفَّذ بعد:",
+    "أفكار سابقة:",
     memory.ideas.slice(-8).map(i => `• ${i}`).join("\n") || "(لا يوجد)",
     "",
-    "مشاكل معروفة متكررة:",
-    memory.knownIssues.slice(-8).map(i => `• ${i}`).join("\n") || "(لا يوجد)"
+    "مشاكل معروفة:",
+    memory.knownIssues.slice(-8).map(i => `• ${i}`).join("\n") || "(لا يوجد)",
+    "",
+    `نماذج معطّلة (تجنبها):`,
+    Object.keys(memory.disabledModels).length ? Object.keys(memory.disabledModels).join(", ") : "(لا يوجد)"
   ].join("\n");
 
   const manifesto = [
     `GitHub Pages: ${pagesUrl}`,
     `Render Bridge: ${renderUrl} (wss + /health)`,
     "",
-    "🎯 الفلسفة: ابنِ شيئاً لم يُرَ من قبل — لا لوحة تقليدية، بل مختبر سوق ذكي.",
+    "🎯 الفلسفة: مختبر سوق ذكي، لا لوحة تقليدية.",
     "",
     "📐 البنية الإلزامية:",
-    "1) Reactive Store مركزي (subscribe/dispatch) + Plugin Registry يكتشف public/plugins/*.js تلقائياً.",
-    "2) Offline-First: Service Worker + قائمة انتظار مزامنة (Sync Queue) في IndexedDB.",
-    "3) Local-First Save: كل نشر يُحفظ في localStorage ويُعاد بناء الواجهة فوراً، ثم يُبثّ عبر WebSocket.",
+    "1) Reactive Store + Plugin Registry يكتشف public/plugins/*.js.",
+    "2) Offline-First: Service Worker + Sync Queue.",
+    "3) Local-First: كل نشر يُحفظ في localStorage فوراً ثم يُبثّ عبر WebSocket.",
     "",
-    "🧪 الميزات غير التقليدية المطلوبة (كل دورة أضف واحدة جديدة على الأقل):",
+    "🧪 ميزات مطلوبة (أضف واحدة جديدة على الأقل كل دورة):",
     "• محرك NLP عربي محلي: extractEntities(text) → {item, price, place, unit, confidence}.",
-    "• مؤشر تذبذب (Volatility Index) لكل سلعة خلال آخر 7 أيام.",
-    "• كشف شذوذ (Anomaly) عبر z-score لمقارنة السعر بالمتوسط.",
-    "• تنبؤ خطي بسيط (Linear Trend Forecast) لسعر الغد لكل سلعة.",
-    "• خريطة حرارة نصية للمدن السودانية (بلا مكتبات) تُظهر أغلى/أرخص مدينة لكل سلعة.",
-    "• مقارنة ذكية: أرخص 3 بائعين + أعلى/أدنى سعر + نسبة التوفير.",
-    "• مؤشر ثقة (Confidence 0-100) لكل منشور بناءً على اكتمال الحقول.",
-    "• نبض السوق (Market Pulse): رسم شريطي SVG مدمج يُحدَّث تلقائياً.",
-    "• مساعد صوتي عبر Web Speech API (اختياري، مع fallback).",
-    "• لوحة Developer Console داخل الموقع تعرض حالة AI + مقترحات + سجل التغييرات.",
+    "• مؤشر تذبذب (Volatility Index) لآخر 7 أيام.",
+    "• كشف شذوذ (Anomaly z-score).",
+    "• تنبؤ خطي بسيط لسعر الغد.",
+    "• خريطة حرارة نصية للمدن السودانية.",
+    "• مقارنة ذكية: أرخص 3 بائعين + نسبة التوفير.",
+    "• مؤشر ثقة (Confidence 0-100).",
+    "• نبض السوق (Market Pulse SVG).",
+    "• مساعد صوتي (Web Speech API + fallback).",
+    "• Developer Console داخل الموقع.",
     "",
     "🛡️ الصلابة:",
-    "• لا عنصر DOM بلا وجود في index.html.",
-    "• window.onerror + unhandledrejection يعرضان الأخطاء في شريط أعلى الصفحة.",
-    "• لا روابط مطلقة تبدأ بـ /؛ استخدم ./ دائماً.",
-    "• كل ملف JS صالح الصياغة، وكل JSON صالح."
+    "• window.onerror + unhandledrejection إلزامي.",
+    "• كل ملف JS صالح الصياغة.",
+    "• كل JSON صالح.",
+    "• لا روابط مطلقة /."
   ].join("\n");
 
   let agreedPlan = "";
@@ -341,16 +450,16 @@ async function run() {
   console.log(`🤝 حوار معماري: [${planner.label}] ↔ [${critic.label}]`);
   try {
     const prop = await planner.runText(
-      "أنت مهندس معماري مبتكر. صمّم خطة تطوير جريئة وغير تقليدية لموقع سوق سوداني، مع التركيز على ميزة واحدة جديدة خارج الصندوق هذه الدورة.",
+      "أنت مهندس معماري مبتكر. صمّم خطة تطوير جريئة وغير تقليدية لموقع سوق سوداني، مع التركيز على ميزة واحدة جديدة خارج الصندوق.",
       `📊 التشخيص:\n${diagnosticReport}\n\n🧠 الذاكرة:\n${memoryContext}\n\n📜 الميثاق:\n${manifesto}\n\n📂 الملفات:\n${currentFiles}`,
-      850
+      900
     );
     console.log(`💡 مقترح ${planner.label} جاهز.`);
     try {
       const rev = await critic.runText(
-        "أنت الناقد الهندسي. راجع الخطة، اكتشف نقاط الضعف (DOM/صياغة/أداء/تجربة)، ثم اكتب [اتفقنا] متبوعاً بخطة نهائية معدّلة بعناصر إبداعية إضافية.",
+        "أنت الناقد الهندسي. راجع الخطة، اكتشف نقاط الضعف، ثم اكتب [اتفقنا] متبوعاً بخطة نهائية معدّلة.",
         `المقترح:\n${prop.text}\n\nالتشخيص:\n${diagnosticReport}\n\nالذاكرة:\n${memoryContext}\n\nالميثاق:\n${manifesto}`,
-        850
+        900
       );
       agreedPlan = rev.text;
       activeExecutor = critic;
@@ -365,16 +474,18 @@ async function run() {
     const solo = await critic.runText(
       "أنت المنفذ المستقل. ضع خطة فورية لميزة غير تقليدية + إصلاح كل المشاكل.",
       `التشخيص:\n${diagnosticReport}\n\nالذاكرة:\n${memoryContext}\n\nالميثاق:\n${manifesto}\n\nالملفات:\n${currentFiles}`,
-      850
+      900
     );
     agreedPlan = `[عمل مستقل]\n${solo.text}`;
     activeExecutor = critic;
   }
 
   const systemJson = [
-    "أنت مهندس برمجيات محترف يكتب كوداً خالياً من الأخطاء وقابلاً للتوسيع.",
+    "أنت مهندس برمجيات محترف يكتب كوداً خالياً من الأخطاء.",
     "أعد كائن JSON صالحاً فقط بدون أي نص خارج JSON.",
-    "الشكل بدقة: {\"files\":{\"path/to/file\":\"full content\"},\"summary\":\"ملخص\",\"newIdea\":\"ميزة جديدة أضفتها هذه الدورة\",\"memoryUpdate\":{\"ideas\":[\"...\"],\"knownIssues\":[\"...\"]}}"
+    "⚠️ مهم: كل قيمة داخل files يجب أن تكون سلسلة كاملة تنتهي بشكل صحيح — لا تقطع أي ملف.",
+    "الشكل بدقة:",
+    '{"files":{"path/to/file":"full content"},"summary":"ملخص","newIdea":"ميزة جديدة","memoryUpdate":{"ideas":["..."],"knownIssues":["..."]}}'
   ].join("\n");
 
   const execPrompt = [
@@ -382,27 +493,42 @@ async function run() {
     agreedPlan, "", "=== التشخيص ===", diagnosticReport, "",
     "=== الذاكرة ===", memoryContext, "",
     "=== الميثاق ===", manifesto, "",
-    "=== الملفات الحالية ===", currentFiles
+    "=== الملفات الحالية ===", currentFiles,
+    "",
+    "⚠️ تنبيه: أعد فقط الملفات التي تحتاج تعديلاً فعلياً. لا تعد كتابة ملفات لم تتغير.",
+    "⚠️ تنبيه: كل ملف يجب أن يكون كاملاً — لا تقطعه."
   ].join("\n");
 
   const orderedExec = [activeExecutor, ...providers.filter(p => p !== activeExecutor)].filter(Boolean);
   let execResult = null, lastErr = null, validationErrors = [];
 
   for (const ep of orderedExec) {
+    console.log(`🔧 محاولة تنفيذ عبر ${ep.label}...`);
     try {
-      let r = await ep.runJson(systemJson, execPrompt, 3200);
+      let r = await ep.runJson(systemJson, execPrompt, 8000);
       let errs = validateGeneratedFiles(r?.parsed?.files);
       if (errs.length) {
-        console.warn(`⚠️ تحقق ${ep.label}: ${errs.join(" | ")} — إعادة محاولة.`);
+        console.warn(`⚠️ تحقق ${ep.label}: ${errs.slice(0, 3).join(" | ")} — إعادة محاولة.`);
         const retry = `${execPrompt}\n\n=== أخطاء يجب تصحيحها ===\n${errs.join("\n")}`;
-        r = await ep.runJson(systemJson, retry, 3200);
+        r = await ep.runJson(systemJson, retry, 8000);
         errs = validateGeneratedFiles(r?.parsed?.files);
         if (errs.length) { lastErr = new Error(errs.join(" | ")); continue; }
       }
-      execResult = r; validationErrors = []; lastErr = null; break;
-    } catch (e) { lastErr = e; console.warn(`⚠️ تنفيذ ${ep.label} فشل: ${e.message}`); }
+      execResult = r; validationErrors = []; lastErr = null;
+      console.log(`✅ نجح التنفيذ عبر ${ep.label}`);
+      break;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`⚠️ تنفيذ ${ep.label} فشل: ${e.message}`);
+    }
   }
-  if (!execResult?.parsed) failWithReason(`فشل التوليد: ${lastErr?.message || "unknown"}`);
+
+  // ✅ إصلاح 5: حفظ الذاكرة حتى لو فشل كل شيء (لتذكّر المشاكل)
+  if (!execResult?.parsed) {
+    memory.knownIssues.push(`فشل كامل في ${new Date().toISOString()}: ${lastErr?.message || "unknown"}`);
+    saveMemory(memory);
+    failWithReason(`فشل التوليد من جميع المزودين: ${lastErr?.message || "unknown"}`);
+  }
 
   const parsed = execResult.parsed;
   console.log(`✅ AI STATUS: WORKING (${execResult.detail})`);
@@ -415,10 +541,14 @@ async function run() {
     for (const [fp, content] of Object.entries(parsed.files)) {
       const p = String(fp).replace(/^\/+/, "").trim();
       if (!p || p.includes("..") || typeof content !== "string" || !content.trim()) continue;
-      if (p.endsWith(".json")) { try { JSON.parse(content); } catch { continue; } }
+      if (p.endsWith(".json")) { try { JSON.parse(content); } catch { console.warn(`⏭️ تخطي JSON غير صالح: ${p}`); continue; } }
       const dir = path.dirname(p); if (dir && dir !== ".") fs.mkdirSync(dir, { recursive: true });
       const prev = fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "";
-      if (prev !== content) { fs.writeFileSync(p, content, "utf8"); updated++; changedFiles.push(p); console.log(`📝 ${p}`); }
+      if (prev !== content) {
+        fs.writeFileSync(p, content, "utf8");
+        updated++; changedFiles.push(p);
+        console.log(`📝 ${p}`);
+      }
     }
   }
   console.log(`📦 ملفات تغيّرت: ${updated}`);
