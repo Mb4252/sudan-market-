@@ -1,31 +1,29 @@
 (function() {
     'use strict';
 
-    // نظام تسجيل الوحدات
-    const pluginRegistry = {
-        plugins: new Map(),
+    const plugins = new Map();
 
-        register(name, plugin) {
-            if (typeof plugin.init === 'function') {
-                this.plugins.set(name, plugin);
-                console.log(`تم تسجيل الوحدة ${name}`);
-            } else {
-                console.error(`الوحدة ${name} غير صالحة: يجب أن تحتوي على دالة init`);
-            }
-        },
-
-        initAll() {
-            this.plugins.forEach((plugin, name) => {
-                try {
-                    plugin.init();
-                    console.log(`تم تهيئة الوحدة ${name}`);
-                } catch (error) {
-                    console.error(`خطأ في تهيئة الوحدة ${name}:`, error);
-                }
-            });
+    function registerPlugin(name, plugin) {
+        if (typeof plugin.init === 'function') {
+            plugins.set(name, plugin);
+            plugin.init();
+        } else {
+            console.error(`الملحق ${name} ليس له دالة 'init'`);
         }
-    };
+    }
 
-    // تصدير النظام
-    window.pluginRegistry = pluginRegistry;
+    function getPlugin(name) {
+        return plugins.get(name);
+    }
+
+    function getAllPlugins() {
+        return Array.from(plugins.values());
+    }
+
+    // تصدير الواجهة
+    window.pluginRegistry = {
+        registerPlugin,
+        getPlugin,
+        getAllPlugins
+    };
 })();
