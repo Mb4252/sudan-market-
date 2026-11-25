@@ -1,171 +1,270 @@
 (function() {
     'use strict';
 
-    // متغيرات عامة
-    const store = new Proxy({
+    // نظام معالجة الأخطاء العام
+    window.onerror = function(message, source, lineno, colno, error) {
+        console.error('خطأ عام:', { message, source, lineno, colno, error });
+        logError('window.onerror', message, error);
+        return false;
+    };
+
+    window.addEventListener('unhandledrejection', function(event) {
+        console.error('رفض غير معالج:', event.reason);
+        logError('unhandledrejection', event.reason);
+        event.preventDefault();
+    });
+
+    function logError(type, message, error) {
+        try {
+            const errors = JSON.parse(localStorage.getItem('sudan_market_errors') || '[]');
+            errors.push({
+                type,
+                message: String(message),
+                stack: error ? error.stack : null,
+                timestamp: new Date().toISOString()
+            });
+            // احتفظ بآخر 50 خطأ فقط
+            if (errors.length > 50) errors.shift();
+            localStorage.setItem('sudan_market_errors', JSON.stringify(errors));
+        } catch (e) {
+            console.error('فشل في تسجيل الخطأ:', e);
+        }
+    }
+
+    // Reactive Store باستخدام Proxy وEventTarget
+    const storeTarget = {
         posts: [],
-        status: 'جارِ التحميل...'
-    }, {
+        status: 'متصل',
+        totalPosts: 0,
+        avgPrice: 0,
+        activeCities: 0
+    };
+
+    const storeEvents = new EventTarget();
+
+    const store = new Proxy(storeTarget, {
         set(target, key, value) {
             target[key] = value;
-            if (key === 'posts') renderPosts(value);
-            if (key === 'status') updateStatus(value);
+            storeEvents.dispatchEvent(new CustomEvent('change', { detail: { key, value } }));
             return true;
         }
     });
 
-    // دالة لجلب العنصر حسب المعرف
+    // دالة لجلب العنصر بأمان
     function qs(id) {
         return document.getElementById(id);
     }
 
-    // دالة لجلب النص الآمن
-    function safeText(id) {
-        const el = qs(id);
-        return el ? el.value.trim() : '';
-    }
-
-    // دالة لتحديث حالة التطبيق
+    // تحديث الحالة
     function updateStatus(status) {
-        const statusEl = qs('status');
-        if (statusEl) {
-            statusEl.textContent = status;
-            statusEl.className = `badge ${status === 'جارِ التحميل...' ? 'badge-loading' : ''}`;
+        const statusText = qs('statusText');
+        if (statusText) {
+            statusText.textContent = status;
         }
     }
 
-    // دالة لعرض المنشورات
-    function renderPosts(list) {
-        const container = qs('postsList');
+    // عرض المنشورات
+    function renderPosts(posts) {
+        const container = qs('postsContainer');
         if (!container) return;
 
         container.innerHTML = '';
-        list.slice().reverse().forEach(post => {
-            const div = document.createElement('div');
-            div.className = `post-card ${post.anomaly ? 'anomaly' : ''}`;
 
-            const header = document.createElement('div');
-            header.className = 'post-header';
-            header.innerHTML = `<strong>${post.author}</strong><span>${new Date(post.timestamp).toLocaleString('ar-EG')}</span>`;
-
-            const content = document.createElement('div');
-            content.textContent = post.content;
-
-            div.appendChild(header);
-            div.appendChild(content);
-            container.appendChild(div);
-        });
-    }
-
-    // دالة لجلب المنشورات
-    async function loadPosts() {
-        try {
-            store.status = 'جارِ التحميل...';
-            const posts = await window.api.fetchPosts();
-            store.posts = posts;
-            store.status = 'تم التحميل بنجاح';
-        } catch (error) {
-            console.error('خطأ في جلب المنشورات:', error);
-            store.status = 'خطأ في التحميل';
-        }
-    }
-
-    // دالة لإنشاء منشور جديد
-    async function handlePost() {
-        const author = safeText('author');
-        const content = safeText('content');
-
-        if (!author || !content) {
-            alert('يرجى ملء جميع الحقول');
+        if (posts.length === 0) {
+            container.innerHTML = '<p class="empty-state">لا توجد منشورات بعد. كن أول من ينشر!</p>';
             return;
         }
 
+        posts.slice().reverse().forEach(post => {
+            const card = document.createElement('div');
+            card.className = `post-card ${post.anomaly ? 'anomaly' : ''}`;
+
+            const header = document.createElement('div');
+            header.className = 'post-header';
+
+            const title = document.createElement('h3');
+            title.className = 'post-title';
+            title.textContent = post.title || 'منتج بدون عنوان';
+
+            const price = document.createElement('span');
+            price.className = 'post-price';
+            price.textContent = post.price ? `S${post.price}` : 'N/A';
+
+            header.appendChild(title);
+            header.appendChild(price);
+
+            const meta = document.createElement('div');
+            meta.className = 'post-meta';
+            meta.textContent = `${post.city || 'غير محدد'} • ${new Date(post.timestamp).toLocaleDateString('ar-SD')}`;
+
+            card.appendChild(header);
+            card.appendChild(meta);
+            container.appendChild(card);
+        });
+    }
+
+    // تحديث التحليلات
+    function updateAnalytics() {
+        const totalPosts = qs('totalPosts');
+        const avgPrice = qs('avgPrice');
+        const activeCities = qs('activeCities');
+
+        if (totalPosts) totalPosts.textContent = store.totalPosts;
+        if (avgPrice) avgPrice.textContent = store.avgPrice ? `S${store.avgPrice.toFixed(2)}` : '0';
+        if (activeCities) activeCities.textContent = store.activeCities;
+    }
+
+    // استماع لتغيرات الـ Store
+    storeEvents.addEventListener('change', (e) => {
+        const { key, value } = e.detail;
+        if (key === 'posts') {
+            renderPosts(value);
+            calculateAnalytics(value);
+        }
+        if (key === 'status') {
+            updateStatus(value);
+        }
+        if (key === 'totalPosts' || key === 'avgPrice' || key === 'activeCities') {
+            updateAnalytics();
+        }
+    });
+
+    function calculateAnalytics(posts) {
+        store.totalPosts = posts.length;
+        const prices = posts.map(p => p.price).filter(p => p > 0);
+        store.avgPrice = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
+        const cities = new Set(posts.map(p => p.city).filter(c => c));
+        store.activeCities = cities.size;
+    }
+
+    // جلب البيانات من API
+    async function fetchPosts() {
         try {
-            store.status = 'جارِ النشر...';
-            await window.api.createPost(author, content);
-            await loadPosts();
-            qs('content').value = '';
+            const response = await fetch('https://sudan-market-2.onrender.com/posts');
+            if (!response.ok) throw new Error('خطأ في جلب المنشورات');
+            const data = await response.json();
+            store.posts = data;
         } catch (error) {
-            console.error('خطأ في إنشاء المنشور:', error);
-            store.status = 'خطأ في النشر';
+            console.error('فشل في جلب المنشورات:', error);
+            store.posts = [];
         }
     }
 
-    // دالة لتهيئة المخططات
-    function initCharts() {
-        const volumeCtx = qs('chartVolume');
-        const priceCtx = qs('chartPrice');
+    // نشر منتج جديد
+    async function publishPost() {
+        const title = prompt('عنوان المنتج:');
+        if (!title) return;
 
-        if (volumeCtx && priceCtx) {
-            new Chart(volumeCtx, {
-                type: 'bar',
-                data: {
-                    labels: ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو'],
-                    datasets: [{
-                        label: 'حجم التداول',
-                        data: [12, 19, 3, 5, 2, 3],
-                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                        borderColor: 'rgba(75, 192, 192, 1)',
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        y: {
-                            beginAtZero: true
+        const price = prompt('السعر (بالسوداني):');
+        const city = prompt('المدينة:');
+
+        const post = {
+            id: Date.now().toString(),
+            title,
+            price: parseFloat(price) || 0,
+            city: city || 'غير محدد',
+            timestamp: new Date().toISOString(),
+            anomaly: false
+        };
+
+        // حفظ فوري في localStorage
+        try {
+            const localPosts = JSON.parse(localStorage.getItem('sudan_market_posts') || '[]');
+            localPosts.push(post);
+            localStorage.setItem('sudan_market_posts', JSON.stringify(localPosts));
+        } catch (e) {
+            console.error('فشل في الحفظ المحلي:', e);
+        }
+
+        // تحديث الـ Store فورياً
+        store.posts = [...store.posts, post];
+
+        // إرسال عبر WebSocket (إذا كان متاحاً)
+        sendToWebSocket(post);
+
+        // محاولة حفظ على الخادم
+        try {
+            await fetch('https://sudan-market-2.onrender.com/posts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(post)
+            });
+        } catch (e) {
+            console.warn('فشل في الحفظ على الخادم، تم الحفظ محلياً فقط:', e);
+        }
+    }
+
+    // WebSocket للبث المباشر
+    let ws = null;
+    const WS_URL = 'wss://sudan-market-2.onrender.com';
+
+    function initWebSocket() {
+        try {
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                store.status = 'متصل';
+                console.log('WebSocket متصل');
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'new_post') {
+                        // منع التكرار
+                        const exists = store.posts.some(p => p.id === data.post.id);
+                        if (!exists) {
+                            store.posts = [...store.posts, data.post];
                         }
                     }
+                } catch (e) {
+                    console.error('خطأ في معالجة رسالة WebSocket:', e);
                 }
-            });
+            };
 
-            new Chart(priceCtx, {
-                type: 'line',
-                data: {
-                    labels: ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو'],
-                    datasets: [{
-                        label: 'سعر السوق',
-                        data: [65, 59, 80, 81, 56, 55],
-                        fill: false,
-                        borderColor: 'rgb(75, 192, 192)',
-                        tension: 0.1
-                    }]
-                },
-                options: {
-                    responsive: true
-                }
-            });
+            ws.onclose = () => {
+                store.status = 'غير متصل';
+                console.log('WebSocket أغلق، إعادة المحاولة بعد 5 ثوانٍ');
+                setTimeout(initWebSocket, 5000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('خطأ في WebSocket:', error);
+                store.status = 'خطأ في الاتصال';
+            };
+        } catch (e) {
+            console.error('فشل في إنشاء WebSocket:', e);
+            store.status = 'غير متصل';
         }
     }
 
-    // دالة لتهيئة الرادار
-    async function initRadar() {
-        const radarEl = qs('radarContent');
-        if (!radarEl) return;
-
-        try {
-            const data = await window.api.fetchRadarData();
-            radarEl.innerHTML = `<h3>رادار السوق</h3><p>${data.message}</p>`;
-        } catch (error) {
-            console.error('خطأ في جلب بيانات الرادار:', error);
-            radarEl.innerHTML = '<p>خطأ في تحميل بيانات الرادار</p>';
+    function sendToWebSocket(post) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'new_post', post }));
         }
     }
 
-    // دالة لتهيئة التطبيق
-    function initApp() {
-        qs('postBtn')?.addEventListener('click', handlePost);
-        loadPosts();
-        initCharts();
-        initRadar();
+    // تهيئة التطبيق
+    function init() {
+        // ربط أزرار
+        const publishBtn = qs('publishBtn');
+        if (publishBtn) {
+            publishBtn.addEventListener('click', publishPost);
+        }
+
+        // تحميل البيانات الأولية
+        fetchPosts();
+
+        // تهيئة WebSocket
+        initWebSocket();
+
+        console.log('Sudan Market تم تهيئته بنجاح');
     }
 
-    // بدء التطبيق عند تحميل الصفحة
-    window.addEventListener('DOMContentLoaded', initApp);
-
-    // تصدير الدوال العامة
-    window.app = {
-        loadPosts,
-        handlePost
-    };
+    // بدء التطبيق عند اكتمال تحميل DOM
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 })();

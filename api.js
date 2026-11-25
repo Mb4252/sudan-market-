@@ -1,8 +1,7 @@
 (function() {
     'use strict';
 
-    // عنوان الخادم
-    const API_BASE = 'https://sudan-market-api.onrender.com';
+    const API_BASE = 'https://sudan-market-2.onrender.com';
 
     // دالة لجلب المنشورات
     async function fetchPosts() {
@@ -12,13 +11,11 @@
     }
 
     // دالة لإنشاء منشور جديد
-    async function createPost(author, content) {
+    async function createPost(post) {
         const response = await fetch(`${API_BASE}/posts`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ author, content })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(post)
         });
         if (!response.ok) throw new Error('خطأ في إنشاء المنشور');
         return await response.json();

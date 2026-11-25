@@ -1,62 +1,53 @@
 (function() {
     'use strict';
 
-    // دالة الانحدار الخطي البسيط للتنبؤ بالسعر
+    // دالة تنبؤ السعر باستخدام الانحدار الخطي
     function forecastPrice(prices) {
-        if (!Array.isArray(prices) || prices.length < 2) return null;
-        const clean = prices.filter(p => typeof p === 'number' && p > 0);
-        if (clean.length < 2) return null;
-        
-        const n = clean.length;
-        const xs = clean.map((_, i) => i);
-        const sumX = xs.reduce((a, b) => a + b, 0);
-        const sumY = clean.reduce((a, b) => a + b, 0);
-        const sumXY = xs.reduce((a, x, i) => a + x * clean[i], 0);
-        const sumX2 = xs.reduce((a, x) => a + x * x, 0);
-        
-        const denominator = n * sumX2 - sumX * sumX;
+        if (!prices || prices.length < 2) return null;
+
+        const n = prices.length;
+        let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+
+        for (let i = 0; i < n; i++) {
+            sumX += i;
+            sumY += prices[i];
+            sumXY += i * prices[i];
+            sumX2 += i * i;
+        }
+
+        const denominator = (n * sumX2 - sumX * sumX);
         if (denominator === 0) return null;
 
         const slope = (n * sumXY - sumX * sumY) / denominator;
         const intercept = (sumY - slope * sumX) / n;
-        
-        // التنبؤ للخطوة التالية (n)
-        const predicted = intercept + slope * n;
-        return Math.round(predicted);
+        const nextX = n;
+
+        return slope * nextX + intercept;
     }
 
-    // حساب مؤشر الثقة (Confidence Score) بناءً على حجم البيانات وتباينها
+    // دالة حساب الثقة بناءً على حجم البيانات والتباين
     function calculateConfidence(prices) {
-        if (!Array.isArray(prices) || prices.length < 2) return 0;
-        const clean = prices.filter(p => typeof p === 'number' && p > 0);
-        if (clean.length < 2) return 0;
+        if (!prices || prices.length < 2) return 0;
 
-        // عامل الحجم: كلما زادت البيانات زادت الثقة
-        const sizeFactor = Math.min(clean.length / 10, 1); // 10+ points = 100% size factor
-
-        // عامل التباين: كلما قل التباين (نسبة الانحراف المعياري للمتوسط) زادت الثقة
-        const mean = clean.reduce((a, b) => a + b, 0) / clean.length;
-        if (mean === 0) return 0;
-        
-        const variance = clean.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / clean.length;
+        const mean = prices.reduce((a, b) => a + b, 0) / prices.length;
+        const variance = prices.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / prices.length;
         const stdDev = Math.sqrt(variance);
-        const cv = stdDev / mean; // Coefficient of Variation
-        const stabilityFactor = Math.max(0, 1 - cv); // إذا كان التباين عالياً تنخفض الثقة
 
-        // دمج العوامل
-        const confidence = sizeFactor * 0.4 + stabilityFactor * 0.6;
+        // نسبة التباين
+        const cv = mean !== 0 ? stdDev / mean : 1;
+
+        // حجم البيانات
+        const sizeFactor = Math.min(prices.length / 10, 1);
+
+        // الثقة النهائية
+        const confidence = Math.max(0, Math.min(1, (1 - cv) * sizeFactor));
+
         return Math.round(confidence * 100);
     }
 
-    // دالة موحدة للتحليل والتنبؤ
-    window.ForecastPlugin = {
-        predict: function(prices) {
-            return {
-                predictedPrice: forecastPrice(prices),
-                confidence: calculateConfidence(prices)
-            };
-        }
+    // تصدير الدوال
+    window.forecast = {
+        forecastPrice,
+        calculateConfidence
     };
-
-    console.log('[Forecast Plugin] Loaded successfully.');
 })();
