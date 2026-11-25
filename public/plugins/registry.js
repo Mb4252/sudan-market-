@@ -1,32 +1,32 @@
 (function() {
     'use strict';
 
-    // تسجيل الأخطاء
-    function registerErrorHandler() {
-        window.onerror = function(message, source, lineno, colno, error) {
-            window.extensions.module3.handleError(error);
-        };
+    const plugins = new Map();
 
-        window.addEventListener('unhandledrejection', function(event) {
-            window.extensions.module3.handleError(event.reason);
+    function registerPlugin(name, plugin) {
+        if (typeof plugin.init !== 'function') {
+            console.error('البرنامج المساعد يجب أن يحتوي على دالة init');
+            return;
+        }
+        plugins.set(name, plugin);
+        plugin.init();
+    }
+
+    function getPlugin(name) {
+        return plugins.get(name);
+    }
+
+    function initAllPlugins() {
+        plugins.forEach(plugin => {
+            if (typeof plugin.init === 'function') {
+                plugin.init();
+            }
         });
     }
 
-    // دالة لتحميل السكربتات
-    function loadScript(url) {
-        return new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = url;
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
-        });
-    }
-
-    // تصدير الدوال
-    window.plugins = window.plugins || {};
-    window.plugins.registry = {
-        registerErrorHandler,
-        loadScript
+    window.pluginRegistry = {
+        registerPlugin,
+        getPlugin,
+        initAllPlugins
     };
 })();
