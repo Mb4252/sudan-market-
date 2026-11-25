@@ -52,31 +52,31 @@ jobs:
               id: "stage-1-sdm-core-storage",
               title: "نواة التخزين الفوري في المتصفح (localStorage) وإدارة هوية كل شخص ومحادثاته",
               files: ["public/sdm/sdm-storage.js"],
-              goal: "إنشاء ملف نواة واحد متخصص بالحفظ الفوري في localStorage مع فحص آمن للتواريخ (بدون Invalid Date) وفصل الدردشة الخاصة بكل شخص (حسب معرف المستخدم/الشخص). بعد اكتماله يُقفل ولا يُعدل مرة أخرى."
+              goal: "إنشاء ملف نواة واحد متخصص بالحفظ الفوري في localStorage مع فحص آمن للتواريخ (بدون Invalid Date) وفصل الدردشة الخاصة بكل شخص. بعد اكتماله يُقفل ولا يُعدل مرة أخرى."
             },
             {
               id: "stage-2-sdm-ai-engine",
               title: "نواة محرك الذكاء الاصطناعي SDM والرد الفوري الذكي",
               files: ["public/sdm/sdm-engine.js"],
-              goal: "إنشاء ملف واحد متخصص بمحرك الذكاء الاصطناعي SDM الذي يقرأ سياق دردشة الشخص الخاص، ويحلل الأسعار والمنتجات والمدن، ويعطي ردوداً فورية ومفيدة محلياً وعبر الشبكة دون تعطل. بعد اكتماله يُقفل ولا يُعدل مرة أخرى."
+              goal: "إنشاء ملف واحد متخصص بمحرك الذكاء الاصطناعي SDM الذي يقرأ سياق دردشة الشخص الخاص ويعطي ردوداً فورية ومفيدة محلياً وعبر الشبكة دون تعطل. بعد اكتماله يُقفل ولا يُعدل مرة أخرى."
             },
             {
               id: "stage-3-sdm-private-chat-ui",
               title: "واجهة الدردشة الخاصة بكل شخص مع SDM وتعمل فوراً في الصفحة",
               files: ["public/sdm/sdm-chat-ui.js"],
-              goal: "إنشاء ملف واجهة واحد متخصص ببناء وعرض دردشة خاصة بكل شخص مع SDM (تبديل/تحديد هوية الشخص، إرسال فوري، عرض الرسائل، والتحقق الآمن من وجود عناصر DOM قبل إسناد .textContent). بعد اكتماله يُقفل ولا يُعدل مرة أخرى."
+              goal: "إنشاء ملف واجهة واحد متخصص ببناء وعرض دردشة خاصة بكل شخص مع SDM مع التحقق الآمن من وجود عناصر DOM قبل إسناد .textContent. بعد اكتماله يُقفل ولا يُعدل مرة أخرى."
             },
             {
               id: "stage-4-render-live-bridge",
               title: "نواة البث المباشر عبر WebSocket إلى Render ومزامنة الحالة",
               files: ["public/sdm/sdm-render-sync.js"],
-              goal: "إنشاء ملف واحد متخصص بالاتصال المباشر عبر wss://sudan-market-2.onrender.com مع إعادة الاتصال التلقائي وتحديث حالة الاتصال في الواجهة وحفظ التحديثات فورياً. بعد اكتماله يُقفل ولا يُعدل مرة أخرى."
+              goal: "إنشاء ملف واحد متخصص بالاتصال المباشر عبر wss://sudan-market-2.onrender.com مع إعادة الاتصال التلقائي وتحديث حالة الاتصال في الواجهة. بعد اكتماله يُقفل ولا يُعدل مرة أخرى."
             },
             {
               id: "stage-5-market-shell-and-loader",
               title: "واجهة المنصة وتجميع الملفات المقفلة لتعمل فوراً في index.html",
               files: ["public/sdm/sdm-shell.js", "index.html"],
-              goal: "إنشاء ملف واحد للواجهة الرئيسية يجمع النواة ودردشة SDM الخاصة بكل شخص، وتحديث index.html لتحميل جميع الملفات المقفلة وتفعيلها فوراً في المتصفح عند الفتح."
+              goal: "إنشاء ملف واحد للواجهة الرئيسية وتحديث index.html لضم واجهة مرئية واضحة ومضمونة دائماً (تمنع الشاشة البيضاء نهائياً) وتحميل الملفات المقفلة بأمان."
             },
             {
               id: "stage-6-sdm-smart-commands",
@@ -108,7 +108,7 @@ jobs:
               lockedFiles: [],
               currentStage: ROADMAP_STAGES[0].id,
               extraStageCounter: 0,
-              wipedFromScratchDone: false
+              wipedFromScratchDone: true
             };
             try {
               if (!fs.existsSync(STAGES_FILE)) return defaultState;
@@ -118,56 +118,11 @@ jobs:
                 lockedFiles: Array.isArray(parsed.lockedFiles) ? parsed.lockedFiles : [],
                 currentStage: typeof parsed.currentStage === "string" ? parsed.currentStage : ROADMAP_STAGES[0].id,
                 extraStageCounter: Number.isFinite(parsed.extraStageCounter) ? parsed.extraStageCounter : 0,
-                wipedFromScratchDone: Boolean(parsed.wipedFromScratchDone)
+                wipedFromScratchDone: parsed.wipedFromScratchDone !== false
               };
             } catch {
               return defaultState;
             }
-          }
-
-          function removePathRecursive(targetPath) {
-            if (!fs.existsSync(targetPath)) return 0;
-            const stat = fs.lstatSync(targetPath);
-            if (stat.isDirectory()) {
-              let removed = 0;
-              for (const entry of fs.readdirSync(targetPath)) {
-                removed += removePathRecursive(path.join(targetPath, entry));
-              }
-              fs.rmdirSync(targetPath);
-              return removed + 1;
-            }
-            fs.unlinkSync(targetPath);
-            return 1;
-          }
-
-          function wipeAllFromScratchIfNeeded(stagesState) {
-            if (stagesState.wipedFromScratchDone) {
-              return { state: stagesState, wipedCount: 0 };
-            }
-
-            const protectedEntries = new Set([".git", ".github", "node_modules"]);
-            let wipedCount = 0;
-
-            for (const entry of fs.readdirSync(".", { withFileTypes: true })) {
-              if (protectedEntries.has(entry.name)) continue;
-              try {
-                wipedCount += removePathRecursive(entry.name);
-              } catch (e) {
-                console.warn(`⚠️ تعذر حذف ${entry.name}: ${e.message}`);
-              }
-            }
-
-            const freshState = {
-              completedStages: [],
-              lockedFiles: [],
-              currentStage: ROADMAP_STAGES[0].id,
-              extraStageCounter: 0,
-              wipedFromScratchDone: true
-            };
-
-            fs.mkdirSync("public", { recursive: true });
-            fs.writeFileSync(STAGES_FILE, JSON.stringify(freshState, null, 2), "utf8");
-            return { state: freshState, wipedCount };
           }
 
           function selectActiveStage(stagesState, hasCriticalRuntimeIssue) {
@@ -183,7 +138,7 @@ jobs:
               title: `توسعة جديدة مقفلة لـ SDM #${nextNum} تعمل فوراً في الواجهة`,
               files: [`public/sdm/sdm-addon-${nextNum}.js`],
               goal: hasCriticalRuntimeIssue
-                ? "إضافة ملف جديد واحد فقط يعالج الخلل الظاهر في الواجهة ثم قفله نهائياً دون تعديل الملفات المقفلة."
+                ? "إصلاح ظهور الواجهة في index.html وضمان عدم سقوط الصفحة عند أي خطأ في السكربتات دون تعديل الملفات المقفلة."
                 : "إضافة ميزة جديدة صغيرة في ملف جديد واحد مربوط ومفعّل فوراً في الواجهة ومرتبط بـ SDM وlocalStorage، ثم قفله نهائياً وعدم تعديله مرة أخرى."
             };
           }
@@ -292,9 +247,9 @@ jobs:
             const htmlFile = filesList.find(f => f.fullPath === "index.html");
             const jsFiles = filesList.filter(f => f.fullPath.endsWith(".js") && f.fullPath !== "server.js");
 
-            if (!htmlFile) {
-              issues.push("ملف index.html سيتم إنشاؤه/تحديثه لربط ملفات SDM والواجهة فوراً.");
-              return { text: issues.join("\n"), hasCritical: false };
+            if (!htmlFile || !/<body[\s\S]*<\/body>/i.test(htmlFile.raw) || htmlFile.raw.replace(/<[^>]+>/g, "").trim().length < 25) {
+              issues.push("واجهة index.html تفتقر إلى عناصر مرئية واضحة في الصفحة (خطر ظهور شاشة بيضاء)، ويجب تحديث index.html بواجهة SDM كاملة وواضحة.");
+              return { text: issues.join("\n"), hasCritical: true };
             }
 
             const allJsRaw = jsFiles.map(f => f.raw).join("\n");
@@ -651,12 +606,7 @@ jobs:
               failWithReason("لا يوجد أي مفتاح API صالح في Secrets.");
             }
 
-            const initialStages = loadStagesState();
-            const { state: stagesState, wipedCount } = wipeAllFromScratchIfNeeded(initialStages);
-            if (wipedCount > 0) {
-              console.log(`🧹 تم مسح ${wipedCount} عنصر/ملف سابق من الصفر والبدء ببناء نواة SDM والمنصة.`);
-            }
-
+            const stagesState = loadStagesState();
             const lockedSet = new Set(stagesState.lockedFiles);
             const filesList = collectProjectFiles(".");
             const diag = runSelfDiagnostics(filesList, renderUrl);
@@ -679,9 +629,9 @@ jobs:
               `رابط جسر Render الصحيح: ${renderUrl} (للبث المباشر عبر wss://sudan-market-2.onrender.com وطلب الإيقاظ /health).`,
               `المرحلة الحصرية المطلوبة الآن: ${activeStage.id} (${activeStage.title})`,
               `هدف هذه المرحلة فقط: ${activeStage.goal}`,
-              `الملفات المطلوبة لهذه المرحلة: ${activeStage.files.join(" ، ")} (كل ملف يحتوي على وظيفة واحدة مكتملة ويعمل فوراً في الواجهة وليس مخزناً فقط في GitHub).`,
-              "مواصفات SDM الإلزامية: ذكاء اصطناعي باسم SDM، حفظ فوري في المتصفح (localStorage)، دردشة خاصة مستقلة لكل شخص/مستخدم مع حفظ سجل كل شخص على حدة، وقابلية للتوسع بإضافة ملفات جديدة مقفلة تعمل فوراً في الواجهة.",
-              "احرص على تضمين كل ملف JS جديد داخل <script src=\"...\"></script> في index.html (مع إمكانية تحديث index.html فقط لتضمين الملفات الجديدة)، وتحقّق دائماً من وجود عناصر DOM قبل إسناد .textContent، وتجنّب Invalid Date نهائياً.",
+              `الملفات المطلوبة لهذه المرحلة: ${activeStage.files.join(" ، ")} (كل ملف يحتوي على وظيفة واحدة مكتملة ويعمل فوراً في الواجهة).`,
+              "مهم جداً لمنع الشاشة البيضاء: يجب أن يحتوي index.html دائماً على واجهة عربية منظمة وواضحة على الهاتف تظهر فوراً (عنوان المنصة وSDM، حقل هوية الشخص للدردشة الخاصة به، صندوق رسائل الدردشة، زر الإرسال، وشريط حالة الاتصال)، وأن يُغلّف أي كود في الملفات الجديدة داخل try { ... } catch (e) {} مع فحص وجود عناصر DOM قبل إسناد .textContent وتجنّب Invalid Date.",
+              "احرص على تضمين أي ملف JS جديد داخل <script src=\"...\"></script> في index.html ليعمل فوراً في المتصفح.",
               `قفل صارم — الملفات التالية مقفلة وممنوع تعديلها أو إعادة كتابتها مرة أخرى: [${lockedListForPrompt}].`
             ].join("\n");
 
@@ -694,14 +644,14 @@ jobs:
               console.log(`🤝 حوار التشخيص والابتكار نشط بين: [${p1.label}] و [${p2.label}]`);
               try {
                 const propRes = await p1.runText(
-                  "أنت مهندس برمجيات. ضع خطة لمرحلة واحدة فقط بحيث يكون لكل ملف وظيفة واحدة مكتملة ويعمل فوراً في الواجهة مع localStorage ودردشة خاصة بكل شخص مع SDM وقابل للتوسع عبر ملفات مقفلة.",
+                  "أنت مهندس برمجيات. ضع خطة لمرحلة واحدة فقط تضمن ظهور واجهة SDM واضحة ومنع الشاشة البيضاء تماماً، مع وظيفة واحدة لكل ملف واحترام قفل الملفات المقفلة.",
                   `${stageMandate}\n\nالتشخيص:\n${diag.text}\n\nالملفات الحالية:\n${currentFiles}`,
                   450
                 );
                 console.log(`💡 مقترح ${propRes.detail} جاهز للمراجعة.`);
                 try {
                   const revRes = await p2.runText(
-                    "أنت المدقق الهندسي. راجع الخطة وتأكد أن كل ملف له وظيفة واحدة ويعمل فوراً في الواجهة وأن الملفات المقفلة لا تُعدل، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
+                    "أنت المدقق الهندسي. راجع الخطة وتأكد من حماية الواجهة من الشاشة البيضاء ووجود عناصر DOM ودردشة خاصة لكل شخص وعدم تعديل أي ملف مقفل، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
                     `مقترح الطرف الأول:\n${propRes.text}\n\n${stageMandate}`,
                     450
                   );
@@ -716,7 +666,7 @@ jobs:
               } catch (propErr) {
                 console.warn(`⚠️ تعذر الطرف الأول (${propErr.message}) — ينتقل الطرف الثاني للعمل المستقل الفوري.`);
                 const soloRes = await p2.runText(
-                  "أنت المنفذ المستقل. ضع خطة لمرحلة واحدة فقط بحيث يكون لكل ملف وظيفة واحدة مكتملة وتعمل فوراً في الواجهة.",
+                  "أنت المنفذ المستقل. ضع خطة لمرحلة واحدة فقط تضمن واجهة واضحة بدون شاشة بيضاء ووظيفة واحدة لكل ملف.",
                   `${stageMandate}\n\n${currentFiles}`,
                   450
                 );
@@ -729,7 +679,7 @@ jobs:
 
             const systemJsonInstruction = [
               "أنت مهندس برمجيات. أعد كائن JSON صالحاً فقط بدون أي نص خارجه.",
-              "اجعل كل ملف ذا وظيفة واحدة مكتملة ويعمل فوراً في الواجهة (عبر تضمينه في index.html وربطه بالواجهة وlocalStorage ودردشة SDM الخاصة بكل شخص)، ولا تعدّل أي ملف مقفل.",
+              "اجعل كل ملف ذا وظيفة واحدة مكتملة ويعمل فوراً في الواجهة دون شاشة بيضاء، ولا تعدّل أي ملف مقفل.",
               "الشكل المطلوب: {\"files\":{\"مسار_ملف\":\"محتواه\"},\"summary\":\"ملخص نصي واضح\"}"
             ].join("\n");
 
@@ -803,17 +753,15 @@ jobs:
               }
             }
 
-            if (updatedCount > 0 || wipedCount > 0) {
+            if (updatedCount > 0) {
               const isBaseStage = ROADMAP_STAGES.some(s => s.id === activeStage.id);
-              const nextCompleted = updatedCount > 0
-                ? Array.from(new Set([...stagesState.completedStages, activeStage.id]))
-                : stagesState.completedStages;
+              const nextCompleted = Array.from(new Set([...stagesState.completedStages, activeStage.id]));
               const nextLocked = Array.from(new Set([...stagesState.lockedFiles, ...newlyLockedFiles]));
               const nextStageObj = selectActiveStage(
                 {
                   completedStages: nextCompleted,
                   lockedFiles: nextLocked,
-                  extraStageCounter: (updatedCount > 0 && !isBaseStage)
+                  extraStageCounter: !isBaseStage
                     ? (stagesState.extraStageCounter || 0) + 1
                     : stagesState.extraStageCounter
                 },
@@ -823,7 +771,7 @@ jobs:
                 completedStages: nextCompleted,
                 lockedFiles: nextLocked,
                 currentStage: nextStageObj.id,
-                extraStageCounter: (updatedCount > 0 && !isBaseStage)
+                extraStageCounter: !isBaseStage
                   ? (stagesState.extraStageCounter || 0) + 1
                   : stagesState.extraStageCounter,
                 wipedFromScratchDone: true
@@ -833,9 +781,7 @@ jobs:
               if (newlyLockedFiles.length > 0) {
                 console.log(`🔒 تم قفل الملفات المكتملة (لن تُعدل مرة أخرى): ${newlyLockedFiles.join(", ")}`);
               }
-              if (updatedCount > 0) {
-                console.log(`🏁 تم إنهاء المرحلة [${activeStage.id}] والانتقال إلى [${nextStageObj.id}]`);
-              }
+              console.log(`🏁 تم إنهاء المرحلة [${activeStage.id}] والانتقال إلى [${nextStageObj.id}]`);
               fs.writeFileSync(
                 "last_ai_change.txt",
                 summaryText.replace(/[\r\n]+/g, " ").slice(0, 120),
@@ -843,7 +789,7 @@ jobs:
               );
             }
 
-            console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount} | عناصر ممسوحة من الصفر: ${wipedCount}`);
+            console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
           }
 
           run();
@@ -864,7 +810,7 @@ jobs:
             echo "ℹ️ nothing to commit, working tree clean."
             exit 0
           fi
-          SUMMARY="SDM AI core with per-person private chat and instant locked UI modules"
+          SUMMARY="SDM UI stability and locked single-purpose modules"
           if [ -f last_ai_change.txt ]; then
             SUMMARY=$(head -n 1 last_ai_change.txt)
             rm -f last_ai_change.txt
