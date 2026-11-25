@@ -1,1 +1,20 @@
-const channel = new BroadcastChannel('posts');\nchannel.addEventListener('message', e => {\n  if (e.data && e.data.type === 'NEW_POST') {\n    const postsDiv = document.getElementById('posts');\n    if (postsDiv) {\n      const div = document.createElement('div');\n      div.className = 'post ' + (e.data.priceTag || '');\n      div.innerHTML = `<div class=\"meta\">${e.data.author || 'مجهول'} — ${new Date(e.data.timestamp).toLocaleString()}</div><div>${e.data.content}</div>`;\n      postsDiv.prepend(div);\n      applyFilter(window.currentFilter);\n    }\n  }\n});\nfunction publishPost(post) {\n  channel.postMessage({ type: 'NEW_POST', ...post });\n}\nwindow.publishPost = publishPost;
+const channel = new BroadcastChannel('posts');
+channel.addEventListener('message', e => {
+  if (e.data && e.data.type === 'NEW_POST') {
+    const postsDiv = document.getElementById('posts');
+    if (postsDiv) {
+      const div = document.createElement('div');
+      div.className = 'post ' + (e.data.priceTag || '');
+      div.innerHTML = `<div class="meta">${e.data.author || 'مجهول'} — ${new Date(e.data.timestamp).toLocaleString()}</div><div>${e.data.content}</div>`;
+      postsDiv.prepend(div);
+      applyFilter(window.currentFilter);
+    }
+  }
+});
+function publishPost(post) {
+  if (window.tagPost) {
+    post.priceTag = window.tagPost(post);
+  }
+  channel.postMessage({ type: 'NEW_POST', ...post });
+}
+window.publishPost = publishPost;
