@@ -1,1 +1,139 @@
-(function(){'use strict';function qs(id){return document.getElementById(id)}function safeText(id){var el=qs(id);return el?el.value.trim():''}function logError(e){var msg=e instanceof Error?e.stack:e;console.error(msg);var errLog=JSON.parse(localStorage.getItem('errorLog')||'[]');errLog.push({time:new Date().toISOString(),msg:msg});localStorage.setItem('errorLog',JSON.stringify(errLog))}window.addEventListener('error',logError);window.addEventListener('unhandledrejection',e=>logError(e.reason));var store=new Proxy({posts:[]}, {set(t,k,v){t[k]=v;if(k==='posts')renderPosts(v);return true}});function renderPosts(list){var container=qs('postsList');container.innerHTML='';list.slice().reverse().forEach(p=>{var div=document.createElement('div');div.className='post-card'+(p.anomaly?' anomaly':'');var header=document.createElement('div');header.className='post-header';header.innerHTML=`<span>${p.author||'مجهول'}</span><span>${new Date(p.time).toLocaleString()}</span>`;var body=document.createElement('div');body.textContent=p.content;div.appendChild(header);div.appendChild(body);container.appendChild(div)});updateCharts(list)}function updateCharts(list){if(!window.volumeChart||!window.priceChart)return;var counts={};var prices={};list.forEach(p=>{var city=p.city||'غير محدد';counts[city]=(counts[city]||0)+1;if(p.price){prices[city]=prices[city]||[];prices[city].push(p.price)}});var labels=Object.keys(counts);window.volumeChart.data.labels=labels;window.volumeChart.data.datasets[0].data=labels.map(l=>counts[l]);window.priceChart.data.labels=labels;window.priceChart.data.datasets[0].data=labels.map(l=>{var arr=prices[l];return arr?arr.reduce((a,b)=>a+b,0)/arr.length:0});window.volumeChart.update();window.priceChart.update()}function initCharts(){var ctxV=qs('chartVolume').getContext('2d');var ctxP=qs('chartPrice').getContext('2d');window.volumeChart=new Chart(ctxV,{type:'bar',data:{labels:[],datasets:[{label:'عدد المنشورات',data:[],backgroundColor:'rgba(33,150,243,0.5)',borderColor:'rgba(33,150,243,1)',borderWidth:1}]},options:{responsive:true,plugins:{legend:{position:'top'}},scales:{y:{beginAtZero:true}}}});window.priceChart=new Chart(ctxP,{type:'line',data:{labels:[],datasets:[{label:'متوسط السعر',data:[],borderColor:'rgba(76,175,80,1)',backgroundColor:'rgba(76,175,80,0.2)',fill:true}]},options:{responsive:true,plugins:{legend:{position:'top'}},scales:{y:{beginAtZero:true}}}})}function loadFromStorage(){var saved=JSON.parse(localStorage.getItem('posts')||'[]');store.posts=saved}function saveToStorage(){localStorage.setItem('posts',JSON.stringify(store.posts))}function connectWS(){var ws=new WebSocket('wss://sudan-market-2.onrender.com');ws.onopen=function(){qs('statusIndicator').textContent='متصل';qs('statusIndicator').className='status-indicator online'};ws.onmessage=function(ev){try{var data=JSON.parse(ev.data);if(data.type==='newPost'){store.posts.push(data.payload);saveToStorage()}}catch(e){logError(e)}};ws.onclose=function(){qs('statusIndicator').textContent='غير متصل';qs('statusIndicator').className='status-indicator offline';setTimeout(connectWS,3000)};ws.onerror=logError;return ws}document.addEventListener('DOMContentLoaded',function(){initCharts();loadFromStorage();var ws=connectWS();qs('publishBtn').addEventListener('click',function(){var author=safeText('author');var content=safeText('content');if(!content){alert('الرجاء كتابة محتوى');return}var post={author:author||'مجهول',content,time:new Date().toISOString(),city:'الخرطوم',price:null,anomaly:false};store.posts.push(post);saveToStorage();ws.send(JSON.stringify({type:'newPost',payload:post}));qs('author').value='';qs('content').value=''});window.addEventListener('beforeunload',saveToStorage)})})();
+(function() {
+    'use strict';
+
+    // متغيرات عامة
+    const store = new Proxy({
+        posts: [],
+        status: 'جارِ التحميل...'
+    }, {
+        set(target, key, value) {
+            target[key] = value;
+            if (key === 'posts') renderPosts(value);
+            if (key === 'status') updateStatus(value);
+            return true;
+        }
+    });
+
+    // دالة لجلب العنصر حسب المعرف
+    function qs(id) {
+        return document.getElementById(id);
+    }
+
+    // دالة لجلب النص الآمن
+    function safeText(id) {
+        const el = qs(id);
+        return el ? el.value.trim() : '';
+    }
+
+    // دالة لتحديث حالة التطبيق
+    function updateStatus(status) {
+        const statusEl = qs('status');
+        if (statusEl) {
+            statusEl.textContent = status;
+            statusEl.className = `badge ${status === 'جارِ التحميل...' ? 'badge-loading' : ''}`;
+        }
+    }
+
+    // دالة لعرض المنشورات
+    function renderPosts(list) {
+        const container = qs('postsList');
+        if (!container) return;
+
+        container.innerHTML = '';
+        list.slice().reverse().forEach(post => {
+            const div = document.createElement('div');
+            div.className = `post-card ${post.anomaly ? 'anomaly' : ''}`;
+
+            const header = document.createElement('div');
+            header.className = 'post-header';
+            header.innerHTML = `<span>${post.author || 'مجهول'}</span><span>${new Date(post.time).toLocaleString()}</span>`;
+
+            const body = document.createElement('div');
+            body.textContent = post.content;
+
+            div.appendChild(header);
+            div.appendChild(body);
+            container.appendChild(div);
+        });
+    }
+
+    // دالة لتحميل المنشورات
+    async function loadPosts() {
+        try {
+            store.status = 'جارِ التحميل...';
+            const posts = await fetchPosts();
+            store.posts = posts;
+            store.status = 'تم التحميل بنجاح';
+        } catch (error) {
+            console.error('خطأ في تحميل المنشورات:', error);
+            store.status = 'خطأ في التحميل';
+        }
+    }
+
+    // دالة لنشر منشور جديد
+    async function publishPost() {
+        const author = safeText('author');
+        const content = safeText('content');
+
+        if (!author || !content) {
+            alert('يرجى ملء جميع الحقول');
+            return;
+        }
+
+        try {
+            store.status = 'جارِ النشر...';
+            const newPost = await createPost(author, content);
+            store.posts = [...store.posts, newPost];
+            store.status = 'تم النشر بنجاح';
+
+            // مسح الحقول بعد النشر
+            qs('author').value = '';
+            qs('content').value = '';
+        } catch (error) {
+            console.error('خطأ في النشر:', error);
+            store.status = 'خطأ في النشر';
+        }
+    }
+
+    // دالة لفتح نافذة المقارنة
+    function openCompare() {
+        const overlay = qs('compareOverlay');
+        if (overlay) overlay.classList.remove('hidden');
+    }
+
+    // دالة لإغلاق نافذة المقارنة
+    function closeCompare() {
+        const overlay = qs('compareOverlay');
+        if (overlay) overlay.classList.add('hidden');
+    }
+
+    // دالة لتهيئة التطبيق
+    function init() {
+        // تهيئة الأحداث
+        const publishBtn = qs('publishBtn');
+        if (publishBtn) publishBtn.addEventListener('click', publishPost);
+
+        const compareBtn = qs('compareBtn');
+        if (compareBtn) compareBtn.addEventListener('click', openCompare);
+
+        const overlay = qs('compareOverlay');
+        if (overlay) overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeCompare();
+        });
+
+        // تحميل المنشورات عند بدء التطبيق
+        loadPosts();
+    }
+
+    // بدء التطبيق
+    document.addEventListener('DOMContentLoaded', init);
+
+    // تصدير الدوال العامة
+    window.app = {
+        store,
+        loadPosts,
+        publishPost,
+        openCompare,
+        closeCompare
+    };
+})();
