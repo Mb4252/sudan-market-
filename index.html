@@ -6,42 +6,70 @@
     <title>سوق السودان - البث الحي</title>
     <link rel="stylesheet" href="styles/theme.css">
     <link rel="stylesheet" href="styles/layout.css">
+    <link rel="manifest" href="manifest.json">
 </head>
 <body>
     <div class="container">
-        <header class="header">
+        <header>
             <h1>سوق السودان</h1>
+            <div id="status">متصل</div>
         </header>
-        <div class="live-status" id="status">بث حي نشط</div>
-        <div class="post-form">
-            <h2>نشر منشور جديد</h2>
-            <div>
-                <label for="author">المؤلف:</label>
-                <input type="text" id="author" placeholder="اسمك">
+        <main>
+            <div id="posts-container"></div>
+            <div id="radar-container">
+                <h2>رادار الأسعار</h2>
+                <div id="price-trends"></div>
+                <div id="average-price"></div>
             </div>
-            <div>
-                <label for="content">المحتوى:</label>
-                <textarea id="content" placeholder="وصف المنتج"></textarea>
+            <div id="compare-container">
+                <h2>مقارنة العروض</h2>
+                <div id="best-offers"></div>
             </div>
-            <div>
-                <label for="price">السعر:</label>
-                <input type="number" id="price" placeholder="السعر">
-            </div>
-            <div>
-                <label for="city">المدينة:</label>
-                <input type="text" id="city" placeholder="المدينة">
-            </div>
-            <button id="publishBtn">نشر</button>
-        </div>
-        <div class="actions">
-            <button id="compareBtn">مقارنة الأسعار</button>
-            <button id="radarBtn">خريطة الرادار</button>
-        </div>
-        <div id="postsContainer"></div>
+            <button id="publishBtn">نشر منشور</button>
+            <button id="compareBtn">مقارنة العروض</button>
+        </main>
     </div>
     <script src="app.js"></script>
-    <script src="api.js"></script>
-    <script src="store/post-store.js"></script>
-    <script src="sync/render-socket.js"></script>
+    <script src="radar/price-extractor.js"></script>
+    <script src="radar/compare-engine.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // تحديث رادار الأسعار
+            function updateRadar(posts) {
+                const prices = window.priceExtractor.extractPrices(posts);
+                const averagePrice = window.priceExtractor.calculateAveragePrice(prices);
+                const trends = window.priceExtractor.analyzePriceTrends(posts);
+
+                document.getElementById('average-price').textContent = `متوسط السعر: ${averagePrice.toFixed(2)}`;
+                document.getElementById('price-trends').textContent = `اتجاه الأسعار: ${trends.trend} (ثقة: ${(trends.confidence * 100).toFixed(0)}%)`;
+            }
+
+            // تحديث مقارنة العروض
+            function updateCompare(posts) {
+                const bestOffers = window.compareEngine.compareOffers(posts);
+                const bestOffersContainer = document.getElementById('best-offers');
+                bestOffersContainer.innerHTML = '';
+
+                bestOffers.forEach(offer => {
+                    const offerElement = document.createElement('div');
+                    offerElement.className = 'offer';
+                    offerElement.innerHTML = `
+                        <h3>${offer.author}</h3>
+                        <p>${offer.content}</p>
+                        <p>سعر: ${offer.price}</p>
+                        <p>مدينة: ${offer.city}</p>
+                    `;
+                    bestOffersContainer.appendChild(offerElement);
+                });
+            }
+
+            // تحديث الواجهة عند تحديث المخزن
+            window.store.on('storeUpdated', function(e) {
+                const { posts } = e.detail;
+                updateRadar(posts);
+                updateCompare(posts);
+            });
+        });
+    </script>
 </body>
 </html>
