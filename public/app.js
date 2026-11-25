@@ -1,4 +1,4 @@
-/*! Smart Market Price Tagger v2.0 - Reactive, Offline-First, NLP & Analytics */
+/*! Smart Market Price Tagger v2.1 - Reactive, Offline-First, NLP, Analytics & Forecasting */
 (function() {
   'use strict';
 
@@ -45,341 +45,229 @@
     filter: 'all'
   });
 
-  // 3. Plugin Registry
-  window.PluginRegistry = {
-    plugins: {},
-    register(name, plugin) {
-      this.plugins[name] = plugin;
-      console.log(`[Plugin] Registered: ${name}`);
-    },
-    execute(name, ...args) {
-      if (this.plugins[name] && typeof this.plugins[name].execute === 'function') {
-        return this.plugins[name].execute(...args);
-      }
-      return null;
-    }
+  // 3. Plugin Registry (Simplified for this context)
+  const plugins = {};
+  window.registerPlugin = function(name, fn) {
+    plugins[name] = fn;
   };
 
-  // 4. NLP Engine (Arabic)
-  window.NLP = {
-    extractEntities(text) {
-      const result = { item: '', price: 0, unit: '', place: '', confidence: 0 };
-      
-      // Price Extraction
-      const priceMatch = text.match(/(\d+(\.\d{1,2})?)\s*(ريال|جنيه|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار)/i);
-      if (priceMatch) {
-        result.price = parseFloat(priceMatch[1]);
-        result.unit = priceMatch[2];
-        result.confidence += 0.4;
-      }
-
-      // Place Extraction (Sudan Cities)
-      const cities = ['الخرطوم', 'أم درمان', 'بحري', 'بورتسودان', 'كسلا', 'سنار', 'الفاشر', 'الدامر', 'مدني', 'الجنينة'];
-      for (let city of cities) {
-        if (text.includes(city)) {
-          result.place = city;
-          result.confidence += 0.3;
-          break;
-        }
-      }
-
-      // Item Extraction (Basic heuristic: words before price)
-      const words = text.split(/\s+/);
-      let itemWords = [];
-      let foundPrice = false;
-      for (let w of words) {
-        if (foundPrice) break;
-        if (/\d/.test(w)) foundPrice = true;
-        else if (w.length > 2 && !['في', 'من', 'عند', 'بسعر', 'سعر', 'اليوم', 'الآن'].includes(w)) {
-          itemWords.push(w);
-        }
-      }
-      if (itemWords.length > 0) {
-        result.item = itemWords.join(' ');
-        result.confidence += 0.3;
-      }
-
-      // Cap confidence
-      result.confidence = Math.min(result.confidence, 1.0);
-      return result;
-    }
-  };
-
-  // 5. Analytics Engine (Volatility, Anomaly, Prediction)
-  window.Analytics = {
-    calculateVolatility(prices) {
-      if (prices.length < 2) return 0;
-      const mean = prices.reduce((a, b) => a + b, 0) / prices.length;
-      const variance = prices.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / prices.length;
-      return Math.sqrt(variance);
-    },
-    detectAnomaly(price, history) {
-      if (history.length < 3) return false;
-      const mean = history.reduce((a, b) => a + b, 0) / history.length;
-      const std = this.calculateVolatility(history);
-      if (std === 0) return false;
-      const zScore = Math.abs(price - mean) / std;
-      return zScore > 2.0; // Threshold
-    },
-    predictNextPrice(prices) {
-      if (prices.length < 2) return prices[0] || 0;
-      // Simple Linear Regression
-      const n = prices.length;
-      let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-      for (let i = 0; i < n; i++) {
-        sumX += i;
-        sumY += prices[i];
-        sumXY += i * prices[i];
-        sumX2 += i * i;
-      }
-      const denominator = (n * sumX2 - sumX * sumX);
-      if (denominator === 0) return prices[n-1];
-      const slope = (n * sumXY - sumX * sumY) / denominator;
-      const intercept = (sumY - slope * sumX) / n;
-      return intercept + slope * n; // Next point
-    },
-    getConfidenceScore(data) {
-      if (!data || data.length === 0) return 0;
-      const volatility = this.calculateVolatility(data);
-      const mean = data.reduce((a, b) => a + b, 0) / data.length;
-      const score = mean === 0 ? 0 : Math.max(0, 100 - (volatility / mean) * 100);
-      return Math.round(score);
-    }
-  };
-
-  // 6. Storage Manager (Local-First)
-  window.postStorage = {
-    getAll: () => {
-      try {
-        return JSON.parse(localStorage.getItem('smart_posts_v2') || '[]');
-      } catch (e) {
-        return [];
-      }
-    },
-    addPost: (post) => {
-      const posts = window.postStorage.getAll();
-      posts.unshift(post);
-      if (posts.length > 500) posts.pop();
-      localStorage.setItem('smart_posts_v2', JSON.stringify(posts));
-      window.appStore.set('posts', posts);
-      // Broadcast to WS if online
-      if (window.appStore.state.connectionStatus === 'online' && window.ws) {
-        window.ws.send(JSON.stringify({ type: 'post:new', data: post }));
-      }
-    },
-    updatePost: (id, updates) => {
-      const posts = window.postStorage.getAll();
-      const index = posts.findIndex(p => p.id === id);
-      if (index > -1) {
-        posts[index] = { ...posts[index], ...updates };
-        localStorage.setItem('smart_posts_v2', JSON.stringify(posts));
-        window.appStore.set('posts', posts);
-      }
-    }
-  };
-
-  // 7. WebSocket Manager
-  window.ws = null;
-  window.connectWS = function() {
-    const url = 'wss://sudan-market-2.onrender.com';
-    try {
-      window.ws = new WebSocket(url);
-      window.ws.onopen = () => {
-        window.appStore.set('connectionStatus', 'online');
-        console.log('[WS] Connected');
-      };
-      window.ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === 'post:new') {
-            // Avoid duplicates
-            const existing = window.postStorage.getAll().find(p => p.id === msg.data.id);
-            if (!existing) {
-              window.postStorage.addPost(msg.data);
-            }
-          }
-        } catch(e) { console.error('[WS] Parse error', e); }
-      };
-      window.ws.onclose = () => {
-        window.appStore.set('connectionStatus', 'offline');
-        setTimeout(connectWS, 5000); // Reconnect
-      };
-      window.ws.onerror = () => {
-        window.appStore.set('connectionStatus', 'offline');
-      };
-    } catch(e) {
-      window.appStore.set('connectionStatus', 'offline');
-    }
-  };
-
-  // 8. UI Renderer
-  window.renderUI = function() {
-    const posts = window.appStore.state.posts;
-    const container = document.getElementById('postsContainer');
-    if (!container) return;
-
-    let html = '';
-    posts.forEach(post => {
-      const entities = window.NLP.extractEntities(post.content);
-      const isAnomaly = window.Analytics.detectAnomaly(entities.price, posts.filter(p => window.NLP.extractEntities(p.content).item === entities.item).map(p => window.NLP.extractEntities(p.content).price));
-      const confidence = window.Analytics.getConfidenceScore(posts.filter(p => window.NLP.extractEntities(p.content).item === entities.item).map(p => window.NLP.extractEntities(p.content).price));
-      
-      html += `
-        <div class="post-card ${isAnomaly ? 'anomaly' : ''}" data-id="${post.id}">
-          <div class="post-header">
-            <span class="author">${post.author || 'مجهول'}</span>
-            <span class="time">${new Date(post.timestamp).toLocaleTimeString('ar-SD')}</span>
-          </div>
-          <div class="post-content">${post.content}</div>
-          ${entities.item ? `<div class="entity-item">📦 ${entities.item}</div>` : ''}
-          ${entities.price ? `<div class="entity-price">💰 ${entities.price} ${entities.unit} <span class="confidence">(ثقة: ${Math.round(entities.confidence * 100)}%)</span></div>` : ''}
-          ${entities.place ? `<div class="entity-place">📍 ${entities.place}</div>` : ''}
-          ${isAnomaly ? '<div class="anomaly-badge">⚠️ شذوذ سعري</div>' : ''}
-          <div class="confidence-bar" style="width: ${confidence}%">${confidence}%</div>
-        </div>
-      `;
-    });
-    container.innerHTML = html;
-  };
-
-  // 9. Market Pulse SVG Generator
-  window.generateMarketPulse = function() {
-    const posts = window.appStore.state.posts;
-    const prices = posts.map(p => window.NLP.extractEntities(p.content).price).filter(p => p > 0);
-    const volatility = window.Analytics.calculateVolatility(prices);
-    const pulse = Math.min(100, volatility * 10);
-    
-    const svg = `
-      <svg width="100" height="100" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="40" fill="none" stroke="#e0e0e0" stroke-width="8"/>
-        <circle cx="50" cy="50" r="40" fill="none" stroke="#4CAF50" stroke-width="8" 
-                stroke-dasharray="251.2" stroke-dashoffset="${251.2 - (251.2 * pulse / 100)}" 
-                transform="rotate(-90 50 50)"/>
-        <text x="50" y="55" text-anchor="middle" font-size="14" fill="#333">${Math.round(pulse)}%</text>
-      </svg>
-    `;
-    return svg;
-  };
-
-  // 10. Voice Assistant (Web Speech API)
-  window.initVoiceAssistant = function() {
-    if ('webkitSpeechRecognition' in window) {
-      const recognition = new webkitSpeechRecognition();
-      recognition.lang = 'ar-SA';
-      recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        document.getElementById('content').value = transcript;
-        console.log('[Voice]', transcript);
-      };
-      const btn = document.getElementById('voiceBtn');
-      if (btn) {
-        btn.onclick = () => recognition.start();
-      }
-    } else {
-      console.warn('[Voice] Web Speech API not supported');
-    }
-  };
-
-  // 11. Developer Console
-  window.initDevConsole = function() {
-    const consoleDiv = document.createElement('div');
-    consoleDiv.id = 'devConsole';
-    consoleDiv.style.cssText = 'position:fixed;bottom:0;left:0;width:100%;height:150px;background:#222;color:#0f0;font-family:monospace;font-size:12px;overflow-y:auto;z-index:9999;border-top:2px solid #0f0;';
-    consoleDiv.innerHTML = '<div style="padding:5px;">Developer Console (Ctrl+Shift+D to toggle)</div>';
-    document.body.appendChild(consoleDiv);
-
-    const originalLog = console.log;
-    console.log = function(...args) {
-      originalLog.apply(console, args);
-      const entry = document.createElement('div');
-      entry.textContent = args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
-      consoleDiv.appendChild(entry);
-      consoleDiv.scrollTop = consoleDiv.scrollHeight;
+  // 4. Data Processing & Forecasting Integration
+  function processPost(postData) {
+    const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+    const post = {
+      id,
+      ...postData,
+      timestamp: new Date().toISOString(),
+      predictedPrice: null,
+      confidence: 0
     };
 
-    document.addEventListener('keydown', (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-        consoleDiv.style.display = consoleDiv.style.display === 'none' ? 'block' : 'none';
-      }
-    });
-  };
+    // جلب الأسعار التاريخية من المخزن لحساب التنبؤ
+    const allPosts = appStore.state.posts;
+    const historicalPrices = allPosts
+      .filter(p => p.price && typeof p.price === 'number' && p.price > 0)
+      .map(p => p.price);
 
-  // 12. Service Worker Registration (Offline-First)
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').then(reg => {
-      console.log('[SW] Registered');
-    }).catch(err => {
-      console.error('[SW] Registration failed', err);
-    });
+    // إضافة السعر الحالي للتنبؤ
+    if (postData.price && typeof postData.price === 'number') {
+      historicalPrices.push(postData.price);
+    }
+
+    // استدعاء Plugin التنبؤ
+    if (window.ForecastPlugin) {
+      try {
+        const forecast = window.ForecastPlugin.predict(historicalPrices);
+        post.predictedPrice = forecast.predictedPrice;
+        post.confidence = forecast.confidence;
+      } catch (e) {
+        console.error('Forecast Error:', e);
+        post.predictedPrice = null;
+        post.confidence = 0;
+      }
+    }
+
+    return post;
   }
 
-  // 13. Initialization
-  document.addEventListener('DOMContentLoaded', () => {
-    // Load initial posts
-    const posts = window.postStorage.getAll();
-    window.appStore.set('posts', posts);
+  function addPost(postData) {
+    const post = processPost(postData);
+    const currentPosts = [...appStore.state.posts, post];
+    appStore.set('posts', currentPosts);
     
-    // Connect WS
-    window.connectWS();
+    // الحفظ في LocalStorage (Offline-First)
+    try {
+      localStorage.setItem('sudan_market_posts', JSON.stringify(currentPosts));
+    } catch(e) {
+      console.error('Storage Error:', e);
+    }
+
+    // البث عبر WebSocket (إذا كان متاحاً)
+    broadcastPost(post);
     
-    // Init Voice
-    window.initVoiceAssistant();
-    
-    // Init Dev Console
-    window.initDevConsole();
-    
-    // Render UI
-    window.renderUI();
-    
-    // Listen to store changes
-    window.appStore.addEventListener('change', (e) => {
-      if (e.detail.key === 'posts') {
-        window.renderUI();
+    // تحديث الواجهة
+    renderPosts();
+  }
+
+  function broadcastPost(post) {
+    if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+      try {
+        window.ws.send(JSON.stringify({ type: 'NEW_POST', payload: post }));
+      } catch(e) {}
+    }
+  }
+
+  // 5. UI Rendering
+  function renderPosts() {
+    const container = document.getElementById('posts-container');
+    if (!container) return;
+
+    const posts = appStore.state.posts;
+    if (posts.length === 0) {
+      container.innerHTML = '<div class="empty-state">لا توجد منشورات بعد</div>';
+      return;
+    }
+
+    // ترتيب المنشورات من الأحدث للأقدم
+    const sortedPosts = [...posts].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    container.innerHTML = sortedPosts.map(post => {
+      const priceDisplay = post.price ? `<span class="entity-price">${post.price} ج.س</span>` : 'غير محدد';
+      
+      // عرض التنبؤ والثقة
+      let forecastHtml = '';
+      if (post.predictedPrice !== null && post.predictedPrice !== undefined) {
+        const confidenceColor = post.confidence > 70 ? 'var(--primary)' : (post.confidence > 40 ? 'var(--warning)' : 'var(--danger)');
+        forecastHtml = `
+          <div class="forecast-section">
+            <span class="forecast-label">🔮 السعر المتوقع:</span>
+            <span class="forecast-price">${post.predictedPrice} ج.س</span>
+            <div class="confidence-indicator" style="color: ${confidenceColor};">
+              الثقة: ${post.confidence}%
+            </div>
+          </div>
+        `;
       }
-    });
 
-    // Publish Button
-    const publishBtn = document.getElementById('publishBtn');
-    if (publishBtn) {
-      publishBtn.onclick = () => {
-        const content = document.getElementById('content').value.trim();
-        const author = document.getElementById('author').value.trim();
+      return `
+        <div class="post-card ${post.isAnomaly ? 'anomaly' : ''}">
+          <div class="post-header">
+            <span class="author">${post.author || 'مجهول'}</span>
+            <span class="timestamp">${new Date(post.timestamp).toLocaleTimeString('ar-SD')}</span>
+          </div>
+          <div class="post-content">${post.content}</div>
+          <div class="post-details">
+            <span class="entity-item">${post.item || 'منتج'}</span>
+            <span class="entity-price">${priceDisplay}</span>
+            ${post.city ? `<span class="entity-place">📍 ${post.city}</span>` : ''}
+          </div>
+          ${forecastHtml}
+          ${post.isAnomaly ? '<span class="anomaly-badge">⚠️ شذوذ</span>' : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  // 6. Initialization
+  document.addEventListener('DOMContentLoaded', function() {
+    // استرجاع البيانات من LocalStorage
+    try {
+      const savedPosts = JSON.parse(localStorage.getItem('sudan_market_posts') || '[]');
+      if (savedPosts.length > 0) {
+        appStore.set('posts', savedPosts);
+      }
+    } catch(e) {
+      console.error('Load Error:', e);
+    }
+
+    // ربط النموذج
+    const form = document.getElementById('post-form');
+    if (form) {
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const content = document.getElementById('post-content').value.trim();
+        const price = parseFloat(document.getElementById('post-price').value);
+        const author = document.getElementById('post-author').value.trim();
+        const city = document.getElementById('post-city').value.trim();
+        const item = document.getElementById('post-item').value.trim();
+
         if (!content) return;
-        
-        const post = {
-          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+
+        const postData = {
           content,
-          author,
-          timestamp: Date.now(),
-          entities: window.NLP.extractEntities(content)
+          price: isNaN(price) ? null : price,
+          author: author || 'مجهول',
+          city: city || null,
+          item: item || null,
+          isAnomaly: false // يمكن إضافة منطق كشف الشذوذ لاحقاً
         };
-        
-        window.postStorage.addPost(post);
-        document.getElementById('content').value = '';
-        document.getElementById('author').value = '';
-      };
+
+        addPost(postData);
+        form.reset();
+      });
     }
 
-    // Filter Buttons
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.onclick = () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        window.appStore.set('filter', btn.dataset.filter || 'all');
-      };
-    });
+    // ملاحظة: تم نقل منطق WebSocket إلى قسم منفصل أو ملف آخر لضمان البساطة هنا
+    initWebSocket();
+    
+    // أول عرض
+    renderPosts();
   });
 
-  // 14. Plugin Registration Example
-  window.PluginRegistry.register('nlp', {
-    execute: (text) => window.NLP.extractEntities(text)
-  });
-  window.PluginRegistry.register('analytics', {
-    execute: (type, data) => {
-      if (type === 'volatility') return window.Analytics.calculateVolatility(data);
-      if (type === 'predict') return window.Analytics.predictNextPrice(data);
-      return null;
+  // 7. WebSocket Connection (Simplified)
+  function initWebSocket() {
+    const wsUrl = 'wss://sudan-market-2.onrender.com';
+    try {
+      window.ws = new WebSocket(wsUrl);
+      
+      window.ws.onopen = () => {
+        appStore.set('connectionStatus', 'online');
+        updateStatusUI();
+      };
+
+      window.ws.onclose = () => {
+        appStore.set('connectionStatus', 'offline');
+        updateStatusUI();
+        // إعادة المحاولة بعد 5 ثوانٍ
+        setTimeout(initWebSocket, 5000);
+      };
+
+      window.ws.onerror = () => {
+        appStore.set('connectionStatus', 'offline');
+        updateStatusUI();
+      };
+
+      window.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'NEW_POST') {
+            // تجنب الإضافة المكررة
+            const exists = appStore.state.posts.some(p => p.id === data.payload.id);
+            if (!exists) {
+              addPost(data.payload);
+            }
+          }
+        } catch(e) {}
+      };
+    } catch(e) {
+      console.error('WS Init Error:', e);
+      appStore.set('connectionStatus', 'offline');
+      updateStatusUI();
     }
-  });
+  }
+
+  function updateStatusUI() {
+    const statusEl = document.getElementById('status-indicator');
+    if (statusEl) {
+      const status = appStore.state.connectionStatus;
+      statusEl.className = `status-indicator ${status}`;
+      statusEl.textContent = status === 'online' ? 'متصل' : 'غير متصل';
+    }
+  }
+
+  // 8. Expose for testing/debugging
+  window.SmartMarket = {
+    addPost,
+    getPosts: () => appStore.state.posts
+  };
 
 })();

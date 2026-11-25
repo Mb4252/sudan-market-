@@ -26,69 +26,56 @@
         .post-header { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.9em; color: #666; }
         .author { font-weight: bold; color: var(--secondary); }
         .post-content { font-size: 1.1em; margin-bottom: 10px; line-height: 1.5; }
+        .post-details { display: flex; gap: 15px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
         .entity-item { color: var(--primary); font-weight: bold; }
-        .entity-price { color: var(--warning); font-weight: bold; }
+        .entity-price { color: var(--warning); font-weight: bold; font-size: 1.1em; }
         .entity-place { color: #777; font-size: 0.9em; }
-        .confidence { font-size: 0.8em; color: #999; }
-        .confidence-bar { height: 4px; background: #eee; border-radius: 2px; margin-top: 10px; position: relative; }
-        .confidence-bar::after { content: ''; position: absolute; left: 0; top: 0; height: 100%; background: var(--primary); border-radius: 2px; }
+        .forecast-section { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ddd; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .forecast-label { font-size: 0.9em; color: #555; }
+        .forecast-price { font-weight: bold; color: var(--secondary); font-size: 1.1em; }
+        .confidence-indicator { font-size: 0.85em; font-weight: bold; }
         .anomaly-badge { background: var(--danger); color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin-top: 5px; display: inline-block; }
         .input-group { display: flex; gap: 10px; margin-bottom: 10px; }
-        input, textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 1em; box-sizing: border-box; }
+        input, textarea, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; }
         textarea { resize: vertical; min-height: 80px; }
-        button { padding: 12px 20px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1em; transition: background 0.2s; }
+        button { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: background 0.2s; }
         button:hover { background: #45a049; }
-        button.voice { background: var(--secondary); }
-        button.voice:hover { background: #1976D2; }
-        .filter-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-        .filter-btn { background: #eee; color: #333; }
-        .filter-btn.active { background: var(--secondary); color: white; }
-        .pulse-container { display: flex; align-items: center; gap: 15px; }
-        .pulse-info { flex: 1; }
-        .pulse-title { font-weight: bold; margin-bottom: 5px; }
-        .pulse-desc { font-size: 0.9em; color: #666; }
-        .hidden { display: none; }
-        @media (max-width: 600px) {
-            .input-group { flex-direction: column; }
-            .filter-group { flex-direction: column; }
-        }
+        .empty-state { text-align: center; color: #999; padding: 40px; font-size: 1.2em; }
+        .form-title { margin-bottom: 15px; font-size: 1.2em; color: var(--text); }
     </style>
 </head>
 <body>
     <div class="container">
-        <div id="status" class="status-indicator offline">جاري الاتصال...</div>
-        
+        <div id="status-indicator" class="status-indicator offline">جارٍ الاتصال...</div>
+
         <div class="card">
-            <h2 style="margin-top:0; color: var(--primary);">📢 نشر جديد</h2>
-            <div class="input-group">
-                <input id="author" type="text" placeholder="اسمك (اختياري)" maxlength="40">
-                <button id="voiceBtn" class="voice" title="إدخال صوتي">🎤</button>
-            </div>
-            <textarea id="content" rows="3" placeholder="اكتب المنشور... مثال: دجاج 25 ريال في الخرطوم"></textarea>
-            <div style="margin-top: 10px;">
-                <button id="publishBtn">نشر وحفظ</button>
-            </div>
+            <h2 class="form-title">إضافة منشور جديد</h2>
+            <form id="post-form">
+                <div class="input-group">
+                    <input type="text" id="post-author" placeholder="اسم البائع (اختياري)">
+                    <input type="text" id="post-city" placeholder="المدينة (اختياري)">
+                </div>
+                <div class="input-group">
+                    <input type="text" id="post-item" placeholder="اسم المنتج">
+                    <input type="number" id="post-price" placeholder="السعر بالجنيه السوداني" min="0" step="any">
+                </div>
+                <textarea id="post-content" placeholder="وصف المنتج..." required></textarea>
+                <br>
+                <button type="submit">نشر</button>
+            </form>
         </div>
 
         <div class="card">
-            <div class="filter-group">
-                <button class="filter-btn active" data-filter="all">الكل</button>
-                <button class="filter-btn" data-filter="cheap">رخيص 🟢</button>
-                <button class="filter-btn" data-filter="expensive">غالي 🔴</button>
-                <button class="filter-btn" data-filter="anomaly">شذوذ ⚠️</button>
-            </div>
-            <div id="postsContainer"></div>
-        </div>
-
-        <div class="card pulse-container">
-            <div id="pulseSvg"></div>
-            <div class="pulse-info">
-                <div class="pulse-title">نبض السوق</div>
-                <div class="pulse-desc">مؤشر التذبذب السعري الحالي</div>
+            <h2>المنشورات المباشرة</h2>
+            <div id="posts-container">
+                <div class="empty-state">جارٍ التحميل...</div>
             </div>
         </div>
     </div>
 
+    <!-- Load Forecast Plugin first -->
+    <script src="public/plugins/forecast.js"></script>
+    <!-- Load Main App -->
     <script src="public/app.js"></script>
 </body>
 </html>
