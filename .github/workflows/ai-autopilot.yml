@@ -49,40 +49,34 @@ jobs:
 
           const ROADMAP_STAGES = [
             {
-              id: "stage-1-core-store-and-sync",
-              title: "نواة التخزين الفوري (localStorage) وبث Render المباشر وصحة التواريخ",
-              files: ["public/store/post-store.js", "public/sync/render-socket.js"],
-              goal: "بناء مخزن تفاعلي يحفظ فوراً في localStorage مع تنسيق آمن للتواريخ (بدون Invalid Date أبداً) ووحدة بث عبر wss://sudan-market-2.onrender.com مع إعادة اتصال تلقائية."
+              id: "stage-1-live-store-and-sync",
+              title: "نواة التخزين الفوري (localStorage) وبث Render المباشر وصحة التواريخ في الواجهة",
+              files: ["public/store/post-store.js", "public/sync/render-socket.js", "index.html"],
+              goal: "بناء مخزن فوري في localStorage مع تنسيق آمن للتواريخ (بدون Invalid Date) ووحدة بث عبر wss://sudan-market-2.onrender.com، وربطها مباشرة بـ index.html لتعمل في الواجهة فوراً."
             },
             {
-              id: "stage-2-modern-ui-shell",
-              title: "واجهة عصرية جذابة ونموذج نشر فوري",
-              files: ["index.html", "public/styles/theme.css", "public/styles/layout.css"],
-              goal: "تصميم واجهة عربية حديثة وجذابة وغير تقليدية، مع شريط حالة للبث، نموذج نشر فوري، وحاويات واضحة للمنشورات والبحث والتصفية والرادار والمقارنة."
+              id: "stage-2-modern-live-ui",
+              title: "واجهة عصرية جذابة وعملية على الهاتف مع نشر فوري ظاهر",
+              files: ["public/styles/theme.css", "public/styles/layout.css", "index.html"],
+              goal: "تصميم واجهة عربية حديثة واضحة ومريحة على شاشات الهاتف (تجنب التصغير أو التكديس في الزاوية)، تعرض شريط حالة البث، نموذج نشر فوري، والمنشورات حية في الصفحة."
             },
             {
-              id: "stage-3-price-radar-and-compare",
-              title: "رادار الأسعار الذكي والمقارنة الفورية",
-              files: ["public/radar/price-extractor.js", "public/radar/compare-engine.js"],
-              goal: "إضافة ملفات صغيرة متخصصة لاستخراج الأسعار والسلع والمدن من المنشورات وعرض رادار الأسعار والمقارنة."
+              id: "stage-3-live-radar-and-compare",
+              title: "رادار الأسعار والمقارنة الفورية داخل الواجهة",
+              files: ["public/radar/price-extractor.js", "public/radar/compare-engine.js", "index.html"],
+              goal: "إضافة رادار أسعار ومقارنة للعروض يعملان فعلياً على بيانات المنشورات في الواجهة ويرتبطان بـ index.html."
             },
             {
-              id: "stage-4-search-filters-and-analytics",
-              title: "البحث والتصفية الفورية ولوحة التحليلات",
-              files: ["public/analytics/filter-engine.js", "public/analytics/market-stats.js"],
-              goal: "إضافة بحث فوري وتصفية حسب المنتج أو السعر أو المدينة ولوحة إحصاءات ومؤشرات نشاط السوق."
+              id: "stage-4-live-filters-and-analytics",
+              title: "البحث والتصفية ولوحة التحليلات التفاعلية في الواجهة",
+              files: ["public/analytics/filter-engine.js", "public/analytics/market-stats.js", "index.html"],
+              goal: "تفعيل البحث والتصفية والبطاقات الإحصائية مباشرة فوق عناصر الواجهة الحية مع التحقق من وجود عناصر DOM قبل إسناد .textContent."
             },
             {
-              id: "stage-5-plugins-and-polyglot-services",
-              title: "منظومة إضافات ووحدات خدمات متعددة اللغات",
-              files: ["public/plugins/plugin-hub.js", "services/py/price_analyzer.py", "tools/ts/schema_guard.ts"],
-              goal: "توسيع المشروع بنظام إضافات ووحدات صغيرة بلغات أخرى قوية (مثل Python لتحليل الأسعار وTypeScript للتحقق من البيانات) في مجلدات مستقلة."
-            },
-            {
-              id: "stage-6-wire-existing-and-locked",
-              title: "ربط الملفات المقفلة والموجودة مسبقاً بنقطة تنسيق واحدة قبل إنشاء الجديد",
-              files: ["public/modules/existing-modules-linker.js", "public/modules/linked-workspace-view.js"],
-              goal: "فحص وربط الملفات المقفلة والموجودة سابقاً بأمان عبر سجل موحد يتصل بـ localStorage وبث wss://sudan-market-2.onrender.com ويعرض حالة الوحدات المرتبطة دون المساس بأي ملف مقفل."
+              id: "stage-5-live-plugins-and-services",
+              title: "إضافات وخدمات داعمة مرتبطة بالواجهة وقابلة للتوسع",
+              files: ["public/plugins/plugin-hub.js", "services/py/price_analyzer.py", "tools/ts/schema_guard.ts", "index.html"],
+              goal: "إضافة سجل إضافات مربوط بالواجهة في index.html إلى جانب وحدات صغيرة داعمة في Python وTypeScript دون ترك ملفات معزولة بلا أثر."
             }
           ];
 
@@ -107,7 +101,8 @@ jobs:
               completedStages: [],
               lockedFiles: [],
               currentStage: ROADMAP_STAGES[0].id,
-              extraStageCounter: 0
+              extraStageCounter: 0,
+              cleanResetDone: false
             };
             try {
               if (!fs.existsSync(STAGES_FILE)) return defaultState;
@@ -116,11 +111,57 @@ jobs:
                 completedStages: Array.isArray(parsed.completedStages) ? parsed.completedStages : [],
                 lockedFiles: Array.isArray(parsed.lockedFiles) ? parsed.lockedFiles : [],
                 currentStage: typeof parsed.currentStage === "string" ? parsed.currentStage : ROADMAP_STAGES[0].id,
-                extraStageCounter: Number.isFinite(parsed.extraStageCounter) ? parsed.extraStageCounter : 0
+                extraStageCounter: Number.isFinite(parsed.extraStageCounter) ? parsed.extraStageCounter : 0,
+                cleanResetDone: Boolean(parsed.cleanResetDone)
               };
             } catch {
               return defaultState;
             }
+          }
+
+          function purgeOldLockedFilesIfNeeded(stagesState) {
+            if (stagesState.cleanResetDone) {
+              return { state: stagesState, deletedCount: 0 };
+            }
+
+            const targetsToDelete = new Set(stagesState.lockedFiles || []);
+            const scanDirs = ["public/modules", "services/py", "tools/ts"];
+            for (const d of scanDirs) {
+              if (!fs.existsSync(d)) continue;
+              for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+                if (!entry.isFile()) continue;
+                const rel = path.join(d, entry.name).replace(/\\/g, "/");
+                if (/feature-\d+|worker_\d+|plugin-hub|price_analyzer|schema_guard|existing-modules-linker|linked-workspace-view|modules-bridge|modules-ui-panel/i.test(rel)) {
+                  targetsToDelete.add(rel);
+                }
+              }
+            }
+
+            let deletedCount = 0;
+            for (const filePath of targetsToDelete) {
+              const clean = String(filePath).replace(/^\/+/, "").trim();
+              if (!clean || clean === STAGES_FILE || clean === "index.html") continue;
+              if (fs.existsSync(clean)) {
+                try {
+                  fs.unlinkSync(clean);
+                  deletedCount++;
+                } catch (e) {
+                  console.warn(`⚠️ تعذر حذف الملف القديم ${clean}: ${e.message}`);
+                }
+              }
+            }
+
+            const freshState = {
+              completedStages: [],
+              lockedFiles: [],
+              currentStage: ROADMAP_STAGES[0].id,
+              extraStageCounter: 0,
+              cleanResetDone: true
+            };
+
+            fs.mkdirSync("public", { recursive: true });
+            fs.writeFileSync(STAGES_FILE, JSON.stringify(freshState, null, 2), "utf8");
+            return { state: freshState, deletedCount };
           }
 
           function selectActiveStage(stagesState, hasCriticalRuntimeIssue) {
@@ -130,18 +171,18 @@ jobs:
               }
             }
             const nextNum = (stagesState.extraStageCounter || 0) + 1;
-            const dynamicId = `stage-${ROADMAP_STAGES.length + nextNum}-wired-expansion`;
+            const dynamicId = `stage-${ROADMAP_STAGES.length + nextNum}-live-wired-module`;
             return {
               id: dynamicId,
-              title: `توسعة مرتبطة مسبقاً #${nextNum}`,
+              title: `وحدة واجهة حية ومقفلة #${nextNum}`,
               files: [
-                `public/modules/feature-${nextNum}-ui.js`,
-                `public/modules/feature-${nextNum}-logic.js`,
-                `services/py/worker_${nextNum}.py`
+                `public/modules/live-${nextNum}-ui.js`,
+                `public/modules/live-${nextNum}-logic.js`,
+                "index.html"
               ],
               goal: hasCriticalRuntimeIssue
-                ? "إصلاح أي خلل تشغيلي مكتشف في الملفات غير المقفلة فقط دون المساس بالملفات المقفلة."
-                : "إنشاء ملفات صغيرة جديدة في ميزات إضافية وتسجيلها وربطها تلقائياً بالمنظومة المربوطة من لحظة إنشائها، ثم قفلها وعدم العودة إليها أبداً."
+                ? "إصلاح أي عطل ظاهر في الواجهة دون ترك ملفات غير مربوطة بالصفحة."
+                : "إنشاء وحدة جديدة صغيرة ومقفلة تعمل فعلياً داخل الواجهة الحية (وتُحمّل وتُستدعى من index.html مع localStorage وبث Render) وليست مجرد ملف مخزّن بلا فائدة."
             };
           }
 
@@ -176,6 +217,18 @@ jobs:
               return ["كائن files مفقود أو غير صالح."];
             }
 
+            const htmlContent = typeof filesMap["index.html"] === "string"
+              ? filesMap["index.html"]
+              : (fs.existsSync("index.html") ? fs.readFileSync("index.html", "utf8") : "");
+
+            const writtenPaths = Object.keys(filesMap).map(p => String(p).replace(/^\/+/, "").trim());
+            const hasUiOrHtmlWiring = writtenPaths.some(p => p === "index.html" || /\.css$/i.test(p))
+              || writtenPaths.some(p => /\.js$/i.test(p) && htmlContent.includes(p));
+
+            if (!hasUiOrHtmlWiring) {
+              errors.push("يجب أن تنعكس الملفات الجديدة على الواجهة أو تُضمّن/تُربط في index.html لتعمل في الواجهة وليس مخزّنة فقط.");
+            }
+
             for (const [rawPath, content] of Object.entries(filesMap)) {
               const cleanPath = String(rawPath).replace(/^\/+/, "").trim();
               if (!isValidCleanFilePath(cleanPath) || typeof content !== "string" || !content.trim()) {
@@ -183,7 +236,7 @@ jobs:
                 continue;
               }
               if (lockedFilesSet && lockedFilesSet.has(cleanPath)) {
-                errors.push(`الملف ${cleanPath} مقفل وممنوع التصرف فيه أو إعادة بنائه.`);
+                errors.push(`الملف ${cleanPath} مقفل وممنوع إعادة كتابته.`);
                 continue;
               }
               if (cleanPath.endsWith(".json")) {
@@ -579,23 +632,21 @@ jobs:
               failWithReason("لا يوجد أي مفتاح API صالح في Secrets.");
             }
 
-            const stagesState = loadStagesState();
+            const initialStages = loadStagesState();
+            const { state: stagesState, deletedCount } = purgeOldLockedFilesIfNeeded(initialStages);
+            if (deletedCount > 0) {
+              console.log(`🧹 تم حذف ${deletedCount} من الملفات المقفلة القديمة غير الفعالة والبدء من جديد بواجهة حية.`);
+            }
+
             const lockedSet = new Set(stagesState.lockedFiles);
             const filesList = collectProjectFiles(".");
             const diag = runSelfDiagnostics(filesList, renderUrl);
             const activeStage = selectActiveStage(stagesState, diag.hasCritical);
             const liveReport = await probeLiveEndpoints(pagesUrl, renderUrl);
 
-            const isWiringExistingStage = activeStage.id === "stage-6-wire-existing-and-locked";
-            const existingTargetsSummary = filesList
-              .map(f => f.fullPath)
-              .filter(p => !lockedSet.has(p) || /feature-|worker_|plugin-hub|price_analyzer|schema_guard/i.test(p))
-              .slice(0, 80)
-              .join(", ");
-
             console.log(`🎯 المرحلة الحصرية الحالية: [${activeStage.id}] — ${activeStage.title}`);
             console.log(`✅ المراحل المكتملة: ${stagesState.completedStages.join(", ") || "لا يوجد"}`);
-            console.log(`🔒 الملفات المقفلة (لا تتصرف فيها مرة أخرى): ${stagesState.lockedFiles.join(", ") || "لا يوجد"}`);
+            console.log(`🔒 الملفات المقفلة الجديدة: ${stagesState.lockedFiles.join(", ") || "لا يوجد"}`);
             console.log("🩺 تقرير التشخيص:\n" + diag.text + "\n\n--- فحص الموقع الحي والجسر ---\n" + liveReport);
 
             const currentFiles = filesList
@@ -608,12 +659,10 @@ jobs:
               `رابط جسر Render الصحيح: ${renderUrl} (للبث المباشر عبر wss://sudan-market-2.onrender.com وطلب الإيقاظ /health).`,
               `المرحلة الحصرية المطلوبة الآن: ${activeStage.id} (${activeStage.title})`,
               `هدف هذه المرحلة فقط: ${activeStage.goal}`,
-              `الملفات المقترحة لهذه المرحلة: ${activeStage.files.join(" ، ")} (اجعل كل ملف صغيراً ومتخصصاً وقابلاً للتوسع).`,
-              isWiringExistingStage
-                ? `مهمة ربط الموجود والمقفل أولاً: اجمع واربِط الوحدات الموجودة والمقفلة سابقاً (${existingTargetsSummary || "الملفات الحالية"}) عبر نقطة تنسيق جديدة متصلة بـ localStorage وبث wss://sudan-market-2.onrender.com بحيث تصبح مرتبطة من الآن فصاعداً وتُقفل تلقائياً بعد إنشائها.`
-                : "مهمة البناء المربوط مسبقاً: اجعل أي ملف جديد تنشئه في هذه المرحلة مسجّلاً ومرتبطاً تلقائياً بمنظومة الربط الموجودة منذ لحظة إنشائه، ثم يُقفل ولا يُعاد التصرف فيه مرة أخرى.",
-              `قفل صارم — ممنوع إعادة كتابة أو التصرف في الملفات المقفلة التالية: [${stagesState.lockedFiles.join(", ") || "لا يوجد"}].`,
-              "يمكن استخدام لغات وأدوات منظمة ضمن مساراتها المخصصة مثل: public/... (JS/CSS/HTML/JSON)، services/py/... (Python)، tools/ts/... (TypeScript). يُمنع تماماً أسماء مثل file_1_..."
+              `الملفات المقترحة لهذه المرحلة: ${activeStage.files.join(" ، ")} (اجعل كل ملف صغيراً ومتخصصاً).`,
+              "شرط إلزامي: لا تنشئ ملفات مخزّنة فقط بلا أثر! كل ملف جديد يجب أن يُربط ويُحمَّل ويُفعَّل في index.html أو يظهر أثره وتفاعله الحقيقي في الواجهة الحية مع localStorage وبث Render.",
+              "تحقّق دائماً من وجود عناصر DOM قبل إسناد .textContent، وعرّف دالة فحص صحة التاريخ (مثل window.isValidDate) قبل أي استخدام لتفادي Invalid Date.",
+              `قفل صارم — ممنوع إعادة كتابة الملفات المقفلة التالية: [${stagesState.lockedFiles.join(", ") || "لا يوجد"}].`
             ].join("\n");
 
             let agreedPlan = "";
@@ -625,14 +674,14 @@ jobs:
               console.log(`🤝 حوار التشخيص والابتكار نشط بين: [${p1.label}] و [${p2.label}]`);
               try {
                 const propRes = await p1.runText(
-                  "أنت مهندس معماري لمشروع ضخم قابل للتوسع. ضع خطة لمرحلة واحدة فقط موزعة على ملفات صغيرة جديدة مع احترام قفل الملفات وعدم التصرف فيها مرة أخرى.",
+                  "أنت مهندس واجهات ومعماري برمجيات. ضع خطة لمرحلة واحدة فقط موزعة على ملفات صغيرة تعمل فعلياً في الواجهة (مربوطة في index.html) وليست مجرد ملفات مخزّنة.",
                   `${stageMandate}\n\nالتشخيص:\n${diag.text}\n\nالملفات الحالية:\n${currentFiles}`,
                   450
                 );
                 console.log(`💡 مقترح ${propRes.detail} جاهز للمراجعة.`);
                 try {
                   const revRes = await p2.runText(
-                    "أنت المدقق الهندسي. راجع الخطة وتأكد من عدم التصرف في الملفات المقفلة ومن ربط الموجود أولاً ثم جعل الجديد مربوطاً من لحظة إنشائه، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
+                    "أنت المدقق الهندسي. راجع الخطة وتأكد أن كل ملف جديد يعمل فعلياً في الواجهة ويرتبط بـ index.html وlocalStorage وبث Render، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
                     `مقترح الطرف الأول:\n${propRes.text}\n\n${stageMandate}`,
                     450
                   );
@@ -647,7 +696,7 @@ jobs:
               } catch (propErr) {
                 console.warn(`⚠️ تعذر الطرف الأول (${propErr.message}) — ينتقل الطرف الثاني للعمل المستقل الفوري.`);
                 const soloRes = await p2.runText(
-                  "أنت المنفذ المستقل. ضع خطة لمرحلة واحدة فقط موزعة على ملفات صغيرة قابلة للتوسع مع احترام القفل.",
+                  "أنت المنفذ المستقل. ضع خطة لمرحلة واحدة فقط موزعة على ملفات صغيرة تعمل فعلياً في الواجهة.",
                   `${stageMandate}\n\n${currentFiles}`,
                   450
                 );
@@ -659,13 +708,13 @@ jobs:
             }
 
             const systemJsonInstruction = [
-              "أنت مهندس برمجيات لمشروع ضخم قابل للتوسع. أعد كائن JSON صالحاً فقط بدون أي نص خارجه.",
-              "وزّع العمل على ملفات صغيرة ومتخصصة دون التصرف في الملفات المقفلة، واجعل الموجود مربوطاً أولاً ثم أي ملف جديد مربوطاً منذ إنشائه.",
+              "أنت مهندس واجهات ومعماري برمجيات. أعد كائن JSON صالحاً فقط بدون أي نص خارجه.",
+              "وزّع العمل على ملفات صغيرة تعمل فعلياً في الواجهة ومرتبطة في index.html وlocalStorage وبث Render، ولا تترك ملفاً معزولاً بلا أثر في الواجهة.",
               "الشكل المطلوب: {\"files\":{\"مسار_ملف\":\"محتواه\"},\"summary\":\"ملخص مختصر\"}"
             ].join("\n");
 
             const executionPrompt = [
-              "نفّذ هذه المرحلة الحصرية عبر ملفات صغيرة وقابلة للتوسع:",
+              "نفّذ هذه المرحلة الحصرية عبر ملفات صغيرة تعمل فعلياً في الواجهة:",
               agreedPlan,
               "",
               stageMandate,
@@ -704,14 +753,14 @@ jobs:
             console.log("ملخص التحديث:", parsed.summary || activeStage.title);
 
             let updatedCount = 0;
-            const newlyWrittenFiles = [];
+            const lockableNewFiles = [];
 
             if (parsed.files && typeof parsed.files === "object") {
               for (const [filePath, content] of Object.entries(parsed.files)) {
                 const cleanPath = String(filePath).replace(/^\/+/, "").trim();
                 if (!isValidCleanFilePath(cleanPath) || typeof content !== "string" || !content.trim()) continue;
                 if (lockedSet.has(cleanPath)) {
-                  console.log(`🔒 تخطي الملف المقفل (لن يُعاد التصرف فيه): ${cleanPath}`);
+                  console.log(`🔒 تخطي الملف المقفل: ${cleanPath}`);
                   continue;
                 }
                 if (cleanPath.endsWith(".json")) {
@@ -725,23 +774,27 @@ jobs:
                 if (prevContent !== content) {
                   fs.writeFileSync(cleanPath, content, "utf8");
                   updatedCount++;
-                  newlyWrittenFiles.push(cleanPath);
+                  if (cleanPath !== "index.html") {
+                    lockableNewFiles.push(cleanPath);
+                  }
                   console.log(`📝 تم تحديث/إنشاء الملف: ${cleanPath}`);
                 }
               }
             }
 
-            if (updatedCount > 0) {
+            if (updatedCount > 0 || deletedCount > 0) {
               const isBaseStage = ROADMAP_STAGES.some(s => s.id === activeStage.id);
-              const nextCompleted = Array.from(new Set([...stagesState.completedStages, activeStage.id]));
-              const nextLocked = Array.from(new Set([...stagesState.lockedFiles, ...newlyWrittenFiles]));
+              const nextCompleted = updatedCount > 0
+                ? Array.from(new Set([...stagesState.completedStages, activeStage.id]))
+                : stagesState.completedStages;
+              const nextLocked = Array.from(new Set([...stagesState.lockedFiles, ...lockableNewFiles]));
               const nextStageObj = selectActiveStage(
                 {
                   completedStages: nextCompleted,
                   lockedFiles: nextLocked,
-                  extraStageCounter: isBaseStage
-                    ? stagesState.extraStageCounter
-                    : (stagesState.extraStageCounter || 0) + 1
+                  extraStageCounter: (updatedCount > 0 && !isBaseStage)
+                    ? (stagesState.extraStageCounter || 0) + 1
+                    : stagesState.extraStageCounter
                 },
                 false
               );
@@ -749,17 +802,24 @@ jobs:
                 completedStages: nextCompleted,
                 lockedFiles: nextLocked,
                 currentStage: nextStageObj.id,
-                extraStageCounter: isBaseStage
-                  ? stagesState.extraStageCounter
-                  : (stagesState.extraStageCounter || 0) + 1
+                extraStageCounter: (updatedCount > 0 && !isBaseStage)
+                  ? (stagesState.extraStageCounter || 0) + 1
+                  : stagesState.extraStageCounter,
+                cleanResetDone: true
               };
               fs.mkdirSync("public", { recursive: true });
               fs.writeFileSync(STAGES_FILE, JSON.stringify(updatedStagesState, null, 2), "utf8");
-              console.log(`🏁 تم إنهاء المرحلة [${activeStage.id}] وقفل ملفاتها نهائياً والانتقال إلى [${nextStageObj.id}]`);
-              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || `${activeStage.id}: ${activeStage.title}`).replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
+              if (updatedCount > 0) {
+                console.log(`🏁 تم إنهاء المرحلة [${activeStage.id}] وقفل ملفاتها الفعالة والانتقال إلى [${nextStageObj.id}]`);
+              }
+              fs.writeFileSync(
+                "last_ai_change.txt",
+                String(parsed.summary || `Clean reset & live UI stage: ${activeStage.id}`).replace(/[\r\n]+/g, " ").slice(0, 120),
+                "utf8"
+              );
             }
 
-            console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
+            console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount} | ملفات قديمة محذوفة: ${deletedCount}`);
           }
 
           run();
@@ -780,7 +840,7 @@ jobs:
             echo "ℹ️ nothing to commit, working tree clean."
             exit 0
           fi
-          SUMMARY="Wire existing modules first then build linked immutable modules"
+          SUMMARY="Clean reset and live UI-wired locked modules"
           if [ -f last_ai_change.txt ]; then
             SUMMARY=$(head -n 1 last_ai_change.txt)
             rm -f last_ai_change.txt
