@@ -4,29 +4,25 @@
     const plugins = new Map();
 
     function registerPlugin(name, plugin) {
-        if (typeof plugin.init !== 'function') {
-            console.error('البرنامج المساعد يجب أن يحتوي على دالة init');
-            return;
+        if (!name || typeof name !== 'string') {
+            throw new Error('اسم المكوّن الإضافي مطلوب ويجب أن يكون نصًا');
+        }
+        if (!plugin || typeof plugin !== 'object') {
+            throw new Error('المكوّن الإضافي مطلوب ويجب أن يكون كائنًا');
         }
         plugins.set(name, plugin);
-        plugin.init();
     }
 
     function getPlugin(name) {
+        if (!plugins.has(name)) {
+            throw new Error(`المكوّن الإضافي ${name} غير مسجل`);
+        }
         return plugins.get(name);
     }
 
-    function initAllPlugins() {
-        plugins.forEach(plugin => {
-            if (typeof plugin.init === 'function') {
-                plugin.init();
-            }
-        });
-    }
-
-    window.pluginRegistry = {
+    // تصدير الوظائف
+    window.plugins = {
         registerPlugin,
-        getPlugin,
-        initAllPlugins
+        getPlugin
     };
 })();
