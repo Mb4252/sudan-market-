@@ -68,8 +68,12 @@
           ? 'cheap'
           : post.price > avgPrice * 1.1
             ? 'expensive'
-            : '';
+            : 'normal';
+      } else {
+        post.priceTag = 'normal';
       }
+    } else {
+      post.priceTag = 'unknown';
     }
     
     return post;
@@ -77,97 +81,121 @@
   
   // 4. UI Initialization
   document.addEventListener('DOMContentLoaded', () => {
-    const publishBtn = document.getElementById('publishBtn');
-    const contentInput = document.getElementById('content');
-    const authorInput = document.getElementById('author');
-    
-    // Check connection status
-    checkConnection();
-    
-    // Load posts from storage
-    renderPosts(window.postStorage.getAll());
-    
-    // Event Listeners
-    publishBtn.addEventListener('click', handlePublish);
-    contentInput.addEventListener('input', validateInput);
-    authorInput.addEventListener('input', validateInput);
-    
-    // Storage update listener
-    window.addEventListener('storage:update', (e) => {
-      renderPosts(e.detail);
-      updateRadar();
-    });
-  });
-  
-  // 5. Connection Check
-  function checkConnection() {
-    const statusElement = document.getElementById('status');
-    const syncBadge = document.getElementById('syncBadge');
-    
-    if (navigator.onLine) {
-      fetch('/health', { method: 'HEAD', mode: 'no-cors' })
-        .then(() => {
-          statusElement.textContent = 'متصل بالجسر';
-          syncBadge.classList.remove('offline');
-          syncBadge.classList.add('online');
-          syncBadge.title = 'متصل';
-          document.getElementById('publishBtn').disabled = false;
-          document.getElementById('compareBtn').disabled = false;
-          document.getElementById('analyticsToggle').disabled = false;
-        })
-        .catch(() => {
-          statusElement.textContent = 'وضع محلي سريع';
-          syncBadge.classList.remove('online');
-          syncBadge.classList.add('offline');
-          syncBadge.title = 'غير مزامن';
-        });
-    } else {
-      statusElement.textContent = 'وضع محلي سريع';
-      syncBadge.classList.remove('online');
-      syncBadge.classList.add('offline');
-      syncBadge.title = 'غير مزامن';
-    }
-  }
-  
-  // 6. Publish Handler
-  function handlePublish() {
-    const content = document.getElementById('content').value.trim();
-    const author = document.getElementById('author').value.trim();
-    
-    if (!content) return;
-    
-    const post = {
-      id: Date.now().toString(),
-      content,
-      author: author || 'مجهول',
-      timestamp: Date.now()
-    };
-    
-    // Tag post and save locally
-    const taggedPost = window.tagPost(post);
-    window.postStorage.addPost(taggedPost);
-    
-    // Clear input
-    document.getElementById('content').value = '';
-    document.getElementById('author').value = '';
-    document.getElementById('publishBtn').disabled = true;
-    
-    // Show success message
-    showToast('تم نشر المنشور بنجاح!', 'success');
-  }
-  
-  // 7. Input Validation
-  function validateInput() {
-    const content = document.getElementById('content').value.trim();
-    document.getElementById('publishBtn').disabled = !content;
-  }
-  
-  // 8. Render Posts
-  function renderPosts(posts) {
+    // Initialize UI components
     const postsContainer = document.getElementById('posts');
-    postsContainer.innerHTML = '';
+    const contentInput = document.getElementById('content');
+    const publishBtn = document.getElementById('publishBtn');
+    const authorInput = document.getElementById('author');
+    const filterBtns = document.querySelectorAll('.filter-btn');
+    const compareBtn = document.getElementById('compareBtn');
+    const analyticsToggle = document.getElementById('analyticsToggle');
+    const analyticsPanel = document.getElementById('analyticsPanel');
+    const compareOverlay = document.getElementById('compareOverlay');
+    const compareContent = document.getElementById('compareContent');
     
-    if (posts.length === 0) {
-      postsContainer.innerHTML = '<p>لا توجد منشورات بعد.</p>';
-      return;
+    // Initialize charts
+    const chartVolume = new Chart(document.getElementById('chartVolume'), {
+      type: 'bar',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'عدد المنشورات',
+          data: [],
+          backgroundColor: 'rgba(54, 162, 235, 0.5)',
+          borderColor: 'rgba(54, 162, 235, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            beginAtZero: true
+          }
+        }
+      }
+    });
+    
+    const chartPriceTrends = new Chart(document.getElementById('chartPriceTrends'), {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'متوسط السعر',
+          data: [],
+          borderColor: 'rgba(255, 99, 132, 1)',
+          backgroundColor: 'rgba(255, 99, 132, 0.2)',
+          tension: 0.1
+        }]
+      },
+      options: {
+        responsive: true
+      }
+    });
+    
+    const chartStoreComparison = new Chart(document.getElementById('chartStoreComparison'), {
+      type: 'bar',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'متوسط السعر',
+          data: [],
+          backgroundColor: 'rgba(75, 192, 192, 0.5)',
+          borderColor: 'rgba(75, 192, 192, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            beginAtZero: true
+          }
+        }
+      }
+    });
+    
+    // Render posts
+    function renderPosts(posts, filter = '') {
+      postsContainer.innerHTML = '';
+      
+      posts.forEach(post => {
+        if (filter && post.priceTag !== filter) return;
+        
+        const postElement = document.createElement('div');
+        postElement.className = `post ${post.priceTag}`;
+        postElement.innerHTML = `
+          <div class="post-header">
+            <span class="post-author">${post.author || 'مجهول'}</span>
+            <span class="post-time">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
+          </div>
+          <div class="post-content">${post.content}</div>
+          <div class="post-meta">
+            <span class="post-store">${post.store}</span>
+            ${post.price !== null ? `<span class="post-price">${post.price} ريال</span>` : ''}
+          </div>
+        `;
+        
+        postsContainer.appendChild(postElement);
+      });
     }
+    
+    // Update UI based on posts
+    function updateUI(posts) {
+      renderPosts(posts);
+      updateRadar(posts);
+      updateAnalytics(posts);
+    }
+    
+    // Update radar with smart opportunities
+    function updateRadar(posts) {
+      const radarContent = document.getElementById('radarContent');
+      const now = Date.now();
+      const dayAgo = now - (24 * 60 * 60 * 1000);
+      
+      const recentPosts = posts.filter(p => p.timestamp > dayAgo && p.price !== null);
+      
+      if (recentPosts.length === 0) {
+        radarContent.innerHTML = 'لا توجد بيانات كافية لتحليل الفرص.';
+        return;
+      }
