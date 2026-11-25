@@ -29,11 +29,11 @@
   // 3. Price Extraction & Smart Tagging Engine (Time-Based Clustering)
   window.tagPost = (post) => {
     const text = post.content || '';
-    const priceMatch = text.match(/(\d+(?:\.\d+)?)/);
+    const priceMatch = text.match(/(\\d+(?:\\.\\d+)?)/);
     post.price = priceMatch ? parseFloat(priceMatch[1]) : null;
     
     // Extract Store Name
-    const storeMatch = text.match(/(?:في|من|عند)\s+([\u0600-\u06FF\s]+)/);
+    const storeMatch = text.match(/(?:في|من|عند)\\s+([\\u0600-\\u06FF\\s]+)/);
     post.store = storeMatch ? storeMatch[1].trim().substring(0, 20) : 'غير محدد';
     
     // Smart Dynamic Tagging: Compare with 24h average for same store/item
@@ -65,26 +65,36 @@
   // 4. UI Rendering & Analytics
   const renderPosts = (filter = '') => {
     const posts = window.postStorage.getAll();
-    const container = document.getElementById('posts');
-    if (!container) return;
+    const postsContainer = document.getElementById('posts');
+    postsContainer.innerHTML = '';
     
-    container.innerHTML = posts.length === 0 ? '<p>لا توجد منشورات بعد</p>' : '';
+    if (posts.length === 0) {
+      postsContainer.innerHTML = '<div class="empty-state">لا توجد منشورات بعد. كن أول من ينشر!</div>';
+      return;
+    }
     
-    posts.filter(p => filter === '' || p.priceTag === filter).forEach(post => {
+    posts.forEach(post => {
+      if (filter && post.priceTag !== filter) return;
+      
       const postElement = document.createElement('div');
       postElement.className = `post ${post.priceTag || ''}`;
+      
+      const priceText = post.price ? `<span class="price">${post.price} ر.س</span>` : '';
+      const storeText = post.store ? `<span class="store">من: ${post.store}</span>` : '';
+      
       postElement.innerHTML = `
         <div class="post-header">
-          <span class="author">${esc(post.author || 'مجهول')}</span>
-          <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
+          <span class="author">${post.author || 'مجهول'}</span>
+          <span class="time">${new Date(post.timestamp).toLocaleTimeString()}</span>
         </div>
-        <div class="post-content">${esc(post.content)}</div>
+        <div class="post-content">${post.content}</div>
         <div class="post-footer">
-          <span class="store">🏪 ${esc(post.store)}</span>
-          ${post.price ? `<span class="price">${post.price} ريال</span>` : ''}
+          ${priceText}
+          ${storeText}
         </div>
       `;
-      container.appendChild(postElement);
+      
+      postsContainer.appendChild(postElement);
     });
   };
 
@@ -93,46 +103,56 @@
     // Initial render
     renderPosts();
     
-    // Publish button
+    // Publish button handler
     document.getElementById('publishBtn').addEventListener('click', () => {
       const content = document.getElementById('content').value.trim();
+      const author = document.getElementById('author').value.trim();
+      
       if (!content) return;
       
-      const post = window.tagPost({
-        author: document.getElementById('author').value.trim() || 'مجهول',
+      const post = {
         content,
+        author: author || 'مجهول',
         timestamp: Date.now()
-      });
+      };
       
-      // Add to local storage
-      window.postStorage.addPost(post);
-      
-      // Broadcast to other tabs
-      const channel = new BroadcastChannel('posts');
-      channel.postMessage({ type: 'NEW_POST', ...post });
+      // Tag the post and add to storage
+      const taggedPost = window.tagPost(post);
+      window.postStorage.addPost(taggedPost);
       
       // Clear input
       document.getElementById('content').value = '';
       document.getElementById('author').value = '';
     });
-
+    
     // Filter buttons
     document.querySelectorAll('.filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        renderPosts(btn.dataset.filter || '');
+        renderPosts(btn.dataset.filter);
       });
     });
-
+    
     // Storage update listener
-    window.addEventListener('storage:update', () => renderPosts());
+    window.addEventListener('storage:update', () => {
+      renderPosts(document.querySelector('.filter-btn.active').dataset.filter);
+    });
   });
 
-  // Helper function for escaping HTML
-  function esc(v) {
-    return String(v == null ? '' : v).replace(/[&<>"]/g, function(c) {
-      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
-    });
-  }
+  // 6. Wake up Render server
+  const wakeUpRender = async () => {
+    try {
+      const response = await fetch('https://browser-relay-server.onrender.com/health');
+      if (response.ok) {
+        console.log('Render server woke up successfully');
+      }
+    } catch (err) {
+      console.error('Failed to wake up Render server:', err);
+    }
+  };
+
+  // Wake up server when page loads
+  wakeUpRender();
+
 })();

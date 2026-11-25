@@ -54,7 +54,18 @@
   connectWebSocket();
 
   // Wake up Render server
-  fetch('https://browser-relay-server.onrender.com/health')
-    .then(() => console.log('Render server woke up'))
-    .catch(err => console.warn('Failed to wake up Render server', err));
+  const wakeUpRender = async () => {
+    try {
+      const response = await fetch('https://browser-relay-server.onrender.com/health');
+      if (response.ok) {
+        console.log('Render server woke up successfully');
+      }
+    } catch (err) {
+      console.error('Failed to wake up Render server:', err);
+    }
+  };
+
+  // Wake up server when page loads
+  wakeUpRender();
+
 })();
