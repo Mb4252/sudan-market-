@@ -30,25 +30,50 @@
         .entity-item { color: var(--primary); font-weight: bold; }
         .entity-price { color: var(--warning); font-weight: bold; font-size: 1.1em; }
         .entity-place { color: #777; font-size: 0.9em; }
-        .forecast-section { margin-top: 20px; padding-top: 20px; border-top: 1px dashed #ccc; }
-        .forecast-value { font-size: 1.2em; font-weight: bold; color: var(--primary); }
+        .forecast-section { margin-top: 20px; }
+        .forecast-card { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .forecast-value { font-size: 1.5em; font-weight: bold; color: var(--primary); }
         .confidence { font-size: 0.9em; color: #666; }
-        .high-confidence { color: #4CAF50; }
-        .low-confidence { color: #FF9800; }
-        .error-message { color: var(--danger); padding: 10px; background: #f8d7da; border-radius: 4px; margin-bottom: 20px; }
+        .chart-container { position: relative; height: 300px; margin-bottom: 20px; }
+        .compare-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .compare-content { background: white; padding: 20px; border-radius: 8px; width: 80%; max-width: 600px; }
+        .compare-item { margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
+        .compare-price { font-size: 1.2em; font-weight: bold; color: var(--warning); }
+        .compare-place { color: #666; }
+        .radar-container { position: fixed; bottom: 20px; right: 20px; width: 300px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); padding: 15px; z-index: 999; }
+        .radar-item { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
+        .radar-price { font-weight: bold; color: var(--warning); }
+        .radar-place { color: #666; font-size: 0.9em; }
+        .sync-badge { position: fixed; top: 20px; right: 20px; background: var(--secondary); color: white; padding: 5px 10px; border-radius: 20px; font-size: 0.8em; z-index: 1000; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div id="status-indicator" class="status-indicator offline">غير متصل</div>
-        <div id="posts-container"></div>
-        <form id="publishForm" class="card">
-            <input id="author" type="text" placeholder="اسم الكاتب" required />
-            <textarea id="content" placeholder="محتوى المنشور" required></textarea>
-            <button id="publishBtn" type="submit">نشر</button>
-        </form>
-        <button id="compareBtn" class="card">مقارنة الأسعار</button>
-        <canvas id="priceRadar"></canvas>
+        <div id="status" class="status-indicator offline">غير متصل</div>
+        <div class="card">
+            <h2>سوق السودان - بث مباشر</h2>
+            <p>متابعة السعرات في الوقت الفعلي</p>
+        </div>
+        <div id="syncBadge" class="sync-badge">غير متزامن</div>
+        <div class="card">
+            <div class="chart-container">
+                <canvas id="chartVolume"></canvas>
+            </div>
+            <div class="chart-container">
+                <canvas id="chartPrice"></canvas>
+            </div>
+        </div>
+        <div id="posts" class="card">
+            <!-- المنشورات ستظهر هنا -->
+        </div>
+    </div>
+    <div id="compareOverlay" class="compare-overlay" style="display: none;">
+        <div id="compareContent" class="compare-content">
+            <!-- محتوى المقارنة ستظهر هنا -->
+        </div>
+    </div>
+    <div id="radarContent" class="radar-container">
+        <!-- محتوى الرادار ستظهر هنا -->
     </div>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="public/plugins/forecast.js"></script>
