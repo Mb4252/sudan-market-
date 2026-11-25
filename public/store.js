@@ -1,21 +1,31 @@
 (function() {
     'use strict';
 
-    const store = {
-        posts: [],
-        status: 'متصل',
-        totalPosts: 0,
-        avgPrice: 0,
-        activeCities: 0
-    };
-
-    function updateStore(newData) {
-        Object.assign(store, newData);
-        document.dispatchEvent(new CustomEvent('storeUpdated', { detail: store }));
+    function isValidDate(date) {
+        return date instanceof Date && !isNaN(date.getTime());
     }
 
-    window.store = {
-        get: () => ({...store}),
-        update: updateStore
-    };
+    function formatDate(date) {
+        if (!isValidDate(date)) {
+            date = new Date();
+        }
+        return date.toLocaleString('ar-EG');
+    }
+
+    const store = new Proxy({
+        posts: [],
+        status: 'جاهز'
+    }, {
+        set(target, prop, value) {
+            target[prop] = value;
+            document.dispatchEvent(new CustomEvent('storeUpdated', {
+                detail: target
+            }));
+            return true;
+        }
+    });
+
+    window.store = store;
+    window.formatDate = formatDate;
+    window.isValidDate = isValidDate;
 })();

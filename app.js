@@ -10,9 +10,14 @@
                 author: 'مستخدم',
                 content: 'منتج جديد',
                 price: 100,
-                city: 'الخرطوم'
+                city: 'الخرطوم',
+                timestamp: new Date().toISOString()
             };
-            window.broadcast(newPost);
+            if (window.isValidDate(new Date(newPost.timestamp))) {
+                window.broadcast(newPost);
+            } else {
+                console.error('تاريخ غير صالح');
+            }
         });
 
         compareBtn.addEventListener('click', function() {
@@ -30,7 +35,7 @@
         const postsContainer = document.getElementById('posts');
         postsContainer.innerHTML = posts.map(post => {
             const date = new Date(post.timestamp);
-            const formattedDate = isNaN(date.getTime()) ? 'تاريخ غير صالح' : date.toLocaleString('ar-EG');
+            const formattedDate = window.formatDate(date);
             return `<div class="post">
                 <h3>${post.author}</h3>
                 <p>${post.content}</p>
