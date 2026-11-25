@@ -43,25 +43,23 @@
         const postsContainer = document.getElementById('posts');
         postsContainer.innerHTML = posts.map(post => {
             const date = new Date(post.timestamp);
-            const formattedDate = window.formatDate(date);
-            return `<div class="post">
-                <h3>${post.author}</h3>
-                <p>${post.content}</p>
-                <p>السعر: ${post.price} جنية</p>
-                <p>التاريخ: ${formattedDate}</p>
-            </div>`;
+            return `
+                <div class="post">
+                    <h3>${post.author}</h3>
+                    <p>${post.content}</p>
+                    <p>السعر: ${post.price} جنية</p>
+                    <p>المدينة: ${post.city}</p>
+                    <p>التاريخ: ${window.formatDate(date)}</p>
+                </div>
+            `;
         }).join('');
     }
 
     function handleError(error) {
-        const errorDisplay = document.getElementById('errorDisplay');
-        if (errorDisplay) {
-            errorDisplay.textContent = `خطأ: ${error.message}`;
-            errorDisplay.style.display = 'block';
-        }
         console.error('خطأ:', error);
+        const errorElement = document.getElementById('error');
+        if (errorElement) {
+            errorElement.textContent = `خطأ: ${error.message}`;
+        }
     }
-
-    window.renderPosts = renderPosts;
-    window.handleError = handleError;
 })();
