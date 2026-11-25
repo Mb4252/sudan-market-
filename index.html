@@ -11,8 +11,11 @@
     body { font-family: 'Cairo', sans-serif; background-color: #eef5f0; color: #0f172a; }
     @keyframes slideIn { from { transform: translateY(-8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     @keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 0 0 rgba(27, 122, 67, 0.4); } 50% { box-shadow: 0 0 0 8px rgba(27, 122, 67, 0); } }
+    @keyframes goldGlow { 0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6); } 50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); } }
+    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
     .slide-in { animation: slideIn 0.25s ease-out; }
     .pulse-glow { animation: pulseGlow 2s infinite; }
+    .gold-glow { animation: goldGlow 2s infinite; }
     .card-hover { transition: transform 0.15s ease, box-shadow 0.15s ease; }
     .card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 24px -6px rgba(27, 122, 67, 0.18); }
     .hidden { display: none !important; }
@@ -23,6 +26,23 @@
     .stars { color: #f59e0b; letter-spacing: 1px; }
     .modal-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(15, 23, 42, 0.55); display: none; align-items: center; justify-content: center; padding: 1rem; }
     .modal-backdrop.show { display: flex; }
+    .promoted-shop {
+      background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 50%, #fffbeb 100%);
+      background-size: 200% 200%;
+      border: 2px solid #f59e0b !important;
+      animation: goldGlow 2s infinite, shimmer 3s infinite;
+    }
+    .promoted-badge {
+      background: linear-gradient(90deg, #f59e0b, #eab308, #f59e0b);
+      background-size: 200% 100%;
+      animation: shimmer 2s infinite;
+      color: white;
+      font-weight: 800;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+    .pending-badge { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    .owner-panel { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); }
+    .points-badge { background: linear-gradient(135deg, #8b5cf6, #6366f1); color: white; }
   </style>
 </head>
 <body class="min-h-screen pb-24">
@@ -31,6 +51,7 @@
   <header class="sticky top-0 z-30 bg-[#e4f0e8]/95 backdrop-blur border-b border-emerald-900/10">
     <div class="max-w-xl mx-auto px-3.5 py-3 flex items-center justify-between gap-2">
       <div class="flex items-center gap-2 min-w-0">
+        <button id="backBtn" onclick="goBack()" class="hidden w-9 h-9 rounded-full bg-white border border-emerald-700/20 flex items-center justify-center text-base shrink-0">←</button>
         <button onclick="goHome()" class="w-9 h-9 rounded-full bg-white border border-emerald-700/20 flex items-center justify-center text-base shrink-0">🌾</button>
         <div class="min-w-0">
           <h1 id="headerTitle" class="text-sm font-extrabold text-slate-900 leading-tight truncate">رادار أسعار الحي</h1>
@@ -42,11 +63,14 @@
         </div>
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
+        <button id="ownerBtn" onclick="openOwnerPanel()" class="hidden bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold px-2.5 py-2 rounded-xl relative">
+          👑
+          <span id="pendingCountBadge" class="hidden absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-extrabold w-5 h-5 rounded-full flex items-center justify-center">0</span>
+        </button>
         <button onclick="openProfile()" class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs font-bold px-2.5 py-2 rounded-xl">حسابي</button>
         <button onclick="openAddMenu()" class="bg-[#1b7a43] hover:bg-[#156235] text-white text-xs font-extrabold px-3 py-2 rounded-xl">+ إضافة</button>
       </div>
     </div>
-    <div id="breadcrumb" class="max-w-xl mx-auto px-3.5 pb-2 text-[11px] font-bold text-slate-500 hidden"></div>
   </header>
 
   <!-- ===================== MAIN ===================== -->
@@ -78,6 +102,9 @@
         </div>
       </div>
 
+      <!-- 🔥 المتجر المروَّج -->
+      <div id="promotedShopBox" class="hidden"></div>
+
       <div class="bg-white rounded-2xl border border-emerald-700/20 p-3 shadow-sm space-y-2">
         <div class="flex items-center justify-between">
           <h3 class="text-xs font-extrabold text-slate-900">🏪 متاجر القرية</h3>
@@ -102,7 +129,7 @@
 
     <!-- شاشة 3: صفحة المتجر -->
     <section id="viewShop" class="space-y-3 hidden">
-      <div class="bg-white rounded-2xl border border-emerald-700/20 p-4 shadow-sm space-y-2">
+      <div id="shopHeaderCard" class="bg-white rounded-2xl border border-emerald-700/20 p-4 shadow-sm space-y-2">
         <div class="flex items-start justify-between gap-3">
           <div>
             <div id="shopVillageLabel" class="text-[10px] font-bold text-slate-500"></div>
@@ -111,6 +138,7 @@
           </div>
           <div id="shopRankBadge" class="text-right shrink-0"></div>
         </div>
+        <div id="shopPointsBadge" class="hidden"></div>
         <div id="shopRatingSummary" class="flex items-center gap-2 text-xs"></div>
         <div id="shopRatingButtons" class="grid grid-cols-3 gap-2 pt-1"></div>
       </div>
@@ -133,7 +161,7 @@
       </div>
     </section>
 
-    <!-- شاشة 4: لوحة التحديات العامة -->
+    <!-- شاشة 4: لوحة التحديات -->
     <section id="viewLeaderboard" class="space-y-3 hidden">
       <div class="bg-white rounded-2xl border border-emerald-700/20 p-4 shadow-sm space-y-3">
         <h2 class="text-sm font-extrabold text-slate-900">🏆 لوحة التحديات</h2>
@@ -143,6 +171,38 @@
           <button onclick="setLeaderboardTab('states')" data-tab="states" class="lb-tab flex-1 text-xs font-extrabold py-2 rounded-xl bg-slate-100 text-slate-700">الولايات</button>
         </div>
         <div id="leaderboardList" class="space-y-2"></div>
+      </div>
+    </section>
+
+    <!-- شاشة 5: لوحة المالك -->
+    <section id="viewOwner" class="space-y-3 hidden">
+      <div class="owner-panel rounded-2xl p-4 text-white shadow-lg">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-[10px] font-bold text-amber-200">لوحة التحكم</div>
+            <h2 class="text-lg font-extrabold">👑 المالك</h2>
+            <div class="text-[11px] text-slate-300 mt-0.5">إدارة الطلبات المعلقة والمحتوى</div>
+          </div>
+          <div class="text-3xl">👑</div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-amber-300 p-3 shadow-sm space-y-2">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs font-extrabold text-slate-900">⏳ طلبات معلقة</h3>
+          <span id="ownerPendingCount" class="text-[10px] font-bold text-amber-700"></span>
+        </div>
+        <div id="ownerPendingList" class="space-y-2"></div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm space-y-2">
+        <h3 class="text-xs font-extrabold text-slate-900">🛠️ إدارة المحتوى</h3>
+        <div class="space-y-1.5">
+          <div class="text-[10px] font-bold text-slate-500">القرى:</div>
+          <div id="ownerVillagesList" class="space-y-1"></div>
+          <div class="text-[10px] font-bold text-slate-500 pt-1">المتاجر:</div>
+          <div id="ownerShopsList" class="space-y-1 max-h-40 overflow-y-auto"></div>
+        </div>
       </div>
     </section>
 
@@ -164,33 +224,36 @@
   </nav>
 
   <!-- ===================== MODALS ===================== -->
-  <!-- إضافة قرية -->
   <div id="modalAddVillage" class="modal-backdrop">
     <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-3 slide-in">
       <div class="flex items-center justify-between border-b pb-2">
         <h2 class="font-extrabold text-base">إضافة قرية</h2>
         <button onclick="closeModal('modalAddVillage')" class="text-slate-400 text-lg">✕</button>
       </div>
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[10px] text-amber-900 leading-relaxed">
+        ⚠️ ستُرسل طلبك إلى إدارة الموقع للمراجعة. لن تظهر القرية للجميع حتى تتم الموافقة.
+      </div>
       <input id="newVillageName" type="text" placeholder="اسم القرية" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
       <input id="newVillageState" type="text" placeholder="الولاية (اختياري)" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
-      <button onclick="submitVillage()" class="w-full bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl">إضافة</button>
+      <button onclick="submitVillage()" class="w-full bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl">إرسال الطلب</button>
     </div>
   </div>
 
-  <!-- إضافة متجر -->
   <div id="modalAddShop" class="modal-backdrop">
     <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-3 slide-in">
       <div class="flex items-center justify-between border-b pb-2">
         <h2 class="font-extrabold text-base">إضافة متجر</h2>
         <button onclick="closeModal('modalAddShop')" class="text-slate-400 text-lg">✕</button>
       </div>
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[10px] text-amber-900 leading-relaxed">
+        ⚠️ سيُراجع المتجر من قبل الإدارة قبل ظهوره للجميع.
+      </div>
       <input id="newShopName" type="text" placeholder="اسم المتجر" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
       <input id="newShopOwner" type="text" placeholder="اسم صاحب المتجر" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
-      <button onclick="submitShop()" class="w-full bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl">إضافة</button>
+      <button onclick="submitShop()" class="w-full bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl">إرسال الطلب</button>
     </div>
   </div>
 
-  <!-- إضافة سعر -->
   <div id="modalAddPrice" class="modal-backdrop">
     <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-3 slide-in">
       <div class="flex items-center justify-between border-b pb-2">
@@ -206,7 +269,6 @@
     </div>
   </div>
 
-  <!-- حسابي -->
   <div id="modalProfile" class="modal-backdrop">
     <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-3 slide-in">
       <div class="flex items-center justify-between border-b pb-2">
@@ -230,7 +292,6 @@
     </div>
   </div>
 
-  <!-- قائمة إضافة -->
   <div id="modalAddMenu" class="modal-backdrop">
     <div class="bg-white w-full max-w-sm rounded-2xl p-4 shadow-xl space-y-2 slide-in">
       <h2 class="font-extrabold text-base text-center mb-1">ماذا تريد أن تضيف؟</h2>
@@ -247,18 +308,21 @@
     /* ============================================================
        الإعدادات والثوابت
     ============================================================ */
-    const WS_URL = "wss://sudan-market-2.onrender.com/ws"; // ⚠️ غيّرها لرابط خادمك
-    const UID_KEY = "radar_uid_v9";
-    const NAME_KEY = "radar_name_v9";
-    const DATA_KEY = "radar_data_v9"; // كل البيانات في مفتاح واحد
+    const WS_URL = "wss://sudan-market-2.onrender.com/ws";
+    const OWNER_ID = "u_kb8moewg"; // 👑 معرف المالك
+    const UID_KEY = "radar_uid_v10";
+    const NAME_KEY = "radar_name_v10";
+    const DATA_KEY = "radar_data_v10";
+    const VIEW_STATE_KEY = "radar_view_state_v10";
     const MAX_LOCAL_ITEMS = 500;
 
     /* ============================================================
        الحالة
     ============================================================ */
     const myUserId = getOrCreateUid();
+    const isOwner = myUserId === OWNER_ID;
     let state = loadData();
-    let currentView = "villages"; // villages | village | shop | leaderboard
+    let currentView = "villages";
     let currentVillageId = null;
     let currentShopId = null;
     let leaderboardTab = "shops";
@@ -268,7 +332,7 @@
     let onlineCount = 1;
 
     /* ============================================================
-       أدوات مساعدة
+       أدوات
     ============================================================ */
     function getOrCreateUid() {
       let id = localStorage.getItem(UID_KEY);
@@ -310,7 +374,7 @@
     function closeModal(id) { document.getElementById(id).classList.remove("show"); }
 
     /* ============================================================
-       تحميل وحفظ البيانات محلياً
+       حفظ/تحميل
     ============================================================ */
     function loadData() {
       try {
@@ -321,21 +385,19 @@
             villages: parsed.villages || {},
             shops: parsed.shops || {},
             prices: parsed.prices || {},
-            ratings: parsed.ratings || {}, // { shopId: { userId: { cheap, fair, expensive } } }
+            ratings: parsed.ratings || {},
             notes: parsed.notes || {},
+            pendingVillages: parsed.pendingVillages || {},
+            pendingShops: parsed.pendingShops || {},
             lastSync: parsed.lastSync || 0
           };
         }
       } catch (e) {}
-      return { villages: {}, shops: {}, prices: {}, ratings: {}, notes: {}, lastSync: 0 };
+      return { villages: {}, shops: {}, prices: {}, ratings: {}, notes: {}, pendingVillages: {}, pendingShops: {}, lastSync: 0 };
     }
 
     function saveData() {
-      try {
-        // تقليم البيانات إذا تجاوزت الحد
-        trimData();
-        localStorage.setItem(DATA_KEY, JSON.stringify(state));
-      } catch (e) { console.warn("فشل الحفظ:", e); }
+      try { trimData(); localStorage.setItem(DATA_KEY, JSON.stringify(state)); } catch (e) {}
     }
 
     function trimData() {
@@ -344,52 +406,61 @@
         const keep = new Set(priceList.slice(0, MAX_LOCAL_ITEMS).map(p => p.id));
         Object.keys(state.prices).forEach(id => { if (!keep.has(id)) delete state.prices[id]; });
       }
-      const noteList = Object.values(state.notes).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      if (noteList.length > 200) {
-        const keep = new Set(noteList.slice(0, 200).map(n => n.id));
-        Object.keys(state.notes).forEach(id => { if (!keep.has(id)) delete state.notes[id]; });
-      }
     }
 
     /* ============================================================
-       WebSocket: الاتصال، البث، إعادة المحاولة، SYNC
+       حفظ/استعادة حالة العرض (للبقاء في نفس الصفحة عند التحديث)
+    ============================================================ */
+    function saveViewState() {
+      try {
+        sessionStorage.setItem(VIEW_STATE_KEY, JSON.stringify({
+          view: currentView, villageId: currentVillageId, shopId: currentShopId, tab: leaderboardTab
+        }));
+      } catch (e) {}
+    }
+    function restoreViewState() {
+      try {
+        const raw = sessionStorage.getItem(VIEW_STATE_KEY);
+        if (!raw) return false;
+        const s = JSON.parse(raw);
+        if (s.view === "village" && s.villageId && state.villages[s.villageId]) {
+          currentView = "village"; currentVillageId = s.villageId; return true;
+        }
+        if (s.view === "shop" && s.shopId && state.shops[s.shopId]) {
+          currentView = "shop"; currentShopId = s.shopId;
+          currentVillageId = state.shops[s.shopId].villageId;
+          return true;
+        }
+        if (s.view === "leaderboard") { currentView = "leaderboard"; leaderboardTab = s.tab || "shops"; return true; }
+        if (s.view === "owner" && isOwner) { currentView = "owner"; return true; }
+      } catch (e) {}
+      return false;
+    }
+    function clearViewState() {
+      try { sessionStorage.removeItem(VIEW_STATE_KEY); } catch (e) {}
+    }
+
+    /* ============================================================
+       WebSocket
     ============================================================ */
     function connectWS() {
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
       setWSStatus("connecting");
-      try {
-        ws = new WebSocket(WS_URL);
-      } catch (e) {
-        setWSStatus("disconnected");
-        scheduleReconnect();
-        return;
-      }
+      try { ws = new WebSocket(WS_URL); } catch (e) { setWSStatus("disconnected"); scheduleReconnect(); return; }
 
       ws.onopen = () => {
         wsReconnectDelay = 1000;
         setWSStatus("connected");
         sendWS({ type: "HELLO", userId: myUserId });
-        // اطلب مزامنة عند الاتصال
         requestSync();
-        // أرسل أحدث بياناتي للآخرين (اختياري لكنه يفيد الجدد)
-        broadcastMyRecent();
       };
-
       ws.onmessage = (evt) => {
-        let msg;
-        try { msg = JSON.parse(evt.data); } catch (e) { return; }
+        let msg; try { msg = JSON.parse(evt.data); } catch (e) { return; }
         handleWSMessage(msg);
       };
-
-      ws.onclose = () => {
-        setWSStatus("disconnected");
-        scheduleReconnect();
-      };
-      ws.onerror = () => {
-        setWSStatus("disconnected");
-      };
+      ws.onclose = () => { setWSStatus("disconnected"); scheduleReconnect(); };
+      ws.onerror = () => { setWSStatus("disconnected"); };
     }
-
     function scheduleReconnect() {
       clearTimeout(wsReconnectTimer);
       wsReconnectTimer = setTimeout(() => {
@@ -397,144 +468,157 @@
         connectWS();
       }, wsReconnectDelay);
     }
-
     function sendWS(obj) {
       if (ws && ws.readyState === WebSocket.OPEN) {
         try { ws.send(JSON.stringify(obj)); return true; } catch (e) {}
       }
       return false;
     }
-
-    function setWSStatus(status) {
-      const dot = document.getElementById("wsDot");
-      const txt = document.getElementById("wsStatus");
-      dot.className = "ws-dot " + status;
-      if (status === "connected") txt.textContent = "متصل مباشر";
-      else if (status === "connecting") txt.textContent = "جاري الاتصال...";
-      else txt.textContent = "غير متصل (يعمل محلياً)";
+    function setWSStatus(s) {
+      document.getElementById("wsDot").className = "ws-dot " + s;
+      document.getElementById("wsStatus").textContent =
+        s === "connected" ? "متصل مباشر" : s === "connecting" ? "جاري الاتصال..." : "غير متصل (يعمل محلياً)";
     }
-
     function updateOnlineBadge(n) {
       onlineCount = Math.max(1, n || 1);
       document.getElementById("onlineBadge").textContent = "متصل: " + onlineCount;
     }
-
-    function requestSync() {
-      sendWS({ type: "REQUEST_SYNC", userId: myUserId });
-    }
-
-    function broadcastMyRecent() {
-      // أرسل آخر 30 سعراً للآخرين (اختياري) لتسريع تزامن الجدد
-      const recentPrices = Object.values(state.prices)
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-        .slice(0, 30);
-      if (recentPrices.length > 0) {
-        sendWS({ type: "SYNC_DATA", userId: myUserId, prices: recentPrices });
-      }
-    }
+    function requestSync() { sendWS({ type: "REQUEST_SYNC", userId: myUserId }); }
 
     function handleWSMessage(msg) {
       switch (msg.type) {
-        case "PRESENCE":
-          updateOnlineBadge(msg.count);
-          break;
+        case "PRESENCE": updateOnlineBadge(msg.count); break;
         case "NEW_VILLAGE":
           if (msg.village && !state.villages[msg.village.id]) {
-            state.villages[msg.village.id] = msg.village;
-            saveData();
-            renderCurrentView();
-          }
-          break;
+            state.villages[msg.village.id] = msg.village; saveData(); renderCurrentView();
+          } break;
         case "NEW_SHOP":
           if (msg.shop && !state.shops[msg.shop.id]) {
-            state.shops[msg.shop.id] = msg.shop;
-            saveData();
-            renderCurrentView();
-          }
-          break;
+            state.shops[msg.shop.id] = msg.shop; saveData(); renderCurrentView();
+          } break;
         case "NEW_PRICE":
           if (msg.price && !state.prices[msg.price.id]) {
-            state.prices[msg.price.id] = msg.price;
-            saveData();
-            renderCurrentView();
-          }
-          break;
+            state.prices[msg.price.id] = msg.price; saveData(); renderCurrentView();
+          } break;
         case "NEW_RATING":
           if (msg.rating && msg.shopId) {
             if (!state.ratings[msg.shopId]) state.ratings[msg.shopId] = {};
             state.ratings[msg.shopId][msg.rating.userId] = msg.rating;
-            saveData();
-            renderCurrentView();
-          }
-          break;
+            saveData(); renderCurrentView();
+          } break;
         case "NEW_NOTE":
           if (msg.note && !state.notes[msg.note.id]) {
-            state.notes[msg.note.id] = msg.note;
-            saveData();
-            renderCurrentView();
-          }
-          break;
-        case "REQUEST_SYNC":
-          // شخص آخر يطلب بيانات — أرسل له أحدث ما لدي
-          if (msg.userId !== myUserId) {
-            const recentPrices = Object.values(state.prices)
-              .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-              .slice(0, 50);
-            if (recentPrices.length > 0) {
-              sendWS({ type: "SYNC_DATA", userId: myUserId, prices: recentPrices, villages: state.villages, shops: state.shops });
+            state.notes[msg.note.id] = msg.note; saveData(); renderCurrentView();
+          } break;
+        case "PENDING_VILLAGE":
+          if (msg.village && msg.village.id) {
+            if (!state.pendingVillages[msg.village.id]) {
+              state.pendingVillages[msg.village.id] = msg.village; saveData();
+              if (isOwner) renderOwnerPanel();
             }
-          }
-          break;
+          } break;
+        case "PENDING_SHOP":
+          if (msg.shop && msg.shop.id) {
+            if (!state.pendingShops[msg.shop.id]) {
+              state.pendingShops[msg.shop.id] = msg.shop; saveData();
+              if (isOwner) renderOwnerPanel();
+            }
+          } break;
+        case "APPROVE_VILLAGE":
+          if (msg.village) {
+            state.villages[msg.village.id] = msg.village;
+            delete state.pendingVillages[msg.village.id];
+            saveData(); renderCurrentView();
+          } break;
+        case "APPROVE_SHOP":
+          if (msg.shop) {
+            state.shops[msg.shop.id] = msg.shop;
+            delete state.pendingShops[msg.shop.id];
+            saveData(); renderCurrentView();
+          } break;
+        case "REJECT_VILLAGE":
+          if (msg.id) { delete state.pendingVillages[msg.id]; saveData(); if (isOwner) renderOwnerPanel(); } break;
+        case "REJECT_SHOP":
+          if (msg.id) { delete state.pendingShops[msg.id]; saveData(); if (isOwner) renderOwnerPanel(); } break;
+        case "DELETE_ITEM":
+          if (msg.kind && msg.id) {
+            if (msg.kind === "village") delete state.villages[msg.id];
+            if (msg.kind === "shop") delete state.shops[msg.id];
+            if (msg.kind === "price") delete state.prices[msg.id];
+            if (msg.kind === "note") delete state.notes[msg.id];
+            saveData(); renderCurrentView();
+          } break;
+        case "REQUEST_SYNC":
+          if (msg.userId !== myUserId) {
+            const recentPrices = Object.values(state.prices).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 50);
+            sendWS({ type: "SYNC_DATA", userId: myUserId, prices: recentPrices,
+              villages: state.villages, shops: state.shops, pendingVillages: state.pendingVillages, pendingShops: state.pendingShops });
+          } break;
         case "SYNC_DATA":
-          // استقبل بيانات من آخر
-          if (msg.prices && Array.isArray(msg.prices)) {
+          if (msg.prices) {
             let added = 0;
-            msg.prices.forEach(p => {
-              if (p && p.id && !state.prices[p.id]) { state.prices[p.id] = p; added++; }
-            });
+            msg.prices.forEach(p => { if (p && p.id && !state.prices[p.id]) { state.prices[p.id] = p; added++; } });
             if (msg.villages) Object.keys(msg.villages).forEach(k => { if (!state.villages[k]) { state.villages[k] = msg.villages[k]; added++; } });
             if (msg.shops) Object.keys(msg.shops).forEach(k => { if (!state.shops[k]) { state.shops[k] = msg.shops[k]; added++; } });
-            if (added > 0) {
-              saveData();
-              renderCurrentView();
-              showToast("تمت مزامنة " + added + " عنصراً من مستخدم آخر ✓");
-            }
-          }
-          break;
+            if (msg.pendingVillages) Object.keys(msg.pendingVillages).forEach(k => { if (!state.pendingVillages[k]) { state.pendingVillages[k] = msg.pendingVillages[k]; added++; } });
+            if (msg.pendingShops) Object.keys(msg.pendingShops).forEach(k => { if (!state.pendingShops[k]) { state.pendingShops[k] = msg.pendingShops[k]; added++; } });
+            if (added > 0) { saveData(); renderCurrentView(); }
+          } break;
       }
     }
 
     /* ============================================================
-       التنقل بين الشاشات
+       التنقل
     ============================================================ */
     function goHome() {
-      currentView = "villages";
-      currentVillageId = null;
-      currentShopId = null;
-      renderCurrentView();
+      currentView = "villages"; currentVillageId = null; currentShopId = null;
+      saveViewState(); renderCurrentView();
     }
     function goVillage(villageId) {
-      currentView = "village";
-      currentVillageId = villageId;
-      currentShopId = null;
-      renderCurrentView();
+      currentView = "village"; currentVillageId = villageId; currentShopId = null;
+      saveViewState(); renderCurrentView();
     }
     function goShop(shopId) {
-      currentView = "shop";
-      currentShopId = shopId;
-      renderCurrentView();
+      currentView = "shop"; currentShopId = shopId;
+      currentVillageId = state.shops[shopId] ? state.shops[shopId].villageId : null;
+      saveViewState(); renderCurrentView();
+    }
+    function goBack() {
+      if (currentView === "shop") {
+        const v = state.shops[currentShopId];
+        if (v && v.villageId) return goVillage(v.villageId);
+      }
+      if (currentView === "village" || currentView === "leaderboard" || currentView === "owner") return goHome();
+      goHome();
     }
     function openLeaderboard() {
-      currentView = "leaderboard";
-      renderCurrentView();
+      currentView = "leaderboard"; saveViewState(); renderCurrentView();
+    }
+    function openOwnerPanel() {
+      if (!isOwner) return;
+      currentView = "owner"; saveViewState(); renderCurrentView();
     }
 
     function renderCurrentView() {
-      document.getElementById("viewVillages").classList.add("hidden");
-      document.getElementById("viewVillage").classList.add("hidden");
-      document.getElementById("viewShop").classList.add("hidden");
-      document.getElementById("viewLeaderboard").classList.add("hidden");
-      document.getElementById("breadcrumb").classList.add("hidden");
+      ["viewVillages","viewVillage","viewShop","viewLeaderboard","viewOwner"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add("hidden");
+      });
+
+      // سهم الرجوع
+      const backBtn = document.getElementById("backBtn");
+      if (currentView === "villages" || currentView === "leaderboard") backBtn.classList.add("hidden");
+      else backBtn.classList.remove("hidden");
+
+      // زر المالك
+      const ownerBtn = document.getElementById("ownerBtn");
+      if (isOwner) {
+        ownerBtn.classList.remove("hidden");
+        const pendingCount = Object.keys(state.pendingVillages).length + Object.keys(state.pendingShops).length;
+        const badge = document.getElementById("pendingCountBadge");
+        if (pendingCount > 0) { badge.textContent = pendingCount; badge.classList.remove("hidden"); }
+        else badge.classList.add("hidden");
+      } else ownerBtn.classList.add("hidden");
 
       if (currentView === "villages") {
         document.getElementById("viewVillages").classList.remove("hidden");
@@ -550,11 +634,15 @@
         document.getElementById("viewLeaderboard").classList.remove("hidden");
         document.getElementById("headerTitle").textContent = "🏆 التحديات";
         renderLeaderboard();
+      } else if (currentView === "owner") {
+        document.getElementById("viewOwner").classList.remove("hidden");
+        document.getElementById("headerTitle").textContent = "👑 لوحة المالك";
+        renderOwnerPanel();
       }
     }
 
     /* ============================================================
-       عرض القرى
+       القرى
     ============================================================ */
     function renderVillages() {
       const q = norm(document.getElementById("villageSearch").value);
@@ -564,7 +652,7 @@
 
       const container = document.getElementById("villagesList");
       if (list.length === 0) {
-        container.innerHTML = '<div class="text-center text-xs text-slate-400 py-6 bg-slate-50 rounded-xl">لا توجد قرى بعد. أضف قريتك لتظهر للجميع!</div>';
+        container.innerHTML = '<div class="text-center text-xs text-slate-400 py-6 bg-slate-50 rounded-xl">لا توجد قرى بعد. أضف قريتك لتظهر للجميع بعد موافقة الإدارة!</div>';
         return;
       }
       container.innerHTML = list.map(v => {
@@ -592,26 +680,53 @@
       const priceCount = Object.values(state.prices).filter(p => p.villageId === v.id).length;
       document.getElementById("villageMeta").textContent = (v.state ? esc(v.state) + " • " : "") + shopCount + " متجر • " + priceCount + " سعر";
 
+      // 🔥 المتجر المروَّج (الأرخص)
+      const promotedBox = document.getElementById("promotedShopBox");
+      const promoted = getPromotedShop(v.id);
+      if (promoted) {
+        promotedBox.classList.remove("hidden");
+        promotedBox.innerHTML = `<button onclick="goShop('${promoted.shop.id}')" class="w-full text-right promoted-shop rounded-2xl p-4 card-hover">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="promoted-badge inline-block text-[10px] font-extrabold px-2.5 py-1 rounded-full mb-1.5">🔥 الأرخص في الحلة</div>
+              <div class="text-base font-extrabold text-slate-900">${esc(promoted.shop.name)}</div>
+              <div class="text-[11px] text-slate-600">${esc(promoted.shop.owner || "صاحب غير معروف")}</div>
+              <div class="flex items-center gap-2 mt-1.5">
+                <span class="stars text-sm">${ratingToStars(promoted.rating.avg)}</span>
+                <span class="text-[10px] font-extrabold text-amber-700">${promoted.rating.avg.toFixed(1)} (${promoted.rating.count} تقييم)</span>
+                <span class="points-badge text-[10px] font-extrabold px-2 py-0.5 rounded-full">${promoted.points} نقطة</span>
+              </div>
+            </div>
+            <div class="text-4xl">🏆</div>
+          </div>
+        </button>`;
+      } else promotedBox.classList.add("hidden");
+
       // المتاجر
-      const shops = Object.values(state.shops)
-        .filter(s => s.villageId === v.id)
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      const shops = Object.values(state.shops).filter(s => s.villageId === v.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       const shopsEl = document.getElementById("shopsList");
       if (shops.length === 0) {
         shopsEl.innerHTML = '<div class="text-center text-[11px] text-slate-400 py-3 bg-slate-50 rounded-lg">لا توجد متاجر بعد — كن أول من يضيف متجراً</div>';
       } else {
         shopsEl.innerHTML = shops.map(s => {
           const rating = getShopRating(s.id);
+          const points = getShopPoints(s.id);
+          const isPromoted = promoted && promoted.shop.id === s.id;
           const rank = getShopRankInVillage(s.id, v.id);
-          return `<button onclick="goShop('${s.id}')" class="card-hover w-full text-right bg-slate-50 hover:bg-emerald-50 border border-slate-200 rounded-xl px-3 py-2.5">
+          return `<button onclick="goShop('${s.id}')" class="card-hover w-full text-right ${isPromoted ? 'promoted-shop' : 'bg-slate-50 border border-slate-200'} rounded-xl px-3 py-2.5">
             <div class="flex items-center justify-between gap-2">
               <div class="min-w-0">
                 <div class="text-sm font-extrabold text-slate-900 truncate">${esc(s.name)}</div>
                 <div class="text-[10px] text-slate-500">${esc(s.owner || "صاحب غير معروف")}</div>
+                <div class="flex items-center gap-1.5 mt-0.5">
+                  <span class="points-badge text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">${points} نقطة</span>
+                  ${isPromoted ? '<span class="text-[9px] font-extrabold text-amber-700">🔥 الأرخص</span>' : ''}
+                </div>
               </div>
               <div class="text-right shrink-0">
-                <div class="text-xs">${rank ? rank : ""}</div>
+                <div class="text-xs">${rank || ""}</div>
                 <div class="stars text-[11px]">${ratingToStars(rating.avg)}</div>
+                <div class="text-[9px] text-slate-500">${rating.count} تقييم</div>
               </div>
             </div>
           </button>`;
@@ -619,9 +734,7 @@
       }
 
       // الأسعار
-      const prices = Object.values(state.prices)
-        .filter(p => p.villageId === v.id)
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      const prices = Object.values(state.prices).filter(p => p.villageId === v.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       document.getElementById("villagePricesCount").textContent = prices.length + " سعر";
       const pricesEl = document.getElementById("villagePricesList");
       if (prices.length === 0) {
@@ -645,8 +758,15 @@
         }).join("");
       }
 
-      // تحدي القرية
       renderVillageBattle(v.id);
+    }
+
+    function getPromotedShop(villageId) {
+      const shops = Object.values(state.shops).filter(s => s.villageId === villageId);
+      const ranked = shops.map(s => ({ shop: s, rating: getShopRating(s.id), points: getShopPoints(s.id) }))
+        .filter(r => r.rating.count > 0)
+        .sort((a, b) => b.points - a.points);
+      return ranked.length > 0 ? ranked[0] : null;
     }
 
     function renderVillageBattle(villageId) {
@@ -655,17 +775,17 @@
         document.getElementById("villageBattle").innerHTML = '<div class="text-[10px] text-slate-400 text-center py-3">أضف متاجر لبدء التحدي</div>';
         return;
       }
-      const ranked = shops.map(s => ({ shop: s, rating: getShopRating(s.id).avg }))
-        .sort((a, b) => b.rating - a.rating);
+      const ranked = shops.map(s => ({ shop: s, rating: getShopRating(s.id), points: getShopPoints(s.id) }))
+        .sort((a, b) => b.points - a.points);
       const medals = ["🥇", "🥈", "🥉"];
       document.getElementById("villageBattle").innerHTML = ranked.slice(0, 5).map((r, i) => {
-        const pct = ranked[0].rating > 0 ? (r.rating / ranked[0].rating) * 100 : 0;
+        const pct = ranked[0].points > 0 ? (r.points / ranked[0].points) * 100 : 0;
         return `<div class="flex items-center gap-2">
           <span class="text-sm w-5 text-center">${medals[i] || (i + 1)}</span>
           <div class="flex-1">
             <div class="flex justify-between text-[10px] font-bold">
               <span class="text-slate-800">${esc(r.shop.name)}</span>
-              <span class="text-slate-500">${r.rating.toFixed(1)} ⭐</span>
+              <span class="text-slate-500">${r.points} نقطة</span>
             </div>
             <div class="h-1.5 bg-slate-200 rounded-full mt-0.5 overflow-hidden"><div class="h-full bg-[#1b7a43]" style="width:${pct}%"></div></div>
           </div>
@@ -685,29 +805,40 @@
       document.getElementById("shopTitle").textContent = esc(s.name);
       document.getElementById("shopOwner").textContent = "صاحب المتجر: " + (s.owner ? esc(s.owner) : "غير معروف");
 
-      // شارة الترتيب
+      const rating = getShopRating(s.id);
+      const points = getShopPoints(s.id);
+      const isPromoted = v ? (getPromotedShop(v.id)?.shop.id === s.id) : false;
+
+      if (isPromoted) {
+        document.getElementById("shopHeaderCard").classList.add("promoted-shop");
+      } else {
+        document.getElementById("shopHeaderCard").classList.remove("promoted-shop");
+      }
+
+      // نقاط المتجر
+      const pointsEl = document.getElementById("shopPointsBadge");
+      pointsEl.classList.remove("hidden");
+      pointsEl.innerHTML = `<div class="flex items-center gap-2 flex-wrap">
+        <div class="points-badge text-[11px] font-extrabold px-3 py-1 rounded-full">${points} نقطة</div>
+        ${isPromoted ? '<div class="promoted-badge text-[10px] font-extrabold px-2.5 py-1 rounded-full">🔥 الأرخص في الحلة</div>' : ''}
+      </div>`;
+
       const rank = getShopRankInVillage(s.id, s.villageId);
       document.getElementById("shopRankBadge").innerHTML = rank || "";
 
-      // ملخص التقييم
-      const rating = getShopRating(s.id);
       const total = rating.count;
       document.getElementById("shopRatingSummary").innerHTML = total === 0
         ? '<span class="text-slate-500 text-[11px]">لا توجد تقييمات بعد — كن أول من يقيّم</span>'
-        : `<span class="stars">${ratingToStars(rating.avg)}</span><span class="font-bold text-slate-700">${rating.avg.toFixed(1)}</span><span class="text-slate-500 text-[10px]">(${total} تقييم)</span>`;
+        : `<span class="stars">${ratingToStars(rating.avg)}</span><span class="font-bold text-slate-700">${rating.avg.toFixed(1)}</span><span class="text-slate-500 text-[10px]">(${total} تقييم: ${rating.cheap} رخيص، ${rating.fair} معقول، ${rating.expensive} غالي)</span>`;
 
-      // أزرار التقييم
       const myRating = state.ratings[s.id] && state.ratings[s.id][myUserId];
       document.getElementById("shopRatingButtons").innerHTML = `
-        <button onclick="rateShop('${s.id}', 'cheap')" class="text-xs font-extrabold py-2.5 rounded-xl ${myRating && myRating.cheap ? 'bg-[#1b7a43] text-white' : 'bg-emerald-50 text-[#1b7a43] border border-emerald-200'}">🟢 رخيص</button>
-        <button onclick="rateShop('${s.id}', 'fair')" class="text-xs font-extrabold py-2.5 rounded-xl ${myRating && myRating.fair ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 border border-amber-200'}">🟡 معقول</button>
-        <button onclick="rateShop('${s.id}', 'expensive')" class="text-xs font-extrabold py-2.5 rounded-xl ${myRating && myRating.expensive ? 'bg-rose-500 text-white' : 'bg-rose-50 text-rose-700 border border-rose-200'}">🔴 غالي</button>
+        <button onclick="rateShop('${s.id}', 'cheap')" class="text-xs font-extrabold py-2.5 rounded-xl ${myRating && myRating.cheap ? 'bg-[#1b7a43] text-white' : 'bg-emerald-50 text-[#1b7a43] border border-emerald-200'}">🟢 رخيص (+3)</button>
+        <button onclick="rateShop('${s.id}', 'fair')" class="text-xs font-extrabold py-2.5 rounded-xl ${myRating && myRating.fair ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 border border-amber-200'}">🟡 معقول (+1)</button>
+        <button onclick="rateShop('${s.id}', 'expensive')" class="text-xs font-extrabold py-2.5 rounded-xl ${myRating && myRating.expensive ? 'bg-rose-500 text-white' : 'bg-rose-50 text-rose-700 border border-rose-200'}">🔴 غالي (-2)</button>
       `;
 
-      // الأسعار
-      const prices = Object.values(state.prices)
-        .filter(p => p.shopId === s.id)
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      const prices = Object.values(state.prices).filter(p => p.shopId === s.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       const pricesEl = document.getElementById("shopPricesList");
       if (prices.length === 0) {
         pricesEl.innerHTML = '<div class="text-center text-[11px] text-slate-400 py-3 bg-slate-50 rounded-lg">لا توجد أسعار منشورة بعد</div>';
@@ -722,29 +853,21 @@
               <div class="text-base font-extrabold text-slate-900">${Number(p.price).toLocaleString()} <span class="text-[10px] text-slate-500">ج.س</span></div>
               <div class="text-[10px] text-slate-500">${esc(p.unit)}</div>
             </div>
-          </div>
-        `).join("");
+          </div>`).join("");
       }
 
-      // الملاحظات
-      const notes = Object.values(state.notes)
-        .filter(n => n.shopId === s.id)
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      const notes = Object.values(state.notes).filter(n => n.shopId === s.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       const notesEl = document.getElementById("shopNotesList");
-      if (notes.length === 0) {
-        notesEl.innerHTML = '<div class="text-[10px] text-slate-400 text-center py-2">لا توجد ملاحظات</div>';
-      } else {
-        notesEl.innerHTML = notes.map(n => `
-          <div class="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2">
-            <p class="text-[11px] font-bold text-slate-800">${esc(n.text)}</p>
-            <div class="text-[9px] text-slate-400 mt-1">${esc(n.author)} • ${timeAgo(n.createdAt)}</div>
-          </div>
-        `).join("");
-      }
+      if (notes.length === 0) notesEl.innerHTML = '<div class="text-[10px] text-slate-400 text-center py-2">لا توجد ملاحظات</div>';
+      else notesEl.innerHTML = notes.map(n => `
+        <div class="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2">
+          <p class="text-[11px] font-bold text-slate-800">${esc(n.text)}</p>
+          <div class="text-[9px] text-slate-400 mt-1">${esc(n.author)} • ${timeAgo(n.createdAt)}</div>
+        </div>`).join("");
     }
 
     /* ============================================================
-       التقييمات
+       التقييمات والنقاط
     ============================================================ */
     function getShopRating(shopId) {
       const r = state.ratings[shopId] || {};
@@ -755,10 +878,14 @@
         if (v.expensive) expensive++;
       });
       const count = cheap + fair + expensive;
-      // متوسط مرجح: cheap=3, fair=2, expensive=1
       const totalScore = cheap * 3 + fair * 2 + expensive * 1;
       const avg = count > 0 ? totalScore / count : 0;
       return { avg, count, cheap, fair, expensive };
+    }
+    function getShopPoints(shopId) {
+      const r = getShopRating(shopId);
+      // نقاط المتجر: رخيص +3، معقول +1، غالي -2
+      return Math.max(0, r.cheap * 3 + r.fair * 1 - r.expensive * 2);
     }
     function ratingToStars(avg) {
       if (avg <= 0) return "☆☆☆☆☆";
@@ -767,34 +894,27 @@
     }
     function getShopRankInVillage(shopId, villageId) {
       const shops = Object.values(state.shops).filter(s => s.villageId === villageId);
-      const ranked = shops.map(s => ({ id: s.id, avg: getShopRating(s.id).avg }))
-        .sort((a, b) => b.avg - a.avg);
+      const ranked = shops.map(s => ({ id: s.id, points: getShopPoints(s.id) }))
+        .sort((a, b) => b.points - a.points);
       const idx = ranked.findIndex(r => r.id === shopId);
       if (idx === -1) return "";
-      if (idx === 0 && ranked[0].avg > 0) return '<div class="bg-[#1b7a43] text-white text-[9px] font-extrabold px-2 py-1 rounded-full">🥇 الأرخص في القرية</div>';
-      if (idx === 1 && ranked[1].avg > 0) return '<div class="bg-slate-400 text-white text-[9px] font-extrabold px-2 py-1 rounded-full">🥈 الثاني</div>';
-      if (idx === 2 && ranked[2].avg > 0) return '<div class="bg-amber-600 text-white text-[9px] font-extrabold px-2 py-1 rounded-full">🥉 الثالث</div>';
+      if (idx === 0 && ranked[0].points > 0) return '<div class="promoted-badge text-[9px] font-extrabold px-2 py-1 rounded-full">🥇 الأرخص</div>';
+      if (idx === 1 && ranked[1].points > 0) return '<div class="bg-slate-400 text-white text-[9px] font-extrabold px-2 py-1 rounded-full">🥈 الثاني</div>';
+      if (idx === 2 && ranked[2].points > 0) return '<div class="bg-amber-600 text-white text-[9px] font-extrabold px-2 py-1 rounded-full">🥉 الثالث</div>';
       return "";
     }
     function isLowestPriceInVillage(priceItem) {
-      const sameGood = Object.values(state.prices)
-        .filter(p => p.villageId === priceItem.villageId && norm(p.name) === norm(priceItem.name));
+      const sameGood = Object.values(state.prices).filter(p => p.villageId === priceItem.villageId && norm(p.name) === norm(priceItem.name));
       if (sameGood.length < 2) return false;
-      const min = Math.min(...sameGood.map(p => Number(p.price)));
-      return Number(priceItem.price) === min;
+      return Number(priceItem.price) === Math.min(...sameGood.map(p => Number(p.price)));
     }
-
     function rateShop(shopId, type) {
       if (!state.ratings[shopId]) state.ratings[shopId] = {};
       const current = state.ratings[shopId][myUserId] || {};
-      // إزالة التقييم السابق
       if (current[type]) {
         delete current[type];
       } else {
-        // إزالة كل التقييمات السابقة ثم تعيين الجديد
-        current.cheap = false;
-        current.fair = false;
-        current.expensive = false;
+        current.cheap = false; current.fair = false; current.expensive = false;
         current[type] = true;
       }
       current.userId = myUserId;
@@ -807,7 +927,7 @@
     }
 
     /* ============================================================
-       إضافة عناصر
+       إضافة عناصر (مع نظام الموافقة)
     ============================================================ */
     function openAddVillage() {
       document.getElementById("newVillageName").value = "";
@@ -819,16 +939,27 @@
       const name = document.getElementById("newVillageName").value.trim();
       const stateName = document.getElementById("newVillageState").value.trim();
       if (!name) { showToast("اكتب اسم القرية"); return; }
-      // منع التكرار
-      const exists = Object.values(state.villages).find(v => norm(v.name) === norm(name));
-      if (exists) { showToast("هذه القرية موجودة بالفعل"); closeModal("modalAddVillage"); goVillage(exists.id); return; }
-      const v = { id: uid(), name, state: stateName, userId: myUserId, author: getUserName(), createdAt: Date.now() };
-      state.villages[v.id] = v;
-      saveData();
-      sendWS({ type: "NEW_VILLAGE", village: v });
-      closeModal("modalAddVillage");
-      showToast("تمت إضافة القرية ✓");
-      goVillage(v.id);
+
+      if (isOwner) {
+        // المالك يضيف مباشرة
+        const exists = Object.values(state.villages).find(v => norm(v.name) === norm(name));
+        if (exists) { showToast("هذه القرية موجودة"); closeModal("modalAddVillage"); goVillage(exists.id); return; }
+        const v = { id: uid(), name, state: stateName, userId: myUserId, author: getUserName(), createdAt: Date.now() };
+        state.villages[v.id] = v; saveData();
+        sendWS({ type: "NEW_VILLAGE", village: v });
+        closeModal("modalAddVillage"); showToast("تمت إضافة القرية ✓"); goVillage(v.id);
+      } else {
+        // طلب معلق
+        const exists = Object.values(state.villages).find(v => norm(v.name) === norm(name));
+        if (exists) { showToast("هذه القرية موجودة بالفعل"); return; }
+        const pending = Object.values(state.pendingVillages).find(v => norm(v.name) === norm(name));
+        if (pending) { showToast("طلبك قيد المراجعة"); closeModal("modalAddVillage"); return; }
+        const v = { id: uid(), name, state: stateName, userId: myUserId, author: getUserName(), createdAt: Date.now(), status: "pending" };
+        state.pendingVillages[v.id] = v; saveData();
+        sendWS({ type: "PENDING_VILLAGE", village: v });
+        closeModal("modalAddVillage");
+        showToast("📩 تم إرسال طلبك للمراجعة. سيظهر بعد موافقة الإدارة.");
+      }
     }
 
     function openAddShop() {
@@ -842,13 +973,19 @@
       const name = document.getElementById("newShopName").value.trim();
       const owner = document.getElementById("newShopOwner").value.trim();
       if (!name || !currentVillageId) { showToast("اكتب اسم المتجر"); return; }
-      const shop = { id: uid(), villageId: currentVillageId, name, owner, userId: myUserId, author: getUserName(), createdAt: Date.now() };
-      state.shops[shop.id] = shop;
-      saveData();
-      sendWS({ type: "NEW_SHOP", shop });
-      closeModal("modalAddShop");
-      showToast("تمت إضافة المتجر ✓");
-      goShop(shop.id);
+
+      if (isOwner) {
+        const shop = { id: uid(), villageId: currentVillageId, name, owner, userId: myUserId, author: getUserName(), createdAt: Date.now() };
+        state.shops[shop.id] = shop; saveData();
+        sendWS({ type: "NEW_SHOP", shop });
+        closeModal("modalAddShop"); showToast("تمت إضافة المتجر ✓"); goShop(shop.id);
+      } else {
+        const shop = { id: uid(), villageId: currentVillageId, name, owner, userId: myUserId, author: getUserName(), createdAt: Date.now(), status: "pending" };
+        state.pendingShops[shop.id] = shop; saveData();
+        sendWS({ type: "PENDING_SHOP", shop });
+        closeModal("modalAddShop");
+        showToast("📩 تم إرسال طلب المتجر للمراجعة.");
+      }
     }
 
     function openAddPrice() {
@@ -865,16 +1002,10 @@
       const unit = document.getElementById("newPriceUnit").value.trim() || "وحدة";
       const shop = state.shops[currentShopId];
       if (!name || !price || price <= 0 || !shop) { showToast("أكمل البيانات"); return; }
-      const p = {
-        id: uid(), shopId: shop.id, villageId: shop.villageId,
-        name, price, unit, userId: myUserId, author: getUserName(), createdAt: Date.now()
-      };
-      state.prices[p.id] = p;
-      saveData();
+      const p = { id: uid(), shopId: shop.id, villageId: shop.villageId, name, price, unit, userId: myUserId, author: getUserName(), createdAt: Date.now() };
+      state.prices[p.id] = p; saveData();
       sendWS({ type: "NEW_PRICE", price: p });
-      closeModal("modalAddPrice");
-      showToast("تم نشر السعر ✓");
-      renderShopPage();
+      closeModal("modalAddPrice"); showToast("تم نشر السعر ✓"); renderShopPage();
     }
 
     function submitShopNote(e) {
@@ -883,21 +1014,138 @@
       const text = input.value.trim();
       if (!text || !currentShopId) return;
       const note = { id: uid(), shopId: currentShopId, text, userId: myUserId, author: getUserName(), createdAt: Date.now() };
-      state.notes[note.id] = note;
-      saveData();
+      state.notes[note.id] = note; saveData();
       sendWS({ type: "NEW_NOTE", note });
-      input.value = "";
-      renderShopPage();
-      showToast("تمت إضافة ملاحظتك ✓");
+      input.value = ""; renderShopPage(); showToast("تمت إضافة ملاحظتك ✓");
     }
 
     function openAddMenu() { openModal("modalAddMenu"); }
 
     /* ============================================================
+       لوحة المالك
+    ============================================================ */
+    function renderOwnerPanel() {
+      // الطلبات المعلقة
+      const pendingV = Object.values(state.pendingVillages);
+      const pendingS = Object.values(state.pendingShops);
+      const total = pendingV.length + pendingS.length;
+      document.getElementById("ownerPendingCount").textContent = total + " طلب";
+      document.getElementById("ownerPendingCount").textContent = total + " طلب";
+
+      const pendingEl = document.getElementById("ownerPendingList");
+      if (total === 0) {
+        pendingEl.innerHTML = '<div class="text-center text-[11px] text-slate-400 py-3 bg-slate-50 rounded-lg">لا توجد طلبات معلقة ✓</div>';
+      } else {
+        let html = "";
+        pendingV.forEach(v => {
+          html += `<div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 space-y-1.5">
+            <div class="flex items-center gap-2">
+              <span class="text-lg">🏘️</span>
+              <div class="flex-1">
+                <div class="text-xs font-extrabold text-slate-900">${esc(v.name)}</div>
+                <div class="text-[10px] text-slate-500">${v.state ? esc(v.state) + " • " : ""}من: ${esc(v.author)}</div>
+              </div>
+            </div>
+            <div class="flex gap-1.5">
+              <button onclick="approveVillage('${v.id}')" class="flex-1 bg-[#1b7a43] text-white text-[10px] font-extrabold py-1.5 rounded-lg">✓ موافقة</button>
+              <button onclick="rejectVillage('${v.id}')" class="flex-1 bg-rose-100 text-rose-700 text-[10px] font-extrabold py-1.5 rounded-lg">✕ رفض</button>
+            </div>
+          </div>`;
+        });
+        pendingS.forEach(s => {
+          const v = state.villages[s.villageId];
+          html += `<div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 space-y-1.5">
+            <div class="flex items-center gap-2">
+              <span class="text-lg">🏪</span>
+              <div class="flex-1">
+                <div class="text-xs font-extrabold text-slate-900">${esc(s.name)}</div>
+                <div class="text-[10px] text-slate-500">${v ? "في " + esc(v.name) + " • " : ""}${esc(s.owner || "غير معروف")}</div>
+              </div>
+            </div>
+            <div class="flex gap-1.5">
+              <button onclick="approveShop('${s.id}')" class="flex-1 bg-[#1b7a43] text-white text-[10px] font-extrabold py-1.5 rounded-lg">✓ موافقة</button>
+              <button onclick="rejectShop('${s.id}')" class="flex-1 bg-rose-100 text-rose-700 text-[10px] font-extrabold py-1.5 rounded-lg">✕ رفض</button>
+            </div>
+          </div>`;
+        });
+        pendingEl.innerHTML = html;
+      }
+
+      // إدارة القرى
+      const vList = Object.values(state.villages).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      const vEl = document.getElementById("ownerVillagesList");
+      if (vList.length === 0) vEl.innerHTML = '<div class="text-[10px] text-slate-400">لا توجد قرى</div>';
+      else vEl.innerHTML = vList.map(v => `
+        <div class="flex items-center justify-between bg-slate-50 rounded-lg px-2.5 py-1.5">
+          <span class="text-[11px] font-bold text-slate-800">${esc(v.name)}</span>
+          <button onclick="deleteItem('village', '${v.id}')" class="text-rose-600 text-[10px] font-extrabold">🗑️</button>
+        </div>`).join("");
+
+      // إدارة المتاجر
+      const sList = Object.values(state.shops).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      const sEl = document.getElementById("ownerShopsList");
+      if (sList.length === 0) sEl.innerHTML = '<div class="text-[10px] text-slate-400">لا توجد متاجر</div>';
+      else sEl.innerHTML = sList.map(s => {
+        const v = state.villages[s.villageId];
+        return `<div class="flex items-center justify-between bg-slate-50 rounded-lg px-2.5 py-1.5">
+          <span class="text-[11px] font-bold text-slate-800">${esc(s.name)} <span class="text-slate-400 font-normal">(${v ? esc(v.name) : "?"})</span></span>
+          <button onclick="deleteItem('shop', '${s.id}')" class="text-rose-600 text-[10px] font-extrabold">🗑️</button>
+        </div>`;
+      }).join("");
+    }
+
+    function approveVillage(id) {
+      const v = state.pendingVillages[id];
+      if (!v) return;
+      v.status = "approved";
+      state.villages[id] = v;
+      delete state.pendingVillages[id];
+      saveData();
+      sendWS({ type: "APPROVE_VILLAGE", village: v });
+      renderOwnerPanel();
+      showToast("تمت الموافقة على القرية ✓");
+    }
+    function rejectVillage(id) {
+      delete state.pendingVillages[id];
+      saveData();
+      sendWS({ type: "REJECT_VILLAGE", id });
+      renderOwnerPanel();
+      showToast("تم رفض الطلب");
+    }
+    function approveShop(id) {
+      const s = state.pendingShops[id];
+      if (!s) return;
+      s.status = "approved";
+      state.shops[id] = s;
+      delete state.pendingShops[id];
+      saveData();
+      sendWS({ type: "APPROVE_SHOP", shop: s });
+      renderOwnerPanel();
+      showToast("تمت الموافقة على المتجر ✓");
+    }
+    function rejectShop(id) {
+      delete state.pendingShops[id];
+      saveData();
+      sendWS({ type: "REJECT_SHOP", id });
+      renderOwnerPanel();
+      showToast("تم رفض الطلب");
+    }
+    function deleteItem(kind, id) {
+      if (!isOwner) return;
+      if (!confirm("هل أنت متأكد من الحذف؟")) return;
+      if (kind === "village") { delete state.villages[id]; }
+      if (kind === "shop") { delete state.shops[id]; }
+      saveData();
+      sendWS({ type: "DELETE_ITEM", kind, id });
+      renderOwnerPanel();
+      showToast("تم الحذف");
+    }
+
+    /* ============================================================
        لوحة التحديات
     ============================================================ */
     function setLeaderboardTab(tab) {
-      leaderboardTab = tab;
+      leaderboardTab = tab; saveViewState();
       document.querySelectorAll(".lb-tab").forEach(b => {
         if (b.dataset.tab === tab) b.className = "lb-tab flex-1 text-xs font-extrabold py-2 rounded-xl bg-[#1b7a43] text-white";
         else b.className = "lb-tab flex-1 text-xs font-extrabold py-2 rounded-xl bg-slate-100 text-slate-700";
@@ -907,10 +1155,8 @@
     function renderLeaderboard() {
       const el = document.getElementById("leaderboardList");
       if (leaderboardTab === "shops") {
-        const shops = Object.values(state.shops).map(s => ({ ...s, rating: getShopRating(s.id) }))
-          .filter(s => s.rating.count > 0)
-          .sort((a, b) => b.rating.avg - a.rating.avg)
-          .slice(0, 10);
+        const shops = Object.values(state.shops).map(s => ({ ...s, rating: getShopRating(s.id), points: getShopPoints(s.id) }))
+          .filter(s => s.rating.count > 0).sort((a, b) => b.points - a.points).slice(0, 10);
         if (shops.length === 0) { el.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">لا توجد تقييمات كافية بعد</div>'; return; }
         const medals = ["🥇", "🥈", "🥉"];
         el.innerHTML = shops.map((s, i) => {
@@ -924,18 +1170,17 @@
               </div>
             </div>
             <div class="text-left">
-              <div class="stars text-xs">${ratingToStars(s.rating.avg)}</div>
-              <div class="text-[10px] text-slate-500">${s.rating.avg.toFixed(1)} (${s.rating.count})</div>
+              <div class="points-badge text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-block">${s.points} نقطة</div>
+              <div class="stars text-[10px] mt-0.5">${ratingToStars(s.rating.avg)}</div>
             </div>
           </div>`;
         }).join("");
       } else if (leaderboardTab === "villages") {
         const villages = Object.values(state.villages).map(v => {
           const shops = Object.values(state.shops).filter(s => s.villageId === v.id);
-          const ratings = shops.map(s => getShopRating(s.id).avg).filter(a => a > 0);
-          const avg = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
-          return { ...v, avg, shopCount: shops.length };
-        }).filter(v => v.shopCount > 0).sort((a, b) => b.avg - a.avg).slice(0, 10);
+          const totalPoints = shops.reduce((sum, s) => sum + getShopPoints(s.id), 0);
+          return { ...v, totalPoints, shopCount: shops.length };
+        }).filter(v => v.shopCount > 0).sort((a, b) => b.totalPoints - a.totalPoints).slice(0, 10);
         if (villages.length === 0) { el.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">لا توجد بيانات كافية</div>'; return; }
         const medals = ["🥇", "🥈", "🥉"];
         el.innerHTML = villages.map((v, i) => `
@@ -947,23 +1192,18 @@
                 <div class="text-[10px] text-slate-500">${v.state ? esc(v.state) + " • " : ""}${v.shopCount} متجر</div>
               </div>
             </div>
-            <div class="text-sm font-extrabold text-[#1b7a43]">${v.avg.toFixed(1)} ⭐</div>
-          </div>
-        `).join("");
+            <div class="points-badge text-sm font-extrabold px-3 py-1 rounded-full">${v.totalPoints}</div>
+          </div>`).join("");
       } else if (leaderboardTab === "states") {
         const byState = {};
         Object.values(state.shops).forEach(s => {
-          const v = state.villages[s.villageId];
-          if (!v) return;
+          const v = state.villages[s.villageId]; if (!v) return;
           const st = v.state || "غير محدد";
-          if (!byState[st]) byState[st] = { state: st, ratings: [], shopCount: 0 };
-          const r = getShopRating(s.id).avg;
-          if (r > 0) byState[st].ratings.push(r);
+          if (!byState[st]) byState[st] = { state: st, points: 0, shopCount: 0 };
+          byState[st].points += getShopPoints(s.id);
           byState[st].shopCount++;
         });
-        const list = Object.values(byState).map(s => ({
-          ...s, avg: s.ratings.length > 0 ? s.ratings.reduce((a, b) => a + b, 0) / s.ratings.length : 0
-        })).sort((a, b) => b.avg - a.avg).slice(0, 10);
+        const list = Object.values(byState).sort((a, b) => b.points - a.points).slice(0, 10);
         if (list.length === 0) { el.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">لا توجد بيانات كافية</div>'; return; }
         const medals = ["🥇", "🥈", "🥉"];
         el.innerHTML = list.map((s, i) => `
@@ -975,14 +1215,13 @@
                 <div class="text-[10px] text-slate-500">${s.shopCount} متجر</div>
               </div>
             </div>
-            <div class="text-sm font-extrabold text-[#1b7a43]">${s.avg.toFixed(1)} ⭐</div>
-          </div>
-        `).join("");
+            <div class="points-badge text-sm font-extrabold px-3 py-1 rounded-full">${s.points}</div>
+          </div>`).join("");
       }
     }
 
     /* ============================================================
-       الملف الشخصي والبيانات
+       الملف الشخصي
     ============================================================ */
     function openProfile() {
       document.getElementById("profileName").value = localStorage.getItem(NAME_KEY) || "";
@@ -991,23 +1230,18 @@
     }
     function saveProfile() {
       const name = document.getElementById("profileName").value.trim();
-      if (name) localStorage.setItem(NAME_KEY, name);
-      else localStorage.removeItem(NAME_KEY);
-      closeModal("modalProfile");
-      showToast("تم الحفظ ✓");
+      if (name) localStorage.setItem(NAME_KEY, name); else localStorage.removeItem(NAME_KEY);
+      closeModal("modalProfile"); showToast("تم الحفظ ✓");
     }
     function exportData() {
       const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = "radar-data-" + Date.now() + ".json";
-      a.click();
+      a.href = url; a.download = "radar-data-" + Date.now() + ".json"; a.click();
       URL.revokeObjectURL(url);
     }
     function importData(e) {
-      const file = e.target.files[0];
-      if (!file) return;
+      const file = e.target.files[0]; if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
         try {
@@ -1017,22 +1251,17 @@
           if (parsed.prices) Object.assign(state.prices, parsed.prices);
           if (parsed.ratings) Object.assign(state.ratings, parsed.ratings);
           if (parsed.notes) Object.assign(state.notes, parsed.notes);
-          saveData();
-          renderCurrentView();
-          showToast("تم الاستيراد ✓");
+          saveData(); renderCurrentView(); showToast("تم الاستيراد ✓");
         } catch (err) { showToast("ملف غير صالح"); }
         e.target.value = "";
       };
       reader.readAsText(file);
     }
     function clearLocalData() {
-      if (!confirm("سيتم مسح جميع البيانات المحلية (القرى، المتاجر، الأسعار، التقييمات). هل أنت متأكد؟")) return;
-      localStorage.removeItem(DATA_KEY);
-      state = { villages: {}, shops: {}, prices: {}, ratings: {}, notes: {}, lastSync: 0 };
-      saveData();
-      closeModal("modalProfile");
-      goHome();
-      showToast("تم مسح البيانات");
+      if (!confirm("سيتم مسح جميع البيانات المحلية. هل أنت متأكد؟")) return;
+      localStorage.removeItem(DATA_KEY); clearViewState();
+      state = { villages: {}, shops: {}, prices: {}, ratings: {}, notes: {}, pendingVillages: {}, pendingShops: {}, lastSync: 0 };
+      saveData(); closeModal("modalProfile"); goHome(); showToast("تم مسح البيانات");
     }
 
     /* ============================================================
@@ -1040,10 +1269,9 @@
     ============================================================ */
     function init() {
       connectWS();
+      restoreViewState();
       renderCurrentView();
-      // إعادة مزامنة عند عودة الاتصال بالإنترنت
       window.addEventListener("online", () => { connectWS(); requestSync(); });
-      // إعادة مزامنة دورية خفيفة (كل 5 دقائق) إذا كان الاتصال مفتوحاً
       setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) requestSync(); }, 5 * 60 * 1000);
     }
     init();
