@@ -13,7 +13,7 @@
                 city: 'الخرطوم',
                 timestamp: new Date().toISOString()
             };
-            if (window.isValidDate(new Date(newPost.timestamp))) {
+            if (window.store.isValidDate(new Date(newPost.timestamp))) {
                 window.broadcast(newPost);
             } else {
                 handleError(new Error('تاريخ غير صالح'));
@@ -24,7 +24,7 @@
             // منطق المقارنة
         });
 
-        document.addEventListener('storeUpdated', function(e) {
+        window.store.on('storeUpdated', function(e) {
             const { posts, status } = e.detail;
             document.getElementById('status').textContent = status;
             renderPosts(posts);
@@ -43,13 +43,15 @@
         const postsContainer = document.getElementById('posts');
         postsContainer.innerHTML = posts.map(post => {
             const date = new Date(post.timestamp);
-            return `<div class="post">
-                <h3>${post.author}</h3>
-                <p>${post.content}</p>
-                <p>السعر: ${post.price} جنية</p>
-                <p>المدينة: ${post.city}</p>
-                <p>التاريخ: ${window.formatDate(date)}</p>
-            </div>`;
+            return `
+                <div class="post">
+                    <h3>${post.author}</h3>
+                    <p>${post.content}</p>
+                    <p>السعر: ${post.price} جنية</p>
+                    <p>المدينة: ${post.city}</p>
+                    <p>التاريخ: ${window.store.formatDate(date)}</p>
+                </div>
+            `;
         }).join('');
     }
 

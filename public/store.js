@@ -1,18 +1,17 @@
 (function() {
     'use strict';
 
-    const store = new Proxy({
+    const store = {
         posts: [],
-        status: 'جاهز',
-        radarData: null,
-        compareData: null
-    }, {
-        set(target, key, value) {
-            target[key] = value;
-            document.dispatchEvent(new CustomEvent('storeUpdated', { detail: target }));
-            return true;
-        }
-    });
+        status: 'جاهز'
+    };
+
+    const eventTarget = new EventTarget();
+
+    function updateStore(newData) {
+        Object.assign(store, newData);
+        eventTarget.dispatchEvent(new CustomEvent('storeUpdated', { detail: store }));
+    }
 
     function isValidDate(date) {
         return date instanceof Date && !isNaN(date);
@@ -31,7 +30,11 @@
         });
     }
 
-    window.store = store;
-    window.isValidDate = isValidDate;
-    window.formatDate = formatDate;
+    window.store = {
+        get: () => store,
+        update: updateStore,
+        isValidDate,
+        formatDate,
+        on: (event, callback) => eventTarget.addEventListener(event, callback)
+    };
 })();
