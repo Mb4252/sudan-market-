@@ -29,11 +29,11 @@
   // 3. Price Extraction & Smart Tagging Engine (Time-Based Clustering)
   window.tagPost = (post) => {
     const text = post.content || '';
-    const priceMatch = text.match(/(\\d+(?:\\.\\d+)?)/);
+    const priceMatch = text.match(/(\d+(?:\.\d+)?)/);
     post.price = priceMatch ? parseFloat(priceMatch[1]) : null;
     
     // Extract Store Name
-    const storeMatch = text.match(/(?:في|من|عند)\\s+([\\u0600-\\u06FF\\s]+)/);
+    const storeMatch = text.match(/(?:في|من|عند)\s+([\u0600-\u06FF\s]+)/);
     post.store = storeMatch ? storeMatch[1].trim().substring(0, 20) : 'غير محدد';
     
     // Smart Dynamic Tagging: Compare with 24h average for same store/item
@@ -60,63 +60,4 @@
     }
     
     return post;
-  };
-
-  /* ...مقتطع للاختصار... */
-
-  // 4. Publish Function (Local-First with Fallback)
-  window.publishPost = async (content, author) => {
-    const post = {
-      id: Date.now().toString(36),
-      content,
-      author: author || 'مجهول',
-      timestamp: Date.now()
-    };
-
-    // Step 1: Save immediately to localStorage
-    window.postStorage.addPost(window.tagPost(post));
-
-    // Step 2: Try WebSocket in background
-    try {
-      const ws = new WebSocket(window.APP_CONFIG.wsUrl);
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'NEW_POST', ...post }));
-        ws.close();
-      };
-      ws.onerror = () => {
-        console.warn('WebSocket failed, post saved locally');
-      };
-    } catch (err) {
-      console.warn('WebSocket connection error:', err);
-    }
-  };
-
-  // 5. UI Event Listeners
-  document.addEventListener('DOMContentLoaded', () => {
-    // Publish Button
-    document.getElementById('publishBtn').addEventListener('click', () => {
-      const content = document.getElementById('content').value.trim();
-      const author = document.getElementById('author').value.trim();
-      if (content) {
-        window.publishPost(content, author);
-        document.getElementById('content').value = '';
-      }
-    });
-
-    // ...مقتطع للاختصار...
-  });
-
-  // 6. Error Handling
-  window.addEventListener('error', (event) => {
-    console.error('Global error:', event.error);
-    document.getElementById('status').textContent = `خطأ: ${event.message}`;
-    document.getElementById('status').style.color = 'red';
-  });
-
-  window.addEventListener('unhandledrejection', (event) => {
-    console.error('Unhandled rejection:', event.reason);
-    document.getElementById('status').textContent = `خطأ: ${event.reason}`;
-    document.getElementById('status').style.color = 'red';
-  });
-
-})();
+/* ...مقتطع للاختصار... */

@@ -41,16 +41,29 @@
       document.getElementById('syncBadge').classList.remove('online');
       document.getElementById('syncBadge').classList.add('offline');
     };
+
+    ws.onerror = () => {
+      console.error('WebSocket error');
+      document.getElementById('status').textContent = 'خطأ في الاتصال';
+      document.getElementById('syncBadge').classList.remove('online');
+      document.getElementById('syncBadge').classList.add('offline');
+    };
   }
 
-  // Connect immediately
+  // Try to connect immediately
   connectWebSocket();
 
-  // Reconnect if connection drops
+  // Reconnect every 30 seconds if not connected
   setInterval(() => {
     if (!ws || ws.readyState === WebSocket.CLOSED) {
       connectWebSocket();
     }
   }, 30000);
 
+  // Publish post to WebSocket if connected
+  window.publishPost = (post) => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'NEW_POST', ...post }));
+    }
+  };
 })();
