@@ -48,19 +48,44 @@
   <script>
     (function(){
       const serverUrl = (window.APP_CONFIG && window.APP_CONFIG.wsUrl) || 'wss://example.com/socket';
-      let socket=null;
+      let socket = null;
+      let retryDelay = 500; // initial delay 500 ms
+      const maxDelay = 30000; // 30 s max
+
       function connect(){
-        socket=new WebSocket(serverUrl);
-        socket.onopen=()=>{console.log('WebSocket connected');};
-        socket.onclose=()=>{console.log('WebSocket closed, retrying'); setTimeout(connect,3000);};
-        socket.onerror=()=>{socket.close();};
+        socket = new WebSocket(serverUrl);
+        socket.onopen = () => {
+          console.log('WebSocket connected');
+          // reset back‑off after a successful connection
+          retryDelay = 500;
+        };
+        socket.onmessage = e => {
+          // يمكن إضافة معالجة للرسائل الواردة هنا إذا لزم الأمر
+        };
+        socket.onclose = () => {
+          console.warn('WebSocket closed, retrying in ' + retryDelay + 'ms');
+          setTimeout(connect, retryDelay);
+          // exponential back‑off مع حد أقصى
+          retryDelay = Math.min(retryDelay * 2, maxDelay);
+        };
+        socket.onerror = () => {
+          console.error('WebSocket error – closing socket');
+          socket.close();
+        };
       }
+
+      // بدء الاتصال الأولي
       connect();
-      window.sendMessage=data=>{
-        if(socket && socket.readyState===WebSocket.OPEN){
+
+      // واجهة لإرسال الرسائل مع fallback إلى HTTP long‑poll
+      window.sendMessage = data => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify(data));
-        }else{
-          fetch('/longpoll', {method:'POST',body:JSON.stringify(data)});
+        } else {
+          fetch('/longpoll', {
+            method: 'POST',
+            body: JSON.stringify(data)
+          }).catch(err => console.error('Fallback send failed', err));
         }
       };
     })();
