@@ -30,21 +30,63 @@
         .entity-item { color: var(--primary); font-weight: bold; }
         .entity-price { color: var(--warning); font-weight: bold; font-size: 1.1em; }
         .entity-place { color: #777; font-size: 0.9em; }
-        .forecast-section { margin-top: 20px; padding-top: 20px; border-top: 1px dashed #ddd; }
-        .forecast-value { font-size: 1.2em; font-weight: bold; color: var(--primary); }
-        .confidence-meter { width: 100%; height: 10px; background: #eee; border-radius: 5px; margin-top: 5px; overflow: hidden; }
-        .confidence-bar { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s ease; }
+        .forecast-section { margin-top: 20px; padding: 15px; background: rgba(255, 255, 255, 0.8); border-radius: 8px; }
+        .forecast-value { font-size: 1.5em; font-weight: bold; color: var(--primary); }
+        .confidence-indicator { display: inline-block; padding: 5px 10px; border-radius: 20px; font-size: 0.8em; font-weight: bold; margin-left: 10px; }
+        .high-confidence { background: #d4edda; color: #155724; }
+        .medium-confidence { background: #fff3cd; color: #856404; }
+        .low-confidence { background: #f8d7da; color: #721c24; }
+        .compare-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .compare-content { background: white; padding: 20px; border-radius: 10px; max-width: 80%; max-height: 80%; overflow: auto; }
+        .compare-item { margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
+        .compare-price { font-size: 1.2em; font-weight: bold; color: var(--warning); }
+        .compare-author { font-weight: bold; color: var(--secondary); }
+        .compare-place { color: #777; }
+        .compare-btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px; }
+        .compare-btn:hover { background: #388E3C; }
+        .radar-content { margin-top: 20px; }
+        .radar-item { margin-bottom: 10px; padding: 10px; background: #f9f9f9; border-radius: 5px; }
+        .radar-price { font-weight: bold; color: var(--warning); }
+        .radar-place { color: #777; }
+        .publish-btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px; }
+        .publish-btn:hover { background: #388E3C; }
+        .error-message { color: var(--danger); padding: 10px; background: #f8d7da; border-radius: 5px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>سوق السودان</h1>
-        <div id="status-indicator" class="status-indicator offline">غير متصل</div>
-        <div id="posts-container" class="card"></div>
-        <div id="analytics-container" class="card">
-            <h2>تحليلات</h2>
-            <canvas id="chartVolume"></canvas>
-            <canvas id="chartPrice"></canvas>
+        <div id="status" class="status-indicator offline">غير متصل</div>
+        <div id="syncBadge" class="status-indicator offline">غير متزامن</div>
+        <div id="compareOverlay" class="compare-overlay" style="display: none;">
+            <div id="compareContent" class="compare-content">
+                <!-- Content will be inserted here by JavaScript -->
+            </div>
+        </div>
+        <div id="posts" class="card">
+            <!-- Posts will be inserted here by JavaScript -->
+        </div>
+        <div id="radarContent" class="card radar-content">
+            <!-- Radar content will be inserted here by JavaScript -->
+        </div>
+        <div class="card">
+            <h2>نشر منشور جديد</h2>
+            <div id="errorMessage" class="error-message" style="display: none;"></div>
+            <div>
+                <label for="author">المؤلف:</label>
+                <input type="text" id="author" placeholder="اسمك أو اسم المتجر">
+            </div>
+            <div>
+                <label for="content">المحتوى:</label>
+                <textarea id="content" placeholder="مثال: 'بيع 50 كيلو من البطاطا 1000 جنيه في الخرطوم'" rows="3"></textarea>
+            </div>
+            <button id="publishBtn" class="publish-btn">نشر</button>
+            <button id="compareBtn" class="compare-btn" style="display: none;">مقارنة الأسعار</button>
+        </div>
+        <div class="card">
+            <h2>تنبؤات الأسعار</h2>
+            <div id="priceRadar" class="radar-content">
+                <!-- Price radar content will be inserted here by JavaScript -->
+            </div>
         </div>
     </div>
     <script src="public/plugins/forecast.js"></script>
