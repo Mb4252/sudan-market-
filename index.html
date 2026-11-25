@@ -30,98 +30,25 @@
         .entity-item { color: var(--primary); font-weight: bold; }
         .entity-price { color: var(--warning); font-weight: bold; font-size: 1.1em; }
         .entity-place { color: #777; font-size: 0.9em; }
-        .forecast-section { margin-top: 20px; }
-        #chartVolume, #chartPrice { height: 300px; margin-bottom: 20px; }
-        #status { display: none; }
-        #syncBadge { display: none; }
-        #compareOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; z-index: 1000; }
-        #compareContent { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; z-index: 1001; display: none; }
-        #posts { margin-top: 20px; }
-        #radarContent { display: none; }
-        #publishBtn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em; }
-        #author { display: block; margin-bottom: 10px; }
-        #content { width: 100%; height: 100px; margin-bottom: 10px; }
-        #compareBtn { background: var(--secondary); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em; margin-top: 10px; }
-        #priceRadar { display: none; }
+        .forecast-section { margin-top: 20px; padding-top: 20px; border-top: 1px dashed #ddd; }
+        .forecast-value { font-size: 1.2em; font-weight: bold; color: var(--primary); }
+        .confidence-meter { width: 100%; height: 10px; background: #eee; border-radius: 5px; margin-top: 5px; overflow: hidden; }
+        .confidence-bar { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s ease; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>سوق السودان</h1>
-        <div id="status" class="status-indicator offline">غير متصل</div>
-        <div id="syncBadge" class="status-indicator offline">غير متزامن</div>
-        <div class="card">
-            <h2>إضافة منشور جديد</h2>
-            <span id="author" contenteditable="true" placeholder="اسمك"></span>
-            <textarea id="content" placeholder="وصف المنتج والسعر والمكان"></textarea>
-            <button id="publishBtn">نشر</button>
-        </div>
-        <div class="card">
-            <h2>المنشورات</h2>
-            <div id="posts"></div>
-        </div>
-        <div class="card">
-            <h2>تحليلات السوق</h2>
-            <div id="chartVolume"></div>
-            <div id="chartPrice"></div>
-            <div id="radarContent"></div>
-            <button id="compareBtn">مقارنة الأسعار</button>
-            <span id="priceRadar"></span>
+        <div id="status-indicator" class="status-indicator offline">غير متصل</div>
+        <div id="posts-container" class="card"></div>
+        <div id="analytics-container" class="card">
+            <h2>تحليلات</h2>
+            <canvas id="chartVolume"></canvas>
+            <canvas id="chartPrice"></canvas>
         </div>
     </div>
-    <div id="compareOverlay"></div>
-    <div id="compareContent"></div>
-    <script src="public/app.js"></script>
     <script src="public/plugins/forecast.js"></script>
-    <script>
-        // WebSocket connection
-        const socket = new WebSocket('wss://sudan-market-2.onrender.com');
-        
-        // Save data to localStorage
-        function saveToLocalStorage(data) {
-            localStorage.setItem('marketData', JSON.stringify(data));
-        }
-        
-        // Broadcast data via WebSocket
-        function broadcastData(data) {
-            if (socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify(data));
-            }
-        }
-        
-        // Update UI
-        function updateUI(data) {
-            // Update posts, charts, etc.
-        }
-        
-        // Load data on page load
-        window.onload = function() {
-            const savedData = localStorage.getItem('marketData');
-            if (savedData) {
-                updateUI(JSON.parse(savedData));
-            }
-        }
-        
-        // WebSocket event handlers
-        socket.onopen = function() {
-            document.getElementById('status').textContent = 'متصل';
-            document.getElementById('status').className = 'status-indicator online';
-        };
-        
-        socket.onclose = function() {
-            document.getElementById('status').textContent = 'غير متصل';
-            document.getElementById('status').className = 'status-indicator offline';
-            // Attempt to reconnect
-            setTimeout(() => {
-                socket = new WebSocket('wss://sudan-market-2.onrender.com');
-            }, 5000);
-        };
-        
-        socket.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            updateUI(data);
-            saveToLocalStorage(data);
-        };
-    </script>
+    <script src="public/app.js"></script>
+    <script src="public/analytics.js"></script>
 </body>
 </html>
