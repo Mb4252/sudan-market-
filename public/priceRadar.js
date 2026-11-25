@@ -1,36 +1,40 @@
 (function(){
-  const radarEl = document.getElementById('radarContent');
-  if (!radarEl) return;
+  function updateRadar() {
+    const contentEl = document.getElementById('radarContent');
+    if (!contentEl) return;
+    
+    let posts = [];
+    try {
+      const data = localStorage.getItem(window.APP_CONFIG.storageKey);
+      if (data) posts = JSON.parse(data);
+    } catch(e) { posts = []; }
 
-  function updateRadar(posts) {
-    if (!posts || posts.length === 0) {
-      radarEl.innerHTML = '<p>لا توجد بيانات كافية بعد.</p>';
-      return;
-    }
-
-    let cheapCount = 0;
-    let expensiveCount = 0;
-    let total = posts.length;
-
+    let cheap = 0, expensive = 0, normal = 0;
     posts.forEach(p => {
-      if (p.priceTag === 'cheap') cheapCount++;
-      else if (p.priceTag === 'expensive') expensiveCount++;
+      if (p.priceTag === 'cheap') cheap++;
+      else if (p.priceTag === 'expensive') expensive++;
+      else normal++;
     });
 
-    const cheapPct = Math.round((cheapCount / total) * 100);
-    const expensivePct = Math.round((expensiveCount / total) * 100);
-
-    radarEl.innerHTML = `
-      <div style="margin-bottom:10px">
-        <strong>المنشورات الرخيصة:</strong> ${cheapCount} (${cheapPct}%)<br>
-        <strong>المنشورات الغالية:</strong> ${expensiveCount} (${expensivePct}%)<br>
-        <strong>المحايد:</strong> ${total - cheapCount - expensiveCount}
+    contentEl.innerHTML = `
+      <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+        <span>الرخيص: <strong style="color:green">${cheap}</strong></span>
+        <span>الغالي: <strong style="color:red">${expensive}</strong></span>
+        <span>العادي: <strong style="color:blue">${normal}</strong></span>
       </div>
-      <div style="background:#f0f0f0;padding:5px;border-radius:4px">
-        مؤشر السوق: ${cheapPct > expensivePct ? 'ميل نحو الرخص 📉' : expensivePct > cheapPct ? 'ميل نحو الغلاء 📈' : 'متوازن ⚖️'}
-      </div>
+      <div style="font-size:0.9em; color:#666;">إجمالي المنشورات: ${posts.length}</div>
     `;
   }
 
-  window.updatePriceRadar = updateRadar;
+  window.updateRadar = updateRadar;
+  
+  // تحديث عند التحميل
+  document.addEventListener('DOMContentLoaded', updateRadar);
+  
+  // تحديث عند تغيير الفلتر أو إضافة منشور
+  const observer = new MutationObserver(() => updateRadar());
+  const postsDiv = document.getElementById('posts');
+  if (postsDiv) {
+    observer.observe(postsDiv, { childList: true, subtree: true });
+  }
 })();

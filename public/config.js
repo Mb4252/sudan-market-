@@ -1,4 +1,4 @@
 window.APP_CONFIG = {
-  wsUrl: "wss://example.com/socket",
+  wsUrl: "",
   storageKey: "posts_v2"
 };

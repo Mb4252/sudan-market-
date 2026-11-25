@@ -1,13 +1,9 @@
-// priceEngine.js – integrates WebAssembly price classifier
-// Assumes priceWasm.js has loaded a module exposing a classify function
-window.tagPost = function(post){
-  try{
-    if (window.priceWasm && typeof window.priceWasm.classify === 'function') {
-      const tag = window.priceWasm.classify(post.content);
-      return tag === 'cheap' || tag === 'expensive' ? tag : 'normal';
-    }
-  }catch(err){
-    console.warn('PriceEngine classify error', err);
+(function(){
+  function tagPost(post) {
+    const text = (post.content || '').toLowerCase();
+    if (text.includes('خصم') || text.includes('رخيص') || text.includes('تخفيض') || text.includes('عرض')) return 'cheap';
+    if (text.includes('محدود') || text.includes('غالي') || text.includes('فاخر') || text.includes('حصري')) return 'expensive';
+    return 'normal';
   }
-  return 'normal';
-};
+  window.tagPost = tagPost;
+})();
