@@ -1,1 +1,5 @@
-(function(){const dbName='postsDB',storeName='posts';function openDB(){return new Promise((res,rej)=>{const req=indexedDB.open(dbName,1);req.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains(storeName)){db.createObjectStore(storeName,{keyPath:'id',autoIncrement:true});}};req.onsuccess=e=>res(e.target.result);req.onerror=e=>rej(e.target.error);});}function loadPosts(){openDB().then(db=>{const tx=db.transaction(storeName,'readonly');const store=tx.objectStore(storeName);const req=store.getAll();req.onsuccess=e=>{const posts=e.target.result;const div=document.getElementById('posts');if(div){div.innerHTML='';posts.forEach(p=>{const d=document.createElement('div');d.className='post '+(p.priceTag||'');d.innerHTML=`<div class="meta">${p.author||'مجهول'} — ${new Date(p.timestamp).toLocaleString()}</div><div>${p.content}</div>`;div.appendChild(d);});}});});}window.onload=loadPosts;})();
+const storageKey='posts_v2';
+async function loadPosts(){const data=localStorage.getItem(storageKey);return data?JSON.parse(data):[];}
+async function savePosts(posts){localStorage.setItem(storageKey,JSON.stringify(posts));}
+async function addPost(post){const posts=await loadPosts();posts.push(post);await savePosts(posts);return posts.length-1;}
+async function getAllPosts(){return await loadPosts();}
