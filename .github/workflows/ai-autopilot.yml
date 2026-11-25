@@ -34,6 +34,7 @@ jobs:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          PAGES_URL: "https://mb4252.github.io/sudan-market-/"
           RENDER_URL: ${{ secrets.RENDER_URL }}
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
@@ -54,14 +55,6 @@ jobs:
               u = (mdMatch[2] || mdMatch[1] || "").trim();
             }
             return u.replace(/^<|>$/g, "").trim();
-          }
-
-          function getPagesUrl(repoSlug) {
-            const parts = String(repoSlug || "").split("/");
-            if (parts.length === 2 && parts[0] && parts[1]) {
-              return `https://${parts[0].toLowerCase()}.github.io/${parts[1]}/`;
-            }
-            return "https://mb4252.github.io/sudan-market-/";
           }
 
           function collectProjectFiles(dir = ".", depth = 0, out = []) {
@@ -455,8 +448,8 @@ jobs:
             const primaryKey = (process.env.AI_API_KEY || "").trim();
             const openRouterKey = (process.env.OPENROUTER_API_KEY || "").trim();
             const mistralKey = (process.env.MISTRAL_API_KEY || "").trim();
+            const pagesUrl = sanitizeUrl(process.env.PAGES_URL || "[https://mb4252.github.io/sudan-market-/](https://mb4252.github.io/sudan-market-/)");
             const renderUrl = sanitizeUrl(process.env.RENDER_URL || "[https://sudan-market-2.onrender.com](https://sudan-market-2.onrender.com)");
-            const pagesUrl = getPagesUrl(process.env.REPO);
             const providers = buildProviders(primaryKey, openRouterKey, mistralKey);
 
             if (!providers.length) {
@@ -475,6 +468,7 @@ jobs:
               .slice(0, 6500);
 
             const architectureMandate = [
+              `رابط GitHub Pages المعتمد: ${pagesUrl}`,
               `رابط جسر Render المعتمد: ${renderUrl} (للبث المباشر WebSocket عبر wss:// وطلب الإيقاظ /health فقط).`,
               "1) النشر والحفظ المحلي الفوري (Local-First بلا تعليق): عند ضغط زر النشر، احفظ المنشور فوراً في localStorage حتى لو كان النص حراً أو بدون رقم صريح أو كان Render نائماً، وحدّث قائمة المنشورات ورادار الأسعار ولوحة التحليل في نفس اللحظة، وأظهر رسالة تأكيد أو خطأ واضحة في اللوغو والواجهة بدلاً من الصمت أو التعليق.",
               "2) واجهة نظيفة بلا تداخل أزرار أو نصوص عالقة: تأكد من عدم تراكب الأزرار، وأن حالة الاتصال تتحدث بوضوح (متصل بالجسر / وضع محلي سريع) دون بقاء (جاري الاتصال...) أو (جارِ التحليل...) عالقة للأبد.",
@@ -598,6 +592,11 @@ jobs:
           '
 
       - name: Commit, push, and verify live site
+        env:
+          REPO: ${{ github.repository }}
+          PAGES_URL: "[https://mb4252.github.io/sudan-market-/](https://mb4252.github.io/sudan-market-/)"
+          RENDER_URL: ${{ secrets.RENDER_URL }}
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
           git config user.name "ai-autopilot[bot]"
           git config user.email "ai-autopilot[bot]@users.noreply.github.com"
@@ -623,11 +622,16 @@ jobs:
             curl -s -X POST "${RENDER_DEPLOY_HOOK_URL}" || true
           fi
           echo "⏳ انتظار نشر التحديث على GitHub Pages للفحص..."
-          sleep 25
-          PAGES_URL="https://$(echo "${REPO}" | tr '[:upper:]' '[:lower:]' | cut -d'/' -f1).github.io/$(echo "${REPO}" | cut -d'/' -f2)/"
-          CODE=$(curl -s -o /tmp/pages_check.html -w "%{http_code}" "${PAGES_URL}" || echo "000")
-          echo "🌐 فحص ما بعد النشر (${PAGES_URL}): HTTP ${CODE}"
+          sleep 35
+          TARGET_PAGES_URL="${PAGES_URL:-[https://mb4252.github.io/sudan-market-/](https://mb4252.github.io/sudan-market-/)}"
+          CODE=$(curl -sL -m 15 -o /tmp/pages_check.html -w "%{http_code}" "${TARGET_PAGES_URL}" || echo "000")
+          echo "🌐 فحص ما بعد النشر (${TARGET_PAGES_URL}): HTTP ${CODE}"
           if [ "${CODE}" = "200" ]; then
-            echo "🧪 تحقق من تجربة الموقع عبر الرابط: ${PAGES_URL}"
+            echo "🧪 تحقق من تجربة الموقع عبر الرابط: ${TARGET_PAGES_URL}"
             grep -E "<script|<title|جاري الاتصال" /tmp/pages_check.html | head -n 15 || true
+          else
+            echo "ℹ️ قد يكون GitHub Pages ما زال ينشر التحديث؛ جرّب فتح الرابط مباشرة: ${TARGET_PAGES_URL}"
           fi
+          TARGET_RENDER_URL="${RENDER_URL:-[https://sudan-market-2.onrender.com](https://sudan-market-2.onrender.com)}"
+          RCODE=$(curl -sL -m 15 -o /dev/null -w "%{http_code}" "${TARGET_RENDER_URL%/}/health" || echo "000")
+          echo "🔌 فحص جسر Render (${TARGET_RENDER_URL%/}/health): HTTP ${RCODE}"
