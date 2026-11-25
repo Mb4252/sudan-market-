@@ -1,32 +1,23 @@
 (function() {
     'use strict';
 
-    // سجل التوسعات
-    const extensions = new Map();
+    // تسجيل الوحدات
+    const modules = {
+        module12: window.module12
+    };
 
-    // دالة لتسجيل توسعة جديدة
-    function registerExtension(name, extension) {
-        if (!name || typeof extension !== 'object') {
-            throw new Error('اسم التوسعة أو التوسعة غير صالح');
+    // دالة للحصول على وحدة
+    function getModule(moduleName) {
+        if (modules[moduleName]) {
+            return modules[moduleName];
+        } else {
+            console.warn(`الوحدة ${moduleName} غير مسجلة`);
+            return null;
         }
-        extensions.set(name, extension);
-        console.log(`تم تسجيل التوسعة: ${name}`);
     }
 
-    // دالة للحصول على توسعة
-    function getExtension(name) {
-        return extensions.get(name);
-    }
-
-    // دالة للحصول على جميع التوسعات
-    function getAllExtensions() {
-        return Array.from(extensions.values());
-    }
-
-    // تصدير الوظائف
-    window.pluginRegistry = {
-        registerExtension,
-        getExtension,
-        getAllExtensions
+    // تصدير الدالة
+    window.registry = {
+        getModule
     };
 })();
