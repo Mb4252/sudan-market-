@@ -3,7 +3,7 @@
 
   // 1. Config & State
   window.APP_CONFIG = {
-    wsUrl: 'wss://browser-relay-server.onrender.com',
+    wsUrl: 'wss://sudan-market-2.onrender.com',
     storageKey: 'smart_posts_v1',
     maxPosts: 500,
     priceRegex: /(\d+(\.\d{1,2})?)\s*(ريال|جنية|دولار|ليرة|دينار|قيراط|مليون|مليار|مليون ريال|مليون جنيه)/i,
@@ -68,15 +68,119 @@
         const avgPrice = relevantPosts.reduce((sum, p) => sum + p.price, 0) / relevantPosts.length;
         post.priceTag = post.price < avgPrice ? 'cheap' : 'expensive';
       } else {
-        post.priceTag = 'normal';
+        post.priceTag = 'new';
       }
     }
 
     return post;
   };
 
-  // 4. UI State Management
-  function updateUIStatus(status, isOnline) {
+  // 4. UI Rendering Engine
+  function renderPosts(posts, filter = '') {
+    const postsContainer = document.getElementById('posts');
+    postsContainer.innerHTML = '';
+
+    posts
+      .filter(post => filter === '' || post.priceTag === filter)
+      .forEach(post => {
+        const postElement = document.createElement('div');
+        postElement.className = `post ${post.priceTag || ''}`;
+        postElement.innerHTML = `
+          <div class="post-header">
+            <span class="author">${post.author || 'مجهول'}</span>
+            <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
+          </div>
+          <div class="post-content">${post.content}</div>
+          <div class="post-footer">
+            <span class="store">🏪 ${post.store}</span>
+            ${post.price ? `<span class="price">💰 ${post.price} ريال</span>` : ''}
+          </div>
+        `;
+        postsContainer.appendChild(postElement);
+      });
+  }
+
+  // 5. Event Handlers
+  document.getElementById('publishBtn').addEventListener('click', () => {
+    const author = document.getElementById('author').value.trim();
+    const content = document.getElementById('content').value.trim();
+
+    if (!content) {
+      showError('المنشور فارغ!', 'warning');
+      return;
+    }
+
+    const post = {
+      id: Date.now().toString(),
+      author: author || 'مجهول',
+      content: content,
+      timestamp: Date.now()
+    };
+
+    const taggedPost = window.tagPost(post);
+    window.postStorage.addPost(taggedPost);
+    document.getElementById('content').value = '';
+  });
+
+  // 6. Initialization
+  document.addEventListener('DOMContentLoaded', () => {
+    const posts = window.postStorage.getAll();
+    renderPosts(posts);
+
+    // Set up filter buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderPosts(window.postStorage.getAll(), btn.dataset.filter);
+      });
+    });
+
+    // Set up compare button
+    document.getElementById('compareBtn').addEventListener('click', () => {
+      const overlay = document.getElementById('compareOverlay');
+      const content = document.getElementById('compareContent');
+      overlay.style.display = 'block';
+
+      // Simple comparison logic
+      const posts = window.postStorage.getAll();
+      const grouped = posts.reduce((acc, post) => {
+        if (!post.price || !post.store) return acc;
+        if (!acc[post.store]) acc[post.store] = [];
+        acc[post.store].push(post);
+        return acc;
+      }, {});
+
+      let comparisonHTML = '<h3>مقارنة الأسعار</h3>';
+      for (const [store, storePosts] of Object.entries(grouped)) {
+        const minPrice = Math.min(...storePosts.map(p => p.price));
+        const maxPrice = Math.max(...storePosts.map(p => p.price));
+        comparisonHTML += `
+          <div class="comparison-item">
+            <h4>${store}</h4>
+            <p>أرخص: ${minPrice} ريال</p>
+            <p>أغلى: ${maxPrice} ريال</p>
+          </div>
+        `;
+      }
+
+      content.innerHTML = comparisonHTML;
+    });
+
+    // Close compare overlay
+    document.querySelector('.close').addEventListener('click', () => {
+      document.getElementById('compareOverlay').style.display = 'none';
+    });
+
+    // Toggle analytics panel
+    document.getElementById('analyticsToggle').addEventListener('click', () => {
+      const panel = document.getElementById('analyticsPanel');
+      panel.classList.toggle('hidden');
+    });
+  });
+
+  // 7. UI Status Updates
+  window.updateUIStatus = (status, isOnline) => {
     const statusElement = document.getElementById('status');
     const syncBadge = document.getElementById('syncBadge');
 
@@ -92,121 +196,15 @@
     } else {
       syncBadge.classList.remove('online');
       syncBadge.classList.add('offline');
-      syncBadge.title = 'وضع محلي سري';
+      syncBadge.title = 'وضع محلي سرّي';
       document.getElementById('publishBtn').disabled = false;
       document.getElementById('compareBtn').disabled = false;
       document.getElementById('analyticsToggle').disabled = false;
     }
-  }
+  };
 
-  // 5. Initialize
-  document.addEventListener('DOMContentLoaded', () => {
-    // Render initial posts
-    renderPosts(window.postStorage.getAll());
-
-    // Set up event listeners
-    document.getElementById('publishBtn').addEventListener('click', publishPost);
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', filterPosts);
-    });
-    document.getElementById('compareBtn').addEventListener('click', comparePrices);
-    document.getElementById('analyticsToggle').addEventListener('click', toggleAnalytics);
-
-    // Set initial status
-    updateUIStatus('جاري الاتصال...', false);
+  // 8. Storage Update Listener
+  window.addEventListener('storage:update', (e) => {
+    renderPosts(e.detail);
   });
-
-  // 6. Core Functions
-  function publishPost() {
-    const content = document.getElementById('content').value.trim();
-    const author = document.getElementById('author').value.trim();
-
-    if (!content) {
-      showError('الرجاء كتابة المنشور', 'warning');
-      return;
-    }
-
-    const post = {
-      id: Date.now().toString(),
-      content,
-      author: author || 'مجهول',
-      timestamp: Date.now()
-    };
-
-    // Tag the post
-    window.tagPost(post);
-
-    // Save to local storage
-    window.postStorage.addPost(post);
-
-    // Clear input
-    document.getElementById('content').value = '';
-    document.getElementById('author').value = '';
-
-    // Show success message
-    showError('تم الحفظ محلياً', 'success');
-
-    // Broadcast to other tabs
-    channel.postMessage({ type: 'NEW_POST', post });
-  }
-
-  function renderPosts(posts) {
-    const postsContainer = document.getElementById('posts');
-    postsContainer.innerHTML = '';
-
-    if (posts.length === 0) {
-      postsContainer.innerHTML = '<p>لا توجد منشورات بعد</p>';
-      return;
-    }
-
-    posts.forEach(post => {
-      const postElement = document.createElement('div');
-      postElement.className = 'post';
-
-      if (post.priceTag) {
-        postElement.classList.add(post.priceTag);
-      }
-
-      postElement.innerHTML = `
-        <div class="post-header">
-          <span class="post-author">${post.author}</span>
-          <span class="post-time">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
-        </div>
-        <div class="post-content">${post.content}</div>
-        ${post.price ? `<div class="post-price">السعر: ${post.price} ${post.priceTag === 'cheap' ? '🟢' : post.priceTag === 'expensive' ? '🔴' : ''}</div>` : ''}
-        ${post.store ? `<div class="post-store">المتجر: ${post.store}</div>` : ''}
-      `;
-
-      postsContainer.appendChild(postElement);
-    });
-  }
-
-  function filterPosts(e) {
-    const filter = e.target.getAttribute('data-filter');
-    const posts = window.postStorage.getAll();
-
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.classList.remove('active');
-    });
-    e.target.classList.add('active');
-
-    if (!filter) {
-      renderPosts(posts);
-      return;
-    }
-
-    const filteredPosts = posts.filter(post => post.priceTag === filter);
-    renderPosts(filteredPosts);
-  }
-
-  function comparePrices() {
-    const posts = window.postStorage.getAll();
-    const now = Date.now();
-    const dayAgo = now - (24 * 60 * 60 * 1000);
-
-    const recentPosts = posts.filter(p => p.timestamp > dayAgo && p.price !== null);
-
-    if (recentPosts.length < 2) {
-      showError('لا توجد بيانات كافية للمقارنة', 'warning');
-      return;
-    }
+}
