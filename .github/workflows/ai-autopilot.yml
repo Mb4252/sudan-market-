@@ -72,8 +72,8 @@ jobs:
                 collectProjectFiles(fullPath, depth + 1, out);
               } else if (/\.(js|html|css|json)$/i.test(entry.name)) {
                 const content = fs.readFileSync(fullPath, "utf8");
-                const clipped = content.length > 1600
-                  ? content.slice(0, 1600) + "\n/* ...مقتطع للاختصار... */"
+                const clipped = content.length > 1500
+                  ? content.slice(0, 1500) + "\n/* ...مقتطع للاختصار... */"
                   : content;
                 out.push({ fullPath, raw: content, content: clipped });
               }
@@ -143,11 +143,16 @@ jobs:
             const issues = [];
             const htmlFile = filesList.find(f => f.fullPath === "index.html");
             const jsFiles = filesList.filter(f => f.fullPath.endsWith(".js") && f.fullPath !== "server.js");
+            const cssFiles = filesList.filter(f => f.fullPath.endsWith(".css"));
             const hasSwFile = filesList.some(f => /(^|\/)(sw|service-worker)\.js$/i.test(f.fullPath));
 
             if (!htmlFile) {
               issues.push("ملف index.html مفقود في الجذر.");
               return issues.join("\n");
+            }
+
+            if (!cssFiles.length) {
+              issues.push("لا يوجد ملف CSS مستقل (مثل public/styles.css) لتنسيق الواجهة بشكل حديث ومتقن بدلاً من التصميم التقليدي البسيط.");
             }
 
             const htmlIds = new Set([...htmlFile.raw.matchAll(/\bid=["'\'']([^"'\'']+)["'\'']/g)].map(m => m[1]));
@@ -185,7 +190,7 @@ jobs:
 
             return issues.length
               ? issues.map((x, i) => `${i + 1}. ${x}`).join("\n")
-              : "لا توجد أخطاء بنيوية واضحة في الفحص الساكن، ركّز على توزيع المهام على ملفات متخصصة وتطوير ميزات ذكية.";
+              : "لا توجد أخطاء بنيوية واضحة في الفحص الساكن، ركّز على تطوير التصميم البصري العصري والميزات المتقدمة وتوزيع الملفات.";
           }
 
           async function getGroqModelsOrdered(apiKey) {
@@ -346,7 +351,7 @@ jobs:
                 { role: "user", content: usrPrompt }
               ],
               max_tokens: maxTokens,
-              temperature: 0.45
+              temperature: 0.5
             };
 
             const data = await callChatCompletion(url, headers, body);
@@ -373,7 +378,7 @@ jobs:
                     { role: "user", content: usrPrompt }
                   ],
                   max_tokens: maxTokens,
-                  temperature: 0.45
+                  temperature: 0.5
                 };
                 if (jsonMode && m !== "codestral-latest") {
                   body.response_format = { type: "json_object" };
@@ -433,7 +438,7 @@ jobs:
                             { role: "user", content: usrPrompt }
                           ],
                           max_tokens: maxTokens,
-                          temperature: 0.45
+                          temperature: 0.5
                         });
                         const out = data?.choices?.[0]?.message?.content || "";
                         if (!out.trim()) throw new Error("رد فارغ");
@@ -463,7 +468,7 @@ jobs:
                             ],
                             response_format: { type: "json_object" },
                             max_tokens: maxTokens,
-                            temperature: 0.45
+                            temperature: 0.5
                           });
                         } catch (jErr) {
                           if (jErr.status === 429 || jErr.status === 400) throw jErr;
@@ -474,7 +479,7 @@ jobs:
                               { role: "user", content: usrPrompt }
                             ],
                             max_tokens: maxTokens,
-                            temperature: 0.45
+                            temperature: 0.5
                           });
                         }
                         const raw = data?.choices?.[0]?.message?.content || "";
@@ -528,14 +533,14 @@ jobs:
             const currentFiles = filesList
               .map(f => `--- FILE: ${f.fullPath} ---\n${f.content}`)
               .join("\n\n")
-              .slice(0, 4600);
+              .slice(0, 4400);
 
             const architectureMandate = [
               `رابط GitHub Pages الصحيح: ${pagesUrl}`,
-              `رابط جسر Render الصحيح: ${renderUrl} (للبث المباشر عبر wss:// وطلب الإيقاظ /health).`,
-              "1) توزيع المهام على عدة ملفات صغيرة متخصصة (تجنب ملفاً واحداً ضخماً): وزّع الكود على 2 إلى 3 ملفات صغيرة ومحددة المسؤولية في الجولة الواحدة (مثل index.html للهيكل والمعرّفات، public/store.js للحالة وlocalStorage، public/broadcast.js لاتصال wss://sudan-market-2.onrender.com والبث المباشر، أو public/radar.js للتحليل والمقارنة) مع إبقاء كل ملف مركزاً ومختصراً لتفادي قطع JSON.",
-              "2) حفظ محلي في المتصفح + بث مباشر عبر Render: حفظ فوري في localStorage عند النشر مع إرسال الحدث عبر WebSocket إلى wss://sudan-market-2.onrender.com لبثه للآخرين.",
-              "3) كود خالٍ من الأخطاء قدر الإمكان: تحقّق من وجود عناصر DOM قبل تعديل خصائصها، وأضف ملتقط أخطاء عام (window.onerror و unhandledrejection)."
+              `رابط جسر Render الصحيح: ${renderUrl} (للبث المباشر عبر wss://sudan-market-2.onrender.com وطلب الإيقاظ /health).`,
+              "1) تصميم عصري جذاب وغير تقليدي وموزع على ملفات: ابتعد تماماً عن البطاقات البيضاء المسطحة الفارغة أو القوالب البدائية؛ وزّع العمل على 2 إلى 3 ملفات متخصصة في الجولة (مثل public/styles.css بتصميم حديث غني بالألوان المتناسقة والظلال والأزرار التفاعلية، index.html بواجهة متكاملة مع نموذج نشر فوري وحاويات حية، وملفات public/ للمنطق والرادار والبث).",
+              "2) حفظ فوري في المتصفح + بث مباشر عبر Render: عند النشر، احفظ فوراً في localStorage وأعد العرض الفوري للمنشورات والرادار والتحليلات دون انتظار الشبكة، وأرسل المنشور عبر WebSocket إلى wss://sudan-market-2.onrender.com لبثه لبقية المتصلين مع منع التكرار وتحديث مؤشر الحالة.",
+              "3) بنية قابلة للتوسيع وخالية من الأخطاء: نظام وحدات/إضافات (Plugins) وتحقّق آمن من وجود عناصر DOM وملتقط أخطاء عام."
             ].join("\n");
 
             let agreedPlan = "";
@@ -548,7 +553,7 @@ jobs:
 
               try {
                 const propRes = await p1.runText(
-                  "أنت مهندس معماري ومبتكر واجهات متقدمة. وزّع المسؤوليات على 2 إلى 3 ملفات صغيرة متخصصة بدلاً من ملف واحد ضخم، وخطط للحفظ المحلي والبث عبر Render.",
+                  "أنت مصمم واجهات ومهندس معماري مبدع. ضع خطة لـ 2 إلى 3 ملفات متخصصة تمنح الموقع مظهراً حديثاً وجذاباً غير تقليدي وحفظاً فورياً في localStorage وبثاً مباشراً عبر Render.",
                   `التقرير:\n${diagnosticReport}\n\nالقواعد:\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
                   480
                 );
@@ -556,7 +561,7 @@ jobs:
 
                 try {
                   const revRes = await p2.runText(
-                    "أنت المدقق الهندسي. راجع توزيع الملفات الصغيرة واكتب [اتفقنا] متبوعاً بالخطة النهائية لـ 2 إلى 3 ملفات متخصصة.",
+                    "أنت المدقق الهندسي والجمالي. راجع الخطة وتأكد من أنها غير تقليدية وموزعة على ملفات وتعمل بلا أخطاء، ثم اكتب [اتفقنا] متبوعاً بالخطة.",
                     `مقترح الطرف الأول:\n${propRes.text}\n\nالتقرير:\n${diagnosticReport}`,
                     480
                   );
@@ -571,7 +576,7 @@ jobs:
               } catch (propErr) {
                 console.warn(`⚠️ تعذر الطرف الأول (${propErr.message}) — ينتقل الطرف الثاني للعمل المستقل الفوري.`);
                 const soloRes = await p2.runText(
-                  "أنت المنفذ المستقل. ضع خطة لتوزيع المسؤوليات على 2 إلى 3 ملفات صغيرة متخصصة بدلاً من ملف ضخم واحد.",
+                  "أنت المنفذ المستقل. ضع خطة لـ 2 إلى 3 ملفات متخصصة بتصميم عصري جذاب وحفظ localStorage وبث Render.",
                   `التقرير:\n${diagnosticReport}\n\n${architectureMandate}\n\nالملفات:\n${currentFiles}`,
                   480
                 );
@@ -579,17 +584,17 @@ jobs:
                 activeExecutor = p2;
               }
             } else {
-              agreedPlan = `وزّع المهام على 2 إلى 3 ملفات صغيرة متخصصة وحل المشاكل التالية:\n${diagnosticReport}`;
+              agreedPlan = `نفّذ تصميماً عصرياً جذاباً وموزعاً على ملفات وحل المشاكل التالية:\n${diagnosticReport}`;
             }
 
             const systemJsonInstruction = [
-              "أنت مهندس برمجيات محترف. أعد كائن JSON صالحاً ومختصراً وبدون أي نص خارجه.",
-              "وزّع الكود على 2 إلى 3 ملفات صغيرة متخصصة بدلاً من ملف واحد ضخم، واجعل كل ملف نظيفاً ومكتملاً.",
+              "أنت مهندس واجهات ومعماري برمجيات مبدع. أعد كائن JSON صالحاً فقط بدون أي نص خارجه.",
+              "وزّع العمل على 2 إلى 3 ملفات متخصصة بتصميم حديث جذاب وغير تقليدي وبنية قابلة للتوسيع.",
               "الشكل المطلوب: {\"files\":{\"ملف1\":\"محتواه\",\"ملف2\":\"محتواه\"},\"summary\":\"ملخص مختصر\"}"
             ].join("\n");
 
             const executionPrompt = [
-              "نفّذ الخطة ووزّع المهام على 2 إلى 3 ملفات صغيرة متخصصة:",
+              "نفّذ الخطة ووزّع المهام على 2 إلى 3 ملفات متخصصة بأسلوب عصري جذاب وقابل للتوسيع:",
               agreedPlan,
               "",
               "=== التقرير التشخيصي ===",
@@ -653,7 +658,7 @@ jobs:
 
             console.log(`عدد الملفات التي تغيّر محتواها: ${updatedCount}`);
             if (updatedCount > 0) {
-              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Modular multi-file architecture with localStorage & Render live broadcast").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
+              fs.writeFileSync("last_ai_change.txt", String(parsed.summary || "Modern modular UI with localStorage & Render live broadcast").replace(/[\r\n]+/g, " ").slice(0, 120), "utf8");
             }
           }
 
@@ -675,7 +680,7 @@ jobs:
             echo "ℹ️ nothing to commit, working tree clean."
             exit 0
           fi
-          SUMMARY="Modular multi-file architecture with localStorage & Render live broadcast"
+          SUMMARY="Modern modular UI with localStorage & Render live broadcast"
           if [ -f last_ai_change.txt ]; then
             SUMMARY=$(head -n 1 last_ai_change.txt)
             rm -f last_ai_change.txt
