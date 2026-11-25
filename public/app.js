@@ -29,11 +29,11 @@
   // 3. Price Extraction & Smart Tagging Engine (Time-Based Clustering)
   window.tagPost = (post) => {
     const text = post.content || '';
-    const priceMatch = text.match(/(\\d+(?:\\.\\d+)?)/);
+    const priceMatch = text.match(/(\d+(?:\.\d+)?)/);
     post.price = priceMatch ? parseFloat(priceMatch[1]) : null;
     
     // Extract Store Name
-    const storeMatch = text.match(/(?:في|من|عند)\\s+([\\u0600-\\u06FF\\s]+)/);
+    const storeMatch = text.match(/(?:في|من|عند)\s+([\u0600-\u06FF\s]+)/);
     post.store = storeMatch ? storeMatch[1].trim().substring(0, 20) : 'غير محدد';
     
     // Smart Dynamic Tagging: Compare with 24h average for same store/item
@@ -67,23 +67,21 @@
     const posts = window.postStorage.getAll();
     const container = document.getElementById('posts');
     if (!container) return;
-
-    container.innerHTML = posts.length === 0 ? '<p>لا توجد منشورات بعد. كن أول من ينشر!</p>' : '';
-
-    posts.forEach(post => {
-      if (filter && post.priceTag !== filter) return;
-
+    
+    container.innerHTML = posts.length === 0 ? '<p>لا توجد منشورات بعد</p>' : '';
+    
+    posts.filter(p => filter === '' || p.priceTag === filter).forEach(post => {
       const postElement = document.createElement('div');
       postElement.className = `post ${post.priceTag || ''}`;
       postElement.innerHTML = `
         <div class="post-header">
           <span class="author">${esc(post.author || 'مجهول')}</span>
-          <span class="time">${new Date(post.timestamp).toLocaleTimeString('ar-EG')}</span>
+          <span class="timestamp">${new Date(post.timestamp).toLocaleString('ar-EG')}</span>
         </div>
         <div class="post-content">${esc(post.content)}</div>
-        <div class="post-meta">
+        <div class="post-footer">
           <span class="store">🏪 ${esc(post.store)}</span>
-          ${post.price !== null ? `<span class="price">💰 ${post.price} ريال</span>` : ''}
+          ${post.price ? `<span class="price">${post.price} ريال</span>` : ''}
         </div>
       `;
       container.appendChild(postElement);
@@ -94,22 +92,28 @@
   document.addEventListener('DOMContentLoaded', () => {
     // Initial render
     renderPosts();
-
+    
     // Publish button
-    document.getElementById('publishBtn')?.addEventListener('click', () => {
-      const content = document.getElementById('content')?.value.trim();
+    document.getElementById('publishBtn').addEventListener('click', () => {
+      const content = document.getElementById('content').value.trim();
       if (!content) return;
-
-      const post = {
-        author: document.getElementById('author')?.value.trim() || 'مجهول',
+      
+      const post = window.tagPost({
+        author: document.getElementById('author').value.trim() || 'مجهول',
         content,
         timestamp: Date.now()
-      };
-
-      window.tagPost(post);
+      });
+      
+      // Add to local storage
       window.postStorage.addPost(post);
+      
+      // Broadcast to other tabs
+      const channel = new BroadcastChannel('posts');
+      channel.postMessage({ type: 'NEW_POST', ...post });
+      
+      // Clear input
       document.getElementById('content').value = '';
-      renderPosts();
+      document.getElementById('author').value = '';
     });
 
     // Filter buttons
@@ -121,27 +125,14 @@
       });
     });
 
-    // Analytics toggle
-    document.getElementById('analyticsToggle')?.addEventListener('click', () => {
-      const panel = document.getElementById('analyticsPanel');
-      if (panel) panel.classList.toggle('hidden');
-    });
-
-    // Compare button
-    document.getElementById('compareBtn')?.addEventListener('click', () => {
-      window.openCompare();
-    });
+    // Storage update listener
+    window.addEventListener('storage:update', () => renderPosts());
   });
 
-  // 6. Helper Functions
+  // Helper function for escaping HTML
   function esc(v) {
     return String(v == null ? '' : v).replace(/[&<>"]/g, function(c) {
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
     });
   }
-
-  // 7. Storage Update Listener
-  window.addEventListener('storage:update', () => {
-    renderPosts(document.querySelector('.filter-btn.active')?.dataset.filter || '');
-  });
 })();

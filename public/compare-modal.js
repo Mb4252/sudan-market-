@@ -4,4 +4,3 @@ function openCompare(){
     window.showCompare();
   }
 }
-window.openCompare = openCompare;
