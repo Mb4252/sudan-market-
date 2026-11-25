@@ -113,41 +113,38 @@ jobs:
           }
 
           async function getGroqModelsOrdered(apiKey) {
-            const modelsUrl = sanitizeUrl("https://api.groq.com/openai/v1/models");
-            const res = await fetch(modelsUrl, {
-              headers: { Authorization: `Bearer ${apiKey}` }
-            });
-            if (!res.ok) {
-              const txt = await res.text();
-              const err = new Error(`تعذر جلب نماذج Groq (HTTP ${res.status}): ${txt.slice(0, 250)}`);
-              err.status = res.status;
-              throw err;
-            }
-            const data = await res.json();
-            const ids = (data.data || [])
-              .map(m => m.id)
-              .filter(id => !/whisper|tts|guard|prompt-guard|safeguard|embed|allam/i.test(id));
-
-            if (!ids.length) {
-              throw new Error("لا توجد نماذج نصية مناسبة في حساب Groq الحالي.");
-            }
-
-            const preferred = [
+            const fallbackModels = [
               "llama-3.3-70b-versatile",
               "openai/gpt-oss-120b",
-              "qwen/qwen3-32b",
               "llama-3.1-8b-instant",
               "openai/gpt-oss-20b"
             ];
 
-            const ordered = [];
-            for (const p of preferred) {
-              if (ids.includes(p) && !ordered.includes(p)) ordered.push(p);
+            try {
+              const modelsUrl = sanitizeUrl("https://api.groq.com/openai/v1/models");
+              const res = await fetch(modelsUrl, {
+                headers: { Authorization: `Bearer ${apiKey}` }
+              });
+              if (!res.ok) return fallbackModels;
+              const data = await res.json();
+              const ids = (data.data || [])
+                .map(m => m.id)
+                .filter(id => id && !/whisper|tts|guard|prompt-guard|safeguard|embed|allam|orpheus/i.test(id));
+
+              const ordered = [];
+              for (const p of fallbackModels) {
+                if (ids.includes(p) && !ordered.includes(p)) ordered.push(p);
+              }
+              for (const id of ids) {
+                if (!ordered.includes(id)) ordered.push(id);
+              }
+              for (const p of fallbackModels) {
+                if (!ordered.includes(p)) ordered.push(p);
+              }
+              return ordered.length ? ordered : fallbackModels;
+            } catch {
+              return fallbackModels;
             }
-            for (const id of ids) {
-              if (!ordered.includes(id)) ordered.push(id);
-            }
-            return ordered;
           }
 
           function tryRepairJson(candidate) {
@@ -254,6 +251,7 @@ jobs:
                 return out;
               } catch (e) {
                 lastErr = e;
+                if (e.status === 429) break;
                 if (attempt < 2) await new Promise(r => setTimeout(r, 1200));
               }
             }
@@ -290,7 +288,8 @@ jobs:
                         return { text: out, detail: `Groq (${m})` };
                       } catch (e) {
                         lastErr = e;
-                        if (e.status === 429 || e.status === 400) continue;
+                        console.warn(`⚠️ نموذج Groq (${m}) تعذر: ${e.message}`);
+                        continue;
                       }
                     }
                     throw lastErr || new Error("فشل نماذج Groq");
@@ -315,7 +314,7 @@ jobs:
                             temperature: 0.45
                           });
                         } catch (jErr) {
-                          if (jErr.status === 429) throw jErr;
+                          if (jErr.status === 429 || jErr.status === 400) throw jErr;
                           data = await callChatCompletion(groqUrl, headers, {
                             model: m,
                             messages: [
@@ -331,7 +330,8 @@ jobs:
                         return { parsed: extractJsonObject(raw), detail: `Groq (${m})` };
                       } catch (e) {
                         lastErr = e;
-                        if (e.status === 429 || e.status === 400) continue;
+                        console.warn(`⚠️ نموذج Groq (${m}) تعذر في JSON: ${e.message}`);
+                        continue;
                       }
                     }
                     throw lastErr || new Error("فشل توليد JSON من Groq");
