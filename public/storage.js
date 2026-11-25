@@ -1,38 +1,41 @@
-// LocalStorage based persistence
-const STORAGE_KEY='posts:v1';
-function loadPosts(){
-  const data=localStorage.getItem(STORAGE_KEY);
-  return data?JSON.parse(data):[];
-}
-function savePosts(posts){
-  localStorage.setItem(STORAGE_KEY,JSON.stringify(posts));
-}
-function exportJSON(){
-  const data=localStorage.getItem(STORAGE_KEY);
-  if(!data) return '';
-  const blob=new Blob([data],{type:'application/json'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;
-  a.download='posts_backup.json';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-function importJSON(file){
-  const reader=new FileReader();
-  reader.onload=e=>{
-    try{const posts=JSON.parse(e.target.result);savePosts(posts);}catch(err){console.error('Import failed',err);} };
-  reader.readAsText(file);
-}
-// API compatible with old IndexedDB functions
-function addPost(post){
-  const posts=loadPosts();
-  post.id=Date.now();
-  posts.push(post);
-  savePosts(posts);
-  return Promise.resolve(post.id);
-}
-function getAllPosts(){
-  return Promise.resolve(loadPosts());
-}
-window.addPost=addPost;window.getAllPosts=getAllPosts;window.exportJSON=exportJSON;window.importJSON=importJSON;
+(function(){
+  const LS_KEY='posts';
+  // Load posts from localStorage
+  function loadFromLocal(){
+    const data=localStorage.getItem(LS_KEY);
+    return data?JSON.parse(data):[];
+  }
+  // Save posts to localStorage
+  function saveToLocal(posts){
+    try{
+      localStorage.setItem(LS_KEY,JSON.stringify(posts));
+    }catch(e){
+      console.warn('localStorage full, using IndexedDB fallback');
+    }
+  }
+  // Render a single post in the DOM
+  function renderPost(p){
+    const container=document.getElementById('posts');
+    if(!container) return;
+    const div=document.createElement('div');
+    div.className='post '+(p.priceTag||'');
+    div.dataset.id=p.id||'';
+    div.innerHTML=`<div class="meta">${p.author||'مجهول'} — ${new Date(p.timestamp).toLocaleString()}</div>`+
+      `<div class="${p.priceTag||'neutral'}">${p.priceTag==='cheap'?'رخيص':p.priceTag==='expensive'?'غالي':'عادي'}</div>`+
+      `<div>${p.content||''}</div>`;
+    container.appendChild(div);
+    if(window.applyFilter) window.applyFilter(window.currentFilter||'');
+  }
+  // Public API: add a post, persist it and render
+  window.addPost = async function(post){
+    const posts=loadFromLocal();
+    posts.push(post);
+    saveToLocal(posts);
+    if(window.indexedDB){
+      try{ await addPost(post); }catch(e){ console.error('IndexedDB save failed',e); }
+    }
+    renderPost(post);
+  };
+  // Initialize UI with stored posts
+  loadFromLocal().forEach(renderPost);
+})();
