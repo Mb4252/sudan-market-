@@ -1,1 +1,1 @@
-window.APP_CONFIG={wsUrl:"wss://example.com/socket"};
+window.APP_CONFIG = {\n  wsUrl: "wss://example.com/socket",\n  storageKey: "posts_v2"\n};
