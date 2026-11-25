@@ -8,118 +8,32 @@
     <link rel="stylesheet" href="styles/layout.css">
 </head>
 <body>
-    <div class="app-container">
-        <header class="app-header">
+    <div class="container">
+        <header>
             <h1>سوق السودان</h1>
+            <div id="status">جاري التحميل...</div>
         </header>
-        <div class="live-status">
-            <div class="live-dot"></div>
-            <span id="status">جارٍ الاتصال...</span>
-        </div>
-        <main class="app-main">
-            <form id="publishForm" class="publish-form">
-                <input type="text" id="postTitle" placeholder="عنوان المنتج" required>
-                <input type="number" id="postPrice" placeholder="السعر" required>
-                <input type="text" id="postCity" placeholder="المدينة" required>
-                <button type="submit">نشر فوري</button>
-            </form>
-            <div id="postsList" class="posts-list"></div>
+        <main>
+            <section id="posts"></section>
+            <section id="radar">
+                <h2>رادار الأسعار</h2>
+                <div id="price-stats"></div>
+            </section>
+            <section id="compare">
+                <h2>مقارنة الأسعار</h2>
+                <div id="compare-results"></div>
+            </section>
         </main>
+        <footer>
+            <button id="publishBtn">نشر منشور</button>
+            <button id="compareBtn">مقارنة الأسعار</button>
+        </footer>
     </div>
-
-    <script src="api.js"></script>
-    <script src="store/post-store.js"></script>
-    <script src="sync/render-socket.js"></script>
-    <script src="ui/render-posts.js"></script>
-    <script>
-        (function() {
-            'use strict';
-
-            // فحص صحة التاريخ قبل أي استخدام
-            window.isValidDate = function(d) {
-                return d instanceof Date && !isNaN(d.getTime());
-            };
-
-            document.addEventListener('DOMContentLoaded', function() {
-                const form = document.getElementById('publishForm');
-                const statusEl = document.getElementById('status');
-                const postsListEl = document.getElementById('postsList');
-
-                if (!form || !statusEl || !postsListEl) return;
-
-                // ربط النموذج بالنشر الفوري
-                form.addEventListener('submit', function(e) {
-                    e.preventDefault();
-                    const title = document.getElementById('postTitle').value.trim();
-                    const price = parseFloat(document.getElementById('postPrice').value);
-                    const city = document.getElementById('postCity').value.trim();
-
-                    if (!title || isNaN(price) || !city) return;
-
-                    const newPost = {
-                        author: 'أنت',
-                        content: title,
-                        price: price,
-                        city: city,
-                        timestamp: new Date().toISOString()
-                    };
-
-                    if (window.isValidDate(new Date(newPost.timestamp))) {
-                        // حفظ محلي + بث
-                        const localPosts = JSON.parse(localStorage.getItem('sudan_posts') || '[]');
-                        localPosts.unshift(newPost);
-                        localStorage.setItem('sudan_posts', JSON.stringify(localPosts));
-
-                        // إرسال للسيرفر
-                        if (window.api && window.api.createPost) {
-                            window.api.createPost(newPost).catch(err => console.error('نشر فاشل:', err));
-                        }
-
-                        // تحديث الواجهة فوراً
-                        renderPost(newPost);
-                        statusEl.textContent = 'تم النشر بنجاح';
-                        setTimeout(() => statusEl.textContent = 'متصل مباشرة', 2000);
-
-                        form.reset();
-                    }
-                });
-
-                // دالة عرض منشور واحد
-                function renderPost(post) {
-                    const card = document.createElement('div');
-                    card.className = 'post-card';
-                    
-                    const title = document.createElement('div');
-                    title.className = 'post-title';
-                    title.textContent = post.content || 'منتج';
-
-                    const meta = document.createElement('div');
-                    meta.className = 'post-meta';
-                    const dateStr = window.isValidDate(new Date(post.timestamp)) ? new Date(post.timestamp).toLocaleString('ar-SD') : 'غير معروف';
-                    meta.textContent = `${post.city} • ${post.price} ج.س • ${dateStr}`;
-
-                    card.appendChild(title);
-                    card.appendChild(meta);
-                    postsListEl.insertBefore(card, postsListEl.firstChild);
-                }
-
-                // تحميل المنشورات المحلية عند البدء
-                const localPosts = JSON.parse(localStorage.getItem('sudan_posts') || '[]');
-                localPosts.forEach(p => renderPost(p));
-
-                // الاستماع للبث الحي من Render (إذا كان مفعلاً)
-                if (window.renderSocket) {
-                    window.renderSocket.on('post', function(post) {
-                        if (window.isValidDate(new Date(post.timestamp))) {
-                            renderPost(post);
-                        }
-                    });
-                    window.renderSocket.on('status', function(status) {
-                        if (statusEl) statusEl.textContent = status;
-                    });
-                }
-            });
-        })();
-    </script>
+    <script src="public/store/post-store.js"></script>
+    <script src="public/sync/render-socket.js"></script>
+    <script src="public/ui/render-posts.js"></script>
+    <script src="public/radar/price-extractor.js"></script>
+    <script src="public/radar/compare-engine.js"></script>
+    <script src="public/app.js"></script>
 </body>
 </html>
