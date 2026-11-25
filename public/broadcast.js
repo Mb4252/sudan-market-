@@ -1,1 +1,18 @@
-(()=>'use strict')();(function(){const url='wss://sudan-market-2.onrender.com';let socket=null;let attempts=0;const maxDelay=30000;function connect(){socket=new WebSocket(url);socket.addEventListener('open',()=>{attempts=0;store.online=true;store.state.connected=true});socket.addEventListener('message',e=>{try{const msg=JSON.parse(e.data);if(msg.type==='post'){store.state.posts.push(msg.payload)}}catch{} });socket.addEventListener('close',()=>{store.online=false;reconnect()});socket.addEventListener('error',()=>{socket.close()})}function reconnect(){attempts++;const delay=Math.min(1000*2**attempts,maxDelay);setTimeout(connect,delay)}window.addEventListener('beforeunload',()=>{if(socket)socket.close()});window.broadcast={sendPost(post){if(socket&&socket.readyState===WebSocket.OPEN){socket.send(JSON.stringify({type:'post',payload:post}))}store.state.posts.push(post)}};connect()})();
+(function() {
+    'use strict';
+
+    const socket = new WebSocket('wss://sudan-market-2.onrender.com');
+
+    socket.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        window.store.update(data);
+    };
+
+    function broadcastUpdate(data) {
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify(data));
+        }
+    }
+
+    window.broadcast = broadcastUpdate;
+})();
