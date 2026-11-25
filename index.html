@@ -1,78 +1,65 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>نشر مباشر - أسعار ذكية</title>
-  <link rel="stylesheet" href="public/style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script>
-    // Global Error Handler
-    window.addEventListener('error', (e) => {
-      showError(e.error || 'خطأ غير معروف', 'error');
-      console.error('Global Error:', e.error);
-    });
-    
-    window.addEventListener('unhandledrejection', (e) => {
-      showError(e.reason || 'خطأ غير معالج', 'unhandled');
-      console.error('Unhandled Rejection:', e.reason);
-    });
-    
-    function showError(message, type) {
-      const errorElement = document.createElement('div');
-      errorElement.className = `error-message ${type}`;
-      errorElement.textContent = message;
-      document.body.appendChild(errorElement);
-      setTimeout(() => {
-        errorElement.remove();
-      }, 5000);
-    }
-  </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>سوق السودان - بث مباشر</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f4f9; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .status-indicator { padding: 5px 10px; border-radius: 20px; font-size: 0.9em; display: inline-block; margin-bottom: 15px; }
+        .online { background: #d4edda; color: #155724; }
+        .offline { background: #f8d7da; color: #721c24; }
+        .card { background: white; border-radius: 8px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .post { padding: 10px; border-bottom: 1px solid #eee; }
+        .post:last-child { border-bottom: none; }
+        .price-tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-left: 5px; }
+        .cheap { background: #d4edda; color: #155724; }
+        .expensive { background: #f8d7da; color: #721c24; }
+        .filter-btn { padding: 5px 10px; margin: 0 5px; border: none; background: #e9ecef; border-radius: 4px; cursor: pointer; }
+        .filter-btn.active { background: #007bff; color: white; }
+        .hidden { display: none; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  <div class="card">
-    <div id="status" class="status">جاري الاتصال...</div>
-    <input id="author" type="text" placeholder="اسمك (اختياري)" maxlength="40"/>
-    <textarea id="content" rows="3" placeholder="اكتب المنشور... مثال: دجاج 25 ريال في ماركت العروبة"></textarea>
-    <button id="publishBtn" type="button">نشر وحفظ</button>
-  </div>
-
-  <div class="card filter-card">
-    <button class="filter-btn active" data-filter="">الكل</button>
-    <button class="filter-btn" data-filter="cheap">رخيص 🟢</button>
-    <button class="filter-btn" data-filter="expensive">غالي 🔴</button>
-    <button id="compareBtn" class="filter-btn" title="مقارنة الأسعار">↔️</button>
-    <button id="analyticsToggle" class="filter-btn" title="تحليلات">📊</button>
-  </div>
-
-  <div class="card" id="priceRadar">
-    <h3>📍 رادار الفرص الذكية</h3>
-    <div id="radarContent">جارٍ التحليل...</div>
-  </div>
-
-  <div class="card">
-    <h3>المنشورات <span id="syncBadge" class="badge offline" title="غير مزامن">☁️</span></h3>
-    <div id="posts"></div>
-  </div>
-
-  <div id="analyticsPanel" class="card hidden">
-    <h3>📈 لوحة التحليل</h3>
-    <canvas id="chartVolume"></canvas>
-    <canvas id="chartPrice"></canvas>
-  </div>
-
-  <div id="compareOverlay" class="hidden">
-    <div class="compare-content">
-      <h3>مقارنة الأسعار</h3>
-      <div id="compareResults"></div>
-      <button id="closeCompare">إغلاق</button>
+    <div class="container">
+        <div id="status" class="status-indicator offline">جاري الاتصال...</div>
+        <div class="card">
+            <input id="author" type="text" placeholder="اسمك (اختياري)" maxlength="40">
+            <textarea id="content" rows="3" placeholder="اكتب المنشور... مثال: دجاج 25 ريال في ماركت العروبة"></textarea>
+            <button id="publishBtn" type="button">نشر وحفظ</button>
+        </div>
+        <div class="card">
+            <button class="filter-btn active" data-filter="">الكل</button>
+            <button class="filter-btn" data-filter="cheap">رخيص 🟢</button>
+            <button class="filter-btn" data-filter="expensive">غالي 🔴</button>
+            <button id="compareBtn" class="filter-btn" title="مقارنة الأسعار">↔️</button>
+            <button id="analyticsToggle" class="filter-btn" title="تحليلات">📊</button>
+        </div>
+        <div class="card" id="priceRadar">
+            <h3>📍 رادار الفرص الذكية</h3>
+            <div id="radarContent">جارٍ التحليل...</div>
+        </div>
+        <div class="card">
+            <h3>المنشورات <span id="syncBadge" class="badge offline" title="غير مزامن">☁️</span></h3>
+            <div id="posts"></div>
+        </div>
+        <div id="analyticsPanel" class="card hidden">
+            <h3>📈 لوحة التحليل</h3>
+            <canvas id="chartVolume"></canvas>
+            <canvas id="chartPrice"></canvas>
+        </div>
+        <div id="compareOverlay" class="card hidden">
+            <h3>↔️ مقارنة الأسعار</h3>
+            <div id="compareContent"></div>
+            <button id="closeCompare" class="filter-btn">إغلاق</button>
+        </div>
     </div>
-  </div>
-
-  <script src="public/pluginRegistry.js"></script>
-  <script src="public/reactiveStore.js"></script>
-  <script src="public/app.js"></script>
-  <script src="public/broadcast.js"></script>
-  <script src="public/analytics.js"></script>
+    <script src="public/pluginRegistry.js"></script>
+    <script src="public/reactiveStore.js"></script>
+    <script src="public/broadcast.js"></script>
+    <script src="public/analytics.js"></script>
+    <script src="public/app.js"></script>
 </body>
 </html>

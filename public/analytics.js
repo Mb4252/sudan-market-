@@ -1,16 +1,31 @@
-(function(){
-  const wsUrl=window.APP_CONFIG&&window.APP_CONFIG.wsUrl; if(!wsUrl) return;
-  const ws=new WebSocket(wsUrl);
-  ws.onopen=()=>{computeAndSend();};
-  function computeAndSend(){
-    if(!window.postStorage) return;
-    window.postStorage.getAll().then(posts=>{
-      const count=posts.length;
-      const avg=posts.reduce((s,p)=>s+(p.price||0),0)/count||0;
-      const categories={cheap:0,expensive:0};
-      posts.forEach(p=>{if(p.priceTag)categories[p.priceTag]++;});
-      const stats={count,avg,categories};
-      ws.send(JSON.stringify({type:'STATS',data:stats}));
-    });
-  }
-})();
+(function() {
+    'use strict';
+
+    // Initialize analytics when DOM is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize charts
+        const ctxVolume = document.getElementById('chartVolume').getContext('2d');
+        const ctxPrice = document.getElementById('chartPrice').getContext('2d');
+
+        // Create charts
+        window.volumeChart = new Chart(ctxVolume, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'عدد المنشورات',
+                    data: [],
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        }
