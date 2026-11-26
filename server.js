@@ -1,5 +1,8 @@
 const WebSocket = require('ws');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const webpush = require('web-push');
 
 const PORT = process.env.PORT || 10000;
 const OWNER_ID = process.env.OWNER_ID || "";
@@ -8,10 +11,103 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const MISTRAL_DEFAULT_MODEL = process.env.MISTRAL_MODEL || "mistral-small-latest";
 const OPENROUTER_DEFAULT_MODEL = process.env.OPENROUTER_MODEL || "openrouter/auto";
 
-const USER_DAILY_TOKEN_LIMIT = Number(process.env.USER_DAILY_TOKEN_LIMIT || 4000);
-const REFILL_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 ساعة
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:admin@example.com";
 
-// تخزين استهلاك التوكن لكل مستخدم مع وقت بداية فترة الـ 24 ساعة
+const SUBSCRIPTIONS_FILE = path.join(__dirname, 'subscriptions.json');
+
+const pushEnabled = Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+if (pushEnabled) {
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
+
+// تخزين اشتراكات Push حسب endpoint مع حفظها في ملف subscriptions.json
+const pushSubscriptions = new Map();
+
+function loadSubscriptionsFromDisk() {
+  try {
+    if (!fs.existsSync(SUBSCRIPTIONS_FILE)) return;
+    const raw = fs.readFileSync(SUBSCRIPTIONS_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        if (item && item.subscription && item.subscription.endpoint) {
+          pushSubscriptions.set(item.subscription.endpoint, {
+            subscription: item.subscription,
+            userId: String(item.userId || "")
+          });
+        }
+      }
+      console.log(`[PUSH] تم تحميل ${pushSubscriptions.size} اشتراك من subscriptions.json`);
+    }
+  } catch (err) {
+    console.error("[PUSH_LOAD_ERROR]", err.message);
+  }
+}
+
+function saveSubscriptionsToDisk() {
+  try {
+    const list = Array.from(pushSubscriptions.values());
+    fs.writeFileSync(SUBSCRIPTIONS_FILE, JSON.stringify(list, null, 2), 'utf8');
+  } catch (err) {
+    console.error("[PUSH_SAVE_ERROR]", err.message);
+  }
+}
+
+loadSubscriptionsFromDisk();
+
+async function sendPushToAll(payloadObj, senderUserId = "") {
+  if (!pushEnabled || pushSubscriptions.size === 0) return;
+  const payloadStr = JSON.stringify(payloadObj);
+  let changed = false;
+
+  for (const [endpoint, item] of pushSubscriptions.entries()) {
+    if (senderUserId && item.userId === senderUserId) continue;
+    try {
+      await webpush.sendNotification(item.subscription, payloadStr);
+    } catch (err) {
+      if (err && (err.statusCode === 404 || err.statusCode === 410)) {
+        pushSubscriptions.delete(endpoint);
+        changed = true;
+      } else {
+        console.error("[PUSH_ERROR]", err.message || err);
+      }
+    }
+  }
+
+  if (changed) {
+    saveSubscriptionsToDisk();
+  }
+}
+
+function triggerEventNotification(message) {
+  if (!message || typeof message.type !== "string") return;
+  const sender = message.userId || message.village?.userId || message.shop?.userId || message.price?.userId || "";
+
+  if ((message.type === "NEW_VILLAGE" || message.type === "APPROVE_VILLAGE") && message.village) {
+    sendPushToAll({
+      title: "🏘️ منطقة / قرية جديدة",
+      body: `تمت إضافة قرية "${message.village.name}"${message.village.state ? " (" + message.village.state + ")" : ""}`,
+      url: "./"
+    }, sender);
+  } else if ((message.type === "NEW_SHOP" || message.type === "APPROVE_SHOP") && message.shop) {
+    sendPushToAll({
+      title: "🏪 متجر / عرض جديد",
+      body: `تمت إضافة متجر "${message.shop.name}"${message.shop.owner ? " للمالك: " + message.shop.owner : ""}`,
+      url: "./"
+    }, sender);
+  } else if (message.type === "NEW_PRICE" && message.price) {
+    sendPushToAll({
+      title: "💰 سعر جديد في الرادار",
+      body: `${message.price.name}: ${message.price.price} ج.س (${message.price.unit || "وحدة"})`,
+      url: "./"
+    }, sender);
+  }
+}
+
+const USER_DAILY_TOKEN_LIMIT = Number(process.env.USER_DAILY_TOKEN_LIMIT || 4000);
+const REFILL_WINDOW_MS = 24 * 60 * 60 * 1000;
 const userTokenQuotas = new Map();
 
 function getUserQuota(userId) {
@@ -292,6 +388,35 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
+  if (urlPath === '/api/push-vapid-key' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    return res.end(JSON.stringify({
+      enabled: pushEnabled,
+      publicKey: pushEnabled ? VAPID_PUBLIC_KEY : ""
+    }));
+  }
+
+  if (urlPath === '/api/push-subscribe' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const sub = body.subscription;
+      if (!sub || !sub.endpoint) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({ error: "اشتراك Push غير صالح" }));
+      }
+      pushSubscriptions.set(sub.endpoint, {
+        subscription: sub,
+        userId: String(body.userId || "")
+      });
+      saveSubscriptionsToDisk();
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify({ ok: true, subscribers: pushSubscriptions.size }));
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify({ error: err.message || "خطأ في الاشتراك" }));
+    }
+  }
+
   if (urlPath === '/api/mistral-debug' && req.method === 'GET') {
     const testResult = await askMistral({
       system: "أجب بكلمة واحدة: جاهز",
@@ -304,6 +429,8 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({
       hasMistralKey: Boolean(MISTRAL_API_KEY),
       hasOpenRouterKey: Boolean(OPENROUTER_API_KEY),
+      pushEnabled,
+      subscribersCount: pushSubscriptions.size,
       mistralModel: MISTRAL_DEFAULT_MODEL,
       openRouterModel: OPENROUTER_DEFAULT_MODEL,
       dailyTokenLimit: USER_DAILY_TOKEN_LIMIT,
@@ -453,6 +580,7 @@ wss.on('connection', (ws) => {
       }
     });
 
+    triggerEventNotification(message);
     console.log(`بث [${message.type}] إلى ${sentCount} متصل`);
   });
 
