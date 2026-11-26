@@ -102,7 +102,6 @@
         </div>
       </div>
 
-      <!-- 🔥 المتجر المروَّج -->
       <div id="promotedShopBox" class="hidden"></div>
 
       <div class="bg-white rounded-2xl border border-emerald-700/20 p-3 shadow-sm space-y-2">
@@ -288,10 +287,9 @@
           <input type="file" accept=".json" onchange="importData(event)" class="hidden" />
         </label>
       </div>
-       <a href="words.html" class="block w-full text-center bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-extrabold py-2.5 rounded-xl">
-  📖 صفحة الكلمات
-</a>
-
+      <a href="words.html" class="block w-full text-center bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-extrabold py-2.5 rounded-xl">
+        📖 صفحة الكلمات
+      </a>
       <button onclick="clearLocalData()" class="w-full bg-rose-50 text-rose-700 text-xs font-extrabold py-2 rounded-xl">مسح البيانات المحلية</button>
     </div>
   </div>
@@ -309,22 +307,15 @@
   <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg hidden"></div>
 
   <script>
-    /* ============================================================
-       الإعدادات والثوابت
-    ============================================================ */
     const WS_URL = "wss://sudan-market-2.onrender.com/ws";
-    let isOwner = false; // سيُحدَّث من الخادم// 👑 معرف المالك
+    let isOwner = false;
     const UID_KEY = "radar_uid_v10";
     const NAME_KEY = "radar_name_v10";
     const DATA_KEY = "radar_data_v10";
     const VIEW_STATE_KEY = "radar_view_state_v10";
     const MAX_LOCAL_ITEMS = 500;
 
-    /* ============================================================
-       الحالة
-    ============================================================ */
     const myUserId = getOrCreateUid();
-    
     let state = loadData();
     let currentView = "villages";
     let currentVillageId = null;
@@ -335,9 +326,6 @@
     let wsReconnectDelay = 1000;
     let onlineCount = 1;
 
-    /* ============================================================
-       أدوات
-    ============================================================ */
     function getOrCreateUid() {
       let id = localStorage.getItem(UID_KEY);
       if (!id) {
@@ -377,9 +365,6 @@
     function openModal(id) { document.getElementById(id).classList.add("show"); }
     function closeModal(id) { document.getElementById(id).classList.remove("show"); }
 
-    /* ============================================================
-       حفظ/تحميل
-    ============================================================ */
     function loadData() {
       try {
         const raw = localStorage.getItem(DATA_KEY);
@@ -412,9 +397,6 @@
       }
     }
 
-    /* ============================================================
-       حفظ/استعادة حالة العرض (للبقاء في نفس الصفحة عند التحديث)
-    ============================================================ */
     function saveViewState() {
       try {
         sessionStorage.setItem(VIEW_STATE_KEY, JSON.stringify({
@@ -444,9 +426,6 @@
       try { sessionStorage.removeItem(VIEW_STATE_KEY); } catch (e) {}
     }
 
-    /* ============================================================
-       WebSocket
-    ============================================================ */
     function connectWS() {
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
       setWSStatus("connecting");
@@ -491,75 +470,107 @@
 
     function handleWSMessage(msg) {
       switch (msg.type) {
-        case "PRESENCE": updateOnlineBadge(msg.count); break;
+        case "PRESENCE":
+          updateOnlineBadge(msg.count);
+          break;
         case "IDENTITY":
-  isOwner = msg.isOwner;
-  renderCurrentView(); // لتحديث زر المالك
-  break;
-case "ERROR":
-  showToast("⚠️ " + msg.message);
-  break;
+          isOwner = Boolean(msg.isOwner);
+          renderCurrentView();
+          break;
+        case "ERROR":
+          showToast("⚠️ " + msg.message);
+          break;
         case "NEW_VILLAGE":
           if (msg.village && !state.villages[msg.village.id]) {
-            state.villages[msg.village.id] = msg.village; saveData(); renderCurrentView();
-          } break;
+            state.villages[msg.village.id] = msg.village;
+            saveData();
+            renderCurrentView();
+          }
+          break;
         case "NEW_SHOP":
           if (msg.shop && !state.shops[msg.shop.id]) {
-            state.shops[msg.shop.id] = msg.shop; saveData(); renderCurrentView();
-          } break;
+            state.shops[msg.shop.id] = msg.shop;
+            saveData();
+            renderCurrentView();
+          }
+          break;
         case "NEW_PRICE":
           if (msg.price && !state.prices[msg.price.id]) {
-            state.prices[msg.price.id] = msg.price; saveData(); renderCurrentView();
-          } break;
+            state.prices[msg.price.id] = msg.price;
+            saveData();
+            renderCurrentView();
+          }
+          break;
         case "NEW_RATING":
           if (msg.rating && msg.shopId) {
             if (!state.ratings[msg.shopId]) state.ratings[msg.shopId] = {};
             state.ratings[msg.shopId][msg.rating.userId] = msg.rating;
-            saveData(); renderCurrentView();
-          } break;
+            saveData();
+            renderCurrentView();
+          }
+          break;
         case "NEW_NOTE":
           if (msg.note && !state.notes[msg.note.id]) {
-            state.notes[msg.note.id] = msg.note; saveData(); renderCurrentView();
-          } break;
+            state.notes[msg.note.id] = msg.note;
+            saveData();
+            renderCurrentView();
+          }
+          break;
         case "PENDING_VILLAGE":
-          if (msg.village && msg.village.id) {
-            if (!state.pendingVillages[msg.village.id]) {
-              state.pendingVillages[msg.village.id] = msg.village; saveData();
-              if (isOwner) renderOwnerPanel();
-            }
-          } break;
+          if (msg.village && msg.village.id && !state.pendingVillages[msg.village.id]) {
+            state.pendingVillages[msg.village.id] = msg.village;
+            saveData();
+            if (isOwner) renderOwnerPanel();
+          }
+          break;
         case "PENDING_SHOP":
-          if (msg.shop && msg.shop.id) {
-            if (!state.pendingShops[msg.shop.id]) {
-              state.pendingShops[msg.shop.id] = msg.shop; saveData();
-              if (isOwner) renderOwnerPanel();
-            }
-          } break;
+          if (msg.shop && msg.shop.id && !state.pendingShops[msg.shop.id]) {
+            state.pendingShops[msg.shop.id] = msg.shop;
+            saveData();
+            if (isOwner) renderOwnerPanel();
+          }
+          break;
         case "APPROVE_VILLAGE":
           if (msg.village) {
             state.villages[msg.village.id] = msg.village;
             delete state.pendingVillages[msg.village.id];
-            saveData(); renderCurrentView();
-          } break;
+            saveData();
+            renderCurrentView();
+          }
+          break;
         case "APPROVE_SHOP":
           if (msg.shop) {
             state.shops[msg.shop.id] = msg.shop;
             delete state.pendingShops[msg.shop.id];
-            saveData(); renderCurrentView();
-          } break;
+            saveData();
+            renderCurrentView();
+          }
+          break;
         case "REJECT_VILLAGE":
-          if (msg.id) { delete state.pendingVillages[msg.id]; saveData(); if (isOwner) renderOwnerPanel(); } break;
+          if (msg.id) {
+            delete state.pendingVillages[msg.id];
+            saveData();
+            if (isOwner) renderOwnerPanel();
+          }
+          break;
         case "REJECT_SHOP":
-          if (msg.id) { delete state.pendingShops[msg.id]; saveData(); if (isOwner) renderOwnerPanel(); } break;
+          if (msg.id) {
+            delete state.pendingShops[msg.id];
+            saveData();
+            if (isOwner) renderOwnerPanel();
+          }
+          break;
         case "DELETE_ITEM":
           if (msg.kind && msg.id) {
             if (msg.kind === "village") delete state.villages[msg.id];
             if (msg.kind === "shop") delete state.shops[msg.id];
             if (msg.kind === "price") delete state.prices[msg.id];
             if (msg.kind === "note") delete state.notes[msg.id];
-            saveData(); renderCurrentView();
-          } break;
-                case "REQUEST_SYNC":
+            saveData();
+            renderCurrentView();
+          }
+          break;
+        case "REQUEST_SYNC":
           if (msg.userId !== myUserId) {
             const recentPrices = Object.values(state.prices)
               .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
@@ -577,8 +588,7 @@ case "ERROR":
             });
           }
           break;
-
-        case "SYNC_DATA":
+        case "SYNC_DATA": {
           let changed = false;
           if (msg.villages) {
             Object.keys(msg.villages).forEach(k => {
@@ -628,14 +638,10 @@ case "ERROR":
             renderCurrentView();
           }
           break;
-
-          } 
+        }
       }
     }
 
-    /* ============================================================
-       التنقل
-    ============================================================ */
     function goHome() {
       currentView = "villages"; currentVillageId = null; currentShopId = null;
       saveViewState(); renderCurrentView();
@@ -671,12 +677,10 @@ case "ERROR":
         if (el) el.classList.add("hidden");
       });
 
-      // سهم الرجوع
       const backBtn = document.getElementById("backBtn");
       if (currentView === "villages" || currentView === "leaderboard") backBtn.classList.add("hidden");
       else backBtn.classList.remove("hidden");
 
-      // زر المالك
       const ownerBtn = document.getElementById("ownerBtn");
       if (isOwner) {
         ownerBtn.classList.remove("hidden");
@@ -707,9 +711,6 @@ case "ERROR":
       }
     }
 
-    /* ============================================================
-       القرى
-    ============================================================ */
     function renderVillages() {
       const q = norm(document.getElementById("villageSearch").value);
       const list = Object.values(state.villages)
@@ -734,9 +735,6 @@ case "ERROR":
       }).join("");
     }
 
-    /* ============================================================
-       صفحة القرية
-    ============================================================ */
     function renderVillagePage() {
       const v = state.villages[currentVillageId];
       if (!v) { goHome(); return; }
@@ -746,7 +744,6 @@ case "ERROR":
       const priceCount = Object.values(state.prices).filter(p => p.villageId === v.id).length;
       document.getElementById("villageMeta").textContent = (v.state ? esc(v.state) + " • " : "") + shopCount + " متجر • " + priceCount + " سعر";
 
-      // 🔥 المتجر المروَّج (الأرخص)
       const promotedBox = document.getElementById("promotedShopBox");
       const promoted = getPromotedShop(v.id);
       if (promoted) {
@@ -768,7 +765,6 @@ case "ERROR":
         </button>`;
       } else promotedBox.classList.add("hidden");
 
-      // المتاجر
       const shops = Object.values(state.shops).filter(s => s.villageId === v.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       const shopsEl = document.getElementById("shopsList");
       if (shops.length === 0) {
@@ -799,7 +795,6 @@ case "ERROR":
         }).join("");
       }
 
-      // الأسعار
       const prices = Object.values(state.prices).filter(p => p.villageId === v.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       document.getElementById("villagePricesCount").textContent = prices.length + " سعر";
       const pricesEl = document.getElementById("villagePricesList");
@@ -859,9 +854,6 @@ case "ERROR":
       }).join("");
     }
 
-    /* ============================================================
-       صفحة المتجر
-    ============================================================ */
     function renderShopPage() {
       const s = state.shops[currentShopId];
       if (!s) { goHome(); return; }
@@ -881,7 +873,6 @@ case "ERROR":
         document.getElementById("shopHeaderCard").classList.remove("promoted-shop");
       }
 
-      // نقاط المتجر
       const pointsEl = document.getElementById("shopPointsBadge");
       pointsEl.classList.remove("hidden");
       pointsEl.innerHTML = `<div class="flex items-center gap-2 flex-wrap">
@@ -932,9 +923,6 @@ case "ERROR":
         </div>`).join("");
     }
 
-    /* ============================================================
-       التقييمات والنقاط
-    ============================================================ */
     function getShopRating(shopId) {
       const r = state.ratings[shopId] || {};
       let cheap = 0, fair = 0, expensive = 0;
@@ -950,7 +938,6 @@ case "ERROR":
     }
     function getShopPoints(shopId) {
       const r = getShopRating(shopId);
-      // نقاط المتجر: رخيص +3، معقول +1، غالي -2
       return Math.max(0, r.cheap * 3 + r.fair * 1 - r.expensive * 2);
     }
     function ratingToStars(avg) {
@@ -992,9 +979,6 @@ case "ERROR":
       showToast("تم تسجيل تقييمك ✓");
     }
 
-    /* ============================================================
-       إضافة عناصر (مع نظام الموافقة)
-    ============================================================ */
     function openAddVillage() {
       document.getElementById("newVillageName").value = "";
       document.getElementById("newVillageState").value = "";
@@ -1007,7 +991,6 @@ case "ERROR":
       if (!name) { showToast("اكتب اسم القرية"); return; }
 
       if (isOwner) {
-        // المالك يضيف مباشرة
         const exists = Object.values(state.villages).find(v => norm(v.name) === norm(name));
         if (exists) { showToast("هذه القرية موجودة"); closeModal("modalAddVillage"); goVillage(exists.id); return; }
         const v = { id: uid(), name, state: stateName, userId: myUserId, author: getUserName(), createdAt: Date.now() };
@@ -1015,7 +998,6 @@ case "ERROR":
         sendWS({ type: "NEW_VILLAGE", village: v });
         closeModal("modalAddVillage"); showToast("تمت إضافة القرية ✓"); goVillage(v.id);
       } else {
-        // طلب معلق
         const exists = Object.values(state.villages).find(v => norm(v.name) === norm(name));
         if (exists) { showToast("هذه القرية موجودة بالفعل"); return; }
         const pending = Object.values(state.pendingVillages).find(v => norm(v.name) === norm(name));
@@ -1087,15 +1069,10 @@ case "ERROR":
 
     function openAddMenu() { openModal("modalAddMenu"); }
 
-    /* ============================================================
-       لوحة المالك
-    ============================================================ */
     function renderOwnerPanel() {
-      // الطلبات المعلقة
       const pendingV = Object.values(state.pendingVillages);
       const pendingS = Object.values(state.pendingShops);
       const total = pendingV.length + pendingS.length;
-      document.getElementById("ownerPendingCount").textContent = total + " طلب";
       document.getElementById("ownerPendingCount").textContent = total + " طلب";
 
       const pendingEl = document.getElementById("ownerPendingList");
@@ -1137,7 +1114,6 @@ case "ERROR":
         pendingEl.innerHTML = html;
       }
 
-      // إدارة القرى
       const vList = Object.values(state.villages).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       const vEl = document.getElementById("ownerVillagesList");
       if (vList.length === 0) vEl.innerHTML = '<div class="text-[10px] text-slate-400">لا توجد قرى</div>';
@@ -1147,7 +1123,6 @@ case "ERROR":
           <button onclick="deleteItem('village', '${v.id}')" class="text-rose-600 text-[10px] font-extrabold">🗑️</button>
         </div>`).join("");
 
-      // إدارة المتاجر
       const sList = Object.values(state.shops).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       const sEl = document.getElementById("ownerShopsList");
       if (sList.length === 0) sEl.innerHTML = '<div class="text-[10px] text-slate-400">لا توجد متاجر</div>';
@@ -1207,9 +1182,6 @@ case "ERROR":
       showToast("تم الحذف");
     }
 
-    /* ============================================================
-       لوحة التحديات
-    ============================================================ */
     function setLeaderboardTab(tab) {
       leaderboardTab = tab; saveViewState();
       document.querySelectorAll(".lb-tab").forEach(b => {
@@ -1286,9 +1258,6 @@ case "ERROR":
       }
     }
 
-    /* ============================================================
-       الملف الشخصي
-    ============================================================ */
     function openProfile() {
       document.getElementById("profileName").value = localStorage.getItem(NAME_KEY) || "";
       document.getElementById("profileId").textContent = myUserId;
@@ -1330,15 +1299,17 @@ case "ERROR":
       saveData(); closeModal("modalProfile"); goHome(); showToast("تم مسح البيانات");
     }
 
-    /* ============================================================
-       التهيئة
-    ============================================================ */
     function init() {
-      connectWS();
-      restoreViewState();
-      renderCurrentView();
-      window.addEventListener("online", () => { connectWS(); requestSync(); });
-      setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) requestSync(); }, 5 * 60 * 1000);
+      try {
+        restoreViewState();
+        renderCurrentView();
+        connectWS();
+        window.addEventListener("online", () => { connectWS(); requestSync(); });
+        setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) requestSync(); }, 5 * 60 * 1000);
+      } catch (err) {
+        console.error(err);
+        setWSStatus("disconnected");
+      }
     }
     init();
   </script>
