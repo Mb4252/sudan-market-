@@ -6,24 +6,38 @@ const OWNER_ID = process.env.OWNER_ID || "";
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
 const MISTRAL_DEFAULT_MODEL = process.env.MISTRAL_MODEL || "mistral-small-latest";
 
+function logError(stage, detail) {
+  console.error(`[MISTRAL-TRACKER][${new Date().toISOString()}][${stage}]`, detail);
+}
+
+function logInfo(stage, detail) {
+  console.log(`[MISTRAL-TRACKER][${new Date().toISOString()}][${stage}]`, detail);
+}
+
 async function askMistral({ system, messages, model }) {
+  const usedModel = model || MISTRAL_DEFAULT_MODEL;
+
   if (!MISTRAL_API_KEY) {
+    const errDetail = "MISTRAL_API_KEY غير موجود في متغيرات البيئة على Render";
+    logError("CONFIG", errDetail);
     return {
       ok: false,
-      error: "لم يتم ضبط متغير البيئة MISTRAL_API_KEY على Render"
+      statusCode: 500,
+      error: errDetail,
+      debug: { stage: "CONFIG", hasKey: false, model: usedModel }
     };
   }
 
   const formattedMessages = [];
   if (system && typeof system === 'string') {
-    formattedMessages.push({ role: 'system', content: system.slice(0, 3500) });
+    formattedMessages.push({ role: 'system', content: system.slice(0, 3000) });
   }
 
   if (Array.isArray(messages)) {
-    for (const m of messages.slice(-6)) {
+    for (const m of messages.slice(-4)) {
       if (!m || typeof m.content !== 'string') continue;
       const role = m.role === 'assistant' ? 'assistant' : 'user';
-      const content = m.content.trim().slice(0, 800);
+      const content = m.content.trim().slice(0, 600);
       if (content) {
         formattedMessages.push({ role, content });
       }
@@ -31,44 +45,99 @@ async function askMistral({ system, messages, model }) {
   }
 
   if (formattedMessages.length === 0) {
-    return { ok: false, error: "لا توجد رسالة صالحة للإرسال" };
+    return {
+      ok: false,
+      statusCode: 400,
+      error: "لا توجد رسالة صالحة للإرسال",
+      debug: { stage: "VALIDATION", model: usedModel }
+    };
   }
 
   const payload = JSON.stringify({
-    model: model || MISTRAL_DEFAULT_MODEL,
+    model: usedModel,
     messages: formattedMessages,
     temperature: 0.3,
-    max_tokens: 300
+    max_tokens: 220
   });
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${MISTRAL_API_KEY}`
-      },
-      body: payload
-    });
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    logInfo("REQUEST", `المحاولة ${attempt} إلى Mistral بالموديل ${usedModel}، طول الرسائل: ${formattedMessages.length}`);
 
-    const data = await response.json().catch(() => ({}));
-
-    if (response.status === 429 && attempt === 0) {
-      await new Promise((r) => setTimeout(r, 1500));
-      continue;
+    let response;
+    let rawText = "";
+    try {
+      response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${MISTRAL_API_KEY}`
+        },
+        body: payload
+      });
+      rawText = await response.text();
+    } catch (netErr) {
+      logError("NETWORK", `فشل الاتصال بـ Mistral في المحاولة ${attempt}: ${netErr.message}`);
+      return {
+        ok: false,
+        statusCode: 502,
+        error: `فشل الشبكة أثناء الاتصال بـ Mistral: ${netErr.message}`,
+        debug: { stage: "NETWORK", attempt, model: usedModel }
+      };
     }
+
+    let parsed = {};
+    try {
+      parsed = rawText ? JSON.parse(rawText) : {};
+    } catch (jsonErr) {
+      logError("PARSE_RESPONSE", `رد Mistral ليس JSON صالحاً (HTTP ${response.status}): ${rawText.slice(0, 300)}`);
+    }
+
+    const retryAfterHeader = response.headers.get("retry-after") || null;
 
     if (!response.ok) {
-      const msg = data?.message || `خطأ من Mistral (${response.status})`;
-      return { ok: false, error: msg };
+      const mistralMsg = parsed?.message || parsed?.error?.message || rawText.slice(0, 250) || `HTTP ${response.status}`;
+      const mistralType = parsed?.type || parsed?.code || null;
+
+      logError(
+        "MISTRAL_API_ERROR",
+        `المحاولة ${attempt} | HTTP ${response.status} | type=${mistralType} | retry-after=${retryAfterHeader} | msg=${mistralMsg}`
+      );
+
+      if (response.status === 429 && attempt === 1) {
+        const waitMs = retryAfterHeader && !isNaN(Number(retryAfterHeader))
+          ? Math.min(Number(retryAfterHeader) * 1000, 4000)
+          : 1500;
+        logInfo("RETRY_429", `انتظار ${waitMs}ms ثم إعادة المحاولة...`);
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        error: `${mistralMsg} [HTTP ${response.status}${retryAfterHeader ? ` | Retry-After: ${retryAfterHeader}s` : ""}]`,
+        debug: {
+          stage: "MISTRAL_API",
+          attempt,
+          httpStatus: response.status,
+          mistralType,
+          retryAfter: retryAfterHeader,
+          model: usedModel
+        }
+      };
     }
 
-    const reply = data?.choices?.[0]?.message?.content?.trim() || "";
-    const tokens = Number(data?.usage?.total_tokens) || 0;
-    return { ok: true, reply, tokens };
-  }
+    const reply = parsed?.choices?.[0]?.message?.content?.trim() || "";
+    const tokens = Number(parsed?.usage?.total_tokens) || 0;
+    logInfo("SUCCESS", `نجح الرد في المحاولة ${attempt}، التوكنات: ${tokens}`);
 
-  return { ok: false, error: "تم تجاوز حد الطلبات مؤقتاً، انتظر بضع ثوانٍ ثم أعد المحاولة." };
+    return {
+      ok: true,
+      reply,
+      tokens,
+      debug: { stage: "SUCCESS", attempt, httpStatus: response.status, model: usedModel }
+    };
+  }
 }
 
 function readJsonBody(req) {
@@ -104,6 +173,23 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
+  // نقطة فحص مباشرة لتتبع حالة Mistral والمفتاح والموديل
+  if (urlPath === '/api/mistral-debug' && req.method === 'GET') {
+    const testResult = await askMistral({
+      system: "أجب بكلمة واحدة: جاهز",
+      messages: [{ role: "user", content: "اختبار" }],
+      model: MISTRAL_DEFAULT_MODEL
+    });
+
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    return res.end(JSON.stringify({
+      hasKey: Boolean(MISTRAL_API_KEY),
+      keyPrefix: MISTRAL_API_KEY ? MISTRAL_API_KEY.slice(0, 6) + "..." : null,
+      model: MISTRAL_DEFAULT_MODEL,
+      testResult
+    }, null, 2));
+  }
+
   if (urlPath === '/api/mistral-chat' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req);
@@ -115,17 +201,26 @@ const server = http.createServer(async (req, res) => {
 
       if (!result.ok) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-        return res.end(JSON.stringify({ error: result.error }));
+        return res.end(JSON.stringify({
+          error: result.error,
+          statusCode: result.statusCode,
+          debug: result.debug
+        }));
       }
 
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       return res.end(JSON.stringify({
         reply: result.reply,
-        tokens: result.tokens
+        tokens: result.tokens,
+        debug: result.debug
       }));
     } catch (err) {
+      logError("HTTP_HANDLER", err.message);
       res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
-      return res.end(JSON.stringify({ error: err.message || 'خطأ في الخادم' }));
+      return res.end(JSON.stringify({
+        error: err.message || 'خطأ في الخادم',
+        debug: { stage: "HTTP_HANDLER" }
+      }));
     }
   }
 
@@ -164,7 +259,7 @@ wss.on('connection', (ws) => {
       const text = Buffer.isBuffer(rawData) ? rawData.toString('utf8') : String(rawData);
       message = JSON.parse(text);
     } catch (e) {
-      console.error('JSON غير صالح:', e.message);
+      logError("WS_PARSE", `JSON غير صالح: ${e.message}`);
       return;
     }
 
@@ -193,7 +288,8 @@ wss.on('connection', (ws) => {
             type: 'MISTRAL_CHAT_REPLY',
             userId: message.userId || '',
             reply: result.ok ? result.reply : `⚠️ ${result.error}`,
-            tokens: result.ok ? result.tokens : 0
+            tokens: result.ok ? result.tokens : 0,
+            debug: result.debug || null
           }));
         } catch (e) {}
       }
@@ -240,7 +336,7 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('error', (err) => {
-    console.error('خطأ WebSocket:', err.message);
+    logError("WS_SOCKET", err.message);
   });
 });
 
