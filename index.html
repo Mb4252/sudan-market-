@@ -45,7 +45,7 @@
     .points-badge { background: linear-gradient(135deg, #8b5cf6, #6366f1); color: white; }
   </style>
 </head>
-<body class="min-h-screen pb-24">
+<body class="min-h-screen pb-28">
 
   <!-- ===================== HEADER ===================== -->
   <header class="sticky top-0 z-30 bg-[#e4f0e8]/95 backdrop-blur border-b border-emerald-900/10">
@@ -114,7 +114,7 @@
 
       <div class="bg-white rounded-2xl border border-emerald-700/20 p-3 shadow-sm space-y-2">
         <div class="flex items-center justify-between">
-          <h3 class="text-xs font-extrabold text-slate-900">💰 آخر أسعار القرية</h3>
+          <h3 class="text-xs font-extrabold text-slate-900">💰 سجل أسعار القرية (الجديد والقديم)</h3>
           <span id="villagePricesCount" class="text-[10px] font-bold text-slate-500"></span>
         </div>
         <div id="villagePricesList" class="space-y-2"></div>
@@ -144,7 +144,7 @@
 
       <div class="bg-white rounded-2xl border border-emerald-700/20 p-3 shadow-sm space-y-2">
         <div class="flex items-center justify-between">
-          <h3 class="text-xs font-extrabold text-slate-900">💰 أسعار هذا المتجر</h3>
+          <h3 class="text-xs font-extrabold text-slate-900">💰 تاريخ أسعار هذا المتجر</h3>
           <button onclick="openAddPrice()" class="text-[11px] font-extrabold text-[#1b7a43] hover:underline">+ سعر</button>
         </div>
         <div id="shopPricesList" class="space-y-2"></div>
@@ -206,6 +206,12 @@
     </section>
 
   </main>
+
+  <!-- زر دردشة الذكاء الاصطناعي (Mistral) -->
+  <button onclick="openAIChat()" title="مساعد رادار أسعار الحي (Mistral)" class="fixed bottom-20 left-4 z-30 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold px-3.5 py-2.5 rounded-full shadow-lg flex items-center gap-1.5 pulse-glow">
+    <span>🤖</span>
+    <span>دردشة</span>
+  </button>
 
   <!-- ===================== BOTTOM NAV ===================== -->
   <nav class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200">
@@ -279,6 +285,10 @@
         <span class="text-slate-500">معرفك:</span>
         <span id="profileId" class="font-bold"></span>
       </div>
+      <div class="text-[11px] bg-indigo-50 text-indigo-900 rounded-xl px-3 py-2 flex justify-between">
+        <span>رصيد توكن الدردشة (Mistral):</span>
+        <span id="profileTokenUsage" class="font-extrabold"></span>
+      </div>
       <button onclick="saveProfile()" class="w-full bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl">حفظ</button>
       <div class="grid grid-cols-2 gap-2 pt-2 border-t">
         <button onclick="exportData()" class="bg-slate-100 text-xs font-bold py-2 rounded-xl">تصدير JSON</button>
@@ -304,10 +314,40 @@
     </div>
   </div>
 
+  <!-- نافذة دردشة الذكاء الاصطناعي Mistral الخاصة بالمنصة -->
+  <div id="modalAIChat" class="modal-backdrop">
+    <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[82vh] slide-in">
+      <div class="bg-indigo-600 text-white px-4 py-3 flex items-center justify-between gap-2">
+        <div>
+          <div class="text-sm font-extrabold">🤖 مساعد رادار أسعار الحي (Mistral)</div>
+          <div id="aiTokenStatus" class="text-[10px] text-indigo-100 mt-0.5">مخصص لبيانات المنصة فقط • التوكن: 0 / 4000</div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button onclick="clearMyChat()" title="مسح دردشتي الخاصة" class="bg-white/15 hover:bg-white/25 text-[10px] font-bold px-2 py-1 rounded-lg">مسح</button>
+          <button onclick="closeModal('modalAIChat')" class="text-white/90 hover:text-white text-lg px-1">✕</button>
+        </div>
+      </div>
+
+      <div id="aiChatMessages" class="flex-1 overflow-y-auto p-3.5 space-y-2.5 bg-slate-50 text-xs"></div>
+
+      <form onsubmit="sendAIChatMessage(event)" class="p-2.5 bg-white border-t border-slate-200 flex gap-2">
+        <input id="aiChatInput" type="text" maxlength="300" required placeholder="اسأل عن أسعار القرى، المتاجر، أو التحديات..." class="flex-1 text-xs bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:bg-white focus:border-indigo-600" />
+        <button id="aiChatSendBtn" type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold px-3.5 py-2 rounded-xl shrink-0">إرسال</button>
+      </form>
+    </div>
+  </div>
+
   <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg hidden"></div>
 
   <script>
+    /* ============================================================
+       الإعدادات والثوابت
+    ============================================================ */
     const WS_URL = "wss://sudan-market-2.onrender.com/ws";
+    // نقطة نهاية على خادم Render تقرأ MISTRAL_API_KEY من متغيرات البيئة وتستدعي Mistral API
+    const MISTRAL_PROXY_URL = "https://sudan-market-2.onrender.com/api/mistral-chat";
+    const MAX_USER_TOKENS = 4000; // حد التوكن لكل مستخدم داخل المتصفح
+
     let isOwner = false;
     const UID_KEY = "radar_uid_v10";
     const NAME_KEY = "radar_name_v10";
@@ -316,7 +356,15 @@
     const MAX_LOCAL_ITEMS = 500;
 
     const myUserId = getOrCreateUid();
+    const CHAT_KEY = "radar_mistral_chat_v1_" + myUserId;
+    const TOKENS_KEY = "radar_mistral_tokens_v1_" + myUserId;
+
     let state = loadData();
+    let chatHistory = loadChatHistory();
+    let usedTokens = loadUsedTokens();
+    let isAILoading = false;
+    let pendingWSChatResolver = null;
+
     let currentView = "villages";
     let currentVillageId = null;
     let currentShopId = null;
@@ -326,6 +374,9 @@
     let wsReconnectDelay = 1000;
     let onlineCount = 1;
 
+    /* ============================================================
+       أدوات عامة وتنسيق التاريخ
+    ============================================================ */
     function getOrCreateUid() {
       let id = localStorage.getItem(UID_KEY);
       if (!id) {
@@ -355,6 +406,20 @@
       if (hr < 24) return "منذ " + hr + " س";
       return "منذ " + Math.floor(hr / 24) + " ي";
     }
+    function formatFullDate(ts) {
+      if (!ts) return "تاريخ غير معروف";
+      try {
+        return new Date(Number(ts)).toLocaleString("ar-EG", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+      } catch (e) {
+        return new Date(Number(ts)).toLocaleDateString();
+      }
+    }
     function showToast(msg) {
       const el = document.getElementById("toast");
       el.textContent = msg;
@@ -365,6 +430,9 @@
     function openModal(id) { document.getElementById(id).classList.add("show"); }
     function closeModal(id) { document.getElementById(id).classList.remove("show"); }
 
+    /* ============================================================
+       حفظ/تحميل البيانات المحلية
+    ============================================================ */
     function loadData() {
       try {
         const raw = localStorage.getItem(DATA_KEY);
@@ -426,6 +494,9 @@
       try { sessionStorage.removeItem(VIEW_STATE_KEY); } catch (e) {}
     }
 
+    /* ============================================================
+       WebSocket
+    ============================================================ */
     function connectWS() {
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
       setWSStatus("connecting");
@@ -479,6 +550,12 @@
           break;
         case "ERROR":
           showToast("⚠️ " + msg.message);
+          break;
+        case "MISTRAL_CHAT_REPLY":
+          if (msg.userId === myUserId && pendingWSChatResolver) {
+            pendingWSChatResolver(msg);
+            pendingWSChatResolver = null;
+          }
           break;
         case "NEW_VILLAGE":
           if (msg.village && !state.villages[msg.village.id]) {
@@ -642,6 +719,9 @@
       }
     }
 
+    /* ============================================================
+       التنقل
+    ============================================================ */
     function goHome() {
       currentView = "villages"; currentVillageId = null; currentShopId = null;
       saveViewState(); renderCurrentView();
@@ -711,6 +791,9 @@
       }
     }
 
+    /* ============================================================
+       القرى وصفحة القرية
+    ============================================================ */
     function renderVillages() {
       const q = norm(document.getElementById("villageSearch").value);
       const list = Object.values(state.villages)
@@ -735,6 +818,13 @@
       }).join("");
     }
 
+    function isLatestPriceForGood(priceItem, allVillagePrices) {
+      const sameGood = allVillagePrices
+        .filter(p => norm(p.name) === norm(priceItem.name))
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      return sameGood.length > 0 && sameGood[0].id === priceItem.id;
+    }
+
     function renderVillagePage() {
       const v = state.villages[currentVillageId];
       if (!v) { goHome(); return; }
@@ -753,7 +843,7 @@
             <div class="min-w-0">
               <div class="promoted-badge inline-block text-[10px] font-extrabold px-2.5 py-1 rounded-full mb-1.5">🔥 الأرخص في الحلة</div>
               <div class="text-base font-extrabold text-slate-900">${esc(promoted.shop.name)}</div>
-              <div class="text-[11px] text-slate-600">${esc(promoted.shop.owner || "صاحب غير معروف")}</div>
+              <div class="text-[11px] text-slate-600">المالك: ${esc(promoted.shop.owner || "غير معروف")}</div>
               <div class="flex items-center gap-2 mt-1.5">
                 <span class="stars text-sm">${ratingToStars(promoted.rating.avg)}</span>
                 <span class="text-[10px] font-extrabold text-amber-700">${promoted.rating.avg.toFixed(1)} (${promoted.rating.count} تقييم)</span>
@@ -779,7 +869,7 @@
             <div class="flex items-center justify-between gap-2">
               <div class="min-w-0">
                 <div class="text-sm font-extrabold text-slate-900 truncate">${esc(s.name)}</div>
-                <div class="text-[10px] text-slate-500">${esc(s.owner || "صاحب غير معروف")}</div>
+                <div class="text-[10px] text-slate-600">صاحب المتجر: ${esc(s.owner || "غير معروف")}</div>
                 <div class="flex items-center gap-1.5 mt-0.5">
                   <span class="points-badge text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">${points} نقطة</span>
                   ${isPromoted ? '<span class="text-[9px] font-extrabold text-amber-700">🔥 الأرخص</span>' : ''}
@@ -804,11 +894,19 @@
         pricesEl.innerHTML = prices.map(p => {
           const shop = state.shops[p.shopId];
           const isLowest = isLowestPriceInVillage(p);
-          return `<div class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
+          const isLatest = isLatestPriceForGood(p, prices);
+          return `<div class="${isLatest ? 'bg-white border-emerald-200' : 'bg-slate-50 border-slate-200 opacity-85'} border rounded-xl px-3 py-2.5">
             <div class="flex items-center justify-between gap-2">
               <div class="min-w-0">
-                <div class="text-sm font-extrabold text-slate-900">${esc(p.name)} ${isLowest ? '<span class="text-[9px] bg-[#1b7a43] text-white px-1.5 py-0.5 rounded-full mr-1">الأرخص</span>' : ""}</div>
-                <div class="text-[10px] text-slate-500">${shop ? "من: " + esc(shop.name) : ""} • ${timeAgo(p.createdAt)}</div>
+                <div class="flex items-center gap-1 flex-wrap">
+                  <span class="text-sm font-extrabold text-slate-900">${esc(p.name)}</span>
+                  ${isLatest
+                    ? '<span class="text-[9px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 rounded-full font-extrabold">جديد</span>'
+                    : '<span class="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">قديم</span>'}
+                  ${isLowest ? '<span class="text-[9px] bg-[#1b7a43] text-white px-1.5 py-0.5 rounded-full font-extrabold">الأرخص</span>' : ""}
+                </div>
+                <div class="text-[10px] text-slate-500 mt-0.5">${shop ? "من: " + esc(shop.name) + (shop.owner ? " (" + esc(shop.owner) + ")" : "") : ""} • ${timeAgo(p.createdAt)}</div>
+                <div class="text-[9px] text-slate-400">📅 نُشر: ${esc(formatFullDate(p.createdAt))}</div>
               </div>
               <div class="text-left shrink-0">
                 <div class="text-base font-extrabold text-slate-900">${Number(p.price).toLocaleString()} <span class="text-[10px] text-slate-500">ج.س</span></div>
@@ -845,7 +943,7 @@
           <span class="text-sm w-5 text-center">${medals[i] || (i + 1)}</span>
           <div class="flex-1">
             <div class="flex justify-between text-[10px] font-bold">
-              <span class="text-slate-800">${esc(r.shop.name)}</span>
+              <span class="text-slate-800">${esc(r.shop.name)} ${r.shop.owner ? '<span class="text-slate-400 font-normal">(' + esc(r.shop.owner) + ')</span>' : ''}</span>
               <span class="text-slate-500">${r.points} نقطة</span>
             </div>
             <div class="h-1.5 bg-slate-200 rounded-full mt-0.5 overflow-hidden"><div class="h-full bg-[#1b7a43]" style="width:${pct}%"></div></div>
@@ -854,6 +952,9 @@
       }).join("");
     }
 
+    /* ============================================================
+       صفحة المتجر
+    ============================================================ */
     function renderShopPage() {
       const s = state.shops[currentShopId];
       if (!s) { goHome(); return; }
@@ -900,17 +1001,25 @@
       if (prices.length === 0) {
         pricesEl.innerHTML = '<div class="text-center text-[11px] text-slate-400 py-3 bg-slate-50 rounded-lg">لا توجد أسعار منشورة بعد</div>';
       } else {
-        pricesEl.innerHTML = prices.map(p => `
-          <div class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 flex items-center justify-between">
+        pricesEl.innerHTML = prices.map(p => {
+          const isLatest = isLatestPriceForGood(p, prices);
+          return `
+          <div class="${isLatest ? 'bg-white border-emerald-200' : 'bg-slate-50 border-slate-200 opacity-85'} border rounded-xl px-3 py-2.5 flex items-center justify-between gap-2">
             <div>
-              <div class="text-sm font-extrabold text-slate-900">${esc(p.name)}</div>
-              <div class="text-[10px] text-slate-500">${timeAgo(p.createdAt)}</div>
+              <div class="flex items-center gap-1.5">
+                <span class="text-sm font-extrabold text-slate-900">${esc(p.name)}</span>
+                ${isLatest
+                  ? '<span class="text-[9px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 rounded-full font-extrabold">جديد</span>'
+                  : '<span class="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">قديم</span>'}
+              </div>
+              <div class="text-[10px] text-slate-500 mt-0.5">${timeAgo(p.createdAt)} • 📅 ${esc(formatFullDate(p.createdAt))}</div>
             </div>
-            <div class="text-left">
+            <div class="text-left shrink-0">
               <div class="text-base font-extrabold text-slate-900">${Number(p.price).toLocaleString()} <span class="text-[10px] text-slate-500">ج.س</span></div>
               <div class="text-[10px] text-slate-500">${esc(p.unit)}</div>
             </div>
-          </div>`).join("");
+          </div>`;
+        }).join("");
       }
 
       const notes = Object.values(state.notes).filter(n => n.shopId === s.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -919,10 +1028,13 @@
       else notesEl.innerHTML = notes.map(n => `
         <div class="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2">
           <p class="text-[11px] font-bold text-slate-800">${esc(n.text)}</p>
-          <div class="text-[9px] text-slate-400 mt-1">${esc(n.author)} • ${timeAgo(n.createdAt)}</div>
+          <div class="text-[9px] text-slate-400 mt-1">${esc(n.author)} • ${timeAgo(n.createdAt)} (${esc(formatFullDate(n.createdAt))})</div>
         </div>`).join("");
     }
 
+    /* ============================================================
+       التقييمات والنقاط
+    ============================================================ */
     function getShopRating(shopId) {
       const r = state.ratings[shopId] || {};
       let cheap = 0, fair = 0, expensive = 0;
@@ -979,6 +1091,9 @@
       showToast("تم تسجيل تقييمك ✓");
     }
 
+    /* ============================================================
+       إضافة عناصر (مع نظام الموافقة)
+    ============================================================ */
     function openAddVillage() {
       document.getElementById("newVillageName").value = "";
       document.getElementById("newVillageState").value = "";
@@ -1069,6 +1184,9 @@
 
     function openAddMenu() { openModal("modalAddMenu"); }
 
+    /* ============================================================
+       لوحة المالك
+    ============================================================ */
     function renderOwnerPanel() {
       const pendingV = Object.values(state.pendingVillages);
       const pendingS = Object.values(state.pendingShops);
@@ -1102,7 +1220,7 @@
               <span class="text-lg">🏪</span>
               <div class="flex-1">
                 <div class="text-xs font-extrabold text-slate-900">${esc(s.name)}</div>
-                <div class="text-[10px] text-slate-500">${v ? "في " + esc(v.name) + " • " : ""}${esc(s.owner || "غير معروف")}</div>
+                <div class="text-[10px] text-slate-500">${v ? "في " + esc(v.name) + " • " : ""}المالك: ${esc(s.owner || "غير معروف")}</div>
               </div>
             </div>
             <div class="flex gap-1.5">
@@ -1129,7 +1247,7 @@
       else sEl.innerHTML = sList.map(s => {
         const v = state.villages[s.villageId];
         return `<div class="flex items-center justify-between bg-slate-50 rounded-lg px-2.5 py-1.5">
-          <span class="text-[11px] font-bold text-slate-800">${esc(s.name)} <span class="text-slate-400 font-normal">(${v ? esc(v.name) : "?"})</span></span>
+          <span class="text-[11px] font-bold text-slate-800">${esc(s.name)} <span class="text-slate-400 font-normal">(${esc(s.owner || "بدون مالك")} • ${v ? esc(v.name) : "?"})</span></span>
           <button onclick="deleteItem('shop', '${s.id}')" class="text-rose-600 text-[10px] font-extrabold">🗑️</button>
         </div>`;
       }).join("");
@@ -1182,6 +1300,9 @@
       showToast("تم الحذف");
     }
 
+    /* ============================================================
+       لوحة التحديات (مع إظهار اسم صاحب المتجر)
+    ============================================================ */
     function setLeaderboardTab(tab) {
       leaderboardTab = tab; saveViewState();
       document.querySelectorAll(".lb-tab").forEach(b => {
@@ -1199,19 +1320,20 @@
         const medals = ["🥇", "🥈", "🥉"];
         el.innerHTML = shops.map((s, i) => {
           const v = state.villages[s.villageId];
-          return `<div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-            <div class="flex items-center gap-2">
-              <span class="text-lg w-6 text-center">${medals[i] || (i + 1)}</span>
-              <div>
-                <div class="text-xs font-extrabold text-slate-900">${esc(s.name)}</div>
-                <div class="text-[10px] text-slate-500">${v ? esc(v.name) : ""}</div>
+          return `<button onclick="goShop('${s.id}')" class="w-full text-right flex items-center justify-between bg-slate-50 hover:bg-emerald-50 border border-slate-200 rounded-xl px-3 py-2 transition">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-lg w-6 text-center shrink-0">${medals[i] || (i + 1)}</span>
+              <div class="min-w-0">
+                <div class="text-xs font-extrabold text-slate-900 truncate">${esc(s.name)}</div>
+                <div class="text-[10px] text-slate-600 truncate">المالك: ${esc(s.owner || "غير معروف")}</div>
+                <div class="text-[10px] text-slate-400">${v ? esc(v.name) : ""}</div>
               </div>
             </div>
-            <div class="text-left">
+            <div class="text-left shrink-0">
               <div class="points-badge text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-block">${s.points} نقطة</div>
               <div class="stars text-[10px] mt-0.5">${ratingToStars(s.rating.avg)}</div>
             </div>
-          </div>`;
+          </button>`;
         }).join("");
       } else if (leaderboardTab === "villages") {
         const villages = Object.values(state.villages).map(v => {
@@ -1258,9 +1380,13 @@
       }
     }
 
+    /* ============================================================
+       الملف الشخصي
+    ============================================================ */
     function openProfile() {
       document.getElementById("profileName").value = localStorage.getItem(NAME_KEY) || "";
       document.getElementById("profileId").textContent = myUserId;
+      document.getElementById("profileTokenUsage").textContent = `${usedTokens} / ${MAX_USER_TOKENS} توكن`;
       openModal("modalProfile");
     }
     function saveProfile() {
@@ -1299,6 +1425,209 @@
       saveData(); closeModal("modalProfile"); goHome(); showToast("تم مسح البيانات");
     }
 
+    /* ============================================================
+       دردشة الذكاء الاصطناعي (Mistral) - خاصة بكل مستخدم ومقيدة بالمنصة
+    ============================================================ */
+    function loadChatHistory() {
+      try {
+        const raw = localStorage.getItem(CHAT_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) { return []; }
+    }
+    function saveChatHistory() {
+      try { localStorage.setItem(CHAT_KEY, JSON.stringify(chatHistory.slice(-40))); } catch (e) {}
+    }
+    function loadUsedTokens() {
+      try { return Math.max(0, Number(localStorage.getItem(TOKENS_KEY) || 0)); } catch (e) { return 0; }
+    }
+    function saveUsedTokens() {
+      try { localStorage.setItem(TOKENS_KEY, String(usedTokens)); } catch (e) {}
+    }
+    function estimateTokens(text) {
+      return Math.max(1, Math.ceil(String(text || "").length / 3));
+    }
+
+    function buildPlatformSystemContext() {
+      const villagesSummary = Object.values(state.villages).map(v => {
+        const shops = Object.values(state.shops).filter(s => s.villageId === v.id);
+        const shopLines = shops.map(s => {
+          const pts = getShopPoints(s.id);
+          const r = getShopRating(s.id);
+          const sPrices = Object.values(state.prices)
+            .filter(p => p.shopId === s.id)
+            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+            .slice(0, 8)
+            .map(p => `${p.name}: ${p.price} ج.س (${p.unit}) بتاريخ ${formatFullDate(p.createdAt)}`);
+          return `- متجر "${s.name}" (المالك: ${s.owner || "غير معروف"}، النقاط: ${pts}، التقييم: ${r.avg.toFixed(1)}/${r.count}) | الأسعار: [${sPrices.join(" | ")}]`;
+        }).join("\n");
+        return `قرية: ${v.name} (${v.state || "ولاية غير محددة"})\n${shopLines || "لا توجد متاجر"}`;
+      }).join("\n\n");
+
+      return `أنت المساعد الذكي لمنصة "رادار أسعار الحي" (الموديل: Mistral).
+قواعد صارمة:
+1. أجب فقط عن المواضيع المتعلقة بمنصة "رادار أسعار الحي": القرى، المتاجر وأصحابها، الأسعار وتواريخ نشرها (الجديد والقديم)، التقييمات والنقاط، ولوحة التحديات.
+2. إذا سأل المستخدم عن أي موضوع خارج المنصة (مثل البرمجة، الأخبار العامة، الطب، الرياضة، إلخ)، اعتذر بلطف واطلب منه السؤال عن القرى أو المتاجر أو الأسعار في المنصة فقط.
+3. اعتمد فقط على البيانات الحالية للمنصة أدناه، واذكر تواريخ نشر الأسعار عند المقارنة بين الأسعار الجديدة والقديمة.
+
+بيانات المنصة الحالية:
+${villagesSummary || "لا توجد بيانات مسجلة حالياً."}`;
+    }
+
+    function updateAITokenUI() {
+      const remaining = Math.max(0, MAX_USER_TOKENS - usedTokens);
+      document.getElementById("aiTokenStatus").textContent =
+        `Mistral • متبقي: ${remaining} / ${MAX_USER_TOKENS} توكن`;
+    }
+
+    function renderAIChat() {
+      updateAITokenUI();
+      const box = document.getElementById("aiChatMessages");
+      if (chatHistory.length === 0) {
+        box.innerHTML = `<div class="bg-white border border-indigo-100 rounded-xl p-3 text-slate-700 leading-relaxed">
+          مرحباً بك في مساعد <b>رادار أسعار الحي</b> 🤖<br/>
+          يمكنك سؤالي عن أسعار السلع وتواريخ نشرها، المتاجر وأصحابها، أو ترتيب التحديات في القرى.<br/>
+          <span class="text-[10px] text-indigo-600 font-bold">ملاحظة: دردشتك محفوظة في متصفحك فقط ولك حد ${MAX_USER_TOKENS} توكن.</span>
+        </div>`;
+        return;
+      }
+      box.innerHTML = chatHistory.map(m => {
+        const isUser = m.role === "user";
+        return `<div class="flex ${isUser ? 'justify-start' : 'justify-end'}">
+          <div class="${isUser ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-800'} max-w-[85%] rounded-2xl px-3 py-2 shadow-sm space-y-1">
+            <div class="whitespace-pre-line leading-relaxed">${esc(m.content)}</div>
+            <div class="text-[9px] ${isUser ? 'text-indigo-200' : 'text-slate-400'}">${m.tokens || 0} توكن • ${timeAgo(m.ts)}</div>
+          </div>
+        </div>`;
+      }).join("");
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function openAIChat() {
+      renderAIChat();
+      openModal("modalAIChat");
+      setTimeout(() => document.getElementById("aiChatInput").focus(), 100);
+    }
+
+    function clearMyChat() {
+      if (!confirm("هل تريد مسح سجل دردشتك الخاصة في هذا المتصفح؟")) return;
+      chatHistory = [];
+      saveChatHistory();
+      renderAIChat();
+      showToast("تم مسح دردشتك");
+    }
+
+    async function callMistralBackend(userText) {
+      const systemPrompt = buildPlatformSystemContext();
+      const recentMessages = chatHistory.slice(-10).map(m => ({ role: m.role, content: m.content }));
+
+      // 1) محاولة الاتصال بنقطة نهاية HTTP على Render (التي تقرأ MISTRAL_API_KEY من متغيرات البيئة)
+      try {
+        const res = await fetch(MISTRAL_PROXY_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: myUserId,
+            model: "mistral-small-latest",
+            system: systemPrompt,
+            messages: recentMessages
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.reply) {
+            return { reply: data.reply, tokens: Number(data.tokens) || 0 };
+          }
+        }
+      } catch (e) {}
+
+      // 2) بديل عبر WebSocket إذا كان الخادم يعالج MISTRAL_CHAT عبر WS
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        return await new Promise((resolve) => {
+          const timer = setTimeout(() => {
+            pendingWSChatResolver = null;
+            resolve(null);
+          }, 12000);
+
+          pendingWSChatResolver = (msg) => {
+            clearTimeout(timer);
+            resolve({ reply: msg.reply || "", tokens: Number(msg.tokens) || 0 });
+          };
+
+          sendWS({
+            type: "MISTRAL_CHAT",
+            userId: myUserId,
+            model: "mistral-small-latest",
+            system: systemPrompt,
+            messages: recentMessages
+          });
+        });
+      }
+
+      return null;
+    }
+
+    async function sendAIChatMessage(e) {
+      e.preventDefault();
+      if (isAILoading) return;
+
+      const input = document.getElementById("aiChatInput");
+      const text = input.value.trim();
+      if (!text) return;
+
+      const userTokens = estimateTokens(text);
+      if (usedTokens + userTokens > MAX_USER_TOKENS) {
+        showToast("لقد وصلت إلى الحد المسموح من التوكن لهذا المتصفح");
+        return;
+      }
+
+      input.value = "";
+      isAILoading = true;
+      document.getElementById("aiChatSendBtn").disabled = true;
+
+      usedTokens += userTokens;
+      saveUsedTokens();
+      chatHistory.push({ role: "user", content: text, tokens: userTokens, ts: Date.now() });
+      saveChatHistory();
+      renderAIChat();
+
+      const loadingId = "ai_loading_" + Date.now();
+      const box = document.getElementById("aiChatMessages");
+      box.insertAdjacentHTML("beforeend", `<div id="${loadingId}" class="text-[11px] text-indigo-700 font-bold bg-indigo-50 rounded-xl px-3 py-2">⏳ جاري التفكير عبر Mistral...</div>`);
+      box.scrollTop = box.scrollHeight;
+
+      const result = await callMistralBackend(text);
+      document.getElementById(loadingId)?.remove();
+
+      let replyText = "";
+      let replyTokens = 0;
+
+      if (result && result.reply) {
+        replyText = result.reply;
+        replyTokens = result.tokens > 0 ? result.tokens : estimateTokens(replyText);
+      } else {
+        replyText = "تعذر الوصول إلى خدمة Mistral على خادم Render حالياً. تأكد من إضافة MISTRAL_API_KEY في متغيرات البيئة على Render وتفعيل مسار /api/mistral-chat أو MISTRAL_CHAT في الخادم.";
+        replyTokens = estimateTokens(replyText);
+      }
+
+      if (usedTokens + replyTokens > MAX_USER_TOKENS) {
+        const allowed = Math.max(0, MAX_USER_TOKENS - usedTokens);
+        replyText = replyText.slice(0, Math.max(20, allowed * 3)) + "\n...(تم الاقتطاع لبلوغ حد التوكن)";
+        replyTokens = allowed;
+      }
+
+      usedTokens += replyTokens;
+      saveUsedTokens();
+      chatHistory.push({ role: "assistant", content: replyText, tokens: replyTokens, ts: Date.now() });
+      saveChatHistory();
+
+      isAILoading = false;
+      document.getElementById("aiChatSendBtn").disabled = false;
+      renderAIChat();
+    }
+
+    /* ============================================================
+       التهيئة
+    ============================================================ */
     function init() {
       try {
         restoreViewState();
