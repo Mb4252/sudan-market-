@@ -559,22 +559,77 @@ case "ERROR":
             if (msg.kind === "note") delete state.notes[msg.id];
             saveData(); renderCurrentView();
           } break;
-        case "REQUEST_SYNC":
+                case "REQUEST_SYNC":
           if (msg.userId !== myUserId) {
-            const recentPrices = Object.values(state.prices).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 50);
-            sendWS({ type: "SYNC_DATA", userId: myUserId, prices: recentPrices,
-              villages: state.villages, shops: state.shops, pendingVillages: state.pendingVillages, pendingShops: state.pendingShops });
-          } break;
+            const recentPrices = Object.values(state.prices)
+              .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+              .slice(0, 100);
+            sendWS({
+              type: "SYNC_DATA",
+              userId: myUserId,
+              prices: recentPrices,
+              villages: state.villages,
+              shops: state.shops,
+              ratings: state.ratings,
+              notes: state.notes,
+              pendingVillages: state.pendingVillages,
+              pendingShops: state.pendingShops
+            });
+          }
+          break;
+
         case "SYNC_DATA":
+          let changed = false;
+          if (msg.villages) {
+            Object.keys(msg.villages).forEach(k => {
+              if (!state.villages[k]) { state.villages[k] = msg.villages[k]; changed = true; }
+            });
+          }
+          if (msg.shops) {
+            Object.keys(msg.shops).forEach(k => {
+              if (!state.shops[k]) { state.shops[k] = msg.shops[k]; changed = true; }
+            });
+          }
           if (msg.prices) {
-            let added = 0;
-            msg.prices.forEach(p => { if (p && p.id && !state.prices[p.id]) { state.prices[p.id] = p; added++; } });
-            if (msg.villages) Object.keys(msg.villages).forEach(k => { if (!state.villages[k]) { state.villages[k] = msg.villages[k]; added++; } });
-            if (msg.shops) Object.keys(msg.shops).forEach(k => { if (!state.shops[k]) { state.shops[k] = msg.shops[k]; added++; } });
-            if (msg.pendingVillages) Object.keys(msg.pendingVillages).forEach(k => { if (!state.pendingVillages[k]) { state.pendingVillages[k] = msg.pendingVillages[k]; added++; } });
-            if (msg.pendingShops) Object.keys(msg.pendingShops).forEach(k => { if (!state.pendingShops[k]) { state.pendingShops[k] = msg.pendingShops[k]; added++; } });
-            if (added > 0) { saveData(); renderCurrentView(); }
-          } break;
+            msg.prices.forEach(p => {
+              if (p && p.id && !state.prices[p.id]) { state.prices[p.id] = p; changed = true; }
+            });
+          }
+          if (msg.ratings) {
+            Object.keys(msg.ratings).forEach(shopId => {
+              if (!state.ratings[shopId]) state.ratings[shopId] = {};
+              Object.keys(msg.ratings[shopId]).forEach(uId => {
+                const incoming = msg.ratings[shopId][uId];
+                const existing = state.ratings[shopId][uId];
+                if (!existing || (incoming.updatedAt || 0) > (existing.updatedAt || 0)) {
+                  state.ratings[shopId][uId] = incoming;
+                  changed = true;
+                }
+              });
+            });
+          }
+          if (msg.notes) {
+            Object.keys(msg.notes).forEach(k => {
+              if (!state.notes[k]) { state.notes[k] = msg.notes[k]; changed = true; }
+            });
+          }
+          if (msg.pendingVillages) {
+            Object.keys(msg.pendingVillages).forEach(k => {
+              if (!state.pendingVillages[k]) { state.pendingVillages[k] = msg.pendingVillages[k]; changed = true; }
+            });
+          }
+          if (msg.pendingShops) {
+            Object.keys(msg.pendingShops).forEach(k => {
+              if (!state.pendingShops[k]) { state.pendingShops[k] = msg.pendingShops[k]; changed = true; }
+            });
+          }
+          if (changed) {
+            saveData();
+            renderCurrentView();
+          }
+          break;
+
+          } 
       }
     }
 
