@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>صفحة الكلمات — رادار أسعار الحي</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Cairo', sans-serif; background-color: #eef5f0; color: #0f172a; }
+    .points-badge { background: linear-gradient(135deg, #8b5cf6, #6366f1); color: white; }
+    .promoted-badge { background: linear-gradient(90deg, #f59e0b, #eab308); color: white; font-weight: 800; }
+  </style>
+</head>
+<body class="min-h-screen pb-10">
+
+  <!-- ===================== HEADER ===================== -->
+  <header class="sticky top-0 z-30 bg-[#e4f0e8]/95 backdrop-blur border-b border-emerald-900/10">
+    <div class="max-w-xl mx-auto px-3.5 py-3 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <a href="index.html" class="w-9 h-9 rounded-full bg-white border border-emerald-700/20 flex items-center justify-center text-base shrink-0" title="العودة للتطبيق">→</a>
+        <div class="min-w-0">
+          <h1 class="text-sm font-extrabold text-slate-900 leading-tight truncate">📖 صفحة الكلمات والمصطلحات</h1>
+          <p class="text-[10px] font-bold text-slate-600 mt-0.5">دليل مبسط لكلمات ورموز رادار أسعار الحي</p>
+        </div>
+      </div>
+      <a href="index.html" class="bg-[#1b7a43] hover:bg-[#156235] text-white text-xs font-extrabold px-3 py-2 rounded-xl shrink-0">التطبيق</a>
+    </div>
+  </header>
+
+  <!-- ===================== MAIN ===================== -->
+  <main class="max-w-xl mx-auto px-4 mt-4 space-y-4">
+
+    <!-- مربع البحث -->
+    <div class="bg-white rounded-2xl border border-emerald-700/20 p-3.5 shadow-sm space-y-2">
+      <input
+        id="wordSearch"
+        type="text"
+        oninput="filterWords()"
+        placeholder="ابحث عن كلمة أو رمز داخل التطبيق..."
+        class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:bg-white focus:border-emerald-600"
+      />
+      <div id="wordsCount" class="text-[10px] font-bold text-slate-500"></div>
+    </div>
+
+    <!-- قائمة الكلمات -->
+    <div id="wordsList" class="space-y-2.5"></div>
+
+    <!-- زر العودة -->
+    <a href="index.html" class="block w-full text-center bg-[#1b7a43] hover:bg-[#156235] text-white text-sm font-extrabold py-3 rounded-2xl transition">
+      العودة إلى رادار أسعار الحي
+    </a>
+
+  </main>
+
+  <script>
+    const WORDS = [
+      {
+        term: "متصل مباشر",
+        badge: "حالة الاتصال",
+        badgeClass: "bg-emerald-50 text-[#1b7a43] border border-emerald-200",
+        desc: "تعني أن هاتفك متصل حالياً بخادم البث المباشر، وأي سعر أو تقييم أو ملاحظة تُنشر ستصلك وتصل للمتصلين فوراً."
+      },
+      {
+        term: "غير متصل (يعمل محلياً)",
+        badge: "وضع التوفير",
+        badgeClass: "bg-rose-50 text-rose-700 border border-rose-200",
+        desc: "تعني أن الاتصال بالخادم منقطع مؤقتاً، لكن التطبيق يواصل العمل ويعرض الأسعار والمتاجر المحفوظة في ذاكرة متصفحك."
+      },
+      {
+        term: "متصل: 1 / 2 ...",
+        badge: "عداد الحضور",
+        badgeClass: "bg-slate-100 text-slate-700 border border-slate-200",
+        desc: "يوضح عدد المتصفحات أو الأجهزة المتصلة بالرادار في نفس اللحظة."
+      },
+      {
+        term: "🔥 الأرخص في الحلة",
+        badge: "المتجر المروَّج",
+        badgeClass: "promoted-badge",
+        desc: "شارة ذهبية تظهر تلقائياً للمتجر صاحب أعلى نقاط من تقييمات المستهلكين داخل القرية."
+      },
+      {
+        term: "النقاط (مثال: 12 نقطة)",
+        badge: "نظام التحديات",
+        badgeClass: "points-badge",
+        desc: "مجموع نقاط المتجر بناءً على تقييمات المشترين: تقييم (رخيص) يضيف +3 نقاط، و(معقول) يضيف +1 نقطة، و(غالي) يخصم -2 نقطة بحد أدنى 0."
+      },
+      {
+        term: "🟢 رخيص / 🟡 معقول / 🔴 غالي",
+        badge: "التقييمات",
+        badgeClass: "bg-emerald-50 text-slate-800 border border-emerald-200",
+        desc: "أزرار تقييم سريعة داخل صفحة كل متجر لمساعدة أهل القرية على معرفة المتاجر ذات الأسعار المناسبة."
+      },
+      {
+        term: "الأرخص (بجانب السعر)",
+        badge: "مقارنة الأسعار",
+        badgeClass: "bg-[#1b7a43] text-white",
+        desc: "تظهر تلقائياً بجانب أقل سعر مسجل لنفس السلعة داخل نفس القرية عند وجود أكثر من سعر للمقارنة."
+      },
+      {
+        term: "طلب قيد المراجعة",
+        badge: "الإدارة",
+        badgeClass: "bg-amber-50 text-amber-800 border border-amber-200",
+        desc: "عند إضافة قرية جديدة أو متجر جديد، يُرسل الطلب لإدارة الموقع للموافقة عليه قبل ظهوره للجميع منعاً للتكرار."
+      },
+      {
+        term: "معرفك (u_...)",
+        badge: "حسابي",
+        badgeClass: "bg-slate-100 text-slate-700 border border-slate-200",
+        desc: "رمز تعريفي تلقائي يُحفظ في متصفحك لتمييز تقييماتك وطلباتك دون الحاجة لإنشاء حساب أو كلمة مرور."
+      },
+      {
+        term: "تصدير / استيراد JSON",
+        badge: "نسخ احتياطي",
+        badgeClass: "bg-slate-100 text-slate-700 border border-slate-200",
+        desc: "أداة لحفظ نسخة من بيانات القرى والمتاجر والأسعار على هاتفك كملف، أو استعادتها لاحقاً في أي وقت."
+      }
+    ];
+
+    function norm(s) {
+      return String(s || "")
+        .toLowerCase()
+        .replace(/[\u064B-\u065F\u0670]/g, "")
+        .replace(/[إأآا]/g, "ا")
+        .replace(/ى/g, "ي")
+        .replace(/ة/g, "ه")
+        .trim();
+    }
+
+    function esc(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function filterWords() {
+      const q = norm(document.getElementById("wordSearch").value);
+      const filtered = WORDS.filter(item =>
+        !q || norm(item.term).includes(q) || norm(item.desc).includes(q) || norm(item.badge).includes(q)
+      );
+
+      document.getElementById("wordsCount").textContent = "عدد المصطلحات: " + filtered.length;
+      const listEl = document.getElementById("wordsList");
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-6 text-center text-xs text-slate-400">لا توجد نتائج مطابقة لبحثك</div>';
+        return;
+      }
+
+      listEl.innerHTML = filtered.map(item => `
+        <article class="bg-white rounded-2xl border border-emerald-700/20 p-4 shadow-sm space-y-1.5">
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="text-sm font-extrabold text-slate-900">${esc(item.term)}</h2>
+            <span class="${item.badgeClass} text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shrink-0">${esc(item.badge)}</span>
+          </div>
+          <p class="text-xs text-slate-600 leading-relaxed">${esc(item.desc)}</p>
+        </article>
+      `).join("");
+    }
+
+    filterWords();
+  </script>
+</body>
+</html>
