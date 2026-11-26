@@ -4,7 +4,9 @@ const http = require('http');
 const PORT = process.env.PORT || 10000;
 const OWNER_ID = process.env.OWNER_ID || "";
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const MISTRAL_DEFAULT_MODEL = process.env.MISTRAL_MODEL || "mistral-small-latest";
+const OPENROUTER_DEFAULT_MODEL = process.env.OPENROUTER_MODEL || "mistralai/mistral-small-latest";
 
 function logError(stage, detail) {
   console.error(`[MISTRAL-TRACKER][${new Date().toISOString()}][${stage}]`, detail);
@@ -14,20 +16,7 @@ function logInfo(stage, detail) {
   console.log(`[MISTRAL-TRACKER][${new Date().toISOString()}][${stage}]`, detail);
 }
 
-async function askMistral({ system, messages, model }) {
-  const usedModel = model || MISTRAL_DEFAULT_MODEL;
-
-  if (!MISTRAL_API_KEY) {
-    const errDetail = "MISTRAL_API_KEY غير موجود في متغيرات البيئة على Render";
-    logError("CONFIG", errDetail);
-    return {
-      ok: false,
-      statusCode: 500,
-      error: errDetail,
-      debug: { stage: "CONFIG", hasKey: false, model: usedModel }
-    };
-  }
-
+function buildFormattedMessages(system, messages) {
   const formattedMessages = [];
   if (system && typeof system === 'string') {
     formattedMessages.push({ role: 'system', content: system.slice(0, 3000) });
@@ -43,71 +32,77 @@ async function askMistral({ system, messages, model }) {
       }
     }
   }
+  return formattedMessages;
+}
 
-  if (formattedMessages.length === 0) {
+async function callProvider({ providerName, url, apiKey, model, formattedMessages, extraHeaders = {} }) {
+  if (!apiKey) {
     return {
       ok: false,
-      statusCode: 400,
-      error: "لا توجد رسالة صالحة للإرسال",
-      debug: { stage: "VALIDATION", model: usedModel }
+      statusCode: 500,
+      error: `المفتاح غير مضبوط لـ ${providerName}`,
+      debug: { stage: "CONFIG", provider: providerName, hasKey: false, model }
     };
   }
 
   const payload = JSON.stringify({
-    model: usedModel,
+    model,
     messages: formattedMessages,
     temperature: 0.3,
-    max_tokens: 220
+    max_tokens: 240
   });
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    logInfo("REQUEST", `المحاولة ${attempt} إلى Mistral بالموديل ${usedModel}، طول الرسائل: ${formattedMessages.length}`);
+  const maxAttempts = providerName === "MISTRAL" ? 2 : 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    logInfo("REQUEST", `[${providerName}] المحاولة ${attempt} بالموديل ${model}`);
 
     let response;
     let rawText = "";
     try {
-      response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${MISTRAL_API_KEY}`
+          'Authorization': `Bearer ${apiKey}`,
+          ...extraHeaders
         },
         body: payload
       });
       rawText = await response.text();
     } catch (netErr) {
-      logError("NETWORK", `فشل الاتصال بـ Mistral في المحاولة ${attempt}: ${netErr.message}`);
+      logError("NETWORK", `[${providerName}] فشل الشبكة: ${netErr.message}`);
       return {
         ok: false,
         statusCode: 502,
-        error: `فشل الشبكة أثناء الاتصال بـ Mistral: ${netErr.message}`,
-        debug: { stage: "NETWORK", attempt, model: usedModel }
+        error: `فشل الشبكة مع ${providerName}: ${netErr.message}`,
+        debug: { stage: "NETWORK", provider: providerName, attempt, model }
       };
     }
 
     let parsed = {};
     try {
       parsed = rawText ? JSON.parse(rawText) : {};
-    } catch (jsonErr) {
-      logError("PARSE_RESPONSE", `رد Mistral ليس JSON صالحاً (HTTP ${response.status}): ${rawText.slice(0, 300)}`);
+    } catch (e) {
+      logError("PARSE_RESPONSE", `[${providerName}] رد غير JSON (HTTP ${response.status}): ${rawText.slice(0, 250)}`);
     }
 
     const retryAfterHeader = response.headers.get("retry-after") || null;
 
     if (!response.ok) {
-      const mistralMsg = parsed?.message || parsed?.error?.message || rawText.slice(0, 250) || `HTTP ${response.status}`;
-      const mistralType = parsed?.type || parsed?.code || null;
+      const msg = parsed?.message || parsed?.error?.message || rawText.slice(0, 250) || `HTTP ${response.status}`;
+      const type = parsed?.type || parsed?.code || null;
 
       logError(
-        "MISTRAL_API_ERROR",
-        `المحاولة ${attempt} | HTTP ${response.status} | type=${mistralType} | retry-after=${retryAfterHeader} | msg=${mistralMsg}`
+        "API_ERROR",
+        `[${providerName}] المحاولة ${attempt} | HTTP ${response.status} | type=${type} | retry-after=${retryAfterHeader} | msg=${msg}`
       );
 
-      if (response.status === 429 && attempt === 1) {
+      if (response.status === 429 && attempt < maxAttempts) {
         const waitMs = retryAfterHeader && !isNaN(Number(retryAfterHeader))
-          ? Math.min(Number(retryAfterHeader) * 1000, 4000)
+          ? Math.min(Number(retryAfterHeader) * 1000, 3000)
           : 1500;
-        logInfo("RETRY_429", `انتظار ${waitMs}ms ثم إعادة المحاولة...`);
+        logInfo("RETRY_429", `[${providerName}] انتظار ${waitMs}ms ثم إعادة المحاولة...`);
         await new Promise((r) => setTimeout(r, waitMs));
         continue;
       }
@@ -115,29 +110,88 @@ async function askMistral({ system, messages, model }) {
       return {
         ok: false,
         statusCode: response.status,
-        error: `${mistralMsg} [HTTP ${response.status}${retryAfterHeader ? ` | Retry-After: ${retryAfterHeader}s` : ""}]`,
+        error: `${msg} [HTTP ${response.status} - ${providerName}]`,
         debug: {
-          stage: "MISTRAL_API",
+          stage: "API_ERROR",
+          provider: providerName,
           attempt,
           httpStatus: response.status,
-          mistralType,
+          type,
           retryAfter: retryAfterHeader,
-          model: usedModel
+          model
         }
       };
     }
 
     const reply = parsed?.choices?.[0]?.message?.content?.trim() || "";
     const tokens = Number(parsed?.usage?.total_tokens) || 0;
-    logInfo("SUCCESS", `نجح الرد في المحاولة ${attempt}، التوكنات: ${tokens}`);
+    logInfo("SUCCESS", `[${providerName}] نجح الرد في المحاولة ${attempt}، التوكنات: ${tokens}`);
 
     return {
       ok: true,
       reply,
       tokens,
-      debug: { stage: "SUCCESS", attempt, httpStatus: response.status, model: usedModel }
+      debug: { stage: "SUCCESS", provider: providerName, attempt, httpStatus: response.status, model }
     };
   }
+}
+
+async function askMistral({ system, messages, model }) {
+  const formattedMessages = buildFormattedMessages(system, messages);
+  if (formattedMessages.length === 0) {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: "لا توجد رسالة صالحة للإرسال",
+      debug: { stage: "VALIDATION" }
+    };
+  }
+
+  // 1) المحاولة الأساسية عبر Mistral المباشر
+  const mistralResult = await callProvider({
+    providerName: "MISTRAL",
+    url: "https://api.mistral.ai/v1/chat/completions",
+    apiKey: MISTRAL_API_KEY,
+    model: model || MISTRAL_DEFAULT_MODEL,
+    formattedMessages
+  });
+
+  if (mistralResult.ok) {
+    return mistralResult;
+  }
+
+  // 2) إذا تعذر Mistral (مثلاً 429 rate limit أو خطأ مفتاح) وتوفر OPENROUTER_API_KEY، نجرب OpenRouter
+  if (OPENROUTER_API_KEY) {
+    logInfo("FALLBACK_OPENROUTER", `تعذر Mistral (${mistralResult.error}) -> تجربة OPENROUTER_API_KEY...`);
+    const openRouterResult = await callProvider({
+      providerName: "OPENROUTER",
+      url: "https://openrouter.ai/api/v1/chat/completions",
+      apiKey: OPENROUTER_API_KEY,
+      model: OPENROUTER_DEFAULT_MODEL,
+      formattedMessages,
+      extraHeaders: {
+        "HTTP-Referer": "https://mb4252.github.io/sudan-market-/",
+        "X-Title": "Radar Asaar Al-Hay"
+      }
+    });
+
+    if (openRouterResult.ok) {
+      return openRouterResult;
+    }
+
+    return {
+      ok: false,
+      statusCode: openRouterResult.statusCode || mistralResult.statusCode || 429,
+      error: `تعذر Mistral (${mistralResult.error}) وتعذر OpenRouter (${openRouterResult.error})`,
+      debug: {
+        stage: "BOTH_FAILED",
+        mistralDebug: mistralResult.debug,
+        openRouterDebug: openRouterResult.debug
+      }
+    };
+  }
+
+  return mistralResult;
 }
 
 function readJsonBody(req) {
@@ -173,7 +227,6 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  // نقطة فحص مباشرة لتتبع حالة Mistral والمفتاح والموديل
   if (urlPath === '/api/mistral-debug' && req.method === 'GET') {
     const testResult = await askMistral({
       system: "أجب بكلمة واحدة: جاهز",
@@ -183,9 +236,10 @@ const server = http.createServer(async (req, res) => {
 
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     return res.end(JSON.stringify({
-      hasKey: Boolean(MISTRAL_API_KEY),
-      keyPrefix: MISTRAL_API_KEY ? MISTRAL_API_KEY.slice(0, 6) + "..." : null,
-      model: MISTRAL_DEFAULT_MODEL,
+      hasMistralKey: Boolean(MISTRAL_API_KEY),
+      hasOpenRouterKey: Boolean(OPENROUTER_API_KEY),
+      mistralModel: MISTRAL_DEFAULT_MODEL,
+      openRouterModel: OPENROUTER_DEFAULT_MODEL,
       testResult
     }, null, 2));
   }
