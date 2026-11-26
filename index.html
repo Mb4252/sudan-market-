@@ -289,6 +289,10 @@
         <span>رصيد توكن الدردشة (Mistral):</span>
         <span id="profileTokenUsage" class="font-extrabold"></span>
       </div>
+      <button onclick="confirmOneTimePushPrompt()" class="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-extrabold py-2 rounded-xl flex items-center justify-between px-3">
+        <span>🔔 إشعارات العروض والأسعار خارج الموقع</span>
+        <span id="profilePushStatus" class="text-[10px]">تفعيل</span>
+      </button>
       <button onclick="saveProfile()" class="w-full bg-[#1b7a43] hover:bg-[#156235] text-white font-bold text-sm py-2.5 rounded-xl">حفظ</button>
       <div class="grid grid-cols-2 gap-2 pt-2 border-t">
         <button onclick="exportData()" class="bg-slate-100 text-xs font-bold py-2 rounded-xl">تصدير JSON</button>
@@ -311,6 +315,27 @@
       <button onclick="closeModal('modalAddMenu'); openAddShop()" class="w-full bg-slate-50 hover:bg-emerald-50 text-right px-3 py-3 rounded-xl text-sm font-bold">🏪 متجر جديد</button>
       <button onclick="closeModal('modalAddMenu'); openAddPrice()" class="w-full bg-slate-50 hover:bg-emerald-50 text-right px-3 py-3 rounded-xl text-sm font-bold">💰 سعر جديد</button>
       <button onclick="closeModal('modalAddMenu')" class="w-full text-slate-500 text-xs font-bold py-2">إلغاء</button>
+    </div>
+  </div>
+
+  <!-- نافذة تفعيل الإشعارات خارج الموقع (تظهر مرة واحدة فقط) -->
+  <div id="modalPushPrompt" class="modal-backdrop">
+    <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl text-center space-y-3 slide-in">
+      <div class="w-12 h-12 mx-auto rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-2xl">
+        🔔
+      </div>
+      <h2 class="font-extrabold text-base text-slate-900">تفعيل إشعارات رادار أسعار الحي</h2>
+      <p class="text-xs text-slate-600 leading-relaxed">
+        احصل على تنبيه فوري عند إضافة منطقة جديدة أو متجر/عرض جديد أو سعر جديد حتى وأنت خارج الموقع.
+      </p>
+      <div class="flex gap-2 pt-1">
+        <button onclick="confirmOneTimePushPrompt()" class="flex-1 bg-[#1b7a43] hover:bg-[#156235] text-white font-extrabold text-xs py-2.5 rounded-xl">
+          موافق
+        </button>
+        <button onclick="dismissOneTimePushPrompt()" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs">
+          لاحقاً
+        </button>
+      </div>
     </div>
   </div>
 
@@ -346,18 +371,22 @@
     const WS_URL = "wss://sudan-market-2.onrender.com/ws";
     // نقطة نهاية على خادم Render تقرأ MISTRAL_API_KEY من متغيرات البيئة وتستدعي Mistral API
     const MISTRAL_PROXY_URL = "https://sudan-market-2.onrender.com/api/mistral-chat";
+    const PUSH_SERVER_BASE = "https://sudan-market-2.onrender.com";
     const MAX_USER_TOKENS = 4000; // حد التوكن لكل مستخدم داخل المتصفح
+    const TOKEN_REFILL_MS = 24 * 60 * 60 * 1000; // تجديد التوكن تلقائياً كل 24 ساعة
 
     let isOwner = false;
     const UID_KEY = "radar_uid_v10";
     const NAME_KEY = "radar_name_v10";
     const DATA_KEY = "radar_data_v10";
     const VIEW_STATE_KEY = "radar_view_state_v10";
+    const PUSH_PROMPT_DONE_KEY = "radar_push_prompt_done_v1";
     const MAX_LOCAL_ITEMS = 500;
 
     const myUserId = getOrCreateUid();
     const CHAT_KEY = "radar_mistral_chat_v1_" + myUserId;
     const TOKENS_KEY = "radar_mistral_tokens_v1_" + myUserId;
+    const TOKEN_RESET_TS_KEY = "radar_mistral_token_reset_v1_" + myUserId;
 
     let state = loadData();
     let chatHistory = loadChatHistory();
@@ -394,7 +423,7 @@
     }
     function esc(s) {
       return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     }
     function uid() { return "id_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7); }
     function timeAgo(ts) {
@@ -1384,15 +1413,21 @@
        الملف الشخصي
     ============================================================ */
     function openProfile() {
+      checkAndRefillTokensIfDue();
       document.getElementById("profileName").value = localStorage.getItem(NAME_KEY) || "";
       document.getElementById("profileId").textContent = myUserId;
       document.getElementById("profileTokenUsage").textContent = `${usedTokens} / ${MAX_USER_TOKENS} توكن`;
+      updateProfilePushStatus();
       openModal("modalProfile");
     }
     function saveProfile() {
+      const isFirstRegistration = !localStorage.getItem(NAME_KEY);
       const name = document.getElementById("profileName").value.trim();
       if (name) localStorage.setItem(NAME_KEY, name); else localStorage.removeItem(NAME_KEY);
       closeModal("modalProfile"); showToast("تم الحفظ ✓");
+      if (isFirstRegistration && name) {
+        onUserFirstRegistrationSuccess();
+      }
     }
     function exportData() {
       const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
@@ -1426,8 +1461,127 @@
     }
 
     /* ============================================================
+       إشعارات Push خارج الموقع (تُعرض مرة واحدة فقط)
+    ============================================================ */
+    function urlBase64ToUint8Array(base64String) {
+      const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+      const rawData = atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
+    }
+
+    function updateProfilePushStatus() {
+      const el = document.getElementById("profilePushStatus");
+      if (!el || !("Notification" in window)) return;
+      if (Notification.permission === "granted") el.textContent = "مفعّلة ✓";
+      else if (Notification.permission === "denied") el.textContent = "محظورة";
+      else el.textContent = "تفعيل";
+    }
+
+    async function subscribeBrowserToPush(silent = false) {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+        if (!silent) showToast("متصفحك لا يدعم إشعارات الخلفية");
+        return false;
+      }
+
+      try {
+        const reg = await navigator.serviceWorker.register("./sw.js");
+        await navigator.serviceWorker.ready;
+
+        const keyRes = await fetch(`${PUSH_SERVER_BASE}/api/push-vapid-key`);
+        const keyData = await keyRes.json();
+
+        if (!keyData.enabled || !keyData.publicKey) {
+          if (!silent) showToast("إشعارات الخادم غير مفعلة بعد");
+          return false;
+        }
+
+        let subscription = await reg.pushManager.getSubscription();
+        if (!subscription) {
+          subscription = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(keyData.publicKey)
+          });
+        }
+
+        await fetch(`${PUSH_SERVER_BASE}/api/push-subscribe`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: myUserId, subscription })
+        });
+
+        updateProfilePushStatus();
+        if (!silent) showToast("🔔 تم تفعيل الإشعارات خارج الموقع بنجاح");
+        return true;
+      } catch (err) {
+        if (!silent) showToast("تعذر تفعيل الإشعارات: " + err.message);
+        return false;
+      }
+    }
+
+    function maybeShowOneTimePushPrompt() {
+      if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+        return;
+      }
+
+      // إذا وافق مسبقاً، نحدّث اشتراكه بصمت دون إظهار النافذة
+      if (Notification.permission === "granted") {
+        localStorage.setItem(PUSH_PROMPT_DONE_KEY, "1");
+        subscribeBrowserToPush(true);
+        return;
+      }
+
+      // إذا عُرضت له النافذة من قبل أو رفض الإذن، لا نكررها
+      if (localStorage.getItem(PUSH_PROMPT_DONE_KEY) === "1" || Notification.permission === "denied") {
+        return;
+      }
+
+      openModal("modalPushPrompt");
+    }
+
+    async function confirmOneTimePushPrompt() {
+      localStorage.setItem(PUSH_PROMPT_DONE_KEY, "1");
+      closeModal("modalPushPrompt");
+
+      const permission = await Notification.requestPermission();
+      updateProfilePushStatus();
+      if (permission === "granted") {
+        await subscribeBrowserToPush(false);
+      } else {
+        showToast("لم يتم تفعيل الإشعارات");
+      }
+    }
+
+    function dismissOneTimePushPrompt() {
+      localStorage.setItem(PUSH_PROMPT_DONE_KEY, "1");
+      closeModal("modalPushPrompt");
+    }
+
+    function onUserFirstRegistrationSuccess() {
+      maybeShowOneTimePushPrompt();
+    }
+
+    /* ============================================================
        دردشة الذكاء الاصطناعي (Mistral) - خاصة بكل مستخدم ومقيدة بالمنصة
     ============================================================ */
+    function checkAndRefillTokensIfDue() {
+      const now = Date.now();
+      const lastReset = Number(localStorage.getItem(TOKEN_RESET_TS_KEY) || 0);
+      if (!lastReset) {
+        localStorage.setItem(TOKEN_RESET_TS_KEY, String(now));
+        return;
+      }
+      if (now - lastReset >= TOKEN_REFILL_MS) {
+        usedTokens = 0;
+        localStorage.setItem(TOKENS_KEY, "0");
+        localStorage.setItem(TOKEN_RESET_TS_KEY, String(now));
+        showToast("🔄 تم تجديد رصيد توكن الدردشة تلقائياً (24 ساعة)");
+      }
+    }
     function loadChatHistory() {
       try {
         const raw = localStorage.getItem(CHAT_KEY);
@@ -1438,42 +1592,46 @@
       try { localStorage.setItem(CHAT_KEY, JSON.stringify(chatHistory.slice(-40))); } catch (e) {}
     }
     function loadUsedTokens() {
-      try { return Math.max(0, Number(localStorage.getItem(TOKENS_KEY) || 0)); } catch (e) { return 0; }
+      try {
+        checkAndRefillTokensIfDue();
+        return Math.max(0, Number(localStorage.getItem(TOKENS_KEY) || 0));
+      } catch (e) { return 0; }
     }
     function saveUsedTokens() {
-      try { localStorage.setItem(TOKENS_KEY, String(usedTokens)); } catch (e) {}
+      try {
+        if (!localStorage.getItem(TOKEN_RESET_TS_KEY)) {
+          localStorage.setItem(TOKEN_RESET_TS_KEY, String(Date.now()));
+        }
+        localStorage.setItem(TOKENS_KEY, String(usedTokens));
+      } catch (e) {}
     }
     function estimateTokens(text) {
       return Math.max(1, Math.ceil(String(text || "").length / 3));
     }
 
     function buildPlatformSystemContext() {
-      const villagesSummary = Object.values(state.villages).map(v => {
-        const shops = Object.values(state.shops).filter(s => s.villageId === v.id);
+      const villagesSummary = Object.values(state.villages).slice(0, 8).map(v => {
+        const shops = Object.values(state.shops).filter(s => s.villageId === v.id).slice(0, 6);
         const shopLines = shops.map(s => {
           const pts = getShopPoints(s.id);
           const r = getShopRating(s.id);
           const sPrices = Object.values(state.prices)
             .filter(p => p.shopId === s.id)
             .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-            .slice(0, 8)
-            .map(p => `${p.name}: ${p.price} ج.س (${p.unit}) بتاريخ ${formatFullDate(p.createdAt)}`);
-          return `- متجر "${s.name}" (المالك: ${s.owner || "غير معروف"}، النقاط: ${pts}، التقييم: ${r.avg.toFixed(1)}/${r.count}) | الأسعار: [${sPrices.join(" | ")}]`;
-        }).join("\n");
-        return `قرية: ${v.name} (${v.state || "ولاية غير محددة"})\n${shopLines || "لا توجد متاجر"}`;
-      }).join("\n\n");
+            .slice(0, 4)
+            .map(p => `${p.name}:${p.price}(${new Date(p.createdAt || 0).toLocaleDateString("ar-EG")})`);
+          return `${s.name}[مالك:${s.owner || "؟"},نقاط:${pts},تقييم:${r.avg.toFixed(1)}${sPrices.length ? ",أسعار:" + sPrices.join(",") : ""}]`;
+        }).join(" | ");
+        return `${v.name}(${v.state || "؟"}): ${shopLines || "بلا متاجر"}`;
+      }).join("\n");
 
-      return `أنت المساعد الذكي لمنصة "رادار أسعار الحي" (الموديل: Mistral).
-قواعد صارمة:
-1. أجب فقط عن المواضيع المتعلقة بمنصة "رادار أسعار الحي": القرى، المتاجر وأصحابها، الأسعار وتواريخ نشرها (الجديد والقديم)، التقييمات والنقاط، ولوحة التحديات.
-2. إذا سأل المستخدم عن أي موضوع خارج المنصة (مثل البرمجة، الأخبار العامة، الطب، الرياضة، إلخ)، اعتذر بلطف واطلب منه السؤال عن القرى أو المتاجر أو الأسعار في المنصة فقط.
-3. اعتمد فقط على البيانات الحالية للمنصة أدناه، واذكر تواريخ نشر الأسعار عند المقارنة بين الأسعار الجديدة والقديمة.
-
-بيانات المنصة الحالية:
-${villagesSummary || "لا توجد بيانات مسجلة حالياً."}`;
+      return `أنت مساعد منصة "رادار أسعار الحي". أجب فقط عن القرى والمتاجر وملاكها والأسعار وتواريخها والتقييمات والتحديات في المنصة. لأي موضوع خارجها اعتذر باختصار.
+البيانات:
+${villagesSummary || "لا توجد بيانات."}`;
     }
 
     function updateAITokenUI() {
+      checkAndRefillTokensIfDue();
       const remaining = Math.max(0, MAX_USER_TOKENS - usedTokens);
       document.getElementById("aiTokenStatus").textContent =
         `Mistral • متبقي: ${remaining} / ${MAX_USER_TOKENS} توكن`;
@@ -1486,7 +1644,7 @@ ${villagesSummary || "لا توجد بيانات مسجلة حالياً."}`;
         box.innerHTML = `<div class="bg-white border border-indigo-100 rounded-xl p-3 text-slate-700 leading-relaxed">
           مرحباً بك في مساعد <b>رادار أسعار الحي</b> 🤖<br/>
           يمكنك سؤالي عن أسعار السلع وتواريخ نشرها، المتاجر وأصحابها، أو ترتيب التحديات في القرى.<br/>
-          <span class="text-[10px] text-indigo-600 font-bold">ملاحظة: دردشتك محفوظة في متصفحك فقط ولك حد ${MAX_USER_TOKENS} توكن.</span>
+          <span class="text-[10px] text-indigo-600 font-bold">ملاحظة: دردشتك محفوظة في متصفحك فقط ولك حد ${MAX_USER_TOKENS} توكن يتجدد كل 24 ساعة.</span>
         </div>`;
         return;
       }
@@ -1503,6 +1661,7 @@ ${villagesSummary || "لا توجد بيانات مسجلة حالياً."}`;
     }
 
     function openAIChat() {
+      checkAndRefillTokensIfDue();
       renderAIChat();
       openModal("modalAIChat");
       setTimeout(() => document.getElementById("aiChatInput").focus(), 100);
@@ -1518,7 +1677,7 @@ ${villagesSummary || "لا توجد بيانات مسجلة حالياً."}`;
 
     async function callMistralBackend(userText) {
       const systemPrompt = buildPlatformSystemContext();
-      const recentMessages = chatHistory.slice(-10).map(m => ({ role: m.role, content: m.content }));
+      const recentMessages = chatHistory.slice(-2).map(m => ({ role: m.role, content: m.content }));
 
       // 1) محاولة الاتصال بنقطة نهاية HTTP على Render (التي تقرأ MISTRAL_API_KEY من متغيرات البيئة)
       try {
@@ -1532,11 +1691,12 @@ ${villagesSummary || "لا توجد بيانات مسجلة حالياً."}`;
             messages: recentMessages
           })
         });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.reply) {
-            return { reply: data.reply, tokens: Number(data.tokens) || 0 };
-          }
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && data.reply) {
+          return { reply: data.reply, tokens: Number(data.tokens) || 0, quota: data.quota || null };
+        }
+        if (data && data.error) {
+          return { reply: `⚠️ ${data.error}`, tokens: 0, quota: data.quota || null };
         }
       } catch (e) {}
 
@@ -1550,7 +1710,11 @@ ${villagesSummary || "لا توجد بيانات مسجلة حالياً."}`;
 
           pendingWSChatResolver = (msg) => {
             clearTimeout(timer);
-            resolve({ reply: msg.reply || "", tokens: Number(msg.tokens) || 0 });
+            resolve({
+              reply: msg.reply || "",
+              tokens: Number(msg.tokens) || 0,
+              quota: msg.quota || null
+            });
           };
 
           sendWS({
@@ -1569,6 +1733,7 @@ ${villagesSummary || "لا توجد بيانات مسجلة حالياً."}`;
     async function sendAIChatMessage(e) {
       e.preventDefault();
       if (isAILoading) return;
+      checkAndRefillTokensIfDue();
 
       const input = document.getElementById("aiChatInput");
       const text = input.value.trim();
@@ -1576,7 +1741,7 @@ ${villagesSummary || "لا توجد بيانات مسجلة حالياً."}`;
 
       const userTokens = estimateTokens(text);
       if (usedTokens + userTokens > MAX_USER_TOKENS) {
-        showToast("لقد وصلت إلى الحد المسموح من التوكن لهذا المتصفح");
+        showToast("لقد وصلت إلى الحد المسموح من التوكن (يتجدد تلقائياً بعد 24 ساعة)");
         return;
       }
 
@@ -1609,13 +1774,17 @@ ${villagesSummary || "لا توجد بيانات مسجلة حالياً."}`;
         replyTokens = estimateTokens(replyText);
       }
 
-      if (usedTokens + replyTokens > MAX_USER_TOKENS) {
-        const allowed = Math.max(0, MAX_USER_TOKENS - usedTokens);
-        replyText = replyText.slice(0, Math.max(20, allowed * 3)) + "\n...(تم الاقتطاع لبلوغ حد التوكن)";
-        replyTokens = allowed;
+      if (result && result.quota && typeof result.quota.usedTokens === "number") {
+        usedTokens = Math.min(MAX_USER_TOKENS, Number(result.quota.usedTokens));
+      } else {
+        if (usedTokens + replyTokens > MAX_USER_TOKENS) {
+          const allowed = Math.max(0, MAX_USER_TOKENS - usedTokens);
+          replyText = replyText.slice(0, Math.max(20, allowed * 3)) + "\n...(تم الاقتطاع لبلوغ حد التوكن)";
+          replyTokens = allowed;
+        }
+        usedTokens += replyTokens;
       }
 
-      usedTokens += replyTokens;
       saveUsedTokens();
       chatHistory.push({ role: "assistant", content: replyText, tokens: replyTokens, ts: Date.now() });
       saveChatHistory();
@@ -1635,6 +1804,11 @@ ${villagesSummary || "لا توجد بيانات مسجلة حالياً."}`;
         connectWS();
         window.addEventListener("online", () => { connectWS(); requestSync(); });
         setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) requestSync(); }, 5 * 60 * 1000);
+
+        // عرض طلب تفعيل الإشعارات مرة واحدة فقط للمستخدم الموجود عند فتح الموقع
+        if (myUserId) {
+          setTimeout(maybeShowOneTimePushPrompt, 1800);
+        }
       } catch (err) {
         console.error(err);
         setWSStatus("disconnected");
