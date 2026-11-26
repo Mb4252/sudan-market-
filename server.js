@@ -16,14 +16,14 @@ async function askMistral({ system, messages, model }) {
 
   const formattedMessages = [];
   if (system && typeof system === 'string') {
-    formattedMessages.push({ role: 'system', content: system });
+    formattedMessages.push({ role: 'system', content: system.slice(0, 3500) });
   }
 
   if (Array.isArray(messages)) {
-    for (const m of messages) {
+    for (const m of messages.slice(-6)) {
       if (!m || typeof m.content !== 'string') continue;
       const role = m.role === 'assistant' ? 'assistant' : 'user';
-      const content = m.content.trim().slice(0, 1500);
+      const content = m.content.trim().slice(0, 800);
       if (content) {
         formattedMessages.push({ role, content });
       }
@@ -34,31 +34,41 @@ async function askMistral({ system, messages, model }) {
     return { ok: false, error: "لا توجد رسالة صالحة للإرسال" };
   }
 
-  const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${MISTRAL_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: model || MISTRAL_DEFAULT_MODEL,
-      messages: formattedMessages,
-      temperature: 0.3,
-      max_tokens: 450
-    })
+  const payload = JSON.stringify({
+    model: model || MISTRAL_DEFAULT_MODEL,
+    messages: formattedMessages,
+    temperature: 0.3,
+    max_tokens: 300
   });
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    return {
-      ok: false,
-      error: data?.message || `خطأ من Mistral (${response.status})`
-    };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${MISTRAL_API_KEY}`
+      },
+      body: payload
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (response.status === 429 && attempt === 0) {
+      await new Promise((r) => setTimeout(r, 1500));
+      continue;
+    }
+
+    if (!response.ok) {
+      const msg = data?.message || `خطأ من Mistral (${response.status})`;
+      return { ok: false, error: msg };
+    }
+
+    const reply = data?.choices?.[0]?.message?.content?.trim() || "";
+    const tokens = Number(data?.usage?.total_tokens) || 0;
+    return { ok: true, reply, tokens };
   }
 
-  const reply = data?.choices?.[0]?.message?.content?.trim() || "";
-  const tokens = Number(data?.usage?.total_tokens) || 0;
-  return { ok: true, reply, tokens };
+  return { ok: false, error: "تم تجاوز حد الطلبات مؤقتاً، انتظر بضع ثوانٍ ثم أعد المحاولة." };
 }
 
 function readJsonBody(req) {
@@ -171,7 +181,6 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // معالجة دردشة Mistral الخاصة بالمستخدم دون بثها للعامة
     if (message.type === 'MISTRAL_CHAT') {
       const result = await askMistral({
         system: message.system,
