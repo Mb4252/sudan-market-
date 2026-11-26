@@ -8,6 +8,50 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const MISTRAL_DEFAULT_MODEL = process.env.MISTRAL_MODEL || "mistral-small-latest";
 const OPENROUTER_DEFAULT_MODEL = process.env.OPENROUTER_MODEL || "openrouter/auto";
 
+const USER_DAILY_TOKEN_LIMIT = Number(process.env.USER_DAILY_TOKEN_LIMIT || 4000);
+const REFILL_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 ساعة
+
+// تخزين استهلاك التوكن لكل مستخدم مع وقت بداية فترة الـ 24 ساعة
+const userTokenQuotas = new Map();
+
+function getUserQuota(userId) {
+  const safeId = String(userId || 'anonymous').trim() || 'anonymous';
+  const now = Date.now();
+  let entry = userTokenQuotas.get(safeId);
+
+  if (!entry) {
+    entry = { usedTokens: 0, periodStart: now, refilled: false };
+    userTokenQuotas.set(safeId, entry);
+    return entry;
+  }
+
+  if (now - entry.periodStart >= REFILL_WINDOW_MS) {
+    entry.usedTokens = 0;
+    entry.periodStart = now;
+    entry.refilled = true;
+    userTokenQuotas.set(safeId, entry);
+  } else {
+    entry.refilled = false;
+  }
+
+  return entry;
+}
+
+function addUserTokenUsage(userId, tokensSpent) {
+  const entry = getUserQuota(userId);
+  const spent = Math.max(0, Number(tokensSpent) || 0);
+  entry.usedTokens += spent;
+  const remaining = Math.max(0, USER_DAILY_TOKEN_LIMIT - entry.usedTokens);
+  const resetAt = entry.periodStart + REFILL_WINDOW_MS;
+  return {
+    usedTokens: entry.usedTokens,
+    remainingTokens: remaining,
+    limit: USER_DAILY_TOKEN_LIMIT,
+    resetAt,
+    refilled: entry.refilled
+  };
+}
+
 function logError(stage, detail) {
   console.error(`[MISTRAL-TRACKER][${new Date().toISOString()}][${stage}]`, detail);
 }
@@ -136,7 +180,26 @@ async function callProvider({ providerName, url, apiKey, model, formattedMessage
   }
 }
 
-async function askMistral({ system, messages, model }) {
+async function askMistral({ system, messages, model, userId }) {
+  const quota = getUserQuota(userId);
+  if (quota.usedTokens >= USER_DAILY_TOKEN_LIMIT) {
+    const remainingMs = Math.max(0, (quota.periodStart + REFILL_WINDOW_MS) - Date.now());
+    const remainingHours = Math.ceil(remainingMs / (60 * 60 * 1000));
+    return {
+      ok: false,
+      statusCode: 429,
+      error: `انتهى حد التوكن لليوم (${USER_DAILY_TOKEN_LIMIT} توكن). سيتم إعادة التعبئة تلقائياً بعد حوالي ${remainingHours} ساعة.`,
+      quota: {
+        usedTokens: quota.usedTokens,
+        remainingTokens: 0,
+        limit: USER_DAILY_TOKEN_LIMIT,
+        resetAt: quota.periodStart + REFILL_WINDOW_MS,
+        refilled: quota.refilled
+      },
+      debug: { stage: "QUOTA_EXCEEDED", userId }
+    };
+  }
+
   const formattedMessages = buildFormattedMessages(system, messages);
   if (formattedMessages.length === 0) {
     return {
@@ -155,11 +218,9 @@ async function askMistral({ system, messages, model }) {
     formattedMessages
   });
 
-  if (mistralResult.ok) {
-    return mistralResult;
-  }
+  let finalResult = mistralResult;
 
-  if (OPENROUTER_API_KEY) {
+  if (!mistralResult.ok && OPENROUTER_API_KEY) {
     logInfo("FALLBACK_OPENROUTER", `تعذر Mistral (${mistralResult.error}) -> تجربة OPENROUTER_API_KEY بالموديل ${OPENROUTER_DEFAULT_MODEL}...`);
     const openRouterResult = await callProvider({
       providerName: "OPENROUTER",
@@ -174,22 +235,28 @@ async function askMistral({ system, messages, model }) {
     });
 
     if (openRouterResult.ok) {
-      return openRouterResult;
+      finalResult = openRouterResult;
+    } else {
+      finalResult = {
+        ok: false,
+        statusCode: openRouterResult.statusCode || mistralResult.statusCode || 429,
+        error: `تعذر Mistral (${mistralResult.error}) وتعذر OpenRouter (${openRouterResult.error})`,
+        debug: {
+          stage: "BOTH_FAILED",
+          mistralDebug: mistralResult.debug,
+          openRouterDebug: openRouterResult.debug
+        }
+      };
     }
-
-    return {
-      ok: false,
-      statusCode: openRouterResult.statusCode || mistralResult.statusCode || 429,
-      error: `تعذر Mistral (${mistralResult.error}) وتعذر OpenRouter (${openRouterResult.error})`,
-      debug: {
-        stage: "BOTH_FAILED",
-        mistralDebug: mistralResult.debug,
-        openRouterDebug: openRouterResult.debug
-      }
-    };
   }
 
-  return mistralResult;
+  const spent = finalResult.ok ? (Number(finalResult.tokens) || 25) : 0;
+  const updatedQuota = addUserTokenUsage(userId, spent);
+
+  return {
+    ...finalResult,
+    quota: updatedQuota
+  };
 }
 
 function readJsonBody(req) {
@@ -229,7 +296,8 @@ const server = http.createServer(async (req, res) => {
     const testResult = await askMistral({
       system: "أجب بكلمة واحدة: جاهز",
       messages: [{ role: "user", content: "اختبار" }],
-      model: MISTRAL_DEFAULT_MODEL
+      model: MISTRAL_DEFAULT_MODEL,
+      userId: "debug_user"
     });
 
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -238,6 +306,8 @@ const server = http.createServer(async (req, res) => {
       hasOpenRouterKey: Boolean(OPENROUTER_API_KEY),
       mistralModel: MISTRAL_DEFAULT_MODEL,
       openRouterModel: OPENROUTER_DEFAULT_MODEL,
+      dailyTokenLimit: USER_DAILY_TOKEN_LIMIT,
+      refillWindowHours: 24,
       testResult
     }, null, 2));
   }
@@ -248,7 +318,8 @@ const server = http.createServer(async (req, res) => {
       const result = await askMistral({
         system: body.system,
         messages: body.messages,
-        model: body.model
+        model: body.model,
+        userId: body.userId
       });
 
       if (!result.ok) {
@@ -256,6 +327,7 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({
           error: result.error,
           statusCode: result.statusCode,
+          quota: result.quota || null,
           debug: result.debug
         }));
       }
@@ -264,6 +336,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(JSON.stringify({
         reply: result.reply,
         tokens: result.tokens,
+        quota: result.quota || null,
         debug: result.debug
       }));
     } catch (err) {
@@ -332,7 +405,8 @@ wss.on('connection', (ws) => {
       const result = await askMistral({
         system: message.system,
         messages: message.messages,
-        model: message.model
+        model: message.model,
+        userId: message.userId
       });
       if (ws.readyState === WebSocket.OPEN) {
         try {
@@ -341,6 +415,7 @@ wss.on('connection', (ws) => {
             userId: message.userId || '',
             reply: result.ok ? result.reply : `⚠️ ${result.error}`,
             tokens: result.ok ? result.tokens : 0,
+            quota: result.quota || null,
             debug: result.debug || null
           }));
         } catch (e) {}
