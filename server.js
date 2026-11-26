@@ -6,7 +6,7 @@ const OWNER_ID = process.env.OWNER_ID || "";
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const MISTRAL_DEFAULT_MODEL = process.env.MISTRAL_MODEL || "mistral-small-latest";
-const OPENROUTER_DEFAULT_MODEL = process.env.OPENROUTER_MODEL || "mistralai/mistral-small-latest";
+const OPENROUTER_DEFAULT_MODEL = process.env.OPENROUTER_MODEL || "openrouter/auto";
 
 function logError(stage, detail) {
   console.error(`[MISTRAL-TRACKER][${new Date().toISOString()}][${stage}]`, detail);
@@ -147,7 +147,6 @@ async function askMistral({ system, messages, model }) {
     };
   }
 
-  // 1) المحاولة الأساسية عبر Mistral المباشر
   const mistralResult = await callProvider({
     providerName: "MISTRAL",
     url: "https://api.mistral.ai/v1/chat/completions",
@@ -160,9 +159,8 @@ async function askMistral({ system, messages, model }) {
     return mistralResult;
   }
 
-  // 2) إذا تعذر Mistral (مثلاً 429 rate limit أو خطأ مفتاح) وتوفر OPENROUTER_API_KEY، نجرب OpenRouter
   if (OPENROUTER_API_KEY) {
-    logInfo("FALLBACK_OPENROUTER", `تعذر Mistral (${mistralResult.error}) -> تجربة OPENROUTER_API_KEY...`);
+    logInfo("FALLBACK_OPENROUTER", `تعذر Mistral (${mistralResult.error}) -> تجربة OPENROUTER_API_KEY بالموديل ${OPENROUTER_DEFAULT_MODEL}...`);
     const openRouterResult = await callProvider({
       providerName: "OPENROUTER",
       url: "https://openrouter.ai/api/v1/chat/completions",
