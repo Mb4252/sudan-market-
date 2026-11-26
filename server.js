@@ -3,8 +3,122 @@ const http = require('http');
 
 const PORT = process.env.PORT || 10000;
 const OWNER_ID = process.env.OWNER_ID || "";
+const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
+const MISTRAL_DEFAULT_MODEL = process.env.MISTRAL_MODEL || "mistral-small-latest";
 
-const server = http.createServer((req, res) => {
+async function askMistral({ system, messages, model }) {
+  if (!MISTRAL_API_KEY) {
+    return {
+      ok: false,
+      error: "لم يتم ضبط متغير البيئة MISTRAL_API_KEY على Render"
+    };
+  }
+
+  const formattedMessages = [];
+  if (system && typeof system === 'string') {
+    formattedMessages.push({ role: 'system', content: system });
+  }
+
+  if (Array.isArray(messages)) {
+    for (const m of messages) {
+      if (!m || typeof m.content !== 'string') continue;
+      const role = m.role === 'assistant' ? 'assistant' : 'user';
+      const content = m.content.trim().slice(0, 1500);
+      if (content) {
+        formattedMessages.push({ role, content });
+      }
+    }
+  }
+
+  if (formattedMessages.length === 0) {
+    return { ok: false, error: "لا توجد رسالة صالحة للإرسال" };
+  }
+
+  const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${MISTRAL_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: model || MISTRAL_DEFAULT_MODEL,
+      messages: formattedMessages,
+      temperature: 0.3,
+      max_tokens: 450
+    })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: data?.message || `خطأ من Mistral (${response.status})`
+    };
+  }
+
+  const reply = data?.choices?.[0]?.message?.content?.trim() || "";
+  const tokens = Number(data?.usage?.total_tokens) || 0;
+  return { ok: true, reply, tokens };
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', (chunk) => {
+      raw += chunk.toString('utf8');
+      if (raw.length > 250000) {
+        reject(new Error('حجم الطلب كبير جداً'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      try {
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch (e) {
+        reject(new Error('JSON غير صالح'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+const server = http.createServer(async (req, res) => {
+  const urlPath = (req.url || '/').split('?')[0];
+
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    return res.end();
+  }
+
+  if (urlPath === '/api/mistral-chat' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const result = await askMistral({
+        system: body.system,
+        messages: body.messages,
+        model: body.model
+      });
+
+      if (!result.ok) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({ error: result.error }));
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify({
+        reply: result.reply,
+        tokens: result.tokens
+      }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify({ error: err.message || 'خطأ في الخادم' }));
+    }
+  }
+
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end('WebSocket Relay (Radar) is running');
 });
@@ -34,7 +148,7 @@ wss.on('connection', (ws) => {
     ws.isAlive = true;
   });
 
-  ws.on('message', (rawData) => {
+  ws.on('message', async (rawData) => {
     let message;
     try {
       const text = Buffer.isBuffer(rawData) ? rawData.toString('utf8') : String(rawData);
@@ -54,6 +168,26 @@ wss.on('connection', (ws) => {
       try {
         ws.send(JSON.stringify({ type: 'IDENTITY', isOwner: info.isOwner }));
       } catch (e) {}
+      return;
+    }
+
+    // معالجة دردشة Mistral الخاصة بالمستخدم دون بثها للعامة
+    if (message.type === 'MISTRAL_CHAT') {
+      const result = await askMistral({
+        system: message.system,
+        messages: message.messages,
+        model: message.model
+      });
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({
+            type: 'MISTRAL_CHAT_REPLY',
+            userId: message.userId || '',
+            reply: result.ok ? result.reply : `⚠️ ${result.error}`,
+            tokens: result.ok ? result.tokens : 0
+          }));
+        } catch (e) {}
+      }
       return;
     }
 
