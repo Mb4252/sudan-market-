@@ -3,30 +3,36 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>رادار أسعار الحي — النسخة الاحترافية</title>
+  <title>رادار أسعار الحي — النسخة الاحترافية v2.0</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     html { scroll-behavior: smooth; }
     body { font-family: 'Cairo', sans-serif; background-color: #eef5f0; color: #0f172a; transition: background .3s, color .3s; }
-    body.dark { background: #0f172a; color: #e2e8f0; }
-    body.dark .bg-white { background: #1e293b !important; color: #e2e8f0 !important; }
-    body.dark .bg-slate-50 { background: #243447 !important; }
-    body.dark .border-emerald-700\/20 { border-color: rgba(255,255,255,.1) !important; }
-    body.dark .text-slate-900, body.dark .text-slate-800 { color: #f1f5f9 !important; }
-    body.dark .text-slate-500, body.dark .text-slate-600, body.dark .text-slate-700 { color: #94a3b8 !important; }
+    
+    /* الوضع الليلي الشامل */
+    html.dark body { background: #0b1410; color: #e2e8f0; }
+    html.dark .bg-white, html.dark .bg-slate-50, html.dark .bg-slate-100, html.dark .bg-emerald-50, html.dark .x-card, html.dark .x-fab { background-color: #14211b !important; }
+    html.dark header { background: #0f1d16ee !important; border-color: #2b3d33; }
+    html.dark .text-slate-900, html.dark .text-slate-800, html.dark .text-slate-700 { color: #f1f5f9 !important; }
+    html.dark .text-slate-600, html.dark .text-slate-500, html.dark .text-slate-400 { color: #94a3b8 !important; }
+    html.dark input, html.dark select { background: #0f1d16 !important; color: #f1f5f9 !important; border-color: #2b3d33 !important; }
+    html.dark .border-slate-200, html.dark .border-slate-300, html.dark .border-emerald-200 { border-color: #2b3d33 !important; }
+    html.dark .modal-backdrop > div { background-color: #14211b !important; }
 
+    /* حركات */
     @keyframes slideIn { from { transform: translateY(-8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     @keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 0 0 rgba(27, 122, 67, 0.4); } 50% { box-shadow: 0 0 0 8px rgba(27, 122, 67, 0); } }
     @keyframes goldGlow { 0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6); } 50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); } }
     @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
     @keyframes floatUp { 0% { transform: translateY(0); } 50% { transform: translateY(-6px); } 100% { transform: translateY(0); } }
     @keyframes popIn { 0% { transform: scale(.85); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-    @keyframes badgePop { 0% { transform: scale(0) rotate(-180deg); } 100% { transform: scale(1) rotate(0); } }
     @keyframes radarSweep { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    @keyframes pulsePrice { 0% { background: rgba(34,197,94,0); } 50% { background: rgba(34,197,94,.25); } 100% { background: rgba(34,197,94,0); } }
+    @keyframes xTicker { from { transform: translateX(0); } to { transform: translateX(50%); } }
+    @keyframes xFall { 0% { transform: translateY(-20px) rotate(0); opacity: 1; } 100% { transform: translateY(105vh) rotate(540deg); opacity: 0; } }
 
+    /* فئات مساعدة */
     .slide-in { animation: slideIn 0.25s ease-out; }
     .pop-in { animation: popIn .3s ease-out; }
     .pulse-glow { animation: pulseGlow 2s infinite; }
@@ -40,87 +46,47 @@
     .ws-dot.connecting { background: #f59e0b; animation: pulseGlow 1.5s infinite; }
     .ws-dot.disconnected { background: #dc2626; }
     .stars { color: #f59e0b; letter-spacing: 1px; }
+    
+    /* النوافذ */
     .modal-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(15, 23, 42, 0.55); display: none; align-items: center; justify-content: center; padding: 1rem; backdrop-filter: blur(3px); }
     .modal-backdrop.show { display: flex; }
-    .promoted-shop {
-      background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 50%, #fffbeb 100%);
-      background-size: 200% 200%;
-      border: 2px solid #f59e0b !important;
-      animation: goldGlow 2s infinite, shimmer 3s infinite;
-    }
-    .promoted-badge {
-      background: linear-gradient(90deg, #f59e0b, #eab308, #f59e0b);
-      background-size: 200% 100%;
-      animation: shimmer 2s infinite;
-      color: white;
-      font-weight: 800;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.2);
-    }
-    .pending-badge { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    
+    /* بطاقات وعناصر */
+    .promoted-shop { background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 50%, #fffbeb 100%); background-size: 200% 200%; border: 2px solid #f59e0b !important; animation: goldGlow 2s infinite, shimmer 3s infinite; }
+    .promoted-badge { background: linear-gradient(90deg, #f59e0b, #eab308, #f59e0b); background-size: 200% 100%; animation: shimmer 2s infinite; color: white; font-weight: 800; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
     .owner-panel { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); }
     .points-badge { background: linear-gradient(135deg, #8b5cf6, #6366f1); color: white; }
     .btn-primary { background: #1b7a43; transition: all .15s; }
     .btn-primary:hover { background: #156235; transform: translateY(-1px); }
 
-    /* Radar floating */
-    .radar-fab {
-      position: fixed; bottom: 150px; left: 16px; z-index: 35;
-      width: 56px; height: 56px; border-radius: 50%;
-      background: radial-gradient(circle, #22c55e 0%, #15803d 100%);
-      display: flex; align-items: center; justify-content: center;
-      color: white; font-size: 24px; cursor: pointer;
-      box-shadow: 0 6px 20px rgba(21,128,61,.45);
-    }
-    .radar-fab::after {
-      content: ''; position: absolute; inset: 0; border-radius: 50%;
-      border: 2px solid rgba(34,197,94,.5);
-      animation: pulseGlow 2s infinite;
-    }
-    .radar-fab .sweep {
-      position: absolute; inset: 4px; border-radius: 50%;
-      border-top: 2px solid #bbf7d0;
-      animation: radarSweep 2s linear infinite;
-    }
+    /* الرادار العائم */
+    .radar-fab { position: fixed; bottom: 150px; left: 16px; z-index: 35; width: 56px; height: 56px; border-radius: 50%; background: radial-gradient(circle, #22c55e 0%, #15803d 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; cursor: pointer; box-shadow: 0 6px 20px rgba(21,128,61,.45); }
+    .radar-fab::after { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(34,197,94,.5); animation: pulseGlow 2s infinite; }
+    .radar-fab .sweep { position: absolute; inset: 4px; border-radius: 50%; border-top: 2px solid #bbf7d0; animation: radarSweep 2s linear infinite; }
 
-    /* Pulse bar */
-    .pulse-bar {
-      background: linear-gradient(90deg, #ecfdf5, #d1fae5, #ecfdf5);
-      background-size: 200% 100%;
-      animation: shimmer 4s infinite;
-    }
+    /* شريط النبض */
+    .pulse-bar { background: linear-gradient(90deg, #ecfdf5, #d1fae5, #ecfdf5); background-size: 200% 100%; animation: shimmer 4s infinite; }
+    .x-ticker-wrap { overflow: hidden; background: #0f4d29; color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .x-ticker { display: inline-block; padding: 6px 0; animation: xTicker 40s linear infinite; }
+    .x-ticker span { margin: 0 18px; }
 
-    /* Chart container */
-    .chart-wrap { position: relative; width: 100%; height: 180px; }
-
-    /* Badge */
-    .badge-chip {
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 4px 10px; border-radius: 999px;
-      font-size: 10px; font-weight: 800;
-      animation: badgePop .5s ease-out;
-    }
+    /* احتفالات */
+    .x-confetti { position: fixed; top: 0; z-index: 90; pointer-events: none; font-size: 20px; animation: xFall 2.4s ease-in forwards; }
+    .x-card { background: #fff; border: 1px solid rgba(4,120,87,.2); border-radius: 1rem; padding: .75rem; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+    .x-chip { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 9999px; }
+    
+    /* شارات */
+    .badge-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px; font-size: 10px; font-weight: 800; }
     .badge-gold { background: linear-gradient(135deg,#fbbf24,#f59e0b); color: #78350f; }
     .badge-green { background: linear-gradient(135deg,#4ade80,#16a34a); color: white; }
     .badge-blue { background: linear-gradient(135deg,#60a5fa,#2563eb); color: white; }
     .badge-purple { background: linear-gradient(135deg,#a78bfa,#7c3aed); color: white; }
     .badge-rose { background: linear-gradient(135deg,#fb7185,#e11d48); color: white; }
 
-    /* Search floating suggestions */
     .search-suggest { background: white; border: 1px solid #e2e8f0; border-radius: 12px; max-height: 320px; overflow-y: auto; }
-    body.dark .search-suggest { background: #1e293b; border-color: #334155; }
-
-    /* Compare modal */
-    .compare-card { border-radius: 16px; padding: 12px; }
-
-    /* Voice btn */
-    .voice-btn.listening { background: #ef4444 !important; animation: pulseGlow 1s infinite; }
-
-    /* Trending tags */
-    .trend-tag {
-      display: inline-block; padding: 4px 10px; border-radius: 999px;
-      background: #f1f5f9; font-size: 11px; font-weight: 700; cursor: pointer;
-      margin: 2px; transition: all .15s;
-    }
+    html.dark .search-suggest { background: #14211b; border-color: #2b3d33; }
+    .chart-wrap { position: relative; width: 100%; height: 180px; }
+    .trend-tag { display: inline-block; padding: 4px 10px; border-radius: 999px; background: #f1f5f9; font-size: 11px; font-weight: 700; cursor: pointer; margin: 2px; transition: all .15s; }
     .trend-tag:hover { background: #dcfce7; color: #166534; }
   </style>
 </head>
@@ -142,7 +108,8 @@
         </div>
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
-        <button onclick="toggleDark()" class="w-9 h-9 rounded-xl bg-white border border-slate-300 text-base" title="الوضع الليلي">🌙</button>
+        <!-- زر الوضع الليلي الوحيد -->
+        <button onclick="toggleDark()" id="themeBtn" class="w-9 h-9 rounded-xl bg-white border border-slate-300 text-base" title="الوضع الليلي">🌙</button>
         <button id="ownerBtn" onclick="openOwnerPanel()" class="hidden bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold px-2.5 py-2 rounded-xl relative">
           👑
           <span id="pendingCountBadge" class="hidden absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-extrabold w-5 h-5 rounded-full flex items-center justify-center">0</span>
@@ -161,6 +128,11 @@
         </div>
       </div>
     </div>
+    
+    <!-- ========== شريط الأسعار المباشر (Ticker) ========== -->
+    <div class="x-ticker-wrap">
+      <div class="x-ticker" id="xTicker"></div>
+    </div>
   </header>
 
   <!-- ===================== MAIN ===================== -->
@@ -168,7 +140,6 @@
 
     <!-- شاشة 1: اختيار القرية -->
     <section id="viewVillages" class="space-y-3">
-      <!-- بحث موحد -->
       <div class="bg-white rounded-2xl border border-emerald-700/20 p-4 shadow-sm space-y-3">
         <div class="flex items-center justify-between">
           <div>
@@ -187,7 +158,10 @@
           <h2 class="text-sm font-extrabold text-slate-900">🏘️ اختر قريتك</h2>
           <p class="text-[11px] text-slate-500 mt-0.5">اضغط على اسم القرية لعرض متاجرها وأسعارها</p>
         </div>
-        <input id="villageSearch" type="text" oninput="renderVillages()" placeholder="ابحث عن قرية..." class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:bg-white focus:border-emerald-600" />
+        <div class="flex gap-2">
+          <input id="villageSearch" type="text" oninput="renderVillages()" placeholder="ابحث عن قرية..." class="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:bg-white focus:border-emerald-600" />
+          <button id="xMic" type="button" class="text-[11px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-1.5 shrink-0">🎤 صوتي</button>
+        </div>
         <div id="villagesList" class="space-y-2 max-h-[60vh] overflow-y-auto"></div>
       </div>
       <button onclick="openAddVillage()" class="w-full btn-primary text-white text-sm font-extrabold py-3 rounded-2xl transition">+ إضافة قرية جديدة</button>
@@ -211,6 +185,20 @@
       <!-- صفقة اليوم -->
       <div id="dealOfDay" class="hidden"></div>
 
+      <!-- بطاقة ذكاء السوق -->
+      <div id="xInsights" class="x-card space-y-2.5">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs font-extrabold text-slate-900">📊 ذكاء السوق</h3>
+          <span id="xInflation" class="x-chip bg-slate-100 text-slate-700"></span>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="openBasket()" class="bg-[#1b7a43] text-white text-xs font-extrabold py-2.5 rounded-xl">🛒 سلة الأسرة</button>
+          <button onclick="shareVillageWhatsApp()" class="bg-emerald-50 text-[#1b7a43] border border-emerald-200 text-xs font-extrabold py-2.5 rounded-xl">📲 شارك الأسعار</button>
+        </div>
+        <div class="text-[10px] font-bold text-slate-500">📈 اتجاه الأسعار (أول سعر ← آخر سعر)</div>
+        <div id="xTrends" class="space-y-1.5"></div>
+      </div>
+
       <div id="promotedShopBox" class="hidden"></div>
 
       <div class="bg-white rounded-2xl border border-emerald-700/20 p-3 shadow-sm space-y-2">
@@ -223,7 +211,7 @@
 
       <div class="bg-white rounded-2xl border border-emerald-700/20 p-3 shadow-sm space-y-2">
         <div class="flex items-center justify-between">
-          <h3 class="text-xs font-extrabold text-slate-900">💰 سجل أسعار القرية (الجديد والقديم)</h3>
+          <h3 class="text-xs font-extrabold text-slate-900">💰 سجل أسعار القرية</h3>
           <span id="villagePricesCount" class="text-[10px] font-bold text-slate-500"></span>
         </div>
         <div id="villagePricesList" class="space-y-2"></div>
@@ -262,7 +250,6 @@
         <div id="shopPricesList" class="space-y-2"></div>
       </div>
 
-      <!-- Chart -->
       <div id="priceChartCard" class="bg-white rounded-2xl border border-emerald-700/20 p-3 shadow-sm space-y-2 hidden">
         <div class="flex items-center justify-between">
           <h3 id="priceChartTitle" class="text-xs font-extrabold text-slate-900">📊 تطور السعر</h3>
@@ -285,11 +272,11 @@
     <section id="viewLeaderboard" class="space-y-3 hidden">
       <div class="bg-white rounded-2xl border border-emerald-700/20 p-4 shadow-sm space-y-3">
         <h2 class="text-sm font-extrabold text-slate-900">🏆 لوحة التحديات</h2>
-        <div class="flex gap-1.5">
-          <button onclick="setLeaderboardTab('shops')" data-tab="shops" class="lb-tab flex-1 text-xs font-extrabold py-2 rounded-xl bg-[#1b7a43] text-white">المتاجر</button>
-          <button onclick="setLeaderboardTab('villages')" data-tab="villages" class="lb-tab flex-1 text-xs font-extrabold py-2 rounded-xl bg-slate-100 text-slate-700">القرى</button>
-          <button onclick="setLeaderboardTab('states')" data-tab="states" class="lb-tab flex-1 text-xs font-extrabold py-2 rounded-xl bg-slate-100 text-slate-700">الولايات</button>
-          <button onclick="setLeaderboardTab('users')" data-tab="users" class="lb-tab flex-1 text-xs font-extrabold py-2 rounded-xl bg-slate-100 text-slate-700">المستخدمون</button>
+        <div class="flex gap-1.5 overflow-x-auto">
+          <button onclick="setLeaderboardTab('shops')" data-tab="shops" class="lb-tab shrink-0 text-xs font-extrabold py-2 px-3 rounded-xl bg-[#1b7a43] text-white">المتاجر</button>
+          <button onclick="setLeaderboardTab('villages')" data-tab="villages" class="lb-tab shrink-0 text-xs font-extrabold py-2 px-3 rounded-xl bg-slate-100 text-slate-700">القرى</button>
+          <button onclick="setLeaderboardTab('states')" data-tab="states" class="lb-tab shrink-0 text-xs font-extrabold py-2 px-3 rounded-xl bg-slate-100 text-slate-700">الولايات</button>
+          <button onclick="setLeaderboardTab('users')" data-tab="users" class="lb-tab shrink-0 text-xs font-extrabold py-2 px-3 rounded-xl bg-slate-100 text-slate-700">المستخدمون</button>
         </div>
         <div id="leaderboardList" class="space-y-2"></div>
       </div>
@@ -307,7 +294,6 @@
           <div class="text-3xl">👑</div>
         </div>
       </div>
-
       <div class="bg-white rounded-2xl border border-amber-300 p-3 shadow-sm space-y-2">
         <div class="flex items-center justify-between">
           <h3 class="text-xs font-extrabold text-slate-900">⏳ طلبات معلقة</h3>
@@ -315,7 +301,6 @@
         </div>
         <div id="ownerPendingList" class="space-y-2"></div>
       </div>
-
       <div class="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm space-y-2">
         <h3 class="text-xs font-extrabold text-slate-900">🛠️ إدارة المحتوى</h3>
         <div class="space-y-1.5">
@@ -330,13 +315,13 @@
   </main>
 
   <!-- ===================== FLOATING BUTTONS ===================== -->
-  <!-- Radar FAB -->
+  <!-- زر رادار الأسعار العائم -->
   <button onclick="openRadar()" class="radar-fab" title="رادار الأسعار السريع">
     <span class="sweep"></span>
     <span>📡</span>
   </button>
 
-  <!-- AI chat -->
+  <!-- زر دردشة الذكاء الاصطناعي -->
   <button onclick="openAIChat()" title="مساعد رادار أسعار الحي (Mistral)" class="fixed bottom-20 left-4 z-30 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold px-3.5 py-2.5 rounded-full shadow-lg flex items-center gap-1.5 pulse-glow">
     <span>🤖</span>
     <span>دردشة</span>
@@ -358,7 +343,7 @@
   </nav>
 
   <!-- ===================== MODALS ===================== -->
-
+  
   <!-- Radar Modal -->
   <div id="modalRadar" class="modal-backdrop">
     <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-3 slide-in">
@@ -373,6 +358,20 @@
       </div>
       <p class="text-[11px] text-slate-500">أرخص الأسعار المكتشفة الآن في القرية الحالية</p>
       <div id="radarResults" class="space-y-1.5 max-h-[60vh] overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <!-- Basket Modal -->
+  <div id="modalBasket" class="modal-backdrop">
+    <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-3 slide-in max-h-[85vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b pb-2">
+        <h2 class="font-extrabold text-base">🛒 سلة الأسرة الأرخص</h2>
+        <button onclick="closeModal('modalBasket')" class="text-slate-400 text-lg">✕</button>
+      </div>
+      <p class="text-[11px] text-slate-500">اختر السلع التي تشتريها وسنحسب لك أي متجر في القرية يوفّر عليك أكثر.</p>
+      <div id="xBasketGoods" class="space-y-1.5"></div>
+      <button onclick="calcBasket()" class="w-full btn-primary text-white font-bold text-sm py-2.5 rounded-xl">احسب</button>
+      <div id="xBasketResult" class="space-y-1.5"></div>
     </div>
   </div>
 
@@ -444,10 +443,22 @@
         <button onclick="closeModal('modalProfile')" class="text-slate-400 text-lg">✕</button>
       </div>
       <input id="profileName" type="text" placeholder="اسمك (اختياري)" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600" />
+      
       <div class="text-[11px] bg-slate-50 rounded-xl px-3 py-2 flex justify-between">
         <span class="text-slate-500">معرفك:</span>
         <span id="profileId" class="font-bold"></span>
       </div>
+      
+      <!-- شريط المستوى -->
+      <div class="rounded-xl px-3 py-2.5 bg-gradient-to-br from-violet-50 to-indigo-50 border border-indigo-100 space-y-1.5">
+        <div class="flex items-center justify-between">
+          <span id="xLevelName" class="text-xs font-extrabold text-indigo-900"></span>
+          <span id="xLevelPts" class="text-[10px] font-bold text-indigo-700"></span>
+        </div>
+        <div class="h-2 bg-white rounded-full overflow-hidden"><div id="xLevelBar" class="h-full bg-indigo-500" style="width:0%"></div></div>
+        <div id="xLevelHint" class="text-[10px] text-slate-500"></div>
+      </div>
+
       <div class="text-[11px] bg-indigo-50 text-indigo-900 rounded-xl px-3 py-2 flex justify-between">
         <span>رصيد توكن الدردشة (Mistral):</span>
         <span id="profileTokenUsage" class="font-extrabold"></span>
@@ -553,6 +564,7 @@
     const PUSH_PROMPT_DONE_KEY = "radar_push_prompt_done_v1";
     const MAX_LOCAL_ITEMS = 500;
     const DARK_KEY = "radar_dark_v1";
+    const PLUS_THEME_KEY = "radar_plus_theme_v1";
 
     const myUserId = getOrCreateUid();
     const CHAT_KEY = "radar_mistral_chat_v1_" + myUserId;
@@ -627,11 +639,15 @@
     function closeModal(id) { document.getElementById(id).classList.remove("show"); }
 
     function toggleDark() {
-      document.body.classList.toggle("dark");
-      const isDark = document.body.classList.contains("dark");
-      localStorage.setItem(DARK_KEY, isDark ? "1" : "0");
+      const isDark = !document.documentElement.classList.contains("dark");
+      document.documentElement.classList.toggle("dark", isDark);
+      localStorage.setItem(PLUS_THEME_KEY, isDark ? "1" : "0");
+      document.getElementById("themeBtn").textContent = isDark ? "☀️" : "🌙";
     }
-    if (localStorage.getItem(DARK_KEY) === "1") document.body.classList.add("dark");
+    if (localStorage.getItem(PLUS_THEME_KEY) === "1") {
+      document.documentElement.classList.add("dark");
+      document.getElementById("themeBtn").textContent = "☀️";
+    }
 
     /* ============================================================
        حفظ/تحميل البيانات
@@ -761,6 +777,11 @@
           break;
         case "NEW_PRICE":
           if (msg.price && !state.prices[msg.price.id]) {
+            // رصد انخفاض السعر
+            const p = msg.price, k = norm(p.name);
+            const prev = Object.values(state.prices).filter(x => x.villageId === p.villageId && norm(x.name) === k).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
+            if (prev && Number(p.price) < Number(prev.price)) showToast("📉 انخفض سعر " + p.name + " إلى " + Number(p.price).toLocaleString() + " ج.س");
+            
             state.prices[msg.price.id] = msg.price;
             saveData(); renderCurrentView();
           }
@@ -856,7 +877,7 @@
     }
 
     /* ============================================================
-       التنقل
+       التنقل والعرض
     ============================================================ */
     function goHome() {
       currentView = "villages"; currentVillageId = null; currentShopId = null;
@@ -905,10 +926,10 @@
       if (currentView === "villages") {
         document.getElementById("viewVillages").classList.remove("hidden");
         document.getElementById("headerTitle").textContent = "رادار أسعار الحي";
-        renderVillages(); renderTrendingGoods(); renderPulseBar();
+        renderVillages(); renderTrendingGoods(); renderPulseBar(); renderTicker();
       } else if (currentView === "village") {
         document.getElementById("viewVillage").classList.remove("hidden");
-        renderVillagePage();
+        renderVillagePage(); renderInsights();
       } else if (currentView === "shop") {
         document.getElementById("viewShop").classList.remove("hidden");
         renderShopPage();
@@ -924,13 +945,13 @@
     }
 
     /* ============================================================
-       نبض الحي — Pulse Bar
+       نبض الحي والتيكر
     ============================================================ */
     function renderPulseBar() {
       const all = [];
       Object.values(state.prices).forEach(p => all.push({ ts: p.createdAt, text: `💰 سعر جديد: ${p.name} بـ ${Number(p.price).toLocaleString()} ج.س` }));
       Object.values(state.shops).forEach(s => all.push({ ts: s.createdAt, text: `🏪 متجر جديد: ${s.name}` }));
-      Object.values(state.notes).forEach(n => all.push({ ts: n.createdAt, text: `💬 ملاحظة جديدة: ${n.text.slice(0, 30)}...` }));
+      Object.values(state.notes).forEach(n => all.push({ ts: n.createdAt, text: `💬 ملاحظة: ${n.text.slice(0, 30)}...` }));
       all.sort((a, b) => (b.ts || 0) - (a.ts || 0));
       const el = document.getElementById("pulseText");
       if (el) {
@@ -952,8 +973,65 @@
       }
     }
 
+    function renderTicker() {
+      const items = Object.values(state.prices).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 10).map((p) => {
+        const s = state.shops[p.shopId];
+        return `<span>🔔 ${esc(p.name)}: ${Number(p.price).toLocaleString()} ج.س ${s ? "— " + esc(s.name) : ""}</span>`;
+      });
+      const html = items.length ? items.join("") : "<span>🌾 كن أول من ينشر سعراً في حيّك اليوم!</span>";
+      const tickerEl = document.getElementById("xTicker");
+      if (tickerEl) tickerEl.innerHTML = html + html;
+    }
+
     /* ============================================================
-       البحث الموحد
+       ذكاء السوق
+    ============================================================ */
+    function goods(vid) {
+      const g = {};
+      Object.values(state.prices).filter((p) => p.villageId === vid).forEach((p) => {
+        const k = norm(p.name);
+        (g[k] = g[k] || { name: p.name, list: [] }).list.push(p);
+      });
+      Object.values(g).forEach((x) => x.list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
+      return g;
+    }
+    function latestByShop(list) {
+      const m = {};
+      list.forEach((p) => { m[p.shopId] = p; });
+      return m;
+    }
+    function spark(list) {
+      const v = list.map((p) => Number(p.price));
+      const w = 90, h = 26, mn = Math.min(...v), mx = Math.max(...v), r = mx - mn || 1;
+      const pts = v.map((y, i) => ((i / (v.length - 1)) * w).toFixed(1) + "," + (h - 2 - ((y - mn) / r) * (h - 4)).toFixed(1)).join(" ");
+      const up = v[v.length - 1] > v[0];
+      return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="${up ? "#dc2626" : "#16a34a"}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    }
+    function renderInsights() {
+      if (currentView !== "village" || !currentVillageId) return;
+      const rows = Object.values(goods(currentVillageId)).filter((g) => g.list.length >= 2);
+      const pcts = [];
+      document.getElementById("xTrends").innerHTML = rows.length === 0
+        ? '<div class="text-[10px] text-slate-400 text-center py-2">انشر سعرين أو أكثر لنفس السلعة لتظهر الاتجاهات</div>'
+        : rows.slice(0, 8).map((g) => {
+            const a = Number(g.list[0].price), b = Number(g.list[g.list.length - 1].price);
+            const pct = a ? ((b - a) / a) * 100 : 0;
+            pcts.push(pct);
+            const cls = pct > 0 ? "bg-rose-100 text-rose-700" : pct < 0 ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600";
+            return `<div class="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+              <span class="text-[11px] font-extrabold text-slate-800 truncate">${esc(g.name)}</span>
+              ${spark(g.list)}
+              <span class="x-chip ${cls}">${pct > 0 ? "▲" : pct < 0 ? "▼" : "•"} ${Math.abs(pct).toFixed(1)}%</span>
+            </div>`;
+          }).join("");
+      const avg = pcts.length ? pcts.reduce((s, x) => s + x, 0) / pcts.length : 0;
+      const chip = document.getElementById("xInflation");
+      chip.textContent = !pcts.length ? "مؤشر الغلاء: —" : avg > 5 ? "🔥 غلاء مرتفع +" + avg.toFixed(1) + "%" : avg < -2 ? "📉 أسعار تنخفض " + avg.toFixed(1) + "%" : "⚖️ مستقر " + avg.toFixed(1) + "%";
+      chip.className = "x-chip " + (avg > 5 ? "bg-rose-100 text-rose-700" : avg < -2 ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700");
+    }
+
+    /* ============================================================
+       البحث الموحد والصوتي والسلع الرائجة
     ============================================================ */
     function renderUnifiedSearch() {
       const q = norm(document.getElementById("unifiedSearch").value);
@@ -987,9 +1065,6 @@
       box.classList.remove("hidden");
     }
 
-    /* ============================================================
-       السلع الرائجة — Trending goods
-    ============================================================ */
     function renderTrendingGoods() {
       const counts = {};
       Object.values(state.prices).forEach(p => {
@@ -1011,9 +1086,6 @@
       renderUnifiedSearch();
     }
 
-    /* ============================================================
-       البحث الصوتي
-    ============================================================ */
     function startVoiceSearch() {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SR) { showToast("متصفحك لا يدعم البحث الصوتي"); return; }
@@ -1030,6 +1102,22 @@
       };
       rec.start();
     }
+
+    // إضافة مسجل الصوت الثانوي
+    setTimeout(() => {
+      const xMic = document.getElementById("xMic");
+      if(xMic) {
+        xMic.onclick = function () {
+          const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (!SR) { showToast("متصفحك لا يدعم البحث الصوتي"); return; }
+          const r = new SR(); r.lang = "ar-SA";
+          showToast("🎤 تحدّث الآن...");
+          r.onresult = (e) => { document.getElementById("villageSearch").value = e.results[0][0].transcript; renderVillages(); };
+          r.onerror = () => showToast("تعذّر التعرف على الصوت");
+          r.start();
+        };
+      }
+    }, 500);
 
     /* ============================================================
        القرى
@@ -1077,10 +1165,8 @@
       const pc = Object.values(state.prices).filter(p => p.villageId === v.id).length;
       document.getElementById("villageMeta").textContent = (v.state ? esc(v.state) + " • " : "") + sc + " متجر • " + pc + " سعر";
 
-      // Deal of the day
       renderDealOfDay(v.id);
 
-      // Promoted
       const promotedBox = document.getElementById("promotedShopBox");
       const promoted = getPromotedShop(v.id);
       if (promoted) {
@@ -1102,7 +1188,6 @@
         </button>`;
       } else promotedBox.classList.add("hidden");
 
-      // Shops
       const shops = Object.values(state.shops).filter(s => s.villageId === v.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       const shopsEl = document.getElementById("shopsList");
       if (shops.length === 0) {
@@ -1133,7 +1218,6 @@
         }).join("");
       }
 
-      // Prices
       const prices = Object.values(state.prices).filter(p => p.villageId === v.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       document.getElementById("villagePricesCount").textContent = prices.length + " سعر";
       const pricesEl = document.getElementById("villagePricesList");
@@ -1321,7 +1405,6 @@
         }).join("");
       }
 
-      // Notes
       const notes = Object.values(state.notes).filter(n => n.shopId === s.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       const notesEl = document.getElementById("shopNotesList");
       if (notes.length === 0) notesEl.innerHTML = '<div class="text-[10px] text-slate-400 text-center py-2">لا توجد ملاحظات</div>';
@@ -1494,16 +1577,33 @@
       openModal("modalAddPrice");
       setTimeout(() => document.getElementById("newPriceName").focus(), 100);
     }
+    
+    // دالة النشر مع الاحتفال
     function submitPrice() {
       const name = document.getElementById("newPriceName").value.trim();
       const price = Number(document.getElementById("newPriceValue").value);
       const unit = document.getElementById("newPriceUnit").value.trim() || "وحدة";
       const shop = state.shops[currentShopId];
       if (!name || !price || price <= 0 || !shop) { showToast("أكمل البيانات"); return; }
+      
+      const before = Object.keys(state.prices).length;
+      
       const p = { id: uid(), shopId: shop.id, villageId: shop.villageId, name, price, unit, userId: myUserId, author: getUserName(), createdAt: Date.now() };
       state.prices[p.id] = p; saveData();
       sendWS({ type: "NEW_PRICE", price: p });
       closeModal("modalAddPrice"); showToast("تم النشر ✓"); renderShopPage();
+      
+      if (Object.keys(state.prices).length > before) triggerConfetti();
+    }
+
+    function triggerConfetti() {
+      const e = ["🎉", "🌾", "💚", "⭐", "✨"];
+      for (let i = 0; i < 36; i++) {
+        const s = document.createElement("span");
+        s.className = "x-confetti"; s.textContent = e[i % e.length];
+        s.style.left = Math.random() * 100 + "vw"; s.style.animationDelay = Math.random() * 0.6 + "s";
+        document.body.appendChild(s); setTimeout(() => s.remove(), 3200);
+      }
     }
 
     function submitShopNote(e) {
@@ -1520,7 +1620,7 @@
     function openAddMenu() { openModal("modalAddMenu"); }
 
     /* ============================================================
-       رادار الأسعار السريع
+       رادار الأسعار، سلة الأسرة، المقارنة
     ============================================================ */
     function openRadar() {
       const box = document.getElementById("radarResults");
@@ -1551,9 +1651,47 @@
       openModal("modalRadar");
     }
 
-    /* ============================================================
-       مقارنة الأسعار
-    ============================================================ */
+    function openBasket() {
+      if (!currentVillageId) return;
+      const g = Object.entries(goods(currentVillageId));
+      document.getElementById("xBasketResult").innerHTML = "";
+      document.getElementById("xBasketGoods").innerHTML = g.length === 0
+        ? '<div class="text-[11px] text-slate-400 text-center py-3">لا توجد أسعار بعد</div>'
+        : g.map(([k, v]) => `<label class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-bold text-slate-800"><input type="checkbox" class="xBasketChk" value="${esc(k)}" /> ${esc(v.name)}</label>`).join("");
+      openModal("modalBasket");
+    }
+    
+    function calcBasket() {
+      const keys = [...document.querySelectorAll(".xBasketChk:checked")].map((c) => c.value);
+      if (!keys.length) { showToast("اختر سلعة واحدة على الأقل"); return; }
+      const g = goods(currentVillageId);
+      const shops = Object.values(state.shops).filter((s) => s.villageId === currentVillageId);
+      const res = shops.map((s) => {
+        let total = 0, found = 0;
+        keys.forEach((k) => { const p = latestByShop(g[k].list)[s.id]; if (p) { total += Number(p.price); found++; } });
+        return { s, total, found };
+      }).filter((r) => r.found > 0).sort((a, b) => b.found - a.found || a.total - b.total);
+      const full = res.filter((r) => r.found === keys.length);
+      const worst = full.length > 1 ? full[full.length - 1].total : 0;
+      document.getElementById("xBasketResult").innerHTML = res.length === 0
+        ? '<div class="text-[11px] text-slate-400 text-center py-3">لا توجد متاجر تبيع هذه السلع</div>'
+        : res.map((r, i) => `<div class="${i === 0 ? "bg-emerald-50 border-emerald-300" : "bg-slate-50 border-slate-200"} border rounded-xl px-3 py-2 flex items-center justify-between">
+            <div><div class="text-xs font-extrabold text-slate-900">${i === 0 ? "🏆 " : ""}${esc(r.s.name)}</div>
+            <div class="text-[10px] text-slate-500">${r.found === keys.length ? "كل السلع متوفرة" : "يتوفر " + r.found + " من " + keys.length}${i === 0 && worst ? " • توفير " + (worst - r.total).toLocaleString() + " ج.س" : ""}</div></div>
+            <div class="text-sm font-extrabold text-slate-900">${r.total.toLocaleString()} <span class="text-[10px] text-slate-500">ج.س</span></div></div>`).join("");
+    }
+
+    function shareVillageWhatsApp() {
+      const v = state.villages[currentVillageId]; if (!v) return;
+      const lines = Object.values(goods(v.id)).slice(0, 10).map((g) => {
+        const best = Object.values(latestByShop(g.list)).sort((a, b) => a.price - b.price)[0];
+        const s = best && state.shops[best.shopId];
+        return `• ${g.name}: ${Number(best.price).toLocaleString()} ج.س ${s ? "(" + s.name + ")" : ""}`;
+      });
+      const text = `🌾 رادار أسعار الحي — ${v.name}\nأرخص الأسعار الآن:\n${lines.join("\n") || "لا توجد أسعار بعد"}\n\n${location.href}`;
+      window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank");
+    }
+
     function openCompare() {
       const sel = document.getElementById("compareGoodSelect");
       const goods = [...new Set(Object.values(state.prices).filter(p => p.villageId === (state.shops[currentShopId] ? state.shops[currentShopId].villageId : null)).map(p => p.name))];
@@ -1594,189 +1732,22 @@
     }
 
     /* ============================================================
-       لوحة المالك
+       المستويات والشارات
     ============================================================ */
-    function renderOwnerPanel() {
-      const pv = Object.values(state.pendingVillages);
-      const ps = Object.values(state.pendingShops);
-      const total = pv.length + ps.length;
-      document.getElementById("ownerPendingCount").textContent = total + " طلب";
-      const pendingEl = document.getElementById("ownerPendingList");
-      if (total === 0) {
-        pendingEl.innerHTML = '<div class="text-center text-[11px] text-slate-400 py-3 bg-slate-50 rounded-lg">لا توجد طلبات ✓</div>';
-      } else {
-        let html = "";
-        pv.forEach(v => {
-          html += `<div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 space-y-1.5">
-            <div class="flex items-center gap-2">
-              <span class="text-lg">🏘️</span>
-              <div class="flex-1"><div class="text-xs font-extrabold text-slate-900">${esc(v.name)}</div><div class="text-[10px] text-slate-500">${esc(v.author)}</div></div>
-            </div>
-            <div class="flex gap-1.5">
-              <button onclick="approveVillage('${v.id}')" class="flex-1 bg-[#1b7a43] text-white text-[10px] font-extrabold py-1.5 rounded-lg">✓ موافقة</button>
-              <button onclick="rejectVillage('${v.id}')" class="flex-1 bg-rose-100 text-rose-700 text-[10px] font-extrabold py-1.5 rounded-lg">✕ رفض</button>
-            </div>
-          </div>`;
-        });
-        ps.forEach(s => {
-          html += `<div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 space-y-1.5">
-            <div class="flex items-center gap-2">
-              <span class="text-lg">🏪</span>
-              <div class="flex-1"><div class="text-xs font-extrabold text-slate-900">${esc(s.name)}</div><div class="text-[10px] text-slate-500">${esc(s.owner || "")}</div></div>
-            </div>
-            <div class="flex gap-1.5">
-              <button onclick="approveShop('${s.id}')" class="flex-1 bg-[#1b7a43] text-white text-[10px] font-extrabold py-1.5 rounded-lg">✓ موافقة</button>
-              <button onclick="rejectShop('${s.id}')" class="flex-1 bg-rose-100 text-rose-700 text-[10px] font-extrabold py-1.5 rounded-lg">✕ رفض</button>
-            </div>
-          </div>`;
-        });
-        pendingEl.innerHTML = html;
-      }
-
-      const vList = Object.values(state.villages).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      document.getElementById("ownerVillagesList").innerHTML = vList.length === 0 ? '<div class="text-[10px] text-slate-400">لا توجد قرى</div>'
-        : vList.map(v => `<div class="flex items-center justify-between bg-slate-50 rounded-lg px-2.5 py-1.5">
-          <span class="text-[11px] font-bold text-slate-800">${esc(v.name)}</span>
-          <button onclick="deleteItem('village', '${v.id}')" class="text-rose-600 text-[10px]">🗑️</button>
-        </div>`).join("");
-
-      const sList = Object.values(state.shops).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      document.getElementById("ownerShopsList").innerHTML = sList.length === 0 ? '<div class="text-[10px] text-slate-400">لا توجد متاجر</div>'
-        : sList.map(s => `<div class="flex items-center justify-between bg-slate-50 rounded-lg px-2.5 py-1.5">
-          <span class="text-[11px] font-bold text-slate-800">${esc(s.name)} <span class="text-slate-400 font-normal">(${esc(s.owner || "")})</span></span>
-          <button onclick="deleteItem('shop', '${s.id}')" class="text-rose-600 text-[10px]">🗑️</button>
-        </div>`).join("");
+    const LEVELS = [[0, "🌱 مستكشف"], [10, "🔍 راصد أسعار"], [30, "🦅 خبير الأسعار"], [80, "🛡️ حارس السوق"], [150, "👑 أسطورة الحي"]];
+    function renderLevel() {
+      const mine = (o) => Object.values(o).filter((x) => x && x.userId === myUserId).length;
+      let ratings = 0;
+      Object.values(state.ratings).forEach((r) => { if (r && r[myUserId]) ratings++; });
+      const pts = mine(state.prices) * 5 + mine(state.notes) * 2 + ratings;
+      let i = 0; LEVELS.forEach((l, n) => { if (pts >= l[0]) i = n; });
+      const next = LEVELS[i + 1];
+      document.getElementById("xLevelName").textContent = LEVELS[i][1];
+      document.getElementById("xLevelPts").textContent = pts + " نقطة مساهمة";
+      document.getElementById("xLevelBar").style.width = (next ? Math.min(100, ((pts - LEVELS[i][0]) / (next[0] - LEVELS[i][0])) * 100) : 100) + "%";
+      document.getElementById("xLevelHint").textContent = next ? "باقي " + (next[0] - pts) + " نقطة للوصول إلى " + next[1] + " (سعر = 5، ملاحظة = 2، تقييم = 1)" : "وصلت لأعلى مستوى، شكراً لك!";
     }
 
-    function approveVillage(id) {
-      const v = state.pendingVillages[id]; if (!v) return;
-      v.status = "approved"; state.villages[id] = v; delete state.pendingVillages[id];
-      saveData(); sendWS({ type: "APPROVE_VILLAGE", village: v });
-      renderOwnerPanel(); showToast("تمت الموافقة ✓");
-    }
-    function rejectVillage(id) {
-      delete state.pendingVillages[id]; saveData();
-      sendWS({ type: "REJECT_VILLAGE", id }); renderOwnerPanel(); showToast("تم الرفض");
-    }
-    function approveShop(id) {
-      const s = state.pendingShops[id]; if (!s) return;
-      s.status = "approved"; state.shops[id] = s; delete state.pendingShops[id];
-      saveData(); sendWS({ type: "APPROVE_SHOP", shop: s });
-      renderOwnerPanel(); showToast("تمت الموافقة ✓");
-    }
-    function rejectShop(id) {
-      delete state.pendingShops[id]; saveData();
-      sendWS({ type: "REJECT_SHOP", id }); renderOwnerPanel(); showToast("تم الرفض");
-    }
-    function deleteItem(kind, id) {
-      if (!isOwner) return;
-      if (!confirm("تأكيد الحذف؟")) return;
-      if (kind === "village") delete state.villages[id];
-      if (kind === "shop") delete state.shops[id];
-      saveData(); sendWS({ type: "DELETE_ITEM", kind, id });
-      renderOwnerPanel(); showToast("تم الحذف");
-    }
-
-    /* ============================================================
-       لوحة التحديات + تحدي المستخدمين
-    ============================================================ */
-    function setLeaderboardTab(tab) {
-      leaderboardTab = tab; saveViewState();
-      document.querySelectorAll(".lb-tab").forEach(b => {
-        if (b.dataset.tab === tab) b.className = "lb-tab flex-1 text-xs font-extrabold py-2 rounded-xl bg-[#1b7a43] text-white";
-        else b.className = "lb-tab flex-1 text-xs font-extrabold py-2 rounded-xl bg-slate-100 text-slate-700";
-      });
-      renderLeaderboard();
-    }
-    function renderLeaderboard() {
-      const el = document.getElementById("leaderboardList");
-      if (leaderboardTab === "shops") {
-        const shops = Object.values(state.shops).map(s => ({ ...s, rating: getShopRating(s.id), points: getShopPoints(s.id) }))
-          .filter(s => s.rating.count > 0).sort((a, b) => b.points - a.points).slice(0, 10);
-        if (shops.length === 0) { el.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">لا توجد تقييمات</div>'; return; }
-        const medals = ["🥇", "🥈", "🥉"];
-        el.innerHTML = shops.map((s, i) => {
-          const v = state.villages[s.villageId];
-          return `<button onclick="goShop('${s.id}')" class="w-full text-right flex items-center justify-between bg-slate-50 hover:bg-emerald-50 border border-slate-200 rounded-xl px-3 py-2">
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="text-lg w-6 text-center">${medals[i] || (i + 1)}</span>
-              <div class="min-w-0">
-                <div class="text-xs font-extrabold text-slate-900 truncate">${esc(s.name)}</div>
-                <div class="text-[10px] text-slate-600 truncate">المالك: ${esc(s.owner || "؟")}</div>
-                <div class="text-[10px] text-slate-400">${v ? esc(v.name) : ""}</div>
-              </div>
-            </div>
-            <div class="text-left shrink-0">
-              <div class="points-badge text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-block">${s.points} نقطة</div>
-              <div class="stars text-[10px] mt-0.5">${ratingToStars(s.rating.avg)}</div>
-            </div>
-          </button>`;
-        }).join("");
-      } else if (leaderboardTab === "villages") {
-        const villages = Object.values(state.villages).map(v => {
-          const shops = Object.values(state.shops).filter(s => s.villageId === v.id);
-          const totalPoints = shops.reduce((sum, s) => sum + getShopPoints(s.id), 0);
-          return { ...v, totalPoints, shopCount: shops.length };
-        }).filter(v => v.shopCount > 0).sort((a, b) => b.totalPoints - a.totalPoints).slice(0, 10);
-        if (villages.length === 0) { el.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">لا بيانات</div>'; return; }
-        const medals = ["🥇", "🥈", "🥉"];
-        el.innerHTML = villages.map((v, i) => `
-          <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-            <div class="flex items-center gap-2">
-              <span class="text-lg w-6 text-center">${medals[i] || (i + 1)}</span>
-              <div>
-                <div class="text-xs font-extrabold text-slate-900">${esc(v.name)}</div>
-                <div class="text-[10px] text-slate-500">${v.shopCount} متجر</div>
-              </div>
-            </div>
-            <div class="points-badge text-sm font-extrabold px-3 py-1 rounded-full">${v.totalPoints}</div>
-          </div>`).join("");
-      } else if (leaderboardTab === "states") {
-        const byState = {};
-        Object.values(state.shops).forEach(s => {
-          const v = state.villages[s.villageId]; if (!v) return;
-          const st = v.state || "غير محدد";
-          if (!byState[st]) byState[st] = { state: st, points: 0, shopCount: 0 };
-          byState[st].points += getShopPoints(s.id); byState[st].shopCount++;
-        });
-        const list = Object.values(byState).sort((a, b) => b.points - a.points).slice(0, 10);
-        if (list.length === 0) { el.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">لا بيانات</div>'; return; }
-        const medals = ["🥇", "🥈", "🥉"];
-        el.innerHTML = list.map((s, i) => `
-          <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-            <div class="flex items-center gap-2">
-              <span class="text-lg w-6 text-center">${medals[i] || (i + 1)}</span>
-              <div><div class="text-xs font-extrabold text-slate-900">${esc(s.state)}</div><div class="text-[10px] text-slate-500">${s.shopCount} متجر</div></div>
-            </div>
-            <div class="points-badge text-sm font-extrabold px-3 py-1 rounded-full">${s.points}</div>
-          </div>`).join("");
-      } else if (leaderboardTab === "users") {
-        // ترتيب المستخدمين حسب مساهماتهم
-        const users = {};
-        const addPoints = (uid, pts) => { if (!uid) return; if (!users[uid]) users[uid] = 0; users[uid] += pts; };
-        Object.values(state.prices).forEach(p => addPoints(p.userId, 5));
-        Object.values(state.shops).forEach(s => addPoints(s.userId, 10));
-        Object.values(state.villages).forEach(v => addPoints(v.userId, 20));
-        Object.values(state.ratings).forEach(shopR => Object.values(shopR).forEach(r => addPoints(r.userId, 2)));
-        Object.values(state.notes).forEach(n => addPoints(n.userId, 3));
-        const meName = getUserName();
-        const list = Object.keys(users).map(u => ({ uid: u, points: users[u], name: u === myUserId ? meName : "مستخدم " + u.slice(-4) })).sort((a, b) => b.points - a.points).slice(0, 10);
-        if (list.length === 0) { el.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">لا بيانات</div>'; return; }
-        const medals = ["🥇", "🥈", "🥉"];
-        el.innerHTML = list.map((u, i) => `
-          <div class="flex items-center justify-between ${u.uid === myUserId ? 'bg-emerald-50 border-emerald-300' : 'bg-slate-50 border-slate-200'} border rounded-xl px-3 py-2">
-            <div class="flex items-center gap-2">
-              <span class="text-lg w-6 text-center">${medals[i] || (i + 1)}</span>
-              <div><div class="text-xs font-extrabold text-slate-900">${esc(u.name)}</div><div class="text-[10px] text-slate-500">${u.uid === myUserId ? 'أنت ✓' : ''}</div></div>
-            </div>
-            <div class="points-badge text-sm font-extrabold px-3 py-1 rounded-full">${u.points}</div>
-          </div>`).join("");
-      }
-    }
-
-    /* ============================================================
-       الملف الشخصي مع الشارات
-    ============================================================ */
     function getUserContributionPoints() {
       let points = 0;
       Object.values(state.prices).forEach(p => { if (p.userId === myUserId) points += 5; });
@@ -1817,6 +1788,7 @@
       const myVillages = Object.values(state.villages).filter(v => v.userId === myUserId).length;
       const myNotes = Object.values(state.notes).filter(n => n.userId === myUserId).length;
       const myPoints = getUserContributionPoints();
+      
       document.getElementById("myStats").innerHTML = `
         <div class="flex justify-between"><span>🏘️ قرى أضفتها:</span><b>${myVillages}</b></div>
         <div class="flex justify-between"><span>🏪 متاجر أضفتها:</span><b>${myShops}</b></div>
@@ -1825,8 +1797,11 @@
         <div class="flex justify-between"><span>⭐ مجموع نقاطي:</span><b>${myPoints}</b></div>`;
 
       document.getElementById("myBadges").innerHTML = getMyBadges().map(b => `<span class="badge-chip ${b.cls}">${b.label}</span>`).join("");
+      
+      renderLevel();
       openModal("modalProfile");
     }
+    
     function saveProfile() {
       const isFirst = !localStorage.getItem(NAME_KEY);
       const name = document.getElementById("profileName").value.trim();
@@ -2071,8 +2046,8 @@
         window.addEventListener("online", () => { connectWS(); requestSync(); });
         setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) requestSync(); }, 5 * 60 * 1000);
         if (myUserId) setTimeout(maybeShowOneTimePushPrompt, 1800);
-        // Pulse bar
         setInterval(renderPulseBar, 10000);
+        setInterval(renderTicker, 15000);
       } catch (err) { console.error(err); setWSStatus("disconnected"); }
     }
     init();
